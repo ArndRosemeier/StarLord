@@ -33,13 +33,14 @@ export function colonizationTargets(view: PlayerView): Target[] {
   return targets.sort((a, b) => b.value - a.value);
 }
 
-/** Asteroids and gas giants worth an outpost: they extend fuel range and claim systems. */
+/** Hostile worlds worth an outpost: they extend fuel range and claim systems. */
 export function outpostTargets(view: PlayerView): Target[] {
   const player = me(view);
   const range = fleetRange(player);
   const targets: Target[] = [];
   for (const planet of Object.values(view.planets)) {
-    if (planet.colonyId || CLIMATES[planet.type].habitable) continue;
+    const climate = CLIMATES[planet.type];
+    if (planet.colonyId || !climate.habitable || !climate.hostile) continue;
     const star = starById(view, planet.starId);
     const d = distanceToNearestColony(view, view.viewer, star);
     if (d > range || d < 1 || guarded(view, view.viewer, star.id)) continue;

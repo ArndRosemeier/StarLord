@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  RACES, STAR_COUNTS, canReach, colonyOutput, empires, getRace, maxPopulation, newGame, playerView, processTurn, stateHash,
+  RACES, STAR_COUNTS, availableProjects, canReach, colonyOutput, empires, getRace, maxPopulation, newGame, playerView, processTurn, stateHash,
   type GameState,
 } from "@starlord/sim";
 
@@ -82,6 +82,24 @@ describe("turns", () => {
     s = processTurn(s, { 0: [{ type: "colonize", fleetId: fleet.id, planetId: target.id }] });
     expect(s.planets[target.id]!.colonyId).not.toBeNull();
     expect(s.fleets[fleet.id]).toBeUndefined();
+  });
+
+  it("can't settle asteroids or gas giants until an Artificial Planet converts them", () => {
+    let s = newGame({ seed: "col", playerCount: 2, ...quiet });
+    const fleet = Object.values(s.fleets).find((f) => f.ownerId === 0 && f.ships[0]!.designId === "colonyShip")!;
+    const home = s.players[0]!.homeStarId;
+    const free = Object.values(s.planets).filter((p) => p.starId === home && !p.colonyId);
+    free.forEach((p, i) => (p.type = i % 2 ? "gasGiant" : "asteroids"));
+    const target = free[0]!;
+    s = processTurn(s, { 0: [{ type: "colonize", fleetId: fleet.id, planetId: target.id }] });
+    expect(s.planets[target.id]!.colonyId).toBeNull();
+    expect(s.events.some((e) => e.kind === "commandRejected")).toBe(true);
+
+    s.players[0]!.techs.push("outpostShip", "artificialPlanet");
+    const colony = Object.values(s.colonies).find((c) => c.ownerId === 0)!;
+    const projects = availableProjects(s, 0, colony);
+    expect(projects).not.toContain("outpostBase");
+    expect(projects).toContain("artificialPlanet");
   });
 
   it("hides unexplored planets from a player's view", () => {

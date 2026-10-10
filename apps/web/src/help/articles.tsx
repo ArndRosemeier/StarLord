@@ -559,7 +559,7 @@ function ModulePage({ id }: { id: keyof typeof MODULES }) {
   const tech = Object.keys(TECHS).find((t) => techUnlocks(t).some((u) => u.kind === "module" && u.id === id)) ?? null;
   const text: Record<keyof typeof MODULES, string> = {
     colony: "Settles a habitable planet: move the ship to the star and press Colonize. The ship is used up.",
-    outpost: "Claims an asteroid belt, gas giant or any planet as an outpost. Outposts have no population but extend fuel range and count for score.",
+    outpost: "Claims any habitable planet as an outpost. Outposts have no population but extend fuel range and count for score. Asteroids and gas giants can't take outposts.",
     transport: "Carries troops to invade enemy colonies once their orbital defenses are down.",
   };
   return (
@@ -611,7 +611,8 @@ function PlanetsPage() {
     <div className="col">
       <p>
         Climate decides how many people a planet holds per size step and how much food each farmer grows. Hostile
-        worlds hold few people; asteroids and gas giants only take outposts. Max population is population per size
+        worlds hold few people. Asteroids and gas giants can't be settled at all, not even by outposts, until an{" "}
+        <HelpLink to="project:artificialPlanet" /> turns them into barren planets. Max population is population per size
         step × the size factor (tiny 1 to huge 5), plus race traits, buildings and techs.
       </p>
       <table className="help-table">
@@ -623,7 +624,7 @@ function PlanetsPage() {
               <tr key={t}>
                 <td><HelpLink to={`climate:${t}`} /></td><td>{c.popPerSize}</td><td>{c.foodPerFarmer}</td>
                 <td>{c.habitable ? SIZES.map((s) => c.popPerSize * SIZE_FACTOR[s]).join(" / ") : "–"}</td>
-                <td>{!c.habitable ? "Outposts only" : c.hostile ? "Hostile" : ""}</td>
+                <td>{!c.habitable ? "Needs Artificial Planet" : c.hostile ? "Hostile" : ""}</td>
               </tr>
             );
           })}
@@ -640,7 +641,7 @@ function ClimatePage({ type }: { type: PlanetType }) {
   return (
     <div className="col">
       <Facts rows={[
-        ["Habitable", c.habitable ? "Yes" : "No: outposts only"],
+        ["Habitable", c.habitable ? "Yes" : "No: not even outposts, until an Artificial Planet converts it"],
         ["Hostile", c.hostile ? "Yes" : "No"],
         ["Population per size step", c.popPerSize],
         ["Food per farmer", c.foodPerFarmer],
