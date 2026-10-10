@@ -1,0 +1,51 @@
+import { describe, expect, it } from "vitest";
+import { TIERS_BY_ID, availableTiers } from "@starlord/sim";
+import { GameSession } from "../src/game/session";
+
+const opts = { seed: "ui", galaxySize: "small" as const, races: ["terran", "kordex", "zhrikk"] };
+
+describe("GameSession", () => {
+  it("shows orders in the view before the turn ends", () => {
+    const s = GameSession.create(opts, 0);
+    const tier = availableTiers(s.state, 0).find((t) => TIERS_BY_ID[t]!.level === 1)!;
+    s.issue({ type: "setResearch", tierId: tier, techId: TIERS_BY_ID[tier]!.techs[0]! });
+    expect(s.view.players[0]!.research.tierId).toBe(tier);
+    expect(s.state.players[0]!.research.tierId).toBeNull();
+    s.endTurn();
+    expect(s.state.turn).toBe(2);
+    expect(s.state.players[0]!.research.tierId).toBe(tier);
+    expect(s.pending).toEqual([]);
+  });
+
+  it("replaces superseded orders and lets a split fleet move the same turn", () => {
+    const s = GameSession.create(opts, 0);
+    s.issue({ type: "setTaxRate", rate: 0.2 }, { type: "setTaxRate", rate: 0.3 });
+    expect(s.pending).toHaveLength(1);
+    const guard = Object.values(s.state.fleets).find((f) => f.ownerId === 0 && f.ships.some((x) => x.designId === "frigate" && x.count === 2))!;
+    s.issue({ type: "splitFleet", fleetId: guard.id, ships: [{ designId: "frigate", count: 1 }] });
+    const split = Object.values(s.view.fleets).find((f) => f.id !== guard.id && f.id.startsWith(guard.id))!;
+    const dest = s.view.galaxy.stars.find((st) => st.id !== guard.starId && Math.hypot(st.x - guard.x, st.y - guard.y) < 4)!;
+    s.issue({ type: "moveFleet", fleetId: split.id, destStarId: dest.id });
+    expect(s.rejected).toEqual([]);
+    s.endTurn();
+    expect(s.state.fleets[split.id]!.destStarId ?? s.state.fleets[split.id]!.starId).toBe(dest.id);
+    expect(s.state.events.filter((e) => e.kind === "commandRejected" && e.playerId === 0)).toEqual([]);
+  });
+
+  it("round-trips through a save", () => {
+    const s = GameSession.create(opts, 0);
+    s.issue({ type: "setTaxRate", rate: 0.4 });
+    const copy = GameSession.fromJSON(JSON.parse(JSON.stringify(s.toJSON())));
+    expect(copy.view.players[0]!.taxRate).toBe(0.4);
+    copy.endTurn();
+    s.endTurn();
+    expect(copy.state).toEqual(s.state);
+  });
+
+  it("runs an all-AI game for spectators", () => {
+    const s = GameSession.create(opts, null);
+    for (let i = 0; i < 5; i++) s.endTurn();
+    expect(s.state.turn).toBe(6);
+    expect(s.history).toHaveLength(5);
+  });
+});

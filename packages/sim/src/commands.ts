@@ -97,7 +97,9 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
           seen.add(item.id);
         }
         if (item.kind === "ship" && !designs.has(item.designId)) return fail(`design ${item.designId} not available`);
-        if (item.kind === "project" && !projects.has(item.id)) return fail(`project ${item.id} not available`);
+        // A one-off project already queued here stays valid when the queue is reordered.
+        const alreadyHere = item.kind === "project" && c.queue.some((q) => q.kind === "project" && q.id === item.id);
+        if (item.kind === "project" && !projects.has(item.id) && !alreadyHere) return fail(`project ${item.id} not available`);
       }
       return OK;
     }
