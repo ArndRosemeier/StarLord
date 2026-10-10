@@ -123,6 +123,18 @@ export const RACES: RaceDef[] = [
   ),
 ];
 
+/** A portrait and video a custom race can wear. */
+export interface RaceLook {
+  assetKey: string;
+  name: string;
+}
+
+/** Art made for custom races only; the first entry is the builder's default look. */
+export const CUSTOM_ONLY_LOOKS: RaceLook[] = [{ assetKey: "tramps", name: "Tramps" }];
+
+/** Every look a custom race can pick: custom-only art first, then each playable race's. */
+export const RACE_LOOKS: RaceLook[] = [...CUSTOM_ONLY_LOOKS, ...RACES.map((r) => ({ assetKey: r.assetKey, name: r.plural }))];
+
 export const RACES_BY_ID: Record<string, RaceDef> = Object.fromEntries(RACES.map((r) => [r.id, r]));
 
 /** Custom races in play, keyed by their content-derived id (see customRace.ts). */
