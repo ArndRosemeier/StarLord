@@ -21,8 +21,8 @@ function shuffled<T>(list: T[]): T[] {
   return a;
 }
 
-export function NewGame({ onStart, onBack }: { onStart: (s: GameSession) => void; onBack: () => void }) {
-  const [raceId, setRaceId] = useState(RACES[0]!.id);
+export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSession) => void; onBack: () => void; initialRace?: string }) {
+  const [raceId, setRaceId] = useState(initialRace ?? RACES[0]!.id);
   const [opponents, setOpponents] = useState(3);
   const [galaxy, setGalaxy] = useState<GalaxySize>("medium");
   const [seed, setSeed] = useState(() => String(Math.floor(Math.random() * 1e6)));

@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
  * key press, so playback starts (or resumes) on the first gesture.
  */
 export type Mood = "menu" | "galaxy" | "combat" | "victory" | "defeat" | "none";
-export type Effect = "click" | "select" | "turn" | "alert" | "fanfare";
+export type Effect = "click" | "select" | "turn" | "alert" | "fanfare" | "boom" | "zap" | "warp";
 
 const PLAYLISTS: Record<Exclude<Mood, "none">, { tracks: string[]; loop: boolean }> = {
   menu: { tracks: ["audio/menu.mp3"], loop: true },
@@ -159,6 +159,23 @@ class AudioDirector {
       osc.stop(now + start + length + 0.05);
     };
 
+    /** Fading white noise through a sweeping filter. */
+    const noise = (length: number, type: BiquadFilterType, from: number, to: number, gain: number) => {
+      const src = ctx.createBufferSource();
+      const buf = ctx.createBuffer(1, ctx.sampleRate * length, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      src.buffer = buf;
+      const filter = ctx.createBiquadFilter();
+      filter.type = type;
+      filter.frequency.setValueAtTime(from, now);
+      filter.frequency.exponentialRampToValueAtTime(to, now + length * 0.9);
+      const env = ctx.createGain();
+      env.gain.value = gain;
+      src.connect(filter).connect(env).connect(out);
+      src.start(now);
+    };
+
     switch (effect) {
       case "click":
         tone(1800, 0, 0.045, "triangle", 0.18, 1200);
@@ -167,31 +184,30 @@ class AudioDirector {
         tone(660, 0, 0.09, "sine", 0.25);
         tone(990, 0.05, 0.12, "sine", 0.2);
         break;
-      case "turn": {
+      case "turn":
         // A filtered noise whoosh under a rising two-note chime.
-        const noise = ctx.createBufferSource();
-        const buf = ctx.createBuffer(1, ctx.sampleRate * 0.6, ctx.sampleRate);
-        const data = buf.getChannelData(0);
-        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-        noise.buffer = buf;
-        const filter = ctx.createBiquadFilter();
-        filter.type = "bandpass";
-        filter.frequency.setValueAtTime(300, now);
-        filter.frequency.exponentialRampToValueAtTime(2400, now + 0.5);
-        const env = ctx.createGain();
-        env.gain.value = 0.25;
-        noise.connect(filter).connect(env).connect(out);
-        noise.start(now);
+        noise(0.6, "bandpass", 300, 2400, 0.25);
         tone(523, 0.18, 0.5, "sine", 0.22);
         tone(784, 0.3, 0.7, "sine", 0.2);
         break;
-      }
       case "alert":
         tone(880, 0, 0.14, "square", 0.08);
         tone(660, 0.16, 0.22, "square", 0.08);
         break;
       case "fanfare":
         [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.12, 0.5, "sawtooth", 0.06));
+        break;
+      case "boom":
+        noise(0.9, "lowpass", 1400, 90, 0.6);
+        tone(110, 0, 0.5, "sine", 0.35, 40);
+        break;
+      case "zap":
+        tone(320, 0, 0.35, "sine", 0.2, 1400);
+        tone(1400, 0.05, 0.2, "triangle", 0.08, 500);
+        break;
+      case "warp":
+        noise(1.4, "bandpass", 120, 5000, 0.35);
+        tone(90, 0, 1.3, "sawtooth", 0.06, 900);
         break;
     }
   }
