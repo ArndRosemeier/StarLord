@@ -150,7 +150,7 @@ export interface ProjectDef {
 
 export const PROJECTS: ProjectDef[] = [
   { id: "colonyBase", name: "Colony Base", requires: "colonyBase", description: "Settles another planet in this star system with 1 pop." },
-  { id: "outpostBase", name: "Outpost Base", requires: "outpostShip", description: "Places an outpost on an asteroid belt or gas giant in this system." },
+  { id: "outpostBase", name: "Outpost Base", requires: "outpostShip", description: "Places an outpost on a free planet in this system." },
   { id: "terraform", name: "Terraforming", requires: "terraforming", description: "Improves this planet's climate one step. Cost rises each time." },
   { id: "gaiaTransform", name: "Gaia Transformation", requires: "gaiaTransformation", description: "Turns a terran planet into a Gaia world." },
   { id: "artificialPlanet", name: "Artificial Planet", requires: "artificialPlanet", description: "Turns an asteroid belt or gas giant in this system into a barren planet." },

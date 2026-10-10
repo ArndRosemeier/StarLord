@@ -22,7 +22,7 @@ export function availableBuildings(state: GameState, playerId: PlayerId, colony:
   }).map((b) => b.id);
 }
 
-export function freePlanetsInSystem(state: GameState, colony: Colony, kind: "habitable" | "barrenRock"): Planet[] {
+export function freePlanetsInSystem(state: GameState, colony: Colony, kind: "habitable" | "unsettleable"): Planet[] {
   const starId = state.planets[colony.planetId]!.starId;
   const star = state.galaxy.stars.find((s) => s.id === starId)!;
   return star.planetIds
@@ -44,10 +44,10 @@ export function availableProjects(state: GameState, playerId: PlayerId, colony: 
     if (!knows(player, p.requires)) return false;
     switch (p.id) {
       case "colonyBase":
-        return freePlanetsInSystem(state, colony, "habitable").length > 0;
       case "outpostBase":
+        return freePlanetsInSystem(state, colony, "habitable").length > 0;
       case "artificialPlanet":
-        return freePlanetsInSystem(state, colony, "barrenRock").length > 0;
+        return freePlanetsInSystem(state, colony, "unsettleable").length > 0;
       case "terraform":
         return planet.type in TERRAFORM_STEP;
       case "gaiaTransform":

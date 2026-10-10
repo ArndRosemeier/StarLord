@@ -120,7 +120,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Outposts</h3>
       <P>
         Outposts hold no population and produce nothing, but they claim the planet, extend your fuel range and count
-        for score. Asteroids and gas giants take only outposts.
+        for score. Asteroids and gas giants can't be settled at all until an{" "}
+        <HelpLink to="project:artificialPlanet" /> turns them into barren planets.
       </P>
     </>
   ),
