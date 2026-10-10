@@ -4,9 +4,11 @@ import {
 import { useGame } from "../ui/hooks";
 import { fmt } from "../ui/format";
 import { researchPerTurn } from "./GameShell";
+import { useHelp } from "../help/HelpDialog";
 
 export function ResearchScreen() {
   const { session, view, me, readOnly } = useGame();
+  const openHelp = useHelp();
   const rpt = researchPerTurn(view);
   const current = me.research.tierId ? TIERS_BY_ID[me.research.tierId] : undefined;
   const open = new Set(availableTiers(view, me.id));
@@ -22,6 +24,8 @@ export function ResearchScreen() {
           <span className="research">{fmt(rpt, 1)} points per turn</span>
           {creative && <span className="chip good">Creative: learns every tech in a tier</span>}
           {hasTrait(race, "uncreative") && <span className="chip bad">Uncreative: learns one random tech per tier</span>}
+          <span className="spacer" />
+          <button className="small" onClick={() => openHelp("page:techTree")}>Full tech tree</button>
         </div>
         {current ? (
           <div className="col" style={{ marginTop: 8 }}>

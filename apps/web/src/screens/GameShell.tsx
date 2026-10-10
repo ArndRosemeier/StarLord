@@ -19,6 +19,7 @@ import { GameMenu } from "./GameMenu";
 import { GameOver } from "./GameOver";
 import { audio } from "../audio/sound";
 import { MuteButton } from "../ui/AudioControls";
+import { useHelp } from "../help/HelpDialog";
 
 /** Turn report events loud enough to deserve an alert sound. */
 const ALERT_EVENTS = new Set(["combat", "colonyLost", "invasionFailed", "bombarded", "eliminated", "raid", "starvation"]);
@@ -48,6 +49,7 @@ export function researchPerTurn(view: PlayerView): number {
 
 export function GameShell({ onQuit }: { onQuit: () => void }) {
   const { session, view, me, readOnly } = useGame();
+  const openHelp = useHelp();
   const [tab, setTab] = useState<Tab>("map");
   const [focusStar, setFocusStar] = useState<string | null>(null);
   const [autoplay, setAutoplay] = useState(false);
@@ -128,6 +130,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         <div className="stat"><small>Command</small><span className={cpUsed > cpMax ? "bad" : ""}>{cpUsed}/{cpMax}</span></div>
         <div className="stat"><small>Population</small><span>{fmt(totals.population)}</span></div>
         <div className="spacer" />
+        <button className="help-button" onClick={() => openHelp()} title="Encyclopedia (F1)">?</button>
         <MuteButton />
         {view.over && <span className="chip warn">Game over: {view.players[view.winner!]?.name} wins ({view.victory})</span>}
         {readOnly ? (

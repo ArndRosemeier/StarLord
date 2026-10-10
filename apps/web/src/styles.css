@@ -191,3 +191,58 @@ img.planet-img { display: block; justify-self: center; object-fit: contain; flex
   .side { border-left: none; border-top: 1px solid var(--line); }
   .race-detail { grid-template-columns: 1fr; }
 }
+
+/* ---- encyclopedia */
+.help-button { width: 30px; height: 30px; padding: 0; border-radius: 50%; font-weight: 700; }
+.help-back { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.65); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.help { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(1280px, 100%); height: min(900px, 100%);
+  display: grid; grid-template-rows: auto 1fr; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+.help-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); min-width: 0; }
+.help-brand { color: var(--accent); letter-spacing: 0.08em; }
+.help-crumb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.help-body { display: grid; grid-template-columns: 250px 1fr; min-height: 0; }
+.help-side { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; padding: 8px; gap: 8px; }
+.help-side input[type="search"] { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.help-list { overflow: auto; display: flex; flex-direction: column; gap: 1px; min-height: 0; }
+.help-list button { width: 100%; text-align: left; border-color: transparent; background: transparent; display: flex; flex-direction: column; align-items: flex-start; padding: 4px 8px; }
+.help-list button small { font-size: 11px; }
+.help-list button.active { background: #17213a; border-color: var(--line); }
+.help-list .help-group { flex-direction: row; gap: 6px; font-weight: 600; color: var(--text); width: 100%; }
+.help-list .help-item { padding-left: 24px; color: var(--muted); }
+.help-list .help-item.active, .help-list .help-item:hover { color: var(--text); }
+.help-article { overflow: auto; padding: 16px 22px 28px; min-width: 0; }
+.help-page { max-width: 1100px; }
+.help-page p { margin: 0; max-width: 78ch; }
+.help-page h3 { margin: 6px 0 0; }
+.help-ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; max-width: 80ch; }
+a.help-link { color: var(--accent); text-decoration: none; cursor: pointer; }
+a.help-link:hover { text-decoration: underline; }
+.help-facts { width: auto; min-width: min(520px, 100%); }
+.help-facts th { width: 190px; color: var(--muted); font-weight: 500; font-size: 13px; vertical-align: top; }
+.help-table td, .help-table th { font-size: 13px; }
+.help-table tr.help-known td:first-child { box-shadow: inset 3px 0 0 var(--good); }
+.help-page table { display: block; overflow-x: auto; }
+.help-page table.help-facts { display: table; }
+.help-tree { display: grid; gap: 4px; overflow-x: auto; padding-bottom: 6px; }
+.help-tree-head { position: sticky; top: 0; font-weight: 600; padding: 4px 6px; background: var(--panel); }
+.help-tree-level { padding: 6px; color: var(--muted); font-size: 12px; text-align: right; }
+.help-tree-cell { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; font-size: 12px; line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
+.help-tree-cell > a.help-link { font-weight: 600; color: var(--text); }
+.help-tree-cell.done { border-color: #2e6b4a; }
+.help-tree-techs { display: flex; flex-direction: column; gap: 1px; margin-top: 3px; }
+.help-tech.known a.help-link { color: var(--good); }
+.help-tech.empty { opacity: 0.45; }
+.help-tier { padding: 10px 12px; gap: 4px; }
+.help-races { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.help-race { display: flex; gap: 10px; align-items: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px; color: var(--text); }
+.help-race img { border-radius: 6px; object-fit: cover; background: #000; }
+kbd { background: var(--panel-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font: 12px/1.6 inherit; }
+
+@media (max-width: 760px) {
+  .help-back { padding: 0; }
+  .help { border-radius: 0; height: 100%; }
+  .help-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .help-side { border-right: none; border-bottom: 1px solid var(--line); max-height: 34vh; }
+  .help-head small { display: none; }
+  .help-article { padding: 12px 14px 24px; }
+}

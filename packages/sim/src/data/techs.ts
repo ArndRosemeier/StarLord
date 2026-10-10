@@ -219,9 +219,13 @@ const DETAILS: Record<string, { name?: string; description: string; bonus?: Empi
   artificialPlanet: { description: "Asteroid belts and gas giants can be turned into planets." },
   dimensionalPortal: { description: "Build a portal to strike at the raiders' home dimension." },
   stellarConverter: { description: "Ship weapon that destroys planets." },
+  ecmJammer: { name: "ECM Jammer", description: "" },
+  multiWaveEcm: { name: "Multi-Wave ECM", description: "" },
 };
 
-const titleCase = (id: string) => id.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase()).replace(/-/g, " ");
+/** "laserCannon" -> "Laser Cannon", "classIIIShield" -> "Class III Shield". */
+const titleCase = (id: string) =>
+  id.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/([A-Z])([A-Z][a-z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase()).replace(/-/g, " ");
 
 export const TECHS: Record<string, TechDef> = Object.fromEntries(
   TECH_TIERS.flatMap((t) => t.techs).map((id) => {

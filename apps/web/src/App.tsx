@@ -5,6 +5,7 @@ import { NewGame } from "./screens/NewGame";
 import { GameShell } from "./screens/GameShell";
 import { SessionContext } from "./ui/hooks";
 import { audio } from "./audio/sound";
+import { HelpProvider } from "./help/HelpDialog";
 
 export function App() {
   const [session, setSession] = useState<GameSession | null>(null);
@@ -20,13 +21,15 @@ export function App() {
     return () => document.removeEventListener("click", onClick);
   }, []);
 
-  if (!session) {
-    if (!setup) return <TitleScreen onNewGame={() => setSetup(true)} onStart={setSession} />;
-    return <NewGame onStart={setSession} onBack={() => setSetup(false)} />;
-  }
   return (
-    <SessionContext.Provider value={session}>
-      <GameShell onQuit={() => { setSession(null); setSetup(false); }} />
-    </SessionContext.Provider>
+    <HelpProvider session={session}>
+      {!session ? (
+        !setup ? <TitleScreen onNewGame={() => setSetup(true)} onStart={setSession} /> : <NewGame onStart={setSession} onBack={() => setSetup(false)} />
+      ) : (
+        <SessionContext.Provider value={session}>
+          <GameShell onQuit={() => { setSession(null); setSetup(false); }} />
+        </SessionContext.Provider>
+      )}
+    </HelpProvider>
   );
 }
