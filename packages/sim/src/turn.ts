@@ -2,7 +2,7 @@ import { BUILDINGS_BY_ID, TERRAFORM_STEP } from "./data/buildings.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import { CLIMATES, gravityOf, type PlanetType } from "./data/planets.js";
 import { getRace, hasTrait, registerRaces } from "./data/races.js";
-import { RESEARCH, TECHS, TIERS_BY_ID, TIER_OF_TECH } from "./data/techs.js";
+import { RESEARCH, TECHS, TIERS_BY_ID, TIER_OF_TECH, emptyHyperLevels } from "./data/techs.js";
 import { bombardment, planetDefense, resolveCombat, type CombatSide } from "./combat.js";
 import { buyCost, validateCommand, type Command } from "./commands.js";
 import { newId, type TurnContext } from "./context.js";
@@ -847,6 +847,7 @@ function advanceResearch(ctx: TurnContext, playerId: PlayerId, points: number): 
   const choice = r.techChoice;
   r.techChoice = null;
   if (tier.hyper) {
+    player.hyperLevels ??= emptyHyperLevels();
     player.hyperLevels[tier.field] = (player.hyperLevels[tier.field] ?? 0) + 1;
     ctx.emit({ kind: "hyperAdvance", playerId, field: tier.field, level: player.hyperLevels[tier.field] });
     return;

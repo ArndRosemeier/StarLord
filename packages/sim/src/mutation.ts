@@ -13,6 +13,7 @@ const pickCost = (key: NumericPick, value: number): number | null =>
 
 /** Points a change of picks costs, or a reason it isn't allowed. */
 export function mutationCost(from: RacePicks, to: RacePicks): number | string {
+  if (!to || typeof to !== "object" || !Array.isArray(to.traits)) return "invalid picks";
   if (to.government !== from.government) return "government can't mutate";
   let total = 0;
   let changes = 0;
@@ -50,7 +51,7 @@ export function mutationCost(from: RacePicks, to: RacePicks): number | string {
 }
 
 export function validateMutation(player: Player, picks: RacePicks): string | null {
-  if (player.mutationPoints <= 0) return "no mutation points";
+  if (!(player.mutationPoints > 0)) return "no mutation points";
   const cost = mutationCost(getRace(player.raceId).picks, picks);
   if (typeof cost === "string") return cost;
   return cost > player.mutationPoints ? `needs ${cost} points, ${player.mutationPoints} available` : null;
