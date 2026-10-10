@@ -14,8 +14,17 @@
    colonies, research, ship designer, fleets, diplomacy and council, espionage,
    leaders, empire and automation, turn reports with battle replays, an AI
    spectator mode, and browser save slots.
-4. **Alpha polish.** Balance with batch runs (`pnpm sim --games N`),
-   save/load, and multiplayer groundwork.
+4. **Alpha polish.** Balance with batch runs (`pnpm balance`, see
+   [balance.md](balance.md)), save/load, and multiplayer groundwork. Done: a
+   first balance pass, browser saves that carry the game record, downloadable
+   replays verified turn by turn, and a transport-agnostic lockstep host and peer.
+
+## Next
+
+- Iterate on balance with Arnd (race spread, late-game acceleration).
+- Networked multiplayer: a WebSocket or WebRTC `Transport` for the lockstep host and peers,
+  plus a lobby.
+- A three.js `MapRenderer`.
 
 ## What the rules cover (step 2)
 
@@ -42,7 +51,7 @@
 - Battles resolve automatically using each empire's combat doctrine; there is no manual
   round-by-round control yet, but every battle can be replayed.
 - One race per colony; ships repair fully between turns.
-- Numbers are first-pass and will be tuned with batch runs in step 4.
+- Numbers have had one tuning pass (see balance.md); more will follow.
 
 ## Race names
 

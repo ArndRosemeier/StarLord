@@ -66,7 +66,9 @@ export function productionOrders(view: PlayerView): Command[] {
   const income = empireIncome(view, view.viewer);
   // Peacetime: a modest fleet. Wartime: fill command points, and go over only while income can carry it.
   const overBudget = Math.max(0, Math.floor((income.net - 10) / 10));
-  wants.warships = Math.max(0, (war ? cpFree + overBudget : Math.min(cpFree, Math.ceil(colonies.length / 2))) - queuedWar);
+  // Peacetime fleets grow with the economy so late-game industry isn't all turned into BC.
+  const peaceTarget = Math.min(cpFree + Math.floor(overBudget / 2), Math.ceil(colonies.length / 2) + Math.floor(totals.industry / 60));
+  wants.warships = Math.max(0, (war ? cpFree + overBudget : peaceTarget) - queuedWar);
   wants.transports = war ? Math.max(0, 4 - owned("transport") - shipQueued("transport")) : 0;
 
   const out: Command[] = [];
@@ -89,7 +91,7 @@ export function productionOrders(view: PlayerView): Command[] {
       }
       continue;
     }
-    const next = chooseItem(view, c, o.industry, rank, wants, designs, war, totals.food);
+    const next = chooseItem(view, c, o.industry, rank, wants, designs, war, totals.food, player.bc > 1000 && income.net > 20);
     out.push({ type: "setQueue", colonyId: c.id, queue: [next] });
   }
   return out;
@@ -109,6 +111,7 @@ function chooseItem(
   designs: Set<string>,
   war: boolean,
   food: number,
+  rich: boolean,
 ): BuildItem {
   const buildable = new Set(availableBuildings(view, view.viewer, c));
   const projects = new Set(availableProjects(view, view.viewer, c));
@@ -165,5 +168,7 @@ function chooseItem(
   const defense = DEFENSE_BUILDINGS.find((b) => buildable.has(b));
   if (defense && industry >= 25) return { kind: "building", id: defense };
   if (pop < 6) return { kind: "project", id: "housing" };
+  // A rich empire with nothing left to build keeps its fleet growing rather than hoarding BC.
+  if (warship && rich && industry >= 10) return ship(warship);
   return { kind: "tradeGoods" };
 }

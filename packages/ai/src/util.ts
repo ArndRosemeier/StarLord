@@ -1,5 +1,5 @@
 import {
-  designStats, distance, findDesign, isHostile, type Colony, type DesignStats, type Fleet, type PlayerView, type Star,
+  designStats, distance, findDesign, getRace, isHostile, type Colony, type DesignStats, type Fleet, type PlayerView, type Star,
 } from "@starlord/sim";
 
 export function me(view: PlayerView) {
@@ -62,10 +62,17 @@ export function nearest<T extends { x: number; y: number }>(from: { x: number; y
   return best;
 }
 
-/** Stable small hash so each AI empire has its own personality without randomness. */
+/**
+ * Each AI empire's leanings, from its race's strengths plus a stable hash so
+ * two empires of different races never play quite alike. No randomness.
+ */
 export function personality(view: PlayerView): { aggression: number; science: number } {
   const p = me(view);
+  const picks = getRace(p.raceId).picks;
   let h = 0;
   for (const ch of p.raceId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return { aggression: 0.3 + ((h % 7) / 10), science: 0.25 + (((h >> 3) % 5) / 20) };
+  const military = picks.shipAttack + picks.shipDefense + picks.groundCombat;
+  const aggression = 0.3 + (h % 5) / 10 + 0.05 * military;
+  const science = 0.3 + ((h >> 3) % 3) / 20 + 0.06 * (picks.science - picks.industry);
+  return { aggression: Math.min(1, aggression), science: Math.max(0.15, Math.min(0.6, science)) };
 }
