@@ -12,7 +12,7 @@ multiplayer and a 3D view.
 | `packages/sim` | The game rules. Pure TypeScript with no browser code: game state, seeded RNG, commands, turn processing, galaxy generation, data tables. |
 | `packages/ai` | Controllers that turn a player's view into commands. The AI and the player's automation are the same code. |
 | `apps/cli` | Headless runner for all-AI games and balance batches. |
-| `apps/web` | The browser game: React screens and a PixiJS galaxy map. The sim and AI run in the page. |
+| `apps/web` | The browser game: React screens, a PixiJS galaxy map and a three.js battle view (reusable 3D layer in `src/three`; `/dev/battle.html` on the dev server previews battles). The sim and AI run in the page. |
 | `public` | Art and audio. Race videos and portraits are in `public/races`; key art, planets, leader portraits and music in `public/art`, `public/planets`, `public/leaders` and `public/audio`. |
 | `scripts` | `gen-assets.mjs` regenerates the art and music from the prompts in `assets.json` through OpenRouter (needs `OPEN_ROUTER_KEY` and ffmpeg). |
 | `docs/plan.md` | Roadmap. |
