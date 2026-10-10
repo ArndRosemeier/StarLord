@@ -18,21 +18,6 @@ export const RATING_PER_LEVEL = 10;
 export const POWERED_ARMOR_HITS = 1;
 export const BATTLEOID_HITS = 3;
 
-/** Militia: one unit per this many colonists, rounded up. */
-export const MILITIA_PER_POP = 2;
-
-/**
- * Marine Barracks: 4 marines when built, one more every 5 turns, up to half
- * the colony's population or half the planet's base maximum, whichever is
- * less. Armor Barracks: 2 tanks when built, one more every 10 turns, up to a
- * quarter of the population. Warlords train twice as fast and keep twice as many.
- */
-export const BARRACKS = {
-  marineBarracks: { kind: "marines" as const, initial: 4, every: 5, capShare: 0.5 },
-  armorBarracks: { kind: "armor" as const, initial: 2, every: 10, capShare: 0.25 },
-};
-export const WARLORD_TROOP_MULT = 2;
-
 /** Every 100 points of bomb damage that lands kills one ground unit, before colonists. */
 export const BOMB_DAMAGE_PER_TROOP = 100;
 /** One colonist dies per this much bomb damage (plus a random fraction). */
@@ -54,5 +39,3 @@ export const SPORE_DEFENSE: { tech: string; mult: number }[] = [
 
 /** Chance to capture a technology from the loser when taking one of its colonies. */
 export const CAPTURE_TECH_CHANCE = 0.5;
-/** Turns of unrest after a conquest. */
-export const CONQUEST_UNREST_TURNS = 20;

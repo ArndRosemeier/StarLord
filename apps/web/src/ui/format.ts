@@ -64,7 +64,9 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
       return {
         text: e.how === "invaded"
           ? `${colonyName(view, e.colonyId)} was invaded by ${e.to === null ? "an enemy" : playerName(view, e.to)}.`
-          : `${colonyName(view, e.colonyId)} was destroyed.`,
+          : e.how === "revolted"
+            ? `${colonyName(view, e.colonyId)} revolted and went back to ${e.to === null ? "its old rulers" : playerName(view, e.to)}.`
+            : `${colonyName(view, e.colonyId)} was destroyed.`,
         starId: colonyStar(e.colonyId),
         tone: "bad",
       };

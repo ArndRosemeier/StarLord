@@ -7,7 +7,8 @@ import { RESEARCH, TECHS, TECH_TIERS, TIERS_BY_ID, TIER_OF_TECH } from "./data/t
 import { newId, type TurnContext } from "./context.js";
 import { designStats, findDesign } from "./designs.js";
 import { adjustAttitude } from "./diplomacy.js";
-import { population } from "./economy.js";
+import { destructibleBuildings, population } from "./economy.js";
+
 import { grantTech } from "./empire.js";
 import { blockedByBlackHole, distance } from "./galaxy.js";
 import { removeShips } from "./fleetOps.js";
@@ -207,8 +208,8 @@ const HANDLERS: Record<EventId, Handler> = {
     const kills = Math.min(range(ctx, N.earthquakeKills), Math.max(0, population(c) - 1));
     removePopulation(c, kills);
     let wrecked = 0;
-    for (let i = range(ctx, N.earthquakeBuildings); i > 0 && c.buildings.length > 0; i--) {
-      const b = ctx.rng.pick(c.buildings);
+    for (let i = range(ctx, N.earthquakeBuildings); i > 0 && destructibleBuildings(c).length > 0; i--) {
+      const b = ctx.rng.pick(destructibleBuildings(c));
       c.buildings = c.buildings.filter((x) => x !== b);
       wrecked++;
     }
@@ -569,8 +570,9 @@ function monsterTick(ctx: TurnContext, ev: ActiveEvent): boolean {
       if (ev.progress === 1) {
         ev.progress = 2;
         for (const c of colonies) {
-          for (let i = 0; i < DRAGON_PILLAGE.buildings && c.buildings.length > 0; i++) {
-            c.buildings = c.buildings.filter((x) => x !== ctx.rng.pick(c.buildings));
+          for (let i = 0; i < DRAGON_PILLAGE.buildings && destructibleBuildings(c).length > 0; i++) {
+            const b = ctx.rng.pick(destructibleBuildings(c));
+            c.buildings = c.buildings.filter((x) => x !== b);
           }
           removePopulation(c, Math.floor(population(c) * DRAGON_PILLAGE.popShare));
         }

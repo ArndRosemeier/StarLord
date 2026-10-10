@@ -1,7 +1,9 @@
+import { BUILDINGS_BY_ID } from "./data/buildings.js";
+import { MILITIA_PER_POP } from "./data/economy.js";
+import { GOVERNMENTS } from "./data/governments.js";
 import {
-  BARRACKS, BATTLEOID_HITS, BOMB_BUILDING_CHANCE, BOMB_DAMAGE_PER_POP, BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE,
-  CONQUEST_UNREST_TURNS, MILITIA_PER_POP, POWERED_ARMOR_HITS,
-  RATING_PER_LEVEL, SPORE_DEFENSE, SPORE_KILL_CHANCE_PER_POINT, TROOPS, WARLORD_TROOP_MULT, type TroopKind,
+  BATTLEOID_HITS, BOMB_BUILDING_CHANCE, BOMB_DAMAGE_PER_POP, BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE,
+  POWERED_ARMOR_HITS, RATING_PER_LEVEL, SPORE_DEFENSE, SPORE_KILL_CHANCE_PER_POINT, TROOPS, type TroopKind,
 } from "./data/ground.js";
 import { hullIndex } from "./data/components.js";
 import { TRAIT_EFFECTS } from "./data/racePicks.js";
@@ -13,20 +15,12 @@ import { bombardment } from "./combat.js";
 import type { TurnContext } from "./context.js";
 import { designStats, findDesign } from "./designs.js";
 import { bioWeaponOutrage, exterminationOutrage, isHostile } from "./diplomacy.js";
-import { maxPopulation, population } from "./economy.js";
+import { blocksInvasion } from "./commands.js";
+import { destructibleBuildings, population } from "./economy.js";
 import { empireBonus, grantTech, knows } from "./empire.js";
 import { removeShips } from "./fleetOps.js";
 import { removePopulation } from "./jobs.js";
-import type { Colony, Fleet, GameState, Garrison, Id, PlayerId } from "./types.js";
-
-/**
- * Bombing, ground combat and conquest. Colonies are defended by militia
- * (every colony), marines (Marine Barracks) and tanks (Armor Barracks), which
- * train over time. Invaders land marines from troop ships; each fight pairs
- * one unit from each side, the higher roll plus rating wins and the loser
- * takes a hit. Ratings come from troop kind, race picks, equipment techs
- * (best rifle, armor and suit only), gravity and terrain.
- */
+import type { Colony, Fleet, GameState, Id, PlayerId } from "./types.js";
 
 export interface GroundForces {
   militia: number;
@@ -34,30 +28,26 @@ export interface GroundForces {
   armor: number;
 }
 
-function warlord(state: GameState, playerId: PlayerId): boolean {
-  const p = state.players[playerId];
-  return !!p && p.kind === "empire" && hasTrait(getRace(p.raceId), "warlord");
+/** Barracks troops a building fields from the start (marines from a Marine Barracks, tanks from an Armor Barracks). */
+function barracksTroops(colony: Colony, kind: "marines" | "tanks"): number {
+  let n = 0;
+  for (const b of colony.buildings) {
+    const e = BUILDINGS_BY_ID[b]?.effects;
+    if (e?.troops && e.training?.kind === kind) n += e.troops;
+  }
+  return n;
 }
 
-/** Most marines (or tanks) a colony's barracks keep. */
-export function barracksCap(state: GameState, colony: Colony, kind: "marines" | "armor"): number {
-  const def = kind === "marines" ? BARRACKS.marineBarracks : BARRACKS.armorBarracks;
-  const pop = population(colony);
-  const planet = state.planets[colony.planetId]!;
-  const baseMax = maxPopulation(planet, getRace(colony.raceId));
-  let cap = Math.floor(pop * def.capShare);
-  if (kind === "marines") cap = Math.min(cap, Math.floor(baseMax * def.capShare));
-  return cap * (warlord(state, colony.ownerId) ? WARLORD_TROOP_MULT : 1);
-}
-
-/** The ground units defending a colony now. */
+/**
+ * The ground units defending a colony now: militia from the population and
+ * the barracks' marines and tanks (the economy trains more over time).
+ */
 export function garrisonOf(state: GameState, colony: Colony): GroundForces {
   if (colony.outpost) return { militia: 0, marines: 0, armor: 0 };
-  const g = colony.garrison;
   return {
-    militia: Math.ceil(population(colony) / MILITIA_PER_POP),
-    marines: g?.marines ?? 0,
-    armor: g?.armor ?? 0,
+    militia: Math.ceil(population(colony) * MILITIA_PER_POP),
+    marines: barracksTroops(colony, "marines") + (colony.marinesTrained ?? 0),
+    armor: barracksTroops(colony, "tanks") + (colony.tanksTrained ?? 0),
   };
 }
 
@@ -67,28 +57,14 @@ export function defendingTroops(state: GameState, colony: Colony): number {
   return g.militia + g.marines + g.armor;
 }
 
-/** Barracks train troops: marines every 5 turns, tanks every 10 (twice as fast for warlords), up to their caps. */
-export function garrisonTick(state: GameState): void {
-  for (const c of Object.values(state.colonies)) {
-    if (c.outpost) continue;
-    const g: Garrison = (c.garrison ??= { marines: 0, armor: 0, marineTurn: 0, armorTurn: 0 });
-    const speed = warlord(state, c.ownerId) ? WARLORD_TROOP_MULT : 1;
-    for (const [building, def] of Object.entries(BARRACKS)) {
-      const key = def.kind === "marines" ? "marineTurn" : "armorTurn";
-      if (!c.buildings.includes(building)) continue;
-      if (g[key] === 0) {
-        // A new barracks comes with its first units.
-        g[def.kind] = Math.max(g[def.kind], def.initial);
-        g[key] = state.turn;
-        continue;
-      }
-      if (state.turn - g[key] >= def.every / speed) {
-        g[key] = state.turn;
-        if (g[def.kind] < barracksCap(state, c, def.kind)) g[def.kind]++;
-      }
-    }
-  }
-}
+/**
+ * Bombing, ground combat and conquest. Colonies are defended by militia
+ * (every colony), marines (Marine Barracks) and tanks (Armor Barracks), which
+ * train over time. Invaders land marines from troop ships; each fight pairs
+ * one unit from each side, the higher roll plus rating wins and the loser
+ * takes a hit. Ratings come from troop kind, race picks, equipment techs
+ * (best rifle, armor and suit only), gravity and terrain.
+ */
 
 interface Unit {
   rating: number;
@@ -114,16 +90,13 @@ export function troopUnit(
 
 /** Bomb damage first kills ground units: tanks, then marines, then militia (who are colonists). */
 function bombTroops(colony: Colony, kills: number): number {
-  const g = colony.garrison;
   let left = kills;
-  if (g) {
-    const a = Math.min(g.armor, left);
-    g.armor -= a;
-    left -= a;
-    const m = Math.min(g.marines, left);
-    g.marines -= m;
-    left -= m;
-  }
+  const a = Math.min(colony.tanksTrained ?? 0, left);
+  if (a > 0) colony.tanksTrained = (colony.tanksTrained ?? 0) - a;
+  left -= a;
+  const m = Math.min(colony.marinesTrained ?? 0, left);
+  if (m > 0) colony.marinesTrained = (colony.marinesTrained ?? 0) - m;
+  left -= m;
   return left;
 }
 
@@ -166,14 +139,15 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
     );
     if (targets.length === 0 || hostileArmedAt(state, f.starId, f.ownerId)) continue;
 
-    if (f.invadeTarget && targets.some((c) => c.id === f.invadeTarget)) {
+    // A Planetary Barrier Shield keeps every troop out.
+    if (f.invadeTarget && targets.some((c) => c.id === f.invadeTarget) && !blocksInvasion(state.colonies[f.invadeTarget]!)) {
       const target = state.colonies[f.invadeTarget]!;
       // Telepaths take a beaten colony by will alone; their troops stay aboard.
       if (canMindControl(state, f, target)) {
         delete f.invadeTarget;
 
         ctx.emit({ kind: "colonyLost", playerId: target.ownerId, colonyId: target.id, to: f.ownerId, how: "invaded" });
-        captureColony(ctx, target, f.ownerId, { assimilated: true });
+        captureColony(ctx, target, f.ownerId);
       } else invade(ctx, f, target);
       continue;
     }
@@ -191,15 +165,19 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
         bombTroops(c, troopKills);
         kills += Math.floor(bombs / BOMB_DAMAGE_PER_POP + rng.next());
       }
-      if (spores > 0) {
+      // Biological weapons can't get through a barrier shield.
+      if (spores > 0 && !blocksInvasion(c)) {
         sporeUsers.add(f.ownerId);
         const defender = state.players[c.ownerId]!;
         const mult = Math.min(1, ...SPORE_DEFENSE.filter((d) => knows(defender, d.tech)).map((d) => d.mult));
         for (let i = 0; i < spores; i++) if (rng.chance(SPORE_KILL_CHANCE_PER_POINT * mult)) kills++;
       }
       raze(ctx, c, kills);
-      if (bombs > 0 && state.colonies[c.id] && c.buildings.length > 0 && rng.chance(Math.min(BOMB_BUILDING_CHANCE.max, bombs * BOMB_BUILDING_CHANCE.perDamage))) {
-        c.buildings.splice(rng.int(0, c.buildings.length - 1), 1);
+      const wreckable = state.colonies[c.id] ? destructibleBuildings(c) : [];
+      if (bombs > 0 && wreckable.length > 0 && rng.chance(Math.min(BOMB_BUILDING_CHANCE.max, bombs * BOMB_BUILDING_CHANCE.perDamage))) {
+        const hit = wreckable[rng.int(0, wreckable.length - 1)]!;
+        c.buildings.splice(c.buildings.indexOf(hit), 1);
+
       }
     }
   }
@@ -256,71 +234,54 @@ export function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
   }
   // Survivors stay on as the garrison; militia losses are colonists' lives.
   const left = (k: TroopKind) => defenders.filter((d) => d.kind === k).length;
-  if (colony.garrison) {
-    colony.garrison.armor = left("armor");
-    colony.garrison.marines = left("marines");
-  }
+  colony.tanksTrained = Math.max(0, left("armor") - barracksTroops(colony, "tanks"));
+  colony.marinesTrained = Math.max(0, left("marines") - barracksTroops(colony, "marines"));
   if (attackers.length === 0) {
     ctx.emit({ kind: "invasionFailed", playerId: attacker.id, colonyId: colony.id });
     return;
   }
   const loser = colony.ownerId;
   ctx.emit({ kind: "colonyLost", playerId: loser, colonyId: colony.id, to: attacker.id, how: "invaded" });
-  captureColony(ctx, colony, attacker.id, { marines: attackers.length });
+  captureColony(ctx, colony, attacker.id);
 }
 
 /**
- * Hands a colony to a new owner after a conquest. Captured scientists
- * sometimes yield a technology. The conquered people keep their race and
- * resent their new rulers for a while (assimilation and revolts belong to the
- * economy; `conqueredFrom` tells it where a revolt would send the colony).
+ * Hands a colony to a new owner (conquest, mind control or revolt). Its
+ * people become aliens who must be assimilated, unless they came from a
+ * feudal empire, the new ruler is telepathic or they return to an empire of
+ * their own race. A captured Capitol is lost. Conquerors (not rebels) may
+ * learn a technology from captured scientists.
  */
-export function captureColony(
-  ctx: TurnContext, colony: Colony, newOwner: PlayerId, opts: { marines?: number; assimilated?: boolean } = {},
-): void {
+export function captureColony(ctx: TurnContext, colony: Colony, newOwner: PlayerId, opts: { revolt?: boolean } = {}): void {
   const { state, rng } = ctx;
   const loser = colony.ownerId;
+  const loserPlayer = state.players[loser]!;
   const attacker = state.players[newOwner]!;
+  const instantly = (loserPlayer.kind === "empire" && GOVERNMENTS[loserPlayer.government].assimilatesInstantly) ||
+    hasTrait(getRace(attacker.raceId), "telepathic");
+  colony.formerOwnerId = loser;
   colony.ownerId = newOwner;
   colony.queue = [];
   colony.progress = 0;
-  colony.conqueredFrom = loser;
-  if (opts.assimilated) {
-    // Mind control: the population is assimilated at once.
-    colony.raceId = colony.outpost ? attacker.raceId : colony.raceId;
-  } else {
-    colony.unrestUntil = state.turn + CONQUEST_UNREST_TURNS;
-  }
+  colony.unrestUntil = 0;
+  colony.assimilation = 0;
+  colony.marinesTrained = 0;
+  colony.tanksTrained = 0;
+  colony.buildings = colony.buildings.filter((b) => !BUILDINGS_BY_ID[b]?.effects.capitol);
   if (colony.outpost) colony.raceId = attacker.raceId;
-  colony.garrison = { marines: opts.marines ?? 0, armor: 0, marineTurn: state.turn, armorTurn: state.turn };
+  colony.aliens = colony.outpost || instantly || colony.raceId === attacker.raceId ? 0 : population(colony);
   ctx.emit({ kind: "colonyCaptured", playerId: newOwner, colonyId: colony.id, from: loser });
+  for (const l of Object.values(state.leaders)) {
+    if (l.ownerId === loser && l.assignedTo === state.planets[colony.planetId]!.starId) l.assignedTo = null;
+  }
+  if (opts.revolt) return;
   const loserTechs = state.players[loser]!.techs.filter((t) => !attacker.techs.includes(t) && TIER_OF_TECH[t]);
   if (loserTechs.length > 0 && rng.chance(CAPTURE_TECH_CHANCE)) {
     const tech = rng.pick(loserTechs);
     if (grantTech(attacker, tech)) ctx.emit({ kind: "techLearned", playerId: newOwner, techId: tech, tierId: TIER_OF_TECH[tech]!.id, source: "salvage" });
   }
-  for (const l of Object.values(state.leaders)) {
-    if (l.ownerId === loser && l.assignedTo === state.planets[colony.planetId]!.starId) l.assignedTo = null;
-  }
 }
 
-/**
- * Hook for revolts (the economy decides when unassimilated people rise): the
- * colony returns to the empire it was taken from, if that empire still lives.
- */
-export function revertColony(ctx: TurnContext, colony: Colony): boolean {
-  const back = colony.conqueredFrom;
-  if (back === undefined || !ctx.state.players[back]?.alive) return false;
-  const from = colony.ownerId;
-  ctx.emit({ kind: "colonyLost", playerId: from, colonyId: colony.id, to: back, how: "invaded" });
-  colony.ownerId = back;
-  colony.queue = [];
-  colony.progress = 0;
-  delete colony.conqueredFrom;
-  colony.garrison = { marines: 0, armor: 0, marineTurn: ctx.state.turn, armorTurn: ctx.state.turn };
-  ctx.emit({ kind: "colonyCaptured", playerId: back, colonyId: colony.id, from });
-  return true;
-}
 
 /** Why a conquered colony's people cannot be exterminated, or null. */
 export function exterminateProblem(state: GameState, playerId: PlayerId, colonyId: Id): string | null {

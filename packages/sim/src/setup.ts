@@ -1,4 +1,5 @@
 import { TECH_LEVELS } from "./data/galaxy.js";
+import { GOVERNMENTS } from "./data/governments.js";
 import { gravityOf, type Minerals, type PlanetSize, type PlanetType } from "./data/planets.js";
 import { RACES, getRace, hasTrait } from "./data/races.js";
 import { STARTING_TECH_APPS, TECH_TIERS, emptyHyperLevels, type TechTier } from "./data/techs.js";
@@ -152,14 +153,19 @@ export function newGame(opts: NewGameOptions): GameState {
       automation: [],
       hasPortal: false,
       eliminatedTurn: null,
+      freighters: 0,
+      transfers: [],
     };
+    const needsCapitol = GOVERNMENTS[player.government].capitalLossMorale > 0;
+    if (needsCapitol) player.capitol = "held";
     state.players.push(player);
     grantStartingTechs(rng, player, settings.techLevel!);
 
     const colony: Colony = {
       id: newId("c"), planetId: hw.id, ownerId: i, raceId, name: home.name, outpost: false,
       farmers: 0, workers: HOMEWORLD_POP, scientists: 0, growthK: 0,
-      buildings: [...level.buildings], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
+      // Unified governments neither have nor need a capital.
+      buildings: [...(needsCapitol ? ["capitol"] : []), ...level.buildings], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
     };
     hw.colonyId = colony.id;
     state.colonies[colony.id] = colony;

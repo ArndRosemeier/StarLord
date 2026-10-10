@@ -1,6 +1,7 @@
 import {
-  COMM_REDIRECT_RANGE, INTERDICTOR_RADIUS, INTERDICTOR_SPEED, JUMP_GATE_BONUS, MOVE_STEP, NEBULA_SPEED, WARP_INTERDICTOR,
+  COMM_REDIRECT_RANGE, JUMP_GATE_BONUS, MOVE_STEP, NEBULA_SPEED,
 } from "./data/movement.js";
+import { BUILDINGS_BY_ID, INTERDICTED_SPEED } from "./data/buildings.js";
 import { ORBITAL_BASES } from "./data/techs.js";
 import { relation, isHostile } from "./diplomacy.js";
 import { fleetRange, fleetSpeed, hasFtl, knows } from "./empire.js";
@@ -17,6 +18,7 @@ import type { Fleet, GameState, Id, Nebula, PlayerId, Star } from "./types.js";
  */
 
 type Point = { x: number; y: number };
+type Field = Point & { r: number };
 
 function starById(state: GameState, id: Id | null | undefined): Star | undefined {
   return id ? state.galaxy.stars.find((s) => s.id === id) : undefined;
@@ -124,13 +126,15 @@ export function canReach(state: GameState, playerId: PlayerId, fleet: Fleet, des
   return moveProblem(state, playerId, fleet, destStarId) === null;
 }
 
-/** Hostile warp interdictor fields a fleet's owner must cross. */
-function interdictorFields(state: GameState, ownerId: PlayerId): Point[] {
-  const out: Point[] = [];
+/** Hostile Warp Interdictor fields (building effect `interdictRadius`) a fleet's owner must cross. */
+function interdictorFields(state: GameState, ownerId: PlayerId): Field[] {
+  const out: Field[] = [];
   for (const c of Object.values(state.colonies)) {
-    if (!c.buildings.includes(WARP_INTERDICTOR) || !isHostile(state, ownerId, c.ownerId)) continue;
+    if (!isHostile(state, ownerId, c.ownerId)) continue;
+    const r = Math.max(0, ...c.buildings.map((b) => BUILDINGS_BY_ID[b]?.effects.interdictRadius ?? 0));
+    if (r <= 0) continue;
     const s = starById(state, state.planets[c.planetId]?.starId);
-    if (s) out.push(s);
+    if (s) out.push({ x: s.x, y: s.y, r });
   }
   return out;
 }
@@ -138,7 +142,7 @@ function interdictorFields(state: GameState, ownerId: PlayerId): Point[] {
 interface Leg {
   speed: number;
   nebulae: Nebula[];
-  interdictors: Point[];
+  interdictors: Field[];
   /** Arrives at once (portal, star gate, wormhole). */
   instant: boolean;
 }
@@ -173,8 +177,8 @@ function advance(leg: Leg, pos: Point, dest: Point): Point {
     const remaining = Math.hypot(dest.x - x, dest.y - y);
     if (remaining < 1e-9) return { x: dest.x, y: dest.y };
     const slow = leg.nebulae.some((n) => Math.hypot(n.x - x, n.y - y) <= n.r) ||
-      leg.interdictors.some((p) => Math.hypot(p.x - x, p.y - y) <= INTERDICTOR_RADIUS);
-    const speed = slow ? Math.min(leg.speed, NEBULA_SPEED, INTERDICTOR_SPEED) : leg.speed;
+      leg.interdictors.some((p) => Math.hypot(p.x - x, p.y - y) <= p.r);
+    const speed = slow ? Math.min(leg.speed, NEBULA_SPEED, INTERDICTED_SPEED) : leg.speed;
     // Fast path: nothing slows this fleet anywhere near, so the rest of the turn is one straight hop.
     const clear = leg.nebulae.length === 0 && leg.interdictors.length === 0;
     const step = clear ? remaining : Math.min(MOVE_STEP, remaining);
@@ -242,25 +246,5 @@ export function travelTurns(state: GameState, fleet: Fleet, destStarId: Id): num
   return 500;
 }
 
-/**
- * An armed hostile fleet sitting unchallenged in a system blockades your
- * colonies there: production is halved and freighters cannot get through.
- */
-export function isBlockaded(state: GameState, colonyId: Id): boolean {
-  const colony = state.colonies[colonyId];
-  if (!colony || colony.outpost) return false;
-  const starId = state.planets[colony.planetId]?.starId;
-  const armed = (f: Fleet) => {
-    const owner = state.players[f.ownerId]!;
-    return f.ships.some((s) => {
-      const d = owner.designs.find((x) => x.id === s.designId);
-      return !!d && (!!d.fixed || d.weapons.length > 0);
-    });
-  };
-  const here = Object.values(state.fleets).filter((f) => f.starId === starId && armed(f));
-  const enemy = here.some((f) => isHostile(state, colony.ownerId, f.ownerId));
-  if (!enemy) return false;
-  const friends = refuelOwners(state, colony.ownerId);
-  return !here.some((f) => friends.has(f.ownerId));
-}
+
 

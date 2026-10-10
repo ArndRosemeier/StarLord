@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   BUILDINGS_BY_ID, MAX_QUEUE, PROJECTS_BY_ID, availableBuildings, availableDesigns, availableProjects, buyCost,
-  colonyOutput, findDesign, isContinuous, itemCost, population,
+  FREIGHTERS, androids, colonyOutput, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
   type BuildItem, type Colony,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -58,6 +58,13 @@ function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar: (sta
   const planet = view.planets[colony.planetId]!;
   const star = viewStarOfColony(view, colony.id);
   const o = colonyOutput(view, colony);
+  const food = foodPlan(view, me.id);
+  const shortfall = food.shortfall[colony.id] ?? 0;
+  const andr = androids(colony);
+  const idle = freeFreighters(view, me.id);
+  const sameRace = Object.values(view.colonies).filter(
+    (c) => c.ownerId === me.id && c.id !== colony.id && !c.outpost && c.raceId === colony.raceId,
+  );
   const jobs = { farmers: colony.farmers, workers: colony.workers, scientists: colony.scientists };
 
   const move = (to: keyof typeof jobs, delta: 1 | -1) => {
@@ -106,12 +113,20 @@ function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar: (sta
           <>
             <table>
               <tbody>
-                <tr><td><span className="stat-label"><Icon name="population" />Population</span></td><td>{population(colony)} / {o.maxPopulation} <small className="muted">(+{fmt(o.growthK)}k per turn, {fmt(colony.growthK)}k toward next)</small></td></tr>
-                <tr><td className="food"><span className="stat-label"><Icon name="food" />Food</span></td><td>{fmt(o.foodProduced, 1)} produced, {fmt(o.foodEaten)} eaten <b className={o.foodNet < 0 ? "bad" : "good"}>{signed(o.foodNet, 1)}</b></td></tr>
+                <tr><td><span className="stat-label"><Icon name="population" />Population</span></td><td>{population(colony)} / {o.maxPopulation} <small className="muted">(+{fmt(o.growthK)}k per turn, {fmt(colony.growthK)}k toward next)</small>
+                  {o.androids > 0 && <div><small className="muted">Androids: {andr.farmers} farming, {andr.workers} working, {andr.scientists} researching</small></div>}
+                  {o.aliens > 0 && <div><small className="bad">{o.aliens} not yet assimilated: they work at half rate and may revolt</small></div>}
+                </td></tr>
+                <tr><td className="food"><span className="stat-label"><Icon name="food" />Food</span></td><td>{fmt(o.foodProduced, 1)} produced, {fmt(o.foodEaten)} eaten <b className={o.foodNet < 0 ? "bad" : "good"}>{signed(o.foodNet, 1)}</b>
+                  {o.foodReplicated > 0 && <small className="muted"> ({fmt(o.foodReplicated, 1)} replicated)</small>}
+                  {o.foodNet < 0 && (shortfall > 0
+                    ? <div><small className="bad">Short by {fmt(shortfall, 1)}: not enough freighters{o.blockaded ? " (blockaded)" : ""}, the colony starves</small></div>
+                    : <div><small className="muted">Imported by freighter</small></div>)}
+                </td></tr>
                 <tr><td className="industry"><span className="stat-label"><Icon name="industry" />Industry</span></td><td>{fmt(o.industryGross, 1)} gross, {fmt(o.pollution, 1)} pollution, {fmt(o.taxes, 1)} taxed <b>{fmt(o.industry, 1)}</b></td></tr>
                 <tr><td className="research"><span className="stat-label"><Icon name="research" />Research</span></td><td>{fmt(o.research, 1)}</td></tr>
                 <tr><td className="bc"><span className="stat-label"><Icon name="bc" />BC</span></td><td>{signed(o.bc, 1)} income, {fmt(o.maintenance, 1)} upkeep</td></tr>
-                <tr><td>Morale</td><td className={o.morale < 0 ? "bad" : o.morale > 0 ? "good" : ""}>{signed(o.morale)}%{colony.unrestUntil > view.turn && <span className="bad"> · unrest</span>}</td></tr>
+                <tr><td>Morale</td><td className={o.morale < 0 ? "bad" : o.morale > 0 ? "good" : ""}>{signed(o.morale)}%{o.blockaded && <span className="bad"> · blockaded, production halved</span>}</td></tr>
                 <tr><td>Troops</td><td>{fmt(o.troops)}</td></tr>
               </tbody>
             </table>
@@ -128,6 +143,18 @@ function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar: (sta
               </div>
             ))}
           </>
+        )}
+        {!colony.outpost && sameRace.length > 0 && population(colony) > 1 && (
+          <div className="row">
+            <span>Move a colonist to</span>
+            <select disabled={readOnly || idle < FREIGHTERS.perColonist} value="" onChange={(e) => {
+              if (e.target.value) session.issue({ type: "moveColonists", fromColonyId: colony.id, toColonyId: e.target.value, count: 1 });
+            }}>
+              <option value="">…</option>
+              {sameRace.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <small className="muted">needs {FREIGHTERS.perColonist} idle freighters ({idle} idle)</small>
+          </div>
         )}
         <h4>Buildings</h4>
         <div className="row">

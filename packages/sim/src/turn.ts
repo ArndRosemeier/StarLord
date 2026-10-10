@@ -1,8 +1,8 @@
-import { BUILDINGS_BY_ID, TERRAFORM_STEP } from "./data/buildings.js";
+import { ANDROID_PROJECTS, ARTIFICIAL_PLANET, BUILDINGS_BY_ID, PROJECT_UPKEEP, TERRAFORM_STEP } from "./data/buildings.js";
 import { DIFFICULTIES } from "./data/galaxy.js";
-import { BLOCKADE_PRODUCTION } from "./data/movement.js";
+import { FREIGHTERS, MILITIA_PER_POP, TRADE_GOODS_RATE } from "./data/economy.js";
 import { GOVERNMENTS } from "./data/governments.js";
-import { gravityOf, type PlanetType } from "./data/planets.js";
+import type { PlanetType } from "./data/planets.js";
 import { getRace, hasTrait, registerRaces } from "./data/races.js";
 import { RESEARCH, TECHS, TIERS_BY_ID, emptyHyperLevels } from "./data/techs.js";
 import { colonyDefenseStrength, hasArmedDefenses, resolveCombat, type CombatSide } from "./combat.js";
@@ -13,23 +13,25 @@ import { designStats, findDesign } from "./designs.js";
 import {
   acceptProposal, breakTreaty, declareWar, diplomacyTick, giveGift, isHostile, rejectProposal, surrenderEmpire, treatyIncome,
 } from "./diplomacy.js";
-import { COMMAND_OVERAGE_COST, commandPointsAvailable, commandPointsUsed, grantTech } from "./empire.js";
-import { TRADE_GOODS_RATE, colonyOutput, population, type ColonyOutput } from "./economy.js";
+import { COMMAND_OVERAGE_COST, commandPointsAvailable, commandPointsUsed, fleetSpeed, grantTech } from "./empire.js";
+import {
+  androids, assimilationTurns, colonyOutput, colonyTroops, foodPlan, maxPopulation, population, revoltChance, type ColonyOutput,
+} from "./economy.js";
 import { espionageTick } from "./espionage.js";
 import { distance } from "./galaxy.js";
 import { addShips, deleteFleet, removeShips } from "./fleetOps.js";
-import { destroyColony, exterminate, garrisonTick, groundPhase, type Silenced } from "./ground.js";
-import { assignJobsForFood } from "./jobs.js";
-import { isBlockaded, moveFleet } from "./movement.js";
+import { captureColony, destroyColony, exterminate, groundPhase, troopUnit, type Silenced } from "./ground.js";
+import { assignJobsForFood, removePopulation } from "./jobs.js";
 import {
   assignLeader, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
 } from "./leaders.js";
+import { moveFleet } from "./movement.js";
 import { tradeGoodsMult } from "./raceEffects.js";
 import { guardianSlain, raidTick } from "./npc.js";
 import { absorbResearch, growthMultiplier, payBribe, randomEventTick, systemFrozen } from "./randomEvents.js";
 import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
-import { freePlanetsInSystem, isContinuous, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
+import { colonyRoom, freePlanetsInSystem, isContinuous, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
 import { applyMutation } from "./mutation.js";
 import { score } from "./score.js";
 import type { BuildItem, Colony, Fleet, GameState, Id, PlayerId } from "./types.js";
@@ -61,7 +63,6 @@ export function processTurn(prev: GameState, orders: TurnOrders): GameState {
   const silenced = combatPhase(ctx);
   groundPhase(ctx, silenced);
   runEconomy(ctx);
-  garrisonTick(state);
   espionageTick(state, rng, ctx.emit);
   diplomacyTick(state, ctx.emit);
   leaderTick(state, rng, ctx.emit);
@@ -162,6 +163,19 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       break;
     case "setTaxRate":
       player.taxRate = cmd.rate;
+      break;
+    case "moveColonists": {
+      const from = state.colonies[cmd.fromColonyId]!;
+      const to = state.colonies[cmd.toColonyId]!;
+      removePopulation(from, cmd.count);
+      const turns = Math.max(1, Math.ceil(distance(starOf(state, from.planetId), starOf(state, to.planetId)) / fleetSpeed(player)));
+      (player.transfers ??= []).push({
+        fromColonyId: from.id, toColonyId: to.id, raceId: from.raceId, count: cmd.count, arrives: state.turn + turns - 1,
+      });
+      break;
+    }
+    case "scrapFreighters":
+      player.freighters = (player.freighters ?? 0) - cmd.count;
       break;
     case "moveFleet": {
       const f = state.fleets[cmd.fleetId]!;
@@ -295,7 +309,6 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
   }
 }
 
-
 function foundColony(ctx: TurnContext, playerId: PlayerId, planetId: Id, pop: number, raceId: string): Colony {
   const { state } = ctx;
   const planet = state.planets[planetId]!;
@@ -317,15 +330,14 @@ function foundColony(ctx: TurnContext, playerId: PlayerId, planetId: Id, pop: nu
 
 // ---------------------------------------------------------------- movement
 
+/** Movement rules (gates, nebulae, interdictors, black holes) live in movement.ts. */
 function moveFleets(ctx: TurnContext): void {
   const { state } = ctx;
   for (const f of Object.values(state.fleets).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const owner = state.players[f.ownerId]!;
     if (f.destStarId) {
       moveFleet(state, f);
-      if (f.invadeTarget && f.starId !== state.planets[state.colonies[f.invadeTarget]?.planetId ?? ""]?.starId) {
-        delete f.invadeTarget;
-      }
+      if (f.invadeTarget && f.starId !== state.planets[state.colonies[f.invadeTarget]?.planetId ?? ""]?.starId) delete f.invadeTarget;
     }
     if (f.starId && owner.kind === "empire") explore(ctx, f.ownerId, f.starId);
   }
@@ -352,7 +364,6 @@ function combatPhase(ctx: TurnContext): Silenced {
     // Nobody can fight inside a time-space anomaly.
     if (systemFrozen(state, starId)) continue;
     for (let guard = 0; guard < 6; guard++) {
-
       const pair = nextBattle(state, starId, silenced);
       if (!pair) break;
       const [a, b] = pair;
@@ -508,6 +519,8 @@ function nearestOwnStar(state: GameState, playerId: PlayerId, fromStarId: Id): I
 
 function runEconomy(ctx: TurnContext): void {
   const { state } = ctx;
+  for (const player of state.players) if (player.kind === "empire" && player.alive) arriveColonists(ctx, player.id);
+
   const byPlayer = new Map<PlayerId, { colony: Colony; out: ColonyOutput }[]>();
   const totals = new Map<PlayerId, { population: number; research: number }>();
   for (const c of Object.values(state.colonies)) {
@@ -523,28 +536,26 @@ function runEconomy(ctx: TurnContext): void {
 
   for (const player of state.players) {
     if (player.kind !== "empire" || !player.alive) continue;
-    const list = byPlayer.get(player.id) ?? [];
+    const list = (byPlayer.get(player.id) ?? []).filter((x) => !x.colony.outpost);
     const traders = tradeGoodsMult(getRace(player.raceId));
 
-    // Food is pooled across the empire (MoO2 freighters, simplified).
-    const foodBalance = list.reduce((sum, x) => sum + x.out.foodNet, 0);
-    if (foodBalance < 0) starve(ctx, player.id, list, Math.ceil(-foodBalance));
+    // Freighters carry food from fed colonies to hungry ones; the rest is sold.
+    const food = foodPlan(state, player.id, list);
+    for (const { colony } of list) if (food.shortfall[colony.id]) starve(ctx, colony);
 
     // Computer players get the difficulty level's production and research handicap.
     const level = DIFFICULTIES[state.settings.difficulty ?? "average"];
     const aiProd = player.isHuman ? 1 : level.aiProduction;
     const aiResearch = player.isHuman ? 1 : level.aiResearch;
     let research = 0;
-    let bc = 0;
+    let bc = food.saleBC - food.upkeep - (player.hasPortal ? PROJECT_UPKEEP.dimensionalPortal : 0);
     for (const { colony, out } of list) {
       // A plague or a threatened supernova claims the colony's research.
       research += absorbResearch(state, colony, out.research * aiResearch);
-      bc += out.bc - out.maintenance + specialIncome(state, colony);
-      const starId = state.planets[colony.planetId]!.starId;
-      // A time-space anomaly stops all building; a blockade halves industry.
-      if (!systemFrozen(state, starId)) {
-        const industry = out.industry * aiProd * (isBlockaded(state, colony.id) ? BLOCKADE_PRODUCTION : 1);
-        bc += produce(ctx, colony, industry, traders);
+      bc += out.bc - out.maintenance;
+      // A time-space anomaly stops all building in the system.
+      if (!systemFrozen(state, state.planets[colony.planetId]!.starId)) {
+        bc += produce(ctx, colony, out.industry * aiProd, traders * out.incomeMult);
       }
       grow(colony, { ...out, growthK: out.growthK * growthMultiplier(state, colony.id) });
     }
@@ -559,22 +570,143 @@ function runEconomy(ctx: TurnContext): void {
     advanceResearch(ctx, player.id, research);
     upgradeGovernment(player);
   }
+
+  for (const c of Object.values(state.colonies)) {
+    if (c.outpost) continue;
+    trainTroops(state, c);
+    assimilate(ctx, c);
+  }
+  for (const player of state.players) if (player.kind === "empire" && player.alive) checkCapitol(ctx, player.id);
 }
 
-/** Gold and gem deposits pay out; artifacts boost research elsewhere. */
-function specialIncome(state: GameState, colony: Colony): number {
-  if (colony.outpost) return 0;
-  const special = state.planets[colony.planetId]!.special;
-  return special === "gold" ? 5 : special === "gems" ? 8 : 0;
+/** Colonists whose freighters reach their new home this turn; on a full planet they die. */
+function arriveColonists(ctx: TurnContext, playerId: PlayerId): void {
+  const { state } = ctx;
+  const player = state.players[playerId]!;
+  if (!player.transfers?.length) return;
+  const keep = [];
+  for (const t of player.transfers) {
+    if (t.arrives > state.turn) {
+      keep.push(t);
+      continue;
+    }
+    const to = state.colonies[t.toColonyId];
+    if (!to || to.ownerId !== playerId || to.raceId !== t.raceId) {
+      ctx.emit({ kind: "random", playerId, what: `${t.count} colonist${t.count === 1 ? "" : "s"} in transit had nowhere to land and were lost.` });
+      continue;
+    }
+    const room = Math.max(0, colonyRoom(state, to));
+    const landed = Math.min(room, t.count);
+    to.workers += landed;
+    if (landed < t.count) ctx.emit({ kind: "random", playerId, what: `${to.name} was full: ${t.count - landed} arriving colonist${t.count - landed === 1 ? "" : "s"} died.` });
+  }
+  player.transfers = keep;
 }
 
-/** Debt sells buildings, most expensive upkeep first, until the books balance. */
+/** Barracks train new marines and tanks over time, up to a share of the planet's maximum population. */
+function trainTroops(state: GameState, c: Colony): void {
+  const planet = state.planets[c.planetId]!;
+  const max = maxPopulation(planet, getRace(c.raceId), c.buildings, state.players[c.ownerId]);
+  for (const id of c.buildings) {
+    const e = BUILDINGS_BY_ID[id]?.effects;
+    const tr = e?.training;
+    if (!tr || state.turn % tr.every !== 0) continue;
+    const key = tr.kind === "marines" ? "marinesTrained" : "tanksTrained";
+    const have = (e.troops ?? 0) + (c[key] ?? 0);
+    if (have < Math.floor(max * tr.capOfMaxPop)) c[key] = (c[key] ?? 0) + 1;
+  }
+}
+
+/** Conquered people slowly join the empire; until then they may revolt and hand the colony back. */
+function assimilate(ctx: TurnContext, c: Colony): void {
+  const { state, rng } = ctx;
+  if (!c.aliens || c.aliens <= 0) return;
+  const owner = state.players[c.ownerId]!;
+  const former = c.formerOwnerId !== undefined ? state.players[c.formerOwnerId] : undefined;
+  if (former && former.alive && former.kind === "empire" && former.id !== owner.id && rng.chance(revoltChance(c))) {
+    revolt(ctx, c, former.id);
+    return;
+  }
+  c.assimilation = (c.assimilation ?? 0) + 1;
+  if (c.assimilation >= assimilationTurns(owner, c)) {
+    c.assimilation = 0;
+    c.aliens -= 1;
+  }
+}
+
+/** The aliens rise against the garrison; if they win, the colony returns to its former owner. */
+function revolt(ctx: TurnContext, c: Colony, formerId: PlayerId): void {
+  const { state, rng } = ctx;
+  let rebels = c.aliens ?? 0;
+  const loyal = population(c) - rebels;
+  let defenders = colonyTroops(c) - Math.ceil(population(c) * MILITIA_PER_POP) + Math.ceil(loyal * MILITIA_PER_POP);
+  const starId = starOf(state, c.planetId).id;
+  const atk = troopUnit(state, formerId, c.raceId, "militia", false, starId).rating;
+  const def = troopUnit(state, c.ownerId, state.players[c.ownerId]!.raceId, "militia", true, starId).rating;
+  let killed = 0;
+  while (rebels > 0 && defenders > 0) {
+    if (rng.int(1, 100) + atk > rng.int(1, 100) + def) defenders--;
+    else {
+      rebels--;
+      killed++;
+    }
+  }
+  const owner = c.ownerId;
+  if (rebels > 0) {
+    ctx.emit({ kind: "colonyLost", playerId: owner, colonyId: c.id, to: formerId, how: "revolted" });
+    captureColony(ctx, c, formerId, { revolt: true });
+    return;
+  }
+  // Fallen rebels are dead; the survivors give up for now.
+  const aliensLeft = Math.max(0, (c.aliens ?? 0) - killed);
+  removeAliens(c, killed);
+  c.aliens = aliensLeft;
+  ctx.emit({ kind: "random", playerId: owner, what: `Aliens at ${c.name} revolted and were put down; ${killed} died.` });
+  if (population(c) === 0) {
+    ctx.emit({ kind: "colonyLost", playerId: owner, colonyId: c.id, to: null, how: "destroyed" });
+    destroyColony(state, c);
+  }
+}
+
+function removeAliens(c: Colony, n: number): void {
+  for (let i = 0; i < n && population(c) > 0; i++) {
+    if (c.workers > 0) c.workers--;
+    else if (c.farmers > 0) c.farmers--;
+    else c.scientists--;
+  }
+}
+
+/** Notices when an empire loses its Capitol, and when it has rebuilt it. */
+function checkCapitol(ctx: TurnContext, playerId: PlayerId): void {
+  const { state } = ctx;
+  const player = state.players[playerId]!;
+  if (player.capitol === undefined) return;
+  const held = Object.values(state.colonies).some(
+    (c) => c.ownerId === playerId && c.buildings.some((b) => BUILDINGS_BY_ID[b]?.effects.capitol),
+  );
+  if (held && player.capitol === "lost") {
+    player.capitol = "held";
+    ctx.emit({ kind: "random", playerId, what: "The new Capitol restores order across the empire." });
+  } else if (!held && player.capitol === "held") {
+    player.capitol = "lost";
+    const gov = GOVERNMENTS[player.government];
+    ctx.emit({
+      kind: "random", playerId,
+      what: gov.capitalLossMorale > 0
+        ? `Our Capitol has fallen: morale drops ${gov.capitalLossMorale}% everywhere until it is rebuilt.`
+        : "Our Capitol has fallen, but our unified people carry on undisturbed.",
+    });
+  }
+}
+
+/** Debt sells buildings, most expensive upkeep first, until the books balance. The Capitol is never sold. */
 function bankrupt(ctx: TurnContext, playerId: PlayerId): void {
   const { state } = ctx;
   const player = state.players[playerId]!;
   const all = Object.values(state.colonies)
     .filter((c) => c.ownerId === playerId)
     .flatMap((c) => c.buildings.map((b) => ({ c, b, upkeep: BUILDINGS_BY_ID[b]?.maintenance ?? 0 })))
+    .filter((x) => !BUILDINGS_BY_ID[x.b]?.effects.capitol)
     .sort((x, y) => y.upkeep - x.upkeep);
   for (const { c, b } of all) {
     if (player.bc >= 0) break;
@@ -591,18 +723,12 @@ function upgradeGovernment(player: GameState["players"][number]): void {
   if (next && player.techs.some((t) => TECHS[t]?.government === next)) player.government = next;
 }
 
-function starve(ctx: TurnContext, playerId: PlayerId, list: { colony: Colony; out: ColonyOutput }[], deficit: number): void {
-  const hungry = list.filter((x) => x.out.foodNet < 0).sort((a, b) => a.out.foodNet - b.out.foodNet);
-  for (const { colony } of hungry) {
-    if (deficit <= 0) break;
-    if (population(colony) <= 1) continue;
-    if (colony.workers > 0) colony.workers--;
-    else if (colony.scientists > 0) colony.scientists--;
-    else colony.farmers--;
-    colony.growthK = 0;
-    deficit -= 1;
-    ctx.emit({ kind: "starvation", playerId, colonyId: colony.id });
-  }
+/** A colony whose food need isn't met loses people, but never its last one. */
+function starve(ctx: TurnContext, colony: Colony): void {
+  if (population(colony) <= 1) return;
+  removePopulation(colony, FREIGHTERS.starvationPerTurn);
+  colony.growthK = 0;
+  ctx.emit({ kind: "starvation", playerId: colony.ownerId, colonyId: colony.id });
 }
 
 /** Spends industry on the build queue. Returns BC earned from trade goods. */
@@ -649,6 +775,8 @@ function completeItem(ctx: TurnContext, colony: Colony, item: BuildItem): void {
     if (def && !colony.buildings.includes(item.id)) {
       colony.buildings = colony.buildings.filter((b) => !def.replaces?.includes(b));
       colony.buildings.push(item.id);
+      const planet = state.planets[colony.planetId]!;
+      if (def.effects.radiatedToBarren && planet.type === "radiated") planet.type = "barren";
     }
   } else if (item.kind === "ship") {
     const design = findDesign(player, item.designId);
@@ -680,6 +808,14 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
   const { state } = ctx;
   const player = state.players[colony.ownerId]!;
   const planet = state.planets[colony.planetId]!;
+  const job = ANDROID_PROJECTS[id];
+  if (job) {
+    if (colonyRoom(state, colony) > 0) {
+      colony.androids = { ...androids(colony) };
+      colony.androids[job] += 1;
+    }
+    return;
+  }
   switch (id) {
     case "colonyBase":
     case "outpostBase": {
@@ -688,10 +824,13 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
       if (target) foundColony(ctx, colony.ownerId, target.id, id === "colonyBase" ? 1 : 0, player.raceId);
       return;
     }
+    case "freighterFleet":
+      player.freighters = (player.freighters ?? 0) + FREIGHTERS.perFleet;
+      return;
     case "terraform": {
-      const next = TERRAFORM_STEP[planet.type];
-      if (next) {
-        planet.type = next as PlanetType;
+      const options = TERRAFORM_STEP[planet.type];
+      if (options?.length) {
+        planet.type = (options.length > 1 ? rng.pick(options) : options[0]!) as PlanetType;
         colony.terraformed += 1;
       }
       return;
@@ -702,10 +841,11 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
     case "artificialPlanet": {
       const free = freePlanetsInSystem(state, colony, "unsettleable");
       const target = free.find((p) => p.id === planetId) ?? free[0];
-      if (target) {
-        target.size = target.type === "gasGiant" ? "large" : "small";
-        target.type = "barren";
-        target.gravity = gravityOf(target.size, target.minerals);
+      if (target && (target.type === "asteroids" || target.type === "gasGiant")) {
+        target.size = ARTIFICIAL_PLANET[target.type];
+        target.type = ARTIFICIAL_PLANET.type;
+        target.minerals = ARTIFICIAL_PLANET.minerals;
+        target.gravity = ARTIFICIAL_PLANET.gravity;
       }
       return;
     }
@@ -716,19 +856,15 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
       player.spies.home += 1;
       return;
   }
-  void rng;
 }
 
 function grow(colony: Colony, out: ColonyOutput): void {
   if (colony.outpost) return;
-  if (out.population >= out.maxPopulation) {
+  const room = out.maxPopulation - out.androids;
+  if (out.population >= room) {
     colony.growthK = 0;
     // Terraforming can shrink a planet's capacity; extra people leave.
-    while (population(colony) > out.maxPopulation && population(colony) > 1) {
-      if (colony.workers > 0) colony.workers--;
-      else if (colony.scientists > 0) colony.scientists--;
-      else colony.farmers--;
-    }
+    if (population(colony) > room && population(colony) > 1) removePopulation(colony, Math.min(population(colony) - 1, population(colony) - room));
     return;
   }
   colony.growthK += out.growthK;

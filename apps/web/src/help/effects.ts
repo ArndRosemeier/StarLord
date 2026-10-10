@@ -1,4 +1,4 @@
-import type { BuildingEffects, EmpireBonus, PlanetDefense, SpecialEffects } from "@starlord/sim";
+import { FIGHTER_GARRISON, type BuildingEffects, type EmpireBonus, type PlanetDefense, type SpecialEffects } from "@starlord/sim";
 import { fmt, pct, signed } from "../ui/format";
 
 /**
@@ -20,6 +20,7 @@ const PLANET_DEFENSE: Explain<PlanetDefense> = {
   installation: (v) => INSTALLATION_NAMES[v],
   mines: () => "space mines that strike attacking ships before the battle starts",
   shield: (v) => `planetary shield stops ${v} damage per hit`,
+  fighters: (v) => `${v} interceptors based on the planet (${FIGHTER_GARRISON.bombers} bombers or ${FIGHTER_GARRISON.heavyFighters} heavy fighters once known)`,
 };
 
 const BUILDING: Explain<BuildingEffects> = {
@@ -29,18 +30,31 @@ const BUILDING: Explain<BuildingEffects> = {
   industryPerWorker: (v) => `${signed(v)} industry per worker`,
   researchFlat: (v) => `${signed(v)} research`,
   researchPerScientist: (v) => `${signed(v)} research per scientist`,
-  maxPopBySize: (v) => `${signed(v, 2)} max population per planet size step`,
+  needsSoil: () => "only on worlds with soil (not barren, radiated, toxic or inferno)",
+  industryByMinerals: (v) => `industry by minerals: ${Object.values(v).map((x) => signed(x)).join(" / ")} (ultra poor to ultra rich)`,
+  industryPerPop: (v) => `${signed(v)} industry per population unit, whatever its job; it never pollutes`,
+  maxPopFlat: (v) => `${signed(v)} max population`,
   bcFlat: (v) => `${signed(v)} BC per turn`,
-  bcMult: (v) => `${signed(v * 100)}% BC from this colony`,
+  bcMult: (v) => `${signed(v * 100)}% BC from every source at this colony`,
   morale: (v) => `${signed(v)}% morale`,
-  pollutionCleanup: (v) => `removes ${pct(v)} of this colony's pollution`,
+  pollutionFactor: (v) => `only ${pct(v)} of the industry counts toward pollution (several multiply)`,
+  noPollution: () => "no pollution on this colony",
+  foodReplicator: (v) => `turns ${v} industry into 1 food whenever the colony is short`,
   growthK: (v) => `${signed(v)}k population growth per turn`,
-  troops: (v) => `${signed(v)} defending troops`,
+  troops: (v) => `${signed(v)} defending troops when built`,
+  training: (v) => `trains another ${v.kind === "marines" ? "marine" : "tank battalion"} every ${v.every} turns, up to ${pct(v.capOfMaxPop)} of the max population`,
+  garrison: () => "lifts the morale penalty for colonies without barracks",
   commandPoints: (v) => `${signed(v)} command point${v === 1 ? "" : "s"}`,
   security: (v) => `${signed(v)} spy defense, empire-wide`,
   gravityFix: () => "removes the gravity penalty on this planet",
   defense: (d) => explain(PLANET_DEFENSE, d).join(", "),
   scanRange: (v) => `${signed(v)} parsec scanner range around this colony`,
+  alienManagement: (v) => `conquered people assimilate one unit every ${v.assimilationTurns} turns, revolts ${pct(1 - v.revoltMult)} less likely, no multi-race morale penalty`,
+  capitol: () => "seat of government; losing it hurts morale everywhere until rebuilt",
+  crew: (v) => `ships built here start ${v.startLevels} crew level higher; crews in the system gain ${v.xpPerTurn} experience a turn`,
+  interdictRadius: (v) => `hostile fleets within ${v} parsecs move only 1 parsec per turn`,
+  blocksInvasion: () => "no ground troops or biological weapons get through",
+  radiatedToBarren: () => "a radiated planet becomes barren",
 };
 
 const BONUS: Explain<EmpireBonus> = {
@@ -57,9 +71,9 @@ const BONUS: Explain<EmpireBonus> = {
   shipAttack: (v) => `${signed(v)} ship attack`,
   shipDefense: (v) => `${signed(v)} ship defense`,
   commandPoints: (v) => `${signed(v)} command point${v === 1 ? "" : "s"}`,
-  pollutionCleanup: (v) => `removes ${pct(v)} of pollution on every colony`,
+  pollutionTolerance: (v) => `pollution tolerance ${signed(v * 100)}% on every planet`,
   maxPopFlat: (v) => `${signed(v)} max population on every colony`,
-  freeFood: (v) => `each population eats ${fmt(v, 1)} food less`,
+  hostileFarming: () => "farming becomes possible on worlds without soil",
   security: (v) => `${signed(v)} spy defense`,
   commandPointsPerBase: (v) => `${signed(v)} command point${v === 1 ? "" : "s"} per star base, battlestation or star fortress`,
   diplomacy: (v) => `${signed(v)} diplomatic points on every deal you offer`,

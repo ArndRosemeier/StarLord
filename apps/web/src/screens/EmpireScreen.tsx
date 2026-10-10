@@ -1,5 +1,5 @@
 import { ALL_DOMAINS, DOMAIN_INFO } from "@starlord/ai";
-import { TAX_STEPS, empireIncome, empireTotals, empires, getRace, government, score } from "@starlord/sim";
+import { TAX_STEPS, empireIncome, empireTotals, empires, foodPlan, getRace, government, score } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, pct, signed } from "../ui/format";
 import { Envoy } from "../ui/panels";
@@ -10,6 +10,8 @@ export function EmpireScreen() {
   const race = getRace(me.raceId);
   const income = empireIncome(view, me.id);
   const totals = empireTotals(view, me.id);
+  const food = foodPlan(view, me.id);
+  const starving = Object.keys(food.shortfall).length;
   const on = new Set(me.automation);
   const setAuto = (domains: string[]) => session.issue({ type: "setAutomation", domains });
   const still = useReducedMotion();
@@ -29,9 +31,22 @@ export function EmpireScreen() {
           <table>
             <tbody>
               <tr><td>Colonies</td><td>{totals.colonies} colonies, {totals.outposts} outposts</td></tr>
-              <tr><td>Population</td><td>{fmt(totals.population)}</td></tr>
+              <tr><td>Population</td><td>{fmt(totals.population)}{totals.androids > 0 && <small className="muted"> and {fmt(totals.androids)} androids</small>}</td></tr>
+              <tr>
+                <td>Freighters</td>
+                <td>
+                  {food.freighters} · {food.carryingFood} carrying {fmt(food.delivered, 1)} food, {food.movingColonists} moving colonists, {food.free} idle
+                  {starving > 0 && <div className="bad"><small>{starving} {starving === 1 ? "colony is" : "colonies are"} short of food by {fmt(food.needed - food.delivered, 1)}</small></div>}
+                  {food.free > 0 && !readOnly && (
+                    <button className="small" style={{ marginLeft: 8 }} onClick={() => session.issue({ type: "scrapFreighters", count: food.free })}>Scrap idle</button>
+                  )}
+                </td>
+              </tr>
               <tr><td>Colony income</td><td className="bc">{signed(income.colonies, 1)} BC</td></tr>
+              {income.foodSales > 0 && <tr><td>Surplus food sold</td><td className="bc">{signed(income.foodSales, 1)} BC</td></tr>}
               <tr><td>Building upkeep</td><td>{signed(-income.maintenance, 1)} BC</td></tr>
+              {income.freighters > 0 && <tr><td>Freighters in use</td><td>{signed(-income.freighters, 1)} BC</td></tr>}
+              {income.projects > 0 && <tr><td>Project upkeep</td><td>{signed(-income.projects, 1)} BC</td></tr>}
               <tr><td>Leader salaries</td><td>{signed(-income.salaries, 1)} BC</td></tr>
               <tr><td>Fleet over command limit</td><td className={income.commandOverage > 0 ? "bad" : ""}>{signed(-income.commandOverage, 1)} BC</td></tr>
               <tr><td><b>Net per turn</b></td><td className={income.net < 0 ? "bad" : "good"}><b>{signed(income.net, 1)} BC</b></td></tr>

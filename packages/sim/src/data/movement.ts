@@ -4,11 +4,6 @@
 export const JUMP_GATE_BONUS = 3;
 /** Ships inside a nebula crawl at this speed. */
 export const NEBULA_SPEED = 1;
-/** A Warp Interdictor slows enemy ships within this many parsecs of its system to INTERDICTOR_SPEED. */
-export const INTERDICTOR_RADIUS = 2;
-export const INTERDICTOR_SPEED = 1;
-/** Building id of the Warp Interdictor. */
-export const WARP_INTERDICTOR = "warpInterdictor";
 /** Movement is integrated in steps this long (parsecs), so nebulae and interdictor fields slow only the part of a move inside them. */
 export const MOVE_STEP = 0.1;
 
@@ -23,8 +18,6 @@ export const COMM_REDIRECT_RANGE: { tech: string; range: number }[] = [
   { tech: "hyperspaceCommunications", range: Infinity },
 ];
 
-/** A blockaded colony's production is halved. */
-export const BLOCKADE_PRODUCTION = 0.5;
 
 /** Fleets are seen this many parsecs further per size class of their largest ship above a frigate. */
 export const TRANSIT_DETECTION_PER_SIZE = 1;

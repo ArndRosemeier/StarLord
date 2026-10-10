@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import { ALL_DOMAINS, DOMAIN_INFO } from "@starlord/ai";
 import {
-  AUDIENCE_ITEMS, BARRACKS, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PRODUCTION, BOMB_DAMAGE_PER_POP,
+  ANDROIDS, ASSIMILATION, AUDIENCE_ITEMS, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PRODUCTION, BOMB_DAMAGE_PER_POP,
   BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE, CAPTURE_THRESHOLD, COMMAND_OVERAGE_COST, COUNCIL, COUNCIL_FIRST,
-  COUNCIL_INTERVAL, COUNCIL_MAJORITY, EVENT_CHANCE, EVENT_START, FIELD_HEIGHT, FIELD_WIDTH, HERO_SKILLS, HEROES,
-  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, MORALE_RANGE,
-  NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PROPOSAL_LIFETIME, RATING_PER_LEVEL, RESEARCH,
-  SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_PER_POP, TAX_STEPS, TRADE_GOODS_RATE, TRAIT_EFFECTS,
-  TREATY_YIELD, TROOPS, UNREST_MORALE, abilityValue, type HeroSkill, type HeroSkillGroup,
+  COUNCIL_INTERVAL, COUNCIL_MAJORITY, EVENT_CHANCE, EVENT_START, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
+  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP,
+  NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PROJECT_COSTS, PROPOSAL_LIFETIME, RATING_PER_LEVEL, RESEARCH,
+  SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
+  TRADE_GOODS_RATE, TRAIT_EFFECTS, TREATY_YIELD, TROOPS, abilityValue, type HeroSkill, type HeroSkillGroup,
 } from "@starlord/sim";
 import { fmt, pct } from "../ui/format";
 import type { GuideSlug } from "./entries";
@@ -93,7 +93,16 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Every unit of population works as a farmer, worker or scientist. Farmers grow food according to the planet's
         climate, workers make industry according to its minerals, and scientists make research (3 points each before
         bonuses). Race picks, techs, buildings, the government, morale, gravity and an administrator all modify the
-        result. See <HelpLink to="page:planets" /> and <HelpLink to="page:planetTraits" />.
+        result, but every unit makes at least 1, farmers only where farming is possible at all: barren, radiated, toxic
+        and inferno worlds grow nothing until Biomorphic Fungi. See <HelpLink to="page:planets" /> and{" "}
+        <HelpLink to="page:planetTraits" />.
+      </P>
+      <h3>Androids</h3>
+      <P>
+        Cybertechnics lets colonies build android farmers, workers and scientists ({PROJECT_COSTS.android} production each).
+        An android does its one job {ANDROIDS.bonus} points better than a normal unit would on that planet, but gets no
+        race bonuses. It eats no food, costs {ANDROIDS.industryUpkeep} industry a turn, ignores morale, pays no tax and
+        takes up room toward the colony's maximum population.
       </P>
       <h3>Production</h3>
       <P>
@@ -101,7 +110,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         finishes at most one item per turn; extra production carries into the next. With an empty queue, or with
         Trade Goods first, production becomes BC at {pct(TRADE_GOODS_RATE)}. Housing turns production into population
         growth instead. <b>Buy</b> completes the first item for BC: twice the remaining cost, or four times if nothing
-        has been spent on it yet.
+        has been spent on it yet. While an enemy fleet blockades the system, production there is halved.
       </P>
       <P>See <HelpLink to="page:buildings" /> and <HelpLink to="page:projects" />.</P>
       <h3>Growth</h3>
@@ -111,14 +120,29 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Morale</h3>
       <P>
-        Morale multiplies food, industry and research and ranges from {MORALE_RANGE[0]}% to +{MORALE_RANGE[1]}%. It comes
-        from the government, buildings, techs and administrators. Colonies of another race lose 10% unless they have an
-        Alien Management Center, and freshly conquered colonies suffer {UNREST_MORALE}% unrest for a while.
+        Every 10% of morale adds or removes 10% of a colony's food, industry, research and population taxes. It comes
+        from the government, buildings, techs and administrators. Feudal and dictatorial empires and their advanced forms
+        lose 20% on colonies without a Marine or Armor Barracks. A colony of a race other than its ruler's loses{" "}
+        {ASSIMILATION.multiRacePenalty}% unless it has an Alien Management Center. Losing the Capitol costs morale on every
+        colony until it is rebuilt: 50% under feudal rule and confederation, 35% under dictatorship, imperium and
+        federation, 20% under democracy. Unified governments have no morale at all, good or bad. Androids ignore morale.
+      </P>
+      <h3>Conquered people</h3>
+      <P>
+        People on a captured colony are aliens at first and work at half their normal rate. They join your empire one
+        unit at a time: every 8 turns under feudal rule or dictatorship, 4 under democracy, confederation or imperium,
+        2 under federation, 20 under unification and 15 under galactic unification. An Alien Management Center makes it
+        every 2 turns for anyone; charismatic rulers are twice as fast, repulsive ones half as fast, and telepaths
+        assimilate them at once, as does anyone taking a feudal colony. Until then aliens may revolt, more often the more
+        of them there are and half as often with an Alien Management Center; if they beat your garrison the colony goes
+        back to its old owner.
       </P>
       <h3>Pollution</h3>
       <P>
-        Industry above 4 × the planet's size factor pollutes: half of the excess is lost. Pollution buildings and techs
-        remove part of it; tolerant races never pollute.
+        Industry above 4 × the planet's size factor pollutes, and half of the excess is lost. A Pollution Processor
+        counts only half of the industry, an Atmospheric Renewer a quarter, both together an eighth. Nano Disassemblers
+        double every planet's tolerance, Core Waste Dumps end pollution on their colony, the Recyclotron's extra industry
+        never pollutes, and tolerant races never pollute at all.
       </P>
       <h3>Outposts</h3>
       <P>
@@ -133,24 +157,34 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
     <>
       <h3>BC income</h3>
       <P>
-        Each population pays {fmt(TAX_PER_POP, 1)} BC a turn before race, tech and building bonuses. The tax rate on the
-        Empire screen ({TAX_STEPS.map(pct).join(", ")}) turns that share of every colony's industry into BC. Gold and
-        gem deposits pay extra, and trade treaties add more (<HelpLink to="guide:diplomacy" />).
+        Each population pays {fmt(TAX_PER_POP, 1)} BC a turn before race and morale bonuses. The tax rate on the Empire
+        screen ({TAX_STEPS.map(pct).join(", ")}) takes that share of every colony's industry and pays{" "}
+        {fmt(TAX_BC_PER_INDUSTRY, 1)} BC for each point, just like Trade Goods. Gold and gem deposits pay extra, and trade
+        treaties add more (<HelpLink to="guide:diplomacy" />). Democracy, Federation, the Spaceport, Stock Exchange and
+        Galactic Currency Exchange raise all of a colony's income, including its trade goods.
       </P>
       <h3>Costs</h3>
       <Ul>
-        <li>Every building has BC upkeep each turn.</li>
+        <li>Every building has BC upkeep each turn: a quarter more on radiated and desert worlds, half more on toxic ones.</li>
+        <li>Freighters cost {fmt(FREIGHTERS.upkeepInUse, 1)} BC each for every turn they are carrying something; idle ones are free.</li>
         <li>Hired leaders draw a salary (<HelpLink to="guide:leaders" />).</li>
-        <li>Every command point your warships use over your limit costs {COMMAND_OVERAGE_COST} BC a turn (<HelpLink to="guide:fleets" />).</li>
+        <li>Every command point your ships use over your limit costs {COMMAND_OVERAGE_COST} BC a turn (<HelpLink to="guide:fleets" />).</li>
       </Ul>
       <P>
         If the treasury goes below zero, buildings are sold off, highest upkeep first, for a quarter of their cost until
         the books balance.
       </P>
-      <h3>Food</h3>
+      <h3>Food and freighters</h3>
       <P>
-        Each population eats 1 food (cybernetic races half, lithovores none). Food is pooled across your empire, so a
-        farming world can feed an industrial one. If the whole empire runs short, the hungriest colonies lose population.
+        Each population eats 1 food (cybernetic races half, lithovores and androids none). Food doesn't move by itself:
+        a Freighter Fleet ({PROJECT_COSTS.freighterFleet} production) adds {FREIGHTERS.perFleet} freighters, and each
+        carries {FREIGHTERS.foodPerShip} food a turn from colonies with a surplus to hungry ones. A colony whose need is not
+        met loses {FREIGHTERS.starvationPerTurn} population a turn. Food nobody needs is sold for {fmt(TRAIT_EFFECTS.normalFoodBc, 1)}{" "}
+        BC a unit ({fmt(TRAIT_EFFECTS.traderFoodBc, 1)} for fantastic traders). A blockaded system can neither send nor receive.
+      </P>
+      <P>
+        Freighters also move colonists to another colony of the same race: each colonist needs {FREIGHTERS.perColonist} idle
+        freighters for the trip, produces nothing on the way, and dies if the destination is full on arrival.
       </P>
     </>
   ),
@@ -313,10 +347,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Defenders</h3>
       <P>
-        Every colony has {MILITIA_PER_POP === 2 ? "one militia per two" : `one militia per ${MILITIA_PER_POP}`} population.
-        A Marine Barracks starts with {BARRACKS.marineBarracks.initial} marines and trains one more every{" "}
-        {BARRACKS.marineBarracks.every} turns; an Armor Barracks fields {BARRACKS.armorBarracks.initial} tanks and adds one
-        every {BARRACKS.armorBarracks.every} turns, up to a cap that grows with the planet.
+        Every colony has {fmt(MILITIA_PER_POP)} militia per population, rounded up. A Marine Barracks and an Armor
+        Barracks field marines and tanks when built and train more over time, up to a cap that grows with the planet.
       </P>
       <h3>Invasion</h3>
       <P>
@@ -329,8 +361,9 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         personal shields and so on) adds {RATING_PER_LEVEL}, and each racial ground combat pick ±
         {PICK_VALUES.groundCombatPerLevel}. <HelpLink to="trait:lowG" /> troops fight at −10,{" "}
         <HelpLink to="trait:subterranean" /> defenders at +10, <HelpLink to="trait:highG" /> troops take one more hit,
-        and a Commando leader in the system adds his skill. A captured colony keeps its people and buildings, suffers
-        unrest, and has a {pct(CAPTURE_TECH_CHANCE)} chance to yield one of the loser's techs.
+        and a Commando leader in the system adds his skill. A captured colony keeps its buildings and its people, who
+        must be assimilated (see Colonies), and has a {pct(CAPTURE_TECH_CHANCE)} chance to yield one of the loser's techs.
+
       </P>
       <P>
         <HelpLink to="trait:telepathic" /> empires take a colony whose defenses are down without troops, with a cruiser

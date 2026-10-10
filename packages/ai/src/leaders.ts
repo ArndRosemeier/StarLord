@@ -1,4 +1,4 @@
-import { LEADER_RULES, colonyOutput, type Command, type Leader, type PlayerView } from "@starlord/sim";
+import { LEADER_RULES, colonyOutput, hirePrice, type Command, type Leader, type PlayerView } from "@starlord/sim";
 import { colonyStar, fleetStrength, me, myColonies, myFleets } from "./util.js";
 
 /** Hires leaders it can comfortably afford and puts them where they help most. */
@@ -13,7 +13,7 @@ export function leaderOrders(view: PlayerView): Command[] {
     .filter((l) => l.status === "offered" && l.offeredTo === view.viewer)
     .sort((a, b) => b.level - a.level || b.hireCost - a.hireCost || (a.id < b.id ? -1 : 1));
   const offer = offers.find((l) => ofKind(l.kind) < LEADER_RULES.maxPerKind);
-  if (offer && hired.length < LEADER_RULES.maxTotal && player.bc > offer.hireCost * 2 + 100 + offer.salary * 20) {
+  if (offer && hired.length < LEADER_RULES.maxTotal && player.bc > hirePrice(view, view.viewer, offer) * 2 + 100 + Math.max(0, offer.salary) * 20) {
     out.push({ type: "hireLeader", leaderId: offer.id });
   }
   const systems = myColonies(view)

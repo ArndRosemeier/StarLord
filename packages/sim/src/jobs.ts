@@ -17,6 +17,8 @@ export function removePopulation(colony: Colony, n: number): number {
       colony.natives = Math.max(0, natives - 1);
     }
   }
+  // Loyal people die before unassimilated aliens.
+  if (colony.aliens !== undefined) colony.aliens = Math.min(colony.aliens, population(colony));
   return lost;
 }
 
