@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "sim": "tsx apps/cli/src/main.ts"
+    "sim": "tsx apps/cli/src/main.ts",
+    "sim:events": "tsx apps/cli/src/stats.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

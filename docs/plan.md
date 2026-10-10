@@ -14,13 +14,32 @@
 4. **Alpha polish.** Balance with batch runs (`pnpm sim --games N`),
    save/load, and multiplayer groundwork.
 
-## Known simplifications in step 1
+## What the rules cover (step 2)
+
+- **Economy:** farmers, workers and scientists; climate, minerals, gravity, pollution, morale,
+  taxes, buildings with upkeep, buying, trade goods, housing, gold and gem deposits, artifacts.
+- **Research:** 8 fields, about 75 tiers and 160 techs; creative and uncreative races; miniaturization.
+- **Ships:** six hulls, beams, missiles, torpedoes, bombs, armor, shields, computers, specials,
+  colony, outpost and troop modules, command points.
+- **Combat:** round-based tactical battles on a 30x20 field with movement, range, shields,
+  point defense and doctrine-driven retreat; planets fight with bases and shields; every battle
+  is recorded for replay. Bombardment and ground invasion follow.
+- **Expansion:** colony ships, outposts, colony bases, terraforming, Gaia transformation,
+  artificial planets.
+- **Diplomacy:** war, peace, alliance, trade and research treaties, attitudes that drift with
+  borders, wars and race traits.
+- **Espionage, leaders, random events.**
+- **Monsters and endgame:** monster lairs, Orion and its Guardian (Death Ray), Vexari raids from
+  turn 120, and a dimensional portal to strike their home.
+- **Victory:** conquest, Galactic Council (two thirds of votes), defeating the Vexari, or score at the turn limit.
+
+## Known simplifications
 
 - Food is pooled empire-wide (stands in for MoO2 freighters).
-- No combat yet, so combat traits have no effect and games end on the turn limit by score.
-- Morale, pollution cleanup, outposts and the bulk of the tech tree come in step 2.
-- Race trait values are first-pass approximations; early batch runs show the
-  growth and industry races well ahead, as expected while combat is missing.
+- Battles resolve automatically using each empire's combat doctrine; there is no manual
+  round-by-round control yet, but every battle can be replayed.
+- One race per colony; ships repair fully between turns.
+- Numbers are first-pass and will be tuned with batch runs in step 4.
 
 ## Race names
 

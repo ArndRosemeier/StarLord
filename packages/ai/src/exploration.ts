@@ -1,18 +1,17 @@
-import { distanceToNearestColony, fleetRange, type Command, type PlayerView } from "@starlord/sim";
-import { isOnly, myFleets, nearest } from "./util.js";
+import { canReach, type Command, type PlayerView } from "@starlord/sim";
+import { isOnly, me, myFleets, nearest } from "./util.js";
 
 /** Sends idle scouts to the nearest unexplored star in range that no other scout is heading for. */
 export function explorationOrders(view: PlayerView): Command[] {
-  const me = view.players[view.viewer]!;
-  const explored = new Set(me.explored);
-  const range = fleetRange(view, view.viewer);
-  const scouts = myFleets(view).filter((f) => isOnly(f, "scout"));
+  const player = me(view);
+  const explored = new Set(player.explored);
+  const scouts = myFleets(view).filter((f) => isOnly(view, f, "scout"));
   const claimed = new Set(scouts.map((f) => f.destStarId).filter(Boolean));
   const out: Command[] = [];
   for (const f of scouts) {
-    if (f.destStarId) continue;
+    if (f.destStarId || !f.starId) continue;
     const options = view.galaxy.stars.filter(
-      (s) => !explored.has(s.id) && !claimed.has(s.id) && distanceToNearestColony(view, view.viewer, s) <= range,
+      (s) => !explored.has(s.id) && !claimed.has(s.id) && s.special !== "raiderHome" && canReach(view, view.viewer, f, s.id),
     );
     const target = nearest(f, options);
     if (!target) continue;

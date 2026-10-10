@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { createController } from "@starlord/ai";
+import { automationOrders } from "@starlord/ai";
 import {
   RACES_BY_ID, empireTotals, newGame, playerView, processTurn, score, stateHash,
   type GalaxySize, type GameState, type TurnOrders,
@@ -33,8 +33,6 @@ if (values.help) {
   process.exit(0);
 }
 
-const controllers = new Map<number, ReturnType<typeof createController>>();
-
 function runGame(seed: string, verbose: boolean): GameState {
   let state = newGame({
     seed,
@@ -48,10 +46,8 @@ function runGame(seed: string, verbose: boolean): GameState {
   while (!state.over) {
     const orders: TurnOrders = {};
     for (const p of state.players) {
-      if (!p.alive) continue;
-      const ai = controllers.get(p.id) ?? createController();
-      controllers.set(p.id, ai);
-      orders[p.id] = ai.orders(playerView(state, p.id));
+      if (!p.alive || p.kind !== "empire") continue;
+      orders[p.id] = automationOrders(playerView(state, p.id));
     }
     state = processTurn(state, orders);
     if (verbose && (state.turn - 1) % every === 0) printTable(state);
@@ -61,7 +57,7 @@ function runGame(seed: string, verbose: boolean): GameState {
     if ((state.turn - 1) % every !== 0) printTable(state);
     const rejected = state.events.filter((e) => e.kind === "commandRejected").length;
     console.log(
-      `\nGame over on turn ${state.turn - 1}. Winner: ${state.players[state.winner!]!.name}. ` +
+      `\nGame over on turn ${state.turn - 1}. Winner: ${state.players[state.winner!]!.name} (${state.victory}). ` +
         `${(ms / (state.turn - 1)).toFixed(1)} ms/turn, state hash ${stateHash(state)}` +
         (rejected ? `, ${rejected} rejected commands last turn` : ""),
     );
@@ -71,10 +67,11 @@ function runGame(seed: string, verbose: boolean): GameState {
 
 function printTable(state: GameState): void {
   console.log(`\nTurn ${state.turn - 1}`);
-  const rows = state.players.map((p) => {
+  const rows = state.players.filter((p) => p.kind === "empire").map((p) => {
     const t = empireTotals(state, p.id);
     return {
       empire: p.name,
+      alive: p.alive ? "yes" : `died ${p.eliminatedTurn}`,
       colonies: t.colonies,
       pop: t.population,
       food: round(t.food),
@@ -82,7 +79,7 @@ function printTable(state: GameState): void {
       research: round(t.research),
       bc: Math.round(p.bc),
       techs: p.techs.length,
-      explored: p.explored.length,
+      ships: Object.values(state.fleets).filter((f) => f.ownerId === p.id).reduce((n, f) => n + f.ships.reduce((m, s) => m + s.count, 0), 0),
       score: score(state, p.id),
     };
   });
@@ -100,7 +97,7 @@ if (games <= 1) {
   for (let i = 0; i < games; i++) {
     const seed = String(Number(values.seed) + i);
     const end = runGame(seed, false);
-    for (const p of end.players) {
+    for (const p of end.players.filter((x) => x.kind === "empire")) {
       const w = (wins[p.raceId] ??= { played: 0, won: 0, score: 0 });
       w.played++;
       w.score += score(end, p.id);

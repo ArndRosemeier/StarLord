@@ -23,6 +23,7 @@ pnpm test
 pnpm sim --help
 pnpm sim --turns 200                  # one all-AI game with status tables
 pnpm sim --games 100 --turns 150      # batch run, race win rates
+pnpm sim:events --games 8             # what happens in a game: wars, invasions, spies, rejected commands
 ```
 
 ## Design rules

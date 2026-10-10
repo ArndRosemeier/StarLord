@@ -1,24 +1,52 @@
-import { DESIGNS_BY_ID, distance, type Fleet, type PlayerView, type ShipRole, type Star } from "@starlord/sim";
+import {
+  designStats, distance, findDesign, isHostile, type Colony, type DesignStats, type Fleet, type PlayerView, type Star,
+} from "@starlord/sim";
 
-export function myColonies(view: PlayerView) {
-  return Object.values(view.colonies).filter((c) => c.ownerId === view.viewer);
+export function me(view: PlayerView) {
+  return view.players[view.viewer]!;
 }
 
-export function myFleets(view: PlayerView) {
+export function myColonies(view: PlayerView, includeOutposts = false): Colony[] {
+  return Object.values(view.colonies).filter((c) => c.ownerId === view.viewer && (includeOutposts || !c.outpost));
+}
+
+export function myFleets(view: PlayerView): Fleet[] {
   return Object.values(view.fleets).filter((f) => f.ownerId === view.viewer);
-}
-
-export function fleetRoles(f: Fleet): Set<ShipRole> {
-  return new Set(f.ships.map((s) => DESIGNS_BY_ID[s.designId]!.role));
-}
-
-export function isOnly(f: Fleet, role: ShipRole): boolean {
-  const roles = fleetRoles(f);
-  return roles.size === 1 && roles.has(role);
 }
 
 export function starById(view: PlayerView, id: string): Star {
   return view.galaxy.stars.find((s) => s.id === id)!;
+}
+
+export function colonyStar(view: PlayerView, c: Colony): Star {
+  return starById(view, view.planets[c.planetId]!.starId);
+}
+
+export type Role = DesignStats["role"];
+
+export function shipStats(view: PlayerView, ownerId: number, designId: string): DesignStats | undefined {
+  const owner = view.players[ownerId]!;
+  const d = findDesign(owner, designId);
+  return d ? designStats(owner, d) : undefined;
+}
+
+export function fleetRoles(view: PlayerView, f: Fleet): Set<Role> {
+  return new Set(f.ships.map((s) => shipStats(view, f.ownerId, s.designId)?.role ?? "scout"));
+}
+
+export function isOnly(view: PlayerView, f: Fleet, role: Role): boolean {
+  const roles = fleetRoles(view, f);
+  return roles.size === 1 && roles.has(role);
+}
+
+export function fleetStrength(view: PlayerView, f: Fleet): number {
+  return f.ships.reduce((sum, s) => sum + (shipStats(view, f.ownerId, s.designId)?.strength ?? 0) * s.count, 0);
+}
+
+export function hostileFleetsNear(view: PlayerView, point: { x: number; y: number }, radius: number): Fleet[] {
+  return Object.values(view.fleets).filter(
+    (f) => isHostile(view, view.viewer, f.ownerId) && distance(f, point) <= radius && fleetStrength(view, f) > 0,
+  );
 }
 
 export function nearest<T extends { x: number; y: number }>(from: { x: number; y: number }, items: T[]): T | undefined {
@@ -32,4 +60,12 @@ export function nearest<T extends { x: number; y: number }>(from: { x: number; y
     }
   }
   return best;
+}
+
+/** Stable small hash so each AI empire has its own personality without randomness. */
+export function personality(view: PlayerView): { aggression: number; science: number } {
+  const p = me(view);
+  let h = 0;
+  for (const ch of p.raceId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return { aggression: 0.3 + ((h % 7) / 10), science: 0.25 + (((h >> 3) % 5) / 20) };
 }
