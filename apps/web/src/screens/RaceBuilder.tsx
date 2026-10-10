@@ -17,8 +17,9 @@ export const blankRace = (): CustomRaceSpec => ({
 const signedCost = (c: number) => (c > 0 ? `${c}` : c < 0 ? `+${-c}` : "0");
 
 /** MoO2-style race designer: spend picks within a budget, borrow another race's look. */
-export function RaceBuilder({ initial, onSave, onCancel, onDelete }: {
+export function RaceBuilder({ initial, isNew = true, onSave, onCancel, onDelete }: {
   initial: CustomRaceSpec;
+  isNew?: boolean;
   onSave: (spec: CustomRaceSpec) => void;
   onCancel: () => void;
   onDelete?: () => void;
@@ -41,7 +42,7 @@ export function RaceBuilder({ initial, onSave, onCancel, onDelete }: {
   return (
     <div className="col">
       <div className="row">
-        <h2 style={{ margin: 0 }}>Design a race</h2>
+        <h2 style={{ margin: 0 }}>{isNew ? "Design a race" : `Edit the ${initial.plural || initial.name}`}</h2>
         <span className="spacer" />
         <span className={`chip ${left < 0 ? "bad" : "good"}`}>{left} of {CUSTOM_RACE_POINTS} picks left</span>
         <span className={`chip ${negative > MAX_NEGATIVE_POINTS ? "bad" : ""}`}>Drawbacks {negative}/{MAX_NEGATIVE_POINTS}</span>

@@ -43,6 +43,8 @@ export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
     saveCustomRaces(list);
   };
 
+  const editCustom = (spec: CustomRaceSpec) => setEditing({ spec, index: customSpecs.indexOf(spec) });
+
   const start = (spectate: boolean) => {
     const others = shuffled(RACES.map((r) => r.id).filter((id) => id !== raceId)).slice(0, opponents);
     const races = spectate ? shuffled(RACES.map((r) => r.id)).slice(0, opponents + 1) : [raceId, ...others];
@@ -66,6 +68,7 @@ export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
         <div className="panel">
           <RaceBuilder
             initial={editing.spec}
+            isNew={editing.index === null}
             onCancel={() => setEditing(null)}
             onSave={(spec) => {
               const list = [...customSpecs];
@@ -102,7 +105,7 @@ export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
             <h2 style={{ margin: 0 }}>{race.name}</h2>
             <span className="muted">{race.archetype}</span>
             {chosenCustom && (
-              <button className="small" onClick={() => setEditing({ spec: chosenCustom.spec, index: customSpecs.indexOf(chosenCustom.spec) })}>Edit</button>
+              <button onClick={() => editCustom(chosenCustom.spec)}>Edit race</button>
             )}
           </div>
           {race.description && <p style={{ margin: 0 }}>{race.description}</p>}
@@ -189,16 +192,19 @@ export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
             </span>
           </button>
         ))}
-        {custom.map(({ def }) => (
-          <button key={def.id} className={`race-card${def.id === raceId ? " selected" : ""}`} onClick={() => setRaceId(def.id)}>
-            <img src={`races/${def.assetKey}.webp`} alt={def.name} loading="lazy" />
-            <span className="name">
-              <span className="dot" style={{ background: def.color, marginRight: 6 }} />
-              {def.name}
-              <br />
-              <small className="muted">Your race</small>
-            </span>
-          </button>
+        {custom.map(({ spec, def }) => (
+          <div key={def.id} className="race-card-wrap">
+            <button className={`race-card${def.id === raceId ? " selected" : ""}`} onClick={() => setRaceId(def.id)}>
+              <img src={`races/${def.assetKey}.webp`} alt={def.name} loading="lazy" />
+              <span className="name">
+                <span className="dot" style={{ background: def.color, marginRight: 6 }} />
+                {def.name}
+                <br />
+                <small className="muted">Your race</small>
+              </span>
+            </button>
+            <button className="small race-card-edit" title={`Edit the ${def.plural}`} onClick={() => editCustom(spec)}>Edit</button>
+          </div>
         ))}
         <button className="race-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}
           onClick={() => setEditing({ spec: blankRace(), index: null })}>
