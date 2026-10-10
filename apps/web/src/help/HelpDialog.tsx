@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Player } from "@starlord/sim";
 import type { GameSession } from "../game/session";
 import { ENTRIES, ENTRIES_BY_ID, GROUPS, searchEntries, type HelpGroup } from "./entries";
@@ -132,11 +132,30 @@ function HelpDialog({ start, me, onClose }: { start: string; me: Player | null; 
               )}
             </aside>
             <div className="help-article" ref={articleRef}>
-              <Article id={current} />
+              <PageBoundary key={current} id={current}><Article id={current} /></PageBoundary>
             </div>
           </div>
         </div>
       </div>
     </HelpNav.Provider>
   );
+}
+
+/** Shows a page that fails to render as an error message instead of blanking the whole game. */
+class PageBoundary extends Component<{ id: string; children: ReactNode }, { error: Error | null }> {
+  override state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  override render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    return (
+      <div className="col">
+        <h2>This page failed to load</h2>
+        <p className="muted">Please send this message to the developers. Other pages still work.</p>
+        <pre className="help-error">{`${this.props.id}\n${error.message}\n${error.stack ?? ""}`}</pre>
+      </div>
+    );
+  }
 }
