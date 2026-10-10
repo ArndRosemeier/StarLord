@@ -19,3 +19,4 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm sim --turns 100 --quiet
+      - run: pnpm build
