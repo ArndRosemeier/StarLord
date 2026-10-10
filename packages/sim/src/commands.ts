@@ -133,13 +133,12 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const p = state.planets[cmd.planetId];
       if (!p || p.starId !== f.starId) return fail("fleet is not at that planet's star");
       if (p.colonyId) return fail("planet already colonized");
-      const habitable = CLIMATES[p.type].habitable;
-      const module = habitable ? "colony" : "outpost";
+      if (!CLIMATES[p.type].habitable) return fail("asteroids and gas giants need an Artificial Planet first");
       const hasShip = f.ships.some((s) => {
         const d = findDesign(player, s.designId);
-        return d && (d.module === module || (d.module === "outpost" && module === "colony")) && s.count > 0;
+        return d && (d.module === "colony" || d.module === "outpost") && s.count > 0;
       });
-      if (!hasShip) return fail(habitable ? "no colony or outpost ship" : "needs an outpost ship");
+      if (!hasShip) return fail("no colony or outpost ship");
       if (guarded(state, playerId, p.starId)) return fail("system is guarded by hostile ships");
       return OK;
     }

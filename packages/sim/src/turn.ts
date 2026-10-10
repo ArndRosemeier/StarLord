@@ -153,10 +153,9 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "colonize": {
       const f = state.fleets[cmd.fleetId]!;
       const planet = state.planets[cmd.planetId]!;
-      const habitable = CLIMATES[planet.type].habitable;
       const pickModule = (m: "colony" | "outpost") =>
         f.ships.find((s) => findDesign(player, s.designId)?.module === m && s.count > 0);
-      const stack = (habitable ? pickModule("colony") : undefined) ?? pickModule("outpost")!;
+      const stack = pickModule("colony") ?? pickModule("outpost")!;
       const outpost = findDesign(player, stack.designId)!.module === "outpost";
       removeShips(state, f, stack.designId, 1);
       foundColony(ctx, playerId, cmd.planetId, outpost ? 0 : 1, player.raceId);
@@ -768,8 +767,7 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
   switch (id) {
     case "colonyBase":
     case "outpostBase": {
-      const kind = id === "colonyBase" ? "habitable" : "barrenRock";
-      const free = freePlanetsInSystem(state, colony, kind);
+      const free = freePlanetsInSystem(state, colony, "habitable");
       const target = free.find((p) => p.id === planetId) ?? free[0];
       if (target) foundColony(ctx, colony.ownerId, target.id, id === "colonyBase" ? 1 : 0, player.raceId);
       return;
@@ -786,7 +784,7 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
       if (planet.type === "terran") planet.type = "gaia";
       return;
     case "artificialPlanet": {
-      const free = freePlanetsInSystem(state, colony, "barrenRock");
+      const free = freePlanetsInSystem(state, colony, "unsettleable");
       const target = free.find((p) => p.id === planetId) ?? free[0];
       if (target) {
         target.size = target.type === "gasGiant" ? "large" : "small";

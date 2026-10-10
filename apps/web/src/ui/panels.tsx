@@ -50,7 +50,7 @@ export function StarPanel({ starId, fleetId, onSelectFleet }: { starId: string; 
         const colony = p.colonyId ? view.colonies[p.colonyId] : undefined;
         const owner = colony ? view.players[colony.ownerId] : undefined;
         const habitable = CLIMATES[p.type].habitable;
-        const canColonize = !readOnly && myFleetHere && !colony && (habitable ? modules.has("colony") || modules.has("outpost") : modules.has("outpost"));
+        const canColonize = !readOnly && myFleetHere && !colony && habitable && (modules.has("colony") || modules.has("outpost"));
         const canInvade = !readOnly && myFleetHere && colony && troops > 0 && isHostile(view, me.id, colony.ownerId);
         return (
           <div className="planet" key={pid}>
@@ -62,7 +62,7 @@ export function StarPanel({ starId, fleetId, onSelectFleet }: { starId: string; 
               </div>
               <small className="muted">
                 {words(p.minerals)} minerals, {p.gravity} gravity
-                {habitable && <> · max pop {maxPopulation(p, race, [], me)}</>}
+                {habitable ? <> · max pop {maxPopulation(p, race, [], me)}</> : !colony && <> · needs an Artificial Planet</>}
               </small>
               {colony && owner && (
                 <div>
@@ -72,7 +72,7 @@ export function StarPanel({ starId, fleetId, onSelectFleet }: { starId: string; 
               )}
             </div>
             <div className="col" style={{ gap: 4 }}>
-              {canColonize && <button className="small primary" onClick={() => session.issue({ type: "colonize", fleetId: myFleetHere!.id, planetId: pid })}>{habitable && modules.has("colony") ? "Colonize" : "Outpost"}</button>}
+              {canColonize && <button className="small primary" onClick={() => session.issue({ type: "colonize", fleetId: myFleetHere!.id, planetId: pid })}>{modules.has("colony") ? "Colonize" : "Outpost"}</button>}
               {canInvade && <button className="small danger" onClick={() => session.issue({ type: "invade", fleetId: myFleetHere!.id, colonyId: colony!.id })}>Invade ({troops})</button>}
             </div>
           </div>

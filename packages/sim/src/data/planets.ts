@@ -16,7 +16,7 @@ export interface ClimateInfo {
   /** Max population per size step (tiny=1 .. huge=5). */
   popPerSize: number;
   foodPerFarmer: number;
-  /** Asteroids and gas giants only take outposts. */
+  /** Asteroids and gas giants can't be settled, not even by outposts, until an Artificial Planet turns them into barren planets. */
   habitable: boolean;
   hostile: boolean;
 }
