@@ -104,7 +104,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
   const dest = fleet.destStarId ? view.galaxy.stars.find((s) => s.id === fleet.destStarId) : undefined;
   const eta = dest ? travelTurns(view, fleet, dest.id) : 0;
   const others = Object.values(view.fleets).filter((f) => f.id !== fleet.id && f.ownerId === fleet.ownerId && f.starId && f.starId === fleet.starId);
-  const captain = Object.values(view.leaders).find((l) => l.assignedTo === fleet.id);
+  const captain = Object.values(view.leaders).find((l) => l.status === "hired" && l.assignedTo === fleet.id);
   const status = owner.id === me.id ? null : owner.kind !== "empire" ? "hostile" : relation(view, me.id, owner.id).status;
   const splitShips = Object.entries(split).filter(([, n]) => n > 0).map(([designId, count]) => ({ designId, count }));
 
