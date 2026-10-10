@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { RACES, getRace, type GalaxySize } from "@starlord/sim";
+import { RACES, TRAIT_COSTS, getRace, type CustomRaceSpec, type GalaxySize } from "@starlord/sim";
+import { customRaceDefs, loadCustomRaces, saveCustomRaces } from "../game/customRaces";
+import { RaceBuilder, blankRace } from "./RaceBuilder";
 import { GameSession } from "../game/session";
 import { deleteSave, listSaves, readSave, readSaveFile } from "../game/saves";
 import { words } from "../ui/format";
@@ -30,12 +32,22 @@ export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
   const [council, setCouncil] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saves, setSaves] = useState(listSaves);
-  const race = getRace(raceId);
+  const [customSpecs, setCustomSpecs] = useState<CustomRaceSpec[]>(loadCustomRaces);
+  const [editing, setEditing] = useState<{ spec: CustomRaceSpec; index: number | null } | null>(null);
+  const custom = useMemo(() => customRaceDefs(customSpecs), [customSpecs]);
+  const chosenCustom = custom.find((c) => c.def.id === raceId);
+  const race = chosenCustom?.def ?? getRace(raceId);
+
+  const storeCustom = (list: CustomRaceSpec[]) => {
+    setCustomSpecs(list);
+    saveCustomRaces(list);
+  };
 
   const start = (spectate: boolean) => {
     const others = shuffled(RACES.map((r) => r.id).filter((id) => id !== raceId)).slice(0, opponents);
     const races = spectate ? shuffled(RACES.map((r) => r.id)).slice(0, opponents + 1) : [raceId, ...others];
-    onStart(GameSession.create({ seed, galaxySize: galaxy, races, maxTurns, monsters, raiders, council }, spectate ? null : 0));
+    const customRaces = !spectate && chosenCustom ? [chosenCustom.spec] : [];
+    onStart(GameSession.create({ seed, galaxySize: galaxy, races, maxTurns, monsters, raiders, council, customRaces }, spectate ? null : 0));
   };
 
   const load = (data: unknown) => {
@@ -46,7 +58,33 @@ export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
     }
   };
 
-  const traits = useMemo(() => race.picks.traits.map(words), [race]);
+  const traits = useMemo(() => race.picks.traits.map((t) => TRAIT_COSTS[t]?.name ?? words(t)), [race]);
+
+  if (editing) {
+    return (
+      <div className="title-screen">
+        <div className="panel">
+          <RaceBuilder
+            initial={editing.spec}
+            onCancel={() => setEditing(null)}
+            onSave={(spec) => {
+              const list = [...customSpecs];
+              if (editing.index === null) list.push(spec);
+              else list[editing.index] = spec;
+              storeCustom(list);
+              setRaceId(customRaceDefs([spec])[0]!.def.id);
+              setEditing(null);
+            }}
+            onDelete={editing.index === null ? undefined : () => {
+              storeCustom(customSpecs.filter((_, i) => i !== editing.index));
+              setRaceId(RACES[0]!.id);
+              setEditing(null);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="title-screen">
@@ -63,8 +101,11 @@ export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
             <span className="dot" style={{ background: race.color, width: 14, height: 14 }} />
             <h2 style={{ margin: 0 }}>{race.name}</h2>
             <span className="muted">{race.archetype}</span>
+            {chosenCustom && (
+              <button className="small" onClick={() => setEditing({ spec: chosenCustom.spec, index: customSpecs.indexOf(chosenCustom.spec) })}>Edit</button>
+            )}
           </div>
-          <p style={{ margin: 0 }}>{race.description}</p>
+          {race.description && <p style={{ margin: 0 }}>{race.description}</p>}
           <div className="row">
             <span className="chip">{words(race.picks.government)}</span>
             {traits.map((t) => <span key={t} className="chip">{t}</span>)}
@@ -148,6 +189,22 @@ export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
             </span>
           </button>
         ))}
+        {custom.map(({ def }) => (
+          <button key={def.id} className={`race-card${def.id === raceId ? " selected" : ""}`} onClick={() => setRaceId(def.id)}>
+            <img src={`races/${def.assetKey}.webp`} alt={def.name} loading="lazy" />
+            <span className="name">
+              <span className="dot" style={{ background: def.color, marginRight: 6 }} />
+              {def.name}
+              <br />
+              <small className="muted">Your race</small>
+            </span>
+          </button>
+        ))}
+        <button className="race-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}
+          onClick={() => setEditing({ spec: blankRace(), index: null })}>
+          <span style={{ fontSize: 34, color: "var(--accent)" }}>+</span>
+          <span>Create your own race</span>
+        </button>
       </div>
     </div>
   );

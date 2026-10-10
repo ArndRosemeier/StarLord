@@ -29,3 +29,5 @@ export * from "./data/governments.js";
 export * from "./data/leaders.js";
 export * from "./record.js";
 export * from "./lockstep.js";
+export * from "./customRace.js";
+export * from "./data/racePicks.js";

@@ -1,3 +1,4 @@
+import { registerRaces } from "./data/races.js";
 import { scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
 import type { GameState, PlayerId } from "./types.js";
@@ -10,6 +11,7 @@ export type PlayerView = GameState & { viewer: PlayerId };
  * automation read this, never the full state, so they can't cheat.
  */
 export function playerView(state: GameState, viewer: PlayerId): PlayerView {
+  registerRaces(state.settings.customRaces);
   const me = state.players[viewer]!;
   const explored = new Set(me.explored);
   const stars = state.galaxy.stars.filter((s) => s.special !== "raiderHome" || me.hasPortal || explored.has(s.id));

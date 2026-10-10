@@ -1,7 +1,7 @@
 import type { RngState } from "./rng.js";
 import type { HullSize } from "./data/components.js";
 import type { Gravity, Minerals, PlanetSize, PlanetType, StarColor } from "./data/planets.js";
-import type { Government } from "./data/races.js";
+import type { Government, RaceDef } from "./data/races.js";
 import type { TechField } from "./data/techs.js";
 
 export type PlayerId = number;
@@ -20,6 +20,8 @@ export interface GameSettings {
   raiders: boolean;
   /** Galactic council elections as a victory path. */
   council: boolean;
+  /** Player-built races in this game, so saves and replays carry their rules. */
+  customRaces?: RaceDef[];
 }
 
 export interface Star {

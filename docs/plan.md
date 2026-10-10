@@ -21,6 +21,8 @@
 
 ## Next
 
+- Done: custom races. Players spend 10 picks MoO2-style (drawbacks give up to 10 back) and borrow an existing race's portrait and video. Costs live in `packages/sim/src/data/racePicks.ts`.
+
 - Iterate on balance with Arnd (race spread, late-game acceleration).
 - Networked multiplayer: a WebSocket or WebRTC `Transport` for the lockstep host and peers,
   plus a lobby.

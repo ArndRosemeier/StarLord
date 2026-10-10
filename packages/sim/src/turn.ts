@@ -1,7 +1,7 @@
 import { BUILDINGS_BY_ID, TERRAFORM_STEP } from "./data/buildings.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import { CLIMATES, gravityOf, type PlanetType } from "./data/planets.js";
-import { getRace, hasTrait } from "./data/races.js";
+import { getRace, hasTrait, registerRaces } from "./data/races.js";
 import { TIERS_BY_ID, TIER_OF_TECH } from "./data/techs.js";
 import { bombardment, planetDefense, resolveCombat, type CombatSide } from "./combat.js";
 import { buyCost, validateCommand, type Command } from "./commands.js";
@@ -29,6 +29,7 @@ export type TurnOrders = Partial<Record<PlayerId, Command[]>>;
  * state is cloned, so callers can keep history for replays and undo.
  */
 export function processTurn(prev: GameState, orders: TurnOrders): GameState {
+  registerRaces(prev.settings.customRaces);
   const state = structuredClone(prev);
   if (state.over) return state;
   state.events = [];
@@ -91,6 +92,7 @@ export function splitFleetId(state: GameState, parentId: Id): Id {
  * any rejected commands.
  */
 export function previewOrders(prev: GameState, playerId: PlayerId, cmds: Command[]): { state: GameState; rejected: string[] } {
+  registerRaces(prev.settings.customRaces);
   const state = structuredClone(prev);
   state.events = [];
   const rng = new Rng(state.rng);
