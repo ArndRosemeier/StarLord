@@ -319,7 +319,7 @@ export class BattleScene {
         this.fx.burst(src, { count: count(90), colors: FIRE, speed: 3 + r * 3, life: [0.4, 1.3], size: [0.16, 0.42], drag: 0.2 });
         this.fx.burst(src, { count: count(30), colors: ["#ffffff", "#fff4c2"], speed: 6, life: [0.15, 0.4], size: [0.1, 0.2] });
         this.fx.flash(src, 5 + r * 4, 0xfff0c8, 0.6);
-        this.fx.shockwave(src.clone().setY(0.05), 2.4 + r * 2, 0xffcf8a, 0.8);
+        this.fx.shockwave(src.clone().setY(0.05), 2.4 + r * 2, 0xff9a50, 0.8);
         this.fx.lightFlash(src, 25);
         this.fx.scatter(src, this.reduced ? 3 : 8, 0.07 + r * 0.05, 2 + r);
         if (!this.reduced) this.stage.shake(0.25 + r * 0.25);

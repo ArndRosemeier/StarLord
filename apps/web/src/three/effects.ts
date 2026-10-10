@@ -68,7 +68,7 @@ export class EffectsLayer {
       this.group.add(mesh);
       this.shields.push({ mesh, t: 1, life: 1, delay: 0, strength: 1 });
     }
-    const ringGeo = this.own(new THREE.RingGeometry(0.85, 1, 48).rotateX(-Math.PI / 2));
+    const ringGeo = this.own(new THREE.RingGeometry(0.94, 1, 64).rotateX(-Math.PI / 2));
     for (let i = 0; i < 6; i++) {
       const mesh = new THREE.Mesh(ringGeo, this.own(new THREE.MeshBasicMaterial({ color: 0xffcf8a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })));
       mesh.visible = false;
@@ -248,7 +248,7 @@ export class EffectsLayer {
       if (!live) continue;
       const q = (r.t - r.delay) / r.life;
       r.mesh.scale.setScalar(Math.max(0.01, r.size * ease(q)));
-      (r.mesh.material as THREE.MeshBasicMaterial).opacity = (1 - q) * 0.9;
+      (r.mesh.material as THREE.MeshBasicMaterial).opacity = (1 - q) * 0.75;
     }
     for (const f of this.flashes) {
       f.t += dt;
