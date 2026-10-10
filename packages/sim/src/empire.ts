@@ -1,10 +1,10 @@
 import { BUILDINGS_BY_ID } from "./data/buildings.js";
-import { DRIVES, FUEL_RANGES, HULLS_BY_ID } from "./data/components.js";
+import { DRIVES, FUEL_RANGES, HULLS_BY_ID, SUPPORT_SHIP_COMMAND_POINTS } from "./data/components.js";
 import { GOVERNMENTS, type GovernmentDef } from "./data/governments.js";
 import { getRace } from "./data/races.js";
 import { colonyOutput, type EmpireIncome } from "./economy.js";
 import { TECHS, type EmpireBonus } from "./data/techs.js";
-import type { GameState, Player, PlayerId } from "./types.js";
+import type { Colony, GameState, Player, PlayerId } from "./types.js";
 
 /** Empire-wide derived numbers: tech bonuses, government, speed, range, command points. */
 
@@ -44,11 +44,6 @@ export function fleetSpeed(player: Player): number {
   return base + (knows(player, "jumpGate") ? 1 : 0);
 }
 
-export function combatSpeed(player: Player): number {
-  const known = DRIVES.filter((d) => knows(player, d.tech));
-  return known.length ? known[known.length - 1]!.combatSpeed : 2;
-}
-
 export function fleetRange(player: Player): number {
   const known = FUEL_RANGES.filter((f) => knows(player, f.tech));
   return known.length ? known[known.length - 1]!.range : 3;
@@ -58,6 +53,11 @@ export const BASE_SCAN_RANGE = 2;
 
 export function scanRange(player: Player): number {
   return BASE_SCAN_RANGE + empireBonus(player).scanRange;
+}
+
+/** Extra scanner range an orbital station gives around its colony. */
+export function colonyScanBonus(colony: Colony): number {
+  return Math.max(0, ...colony.buildings.map((b) => BUILDINGS_BY_ID[b]?.effects.scanRange ?? 0));
 }
 
 export const BASE_COMMAND_POINTS = 3;
@@ -81,9 +81,9 @@ export function commandPointsUsed(state: GameState, playerId: PlayerId): number 
     if (f.ownerId !== playerId) continue;
     for (const s of f.ships) {
       const d = player.designs.find((x) => x.id === s.designId);
-      if (!d || d.module || d.fixed) continue;
-      if (d.weapons.length === 0) continue;
-      used += HULLS_BY_ID[d.hull].commandPoints * s.count;
+      if (!d || d.fixed) continue;
+      // Every ship uses command points; support ships count as the smallest warship.
+      used += (d.module ? SUPPORT_SHIP_COMMAND_POINTS : HULLS_BY_ID[d.hull].commandPoints) * s.count;
     }
   }
   return used;

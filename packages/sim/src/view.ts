@@ -1,5 +1,5 @@
 import { registerRaces } from "./data/races.js";
-import { scanRange } from "./empire.js";
+import { colonyScanBonus, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
 import type { GameState, PlayerId } from "./types.js";
 
@@ -21,18 +21,21 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
     Object.entries(state.colonies).filter(([, c]) => c.ownerId === viewer || planets[c.planetId]),
   );
   const range = scanRange(me);
-  const eyes: { x: number; y: number }[] = [
-    ...Object.values(state.fleets).filter((f) => f.ownerId === viewer),
+  const eyes: { x: number; y: number; range: number }[] = [
+    ...Object.values(state.fleets).filter((f) => f.ownerId === viewer).map((f) => ({ x: f.x, y: f.y, range })),
     ...Object.values(state.colonies)
       .filter((c) => c.ownerId === viewer)
-      .map((c) => starById.get(state.planets[c.planetId]!.starId)!),
+      .map((c) => {
+        const s = starById.get(state.planets[c.planetId]!.starId)!;
+        return { x: s.x, y: s.y, range: range + colonyScanBonus(c) };
+      }),
   ];
   // Monster lairs are landmarks: once a system is explored its guardian is known.
   const lair = (f: { ownerId: PlayerId; starId: string | null }) =>
     state.players[f.ownerId]!.kind === "monsters" && f.starId !== null && explored.has(f.starId);
   const fleets = Object.fromEntries(
     Object.entries(state.fleets).filter(
-      ([, f]) => f.ownerId === viewer || lair(f) || eyes.some((e) => distance(e, f) <= range),
+      ([, f]) => f.ownerId === viewer || lair(f) || eyes.some((e) => distance(e, f) <= e.range),
     ),
   );
   const leaders = Object.fromEntries(Object.entries(state.leaders).filter(([, l]) => l.ownerId === viewer));

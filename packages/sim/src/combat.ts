@@ -1,22 +1,40 @@
 import { BUILDINGS_BY_ID } from "./data/buildings.js";
-import { WEAPONS, type WeaponDef } from "./data/components.js";
-import { ALL_WEAPONS, designStats, findDesign } from "./designs.js";
-import { knows } from "./empire.js";
+import {
+  ARCS, ARMORS_BY_ID, HULLS_BY_ID, MOD_EFFECTS, SCANNER_ECCM, SPECIALS_BY_ID, STATION_HULLS, UNHITTABLE_SPECIALS, WEAPONS,
+  hullIndex, type FiringArc, type HullDef, type StationHull, type WeaponDef, type WeaponModId, type WeaponTrait,
+} from "./data/components.js";
+import {
+  ANTI_MISSILE, ARTEMIS, BEAM_HIT, BLACK_HOLE_TURNS, CRAFT, DEFENSE_PER_SPEED, FIELD_HEIGHT, FIELD_WIDTH,
+  IMMOBILE_DEFENSE, MAX_BAND, MAX_ROUNDS, MISSILE_DEFENSE_PER_SPEED, MISSILE_HP_PER_ARMOR, PLANET_BEAM_DAMAGE,
+  PLANET_INSTALLATION_HP, PLASMA_WEB_DECAY, RANGE_BANDS, SHIELD_FACINGS, SHIELD_REGEN, SQUADRON_SIZE,
+  STATION_FLEET_BONUS, STATION_TURN_DEG, TORPEDO_DISSIPATION, TURN_COST_PER_STEP,
+} from "./data/combat.js";
+import {
+  ALL_WEAPONS, bestArmor, bestBeam, bestComputer, bestShield, designStats, findDesign, groundBatteryWeapons,
+  mergeEffects, missileBaseWeapons, noEffects, rackShots, stationWeapons, strengthOf, weaponHP, weaponUnitCost,
+  type MergedEffects,
+} from "./designs.js";
+import { empireBonus, knows } from "./empire.js";
+import { getRace } from "./data/races.js";
 import type { Rng } from "./rng.js";
 import type {
-  Colony, CombatReport, CombatRoundEvent, CombatShipSnapshot, Fleet, GameState, LeaderSkills, PlayerId, ShipStack,
+  Colony, CombatReport, CombatRoundEvent, CombatShipSnapshot, Fleet, GameState, LeaderSkills, Player, PlayerId,
+  ShipStack, WeaponMount,
 } from "./types.js";
 
-/**
- * Tactical space combat on a 30x20 battlefield. Ships move toward targets and
- * fire every round; each side follows its owner's combat doctrine (target
- * focus and when to retreat). Planets fight with their orbital defenses.
- * The whole battle is recorded so the UI can replay it.
- */
+export { FIELD_HEIGHT, FIELD_WIDTH, MAX_ROUNDS };
 
-export const FIELD_WIDTH = 30;
-export const FIELD_HEIGHT = 20;
-export const MAX_ROUNDS = 10;
+/**
+ * Tactical space combat with the original's rules. Ships carry armor,
+ * structure and internal systems (drive, computer, shield generator, each
+ * weapon and special); shields take a fixed amount off every hit and soak
+ * the rest on the facing that was hit. Beams roll against beam defense with
+ * range bands, and their damage scales with how well the roll went.
+ * Missiles and fighters fly across the field and can be shot down or
+ * jammed. Orbital stations and the planet's ground defenses fight as
+ * separate immobile units. Sides take turns; each ship turns, moves and
+ * fires. Every event is recorded for the replay.
+ */
 
 export interface CombatSide {
   ownerId: PlayerId;
@@ -27,58 +45,236 @@ export interface CombatSide {
   attacksPlanet: boolean;
 }
 
+export interface CapturedShip {
+  /** Player who boarded and took the ship, the fleet it joins, and where it came from. */
+  ownerId: PlayerId;
+  fleetId: string;
+  fromOwner: PlayerId;
+  designId: string;
+}
+
 export interface CombatOutcome {
   report: CombatReport;
-  /** Ships left in each fleet (destroyed ones removed). */
+  /** Ships left in each fleet (destroyed and captured ones removed). */
   survivors: Map<string, ShipStack[]>;
   retreated: Set<PlayerId>;
   /** Fleets whose surviving ships all fled; they leave the system. */
   fled: Set<string>;
-  /** True when a defending planet ends the battle with no working defenses. */
+  /** True when a defending colony ends the battle with no working defenses (planet and station). */
   planetSilenced: Map<PlayerId, boolean>;
+  /** Colonies whose orbital station was destroyed; the building is lost. */
+  stationsLost: Set<string>;
+  /** Ships taken by boarding parties of a side that held the field. */
+  captured: CapturedShip[];
 }
 
+type UnitKind = "ship" | "station" | "planet" | "monster";
+
 interface Mount {
-  weapon: WeaponDef;
+  def: WeaponDef;
+  mods: Set<WeaponModId>;
+  traits: Set<WeaponTrait>;
+  arc: FiringArc;
+  /** Working weapons in this mount, and the damage on the next one to break. */
   count: number;
-  ammo: number;
+  hpEach: number;
+  wound: number;
+  /** Shots left this battle (missile racks, bombs, anti-missile rockets). */
+  shots: number;
+  /** Turns before it can fire again (torpedoes reload). */
+  cooldown: number;
+  /** Squadron in flight, and turns until a bay can launch again. */
+  out: boolean;
+  rearm: number;
+  /** Planet weapons belong to an installation. */
+  installation?: number;
+  firedThisRound: boolean;
+}
+
+interface System {
+  id: string;
+  hp: number;
+  max: number;
+  /** Index of the weapon mount this system is, if any. */
+  mount?: number;
+}
+
+interface Installation {
+  name: string;
+  hp: number;
+  max: number;
 }
 
 interface Unit {
   key: string;
   side: 0 | 1;
   ownerId: PlayerId;
+  player: Player;
   fleetId: string | null;
+  colonyId: string | null;
   designId: string;
   name: string;
+  kind: UnitKind;
+  hullId?: string;
+  sizeClass: number;
   x: number;
   y: number;
-  hits: number;
-  maxHits: number;
-  shield: number;
-  attack: number;
-  defense: number;
+  heading: number;
+  armor: number;
+  maxArmor: number;
+  structure: number;
+  maxStructure: number;
+  /** Damage taken off every hit, and each facing's pool. */
+  shieldClass: number;
+  shieldMax: number;
+  shields: number[];
+  hardShields: boolean;
+  /** Planets block a flat amount per hit and hold their weapons in installations. */
+  planetShield: number;
+  installations: Installation[];
+  drive: System | null;
+  computer: System | null;
+  shieldGen: System | null;
+  specials: System[];
+  /** Beam attack without the computer, the computer's bonus, and beam defense besides speed. */
+  attackBase: number;
+  computerAttack: number;
+  defenseBonus: number;
+  /** Stations and monsters have a set beam defense. */
+  fixedDefense: number | null;
   speed: number;
-  mounts: Mount[];
   missileEvasion: number;
-  pointDefense: number;
-  repair: number;
-  damageBonus: number;
-  shieldPierce: number;
-  displacement: number;
-  strength: number;
-  isPlanet: boolean;
+  fx: MergedEffects;
+  mounts: Mount[];
+  marines: number;
+  immobile: boolean;
+  noArmorPierce: boolean;
   alive: boolean;
   retreated: boolean;
+  captured: { by: Unit } | null;
+  // Per-battle state.
+  firedThisRound: boolean;
+  firedLastRound: boolean;
+  phasingLeft: number;
+  hyperXRest: boolean;
+  fastRackRest: boolean;
+  tractor: number;
+  stasisUntil: number;
+  blackHole: { by: Unit; turns: number } | null;
+  web: { by: Unit; damage: number } | null;
+  moved: boolean;
+  strength: number;
+  craftBeam: WeaponDef;
+  craftBomb: WeaponDef | null;
+  missileHP: number;
+  scannerEccm: number;
+}
+
+interface Projectile {
+  owner: Unit;
+  mount: number;
+  weapon: WeaponDef;
+  mods: Set<WeaponModId>;
+  target: Unit;
+  x: number;
+  y: number;
+  speed: number;
+  /** Missiles, torpedoes or craft still flying, and the hit points of each. */
+  count: number;
+  hp: number;
+  frontDamage: number;
+  damage: number;
+  travelled: number;
+  craft: "fighters" | "bombers" | "heavyFighters" | "shuttles" | null;
+}
+
+interface Hit {
+  absorbed: number;
+  armor: number;
+  structure: number;
+  system?: string;
+}
+
+interface HitOptions {
+  shieldPiercing?: boolean;
+  ignoreShields?: boolean;
+  armorPiercing?: boolean;
+  bypassArmor?: boolean;
+  emissions?: boolean;
+  systemsOnly?: boolean;
+  killsMarines?: boolean;
+  extraStructural?: boolean;
+  /** Facing hit; enveloping weapons hit all four in turn. */
+  facing?: number;
+  fromShip?: boolean;
+  isBeam?: boolean;
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
+const TAU = Math.PI * 2;
+const STEP = Math.PI / 8;
+
+function normAngle(a: number): number {
+  let x = a % TAU;
+  if (x > Math.PI) x -= TAU;
+  if (x < -Math.PI) x += TAU;
+  return x;
+}
 
 function captainSkills(state: GameState, fleetId: string): LeaderSkills {
   for (const l of Object.values(state.leaders)) {
     if (l.kind === "captain" && l.assignedTo === fleetId) return l.skills;
   }
   return {};
+}
+
+function scannerEccm(player: Player): number {
+  return Math.max(0, ...SCANNER_ECCM.filter((s) => knows(player, s.tech)).map((s) => s.value));
+}
+
+function craftLoadout(player: Player): { beam: WeaponDef; bomb: WeaponDef | null } {
+  const beams = WEAPONS.filter((w) => w.kind === "beam" && w.mods.includes("pointDefense") && knows(player, w.requires));
+  const beam = beams.reduce((b, w) => ((w.damageMin + w.damageMax) > (b.damageMin + b.damageMax) ? w : b), beams[0] ?? WEAPONS.find((w) => w.id === "laserCannon")!);
+  const bomb = WEAPONS.filter((w) => w.kind === "bomb" && knows(player, w.requires)).at(-1) ?? null;
+  return { beam, bomb };
+}
+
+function makeMounts(player: Player, weapons: WeaponMount[], unlimited: boolean, allRound: boolean, installation?: number): Mount[] {
+  const out: Mount[] = [];
+  for (const m of weapons) {
+    const def = ALL_WEAPONS[m.weaponId];
+    if (!def || def.kind === "bomb" || def.kind === "spores") continue;
+    const space = def.requires === "never" ? 10 : weaponUnitCost(player, m).space;
+    out.push({
+      def,
+      mods: new Set(m.mods ?? []),
+      traits: new Set(def.traits ?? []),
+      arc: allRound || def.kind !== "beam" ? "full" : (m.arc ?? "forward"),
+      count: m.count,
+      hpEach: weaponHP(space),
+      wound: 0,
+      shots: unlimited ? Infinity : rackShots(def, m),
+      cooldown: 0,
+      out: false,
+      rearm: 0,
+      installation,
+      firedThisRound: false,
+    });
+  }
+  return out;
+}
+
+function baseUnit(player: Player, side: 0 | 1): Omit<Unit, "key" | "designId" | "name" | "kind" | "sizeClass" | "x" | "y" | "armor" | "maxArmor" | "structure" | "maxStructure" | "mounts" | "attackBase" | "computerAttack" | "defenseBonus" | "speed" | "strength"> {
+  const craft = craftLoadout(player);
+  return {
+    side, ownerId: player.id, player, fleetId: null, colonyId: null, heading: side === 0 ? 0 : Math.PI,
+    shieldClass: 0, shieldMax: 0, shields: [0, 0, 0, 0], hardShields: false, planetShield: 0, installations: [],
+    drive: null, computer: null, shieldGen: null, specials: [], fixedDefense: null, missileEvasion: 0, fx: noEffects(),
+    marines: 0, immobile: false, noArmorPierce: false, alive: true, retreated: false, captured: null,
+    firedThisRound: false, firedLastRound: true, phasingLeft: 0, hyperXRest: false, fastRackRest: false, tractor: 0,
+    stasisUntil: -1, blackHole: null, web: null, moved: false, craftBeam: craft.beam, craftBomb: craft.bomb,
+    missileHP: bestArmor(player).mult * MISSILE_HP_PER_ARMOR, scannerEccm: scannerEccm(player),
+  };
 }
 
 function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
@@ -91,311 +287,1248 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
       const design = findDesign(player, stack.designId);
       if (!design) continue;
       const s = designStats(player, design);
+      const monster = !!design.fixed;
       for (let i = 0; i < stack.count; i++) {
         const row = n++;
-        units.push({
+        const mounts = makeMounts(player, s.weapons, false, false);
+        const u: Unit = {
+          ...baseUnit(player, sideIdx),
           key: `${f.id}:${stack.designId}:${i}`,
-          side: sideIdx,
-          ownerId: side.ownerId,
           fleetId: f.id,
           designId: stack.designId,
           name: design.name,
-          x: sideIdx === 0 ? 2 + (row % 3) : FIELD_WIDTH - 3 - (row % 3),
-          y: 2 + ((row * 3) % (FIELD_HEIGHT - 4)),
-          hits: s.hits,
-          maxHits: s.hits,
-          shield: s.shield,
-          attack: s.attack + (cap.attack ?? 0),
-          defense: s.defense + (cap.defense ?? 0),
+          kind: monster ? "monster" : "ship",
+          hullId: monster ? undefined : design.hull,
+          sizeClass: s.sizeClass,
+          x: sideIdx === 0 ? 5 - (row % 3) * 1.5 : FIELD_WIDTH - 6 + (row % 3) * 1.5,
+          y: FIELD_HEIGHT / 2 + (((Math.floor(row / 3) % 9) + 1) >> 1) * 3 * ((Math.floor(row / 3) % 2) * 2 - 1),
+          armor: s.armor, maxArmor: s.armor, structure: s.structure, maxStructure: s.structure,
+          shieldClass: s.shield, shieldMax: s.shieldStrength, shields: Array(SHIELD_FACINGS).fill(s.shieldStrength),
+          hardShields: s.effects.hardShields > 0,
+          mounts,
+          attackBase: s.attack - (design.computer && !monster ? computerBonus(design.computer) : 0) + (cap.attack ?? 0),
+          computerAttack: design.computer && !monster ? computerBonus(design.computer) : 0,
+          defenseBonus: monster ? 0 : s.defense - s.combatSpeed * DEFENSE_PER_SPEED + (cap.defense ?? 0),
+          fixedDefense: monster ? s.defense : null,
           speed: s.combatSpeed + (cap.combatSpeed ?? 0),
-          mounts: s.weapons
-            .map((m) => ({ weapon: ALL_WEAPONS[m.weaponId]!, count: m.count, ammo: ALL_WEAPONS[m.weaponId]?.ammo ?? Infinity }))
-            .filter((m) => m.weapon && m.weapon.kind !== "bomb" && m.weapon.kind !== "spores"),
           missileEvasion: s.missileEvasion,
-          pointDefense: s.pointDefense,
-          repair: s.repair,
-          damageBonus: s.damageBonus,
-          shieldPierce: s.shieldPierce,
-          displacement: s.displacement,
+          fx: s.effects,
+          marines: s.marines,
+          noArmorPierce: design.specials.includes("heavyArmor") || design.armor === "xentroniumArmor",
+          phasingLeft: s.effects.phasing,
           strength: s.strength,
-          isPlanet: false,
-          alive: true,
-          retreated: false,
-        });
+        };
+        if (!monster) {
+          if (s.driveHP > 0) u.drive = { id: "drive", hp: s.driveHP, max: s.driveHP };
+          if (s.computerHP > 0) u.computer = { id: "computer", hp: s.computerHP, max: s.computerHP };
+          if (s.shieldGenHP > 0) u.shieldGen = { id: "shield", hp: s.shieldGenHP, max: s.shieldGenHP };
+          for (const id of design.specials) {
+            const def = SPECIALS_BY_ID[id];
+            if (!def || UNHITTABLE_SPECIALS.has(id)) continue;
+            const hp = Math.max(1, Math.floor(Math.max(0, def.space[hullIndex(design.hull)]!) / 10));
+            u.specials.push({ id, hp, max: hp });
+          }
+        }
+        units.push(u);
       }
     }
   }
   return units;
 }
 
-export interface PlanetDefenseStats {
-  hits: number;
-  shield: number;
-  beams: number;
-  missiles: number;
-  attack: number;
+function computerBonus(id: string): number {
+  return ({ electronicComputer: 25, optronicComputer: 50, positronicComputer: 75, cyberneticComputer: 100, moleculartronicComputer: 125 } as Record<string, number>)[id] ?? 0;
 }
 
-export function planetDefense(colony: Colony): PlanetDefenseStats {
-  const d: PlanetDefenseStats = { hits: 0, shield: 0, beams: 0, missiles: 0, attack: 0 };
+export interface ColonyDefense {
+  station: StationHull | null;
+  installations: ("groundBatteries" | "missileBase")[];
+  mines: boolean;
+  shield: number;
+}
+
+export function planetDefense(colony: Colony): ColonyDefense {
+  const d: ColonyDefense = { station: null, installations: [], mines: false, shield: 0 };
   for (const id of colony.buildings) {
     const def = BUILDINGS_BY_ID[id]?.effects.defense;
     if (!def) continue;
-    d.hits += def.hits ?? 0;
+    if (def.station) {
+      const rank = (s: StationHull | null) => (s ? STATION_HULLS.findIndex((h) => h.id === s) : -1);
+      if (rank(def.station) > rank(d.station)) d.station = def.station;
+    }
+    if (def.installation && !d.installations.includes(def.installation)) d.installations.push(def.installation);
+    if (def.mines) d.mines = true;
     d.shield = Math.max(d.shield, def.shield ?? 0);
-    d.beams += def.beams ?? 0;
-    d.missiles += def.missiles ?? 0;
-    d.attack += def.attack ?? 0;
   }
   return d;
 }
 
-function bestKnown(state: GameState, ownerId: PlayerId, kind: "beam" | "missile"): WeaponDef {
-  const player = state.players[ownerId]!;
-  const options = WEAPONS.filter((w) => w.kind === kind && knows(player, w.requires));
-  return options.at(-1) ?? WEAPONS.find((w) => w.kind === kind)!;
+/** Whether a colony has anything that shoots: a station, ground batteries, a missile base or mines. */
+export function hasArmedDefenses(colony: Colony | undefined): boolean {
+  if (!colony) return false;
+  const d = planetDefense(colony);
+  return d.station !== null || d.installations.length > 0 || d.mines;
 }
 
-function planetUnit(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit | null {
-  if (!side.colony) return null;
-  const d = planetDefense(side.colony);
-  if (d.hits <= 0 && d.beams <= 0 && d.missiles <= 0) return null;
-  const mounts: Mount[] = [];
-  if (d.beams > 0) mounts.push({ weapon: bestKnown(state, side.ownerId, "beam"), count: d.beams, ammo: Infinity });
-  if (d.missiles > 0) mounts.push({ weapon: bestKnown(state, side.ownerId, "missile"), count: d.missiles, ammo: Infinity });
-  const hits = Math.max(30, d.hits);
-  return {
-    key: `planet:${side.colony.id}`,
-    side: sideIdx,
-    ownerId: side.ownerId,
-    fleetId: null,
-    designId: "planet",
-    name: side.colony.name,
-    x: sideIdx === 0 ? 0.5 : FIELD_WIDTH - 0.5,
+function stationUnit(player: Player, colony: Colony, hull: HullDef<StationHull>, sideIdx: 0 | 1, planetX: number): Unit {
+  const armor = bestArmor(player);
+  const shield = bestShield(player);
+  const computer = bestComputer(player);
+  const race = getRace(player.raceId);
+  const bonus = empireBonus(player);
+  const weapons = stationWeapons(player, hull);
+  const shieldMax = shield ? shield.absorb * 5 * hull.sizeClass : 0;
+  const attackBase = race.picks.shipAttack * 20 + bonus.shipAttack;
+  const u: Unit = {
+    ...baseUnit(player, sideIdx),
+    key: `station:${colony.id}`,
+    colonyId: colony.id,
+    designId: hull.id,
+    name: `${colony.name} ${hull.name}`,
+    kind: "station",
+    hullId: hull.id,
+    sizeClass: hull.sizeClass,
+    x: planetX + (sideIdx === 0 ? 3 : -3),
     y: FIELD_HEIGHT / 2,
-    hits,
-    maxHits: hits,
-    shield: d.shield,
-    attack: 25 + d.attack,
-    defense: 0,
+    armor: hull.armor * armor.mult, maxArmor: hull.armor * armor.mult,
+    structure: hull.structure * armor.mult, maxStructure: hull.structure * armor.mult,
+    shieldClass: shield?.absorb ?? 0, shieldMax, shields: Array(SHIELD_FACINGS).fill(shieldMax),
+    mounts: makeMounts(player, weapons, true, true),
+    attackBase,
+    computerAttack: computer?.attack ?? 0,
+    defenseBonus: 0,
+    fixedDefense: (hull.fixedDefense ?? 0) + race.picks.shipDefense * 20 + bonus.shipDefense,
     speed: 0,
-    mounts,
-    missileEvasion: 0,
-    pointDefense: 0.2,
-    repair: 0,
-    damageBonus: 0,
-    shieldPierce: 0,
-    displacement: 0,
-    strength: Math.sqrt(hits * (d.beams * 6 + d.missiles * 8)) * (1 + d.shield / 5),
-    isPlanet: true,
-    alive: true,
-    retreated: false,
+    marines: hull.marines,
+    immobile: true,
+    noArmorPierce: armor.id === "xentroniumArmor",
+    strength: 0,
   };
+  if (computer) u.computer = { id: "computer", hp: hull.computerHP, max: hull.computerHP };
+  if (shield) u.shieldGen = { id: "shield", hp: hull.shieldGenHP, max: hull.shieldGenHP };
+  u.strength = strengthOf({
+    weapons, attack: attackBase + (computer?.attack ?? 0), defense: u.fixedDefense!, hits: u.maxArmor + u.maxStructure,
+    shield: u.shieldClass, shieldStrength: shieldMax, missileEvasion: 0,
+  });
+  return u;
 }
 
-const armed = (u: Unit) => u.alive && !u.retreated && u.mounts.length > 0;
+function planetUnit(player: Player, colony: Colony, d: ColonyDefense, sideIdx: 0 | 1): Unit {
+  const mult = bestArmor(player).mult;
+  const race = getRace(player.raceId);
+  const bonus = empireBonus(player);
+  const mounts: Mount[] = [];
+  const installations: Installation[] = [];
+  for (const inst of d.installations) {
+    const weapons = inst === "groundBatteries" ? groundBatteryWeapons(player) : missileBaseWeapons(player);
+    mounts.push(...makeMounts(player, weapons, true, true, installations.length));
+    const hp = PLANET_INSTALLATION_HP * mult;
+    installations.push({ name: BUILDINGS_BY_ID[inst]?.name ?? inst, hp, max: hp });
+  }
+  const computer = bestComputer(player);
+  const hp = installations.reduce((s, i) => s + i.max, 0);
+  const attackBase = race.picks.shipAttack * 20 + bonus.shipAttack;
+  const u: Unit = {
+    ...baseUnit(player, sideIdx),
+    key: `planet:${colony.id}`,
+    colonyId: colony.id,
+    designId: "planet",
+    name: colony.name,
+    kind: "planet",
+    sizeClass: 10,
+    x: sideIdx === 0 ? 1.5 : FIELD_WIDTH - 1.5,
+    y: FIELD_HEIGHT / 2,
+    armor: 0, maxArmor: 0, structure: hp, maxStructure: hp,
+    planetShield: d.shield,
+    installations,
+    mounts,
+    attackBase,
+    computerAttack: computer?.attack ?? 0,
+    defenseBonus: 0,
+    fixedDefense: IMMOBILE_DEFENSE,
+    speed: 0,
+    immobile: true,
+    strength: 0,
+  };
+  u.strength = strengthOf({
+    weapons: [...(d.installations.includes("groundBatteries") ? groundBatteryWeapons(player) : []), ...(d.installations.includes("missileBase") ? missileBaseWeapons(player) : [])],
+    attack: attackBase + (computer?.attack ?? 0), defense: 0, hits: Math.max(1, hp), shield: d.shield, shieldStrength: 0, missileEvasion: 0,
+  });
+  return u;
+}
+
+/** Rough combat value of a colony's station and ground defenses, for planning attacks. */
+export function colonyDefenseStrength(state: GameState, colony: Colony): number {
+  const player = state.players[colony.ownerId];
+  if (!player) return 0;
+  const d = planetDefense(colony);
+  let total = 0;
+  if (d.station) total += stationUnit(player, colony, HULLS_BY_ID[d.station], 1, FIELD_WIDTH).strength;
+  if (d.installations.length > 0) total += planetUnit(player, colony, d, 1).strength;
+  return total;
+}
+
 const active = (u: Unit) => u.alive && !u.retreated;
+const hasWeapons = (u: Unit) => u.mounts.some((m) => m.count > 0 && m.shots > 0 && m.def.effect !== "antiMissile");
+const armed = (u: Unit) => active(u) && hasWeapons(u);
 
 export function resolveCombat(state: GameState, rng: Rng, starId: string, a: CombatSide, b: CombatSide, reportId: string): CombatOutcome {
-  const sides = [a, b] as const;
-  const units: Unit[] = [...shipUnits(state, a, 0), ...shipUnits(state, b, 1)];
-  for (const [i, s] of sides.entries()) {
-    const p = planetUnit(state, s, i as 0 | 1);
-    if (p) units.push(p);
+  return new Battle(state, rng, a, b).run(starId, reportId);
+}
+
+class Battle {
+  units: Unit[] = [];
+  projectiles: Projectile[] = [];
+  log: CombatRoundEvent[] = [];
+  round = 0;
+  sideBonus: { attack: number; defense: number }[] = [{ attack: 0, defense: 0 }, { attack: 0, defense: 0 }];
+  /** Scout labs give the whole fleet an attack bonus against monsters. */
+  monsterBonus = [0, 0];
+  fleetEvasion = [0, 0];
+  readonly sides: readonly [CombatSide, CombatSide];
+
+  constructor(readonly state: GameState, readonly rng: Rng, a: CombatSide, b: CombatSide) {
+    this.sides = [a, b];
+    this.units = [...shipUnits(state, a, 0), ...shipUnits(state, b, 1)];
+    for (const [i, s] of this.sides.entries()) {
+      if (!s.colony) continue;
+      const player = state.players[s.ownerId]!;
+      const d = planetDefense(s.colony);
+      const planetX = i === 0 ? 1.5 : FIELD_WIDTH - 1.5;
+      if (d.installations.length > 0 || d.mines) {
+        const p = planetUnit(player, s.colony, d, i as 0 | 1);
+        // A planet with only mines is not a target and does not hold the field.
+        if (d.installations.length === 0) p.alive = false;
+        this.units.push(p);
+      }
+      if (d.station) {
+        this.units.push(stationUnit(player, s.colony, HULLS_BY_ID[d.station], i as 0 | 1, planetX));
+        const fb = STATION_FLEET_BONUS[d.station];
+        if (fb) this.sideBonus[i] = { ...fb };
+      }
+    }
+    for (const side of [0, 1] as const) {
+      const mine = this.units.filter((u) => u.side === side);
+      this.monsterBonus[side] = Math.max(0, ...mine.filter((u) => u.fx.scoutLab).map((u) => u.fx.monsterAttackPerSize * u.sizeClass));
+    }
   }
 
-  const snapshots: CombatShipSnapshot[] = units.map((u) => ({
-    key: u.key, ownerId: u.ownerId, designId: u.designId, name: u.name, maxHits: u.maxHits, x: u.x, y: u.y, isPlanet: u.isPlanet,
-  }));
-  const rounds: CombatRoundEvent[][] = [];
-  const retreated = new Set<PlayerId>();
+  run(starId: string, reportId: string): CombatOutcome {
+    const { units, rng, state, sides } = this;
+    const snapshots: CombatShipSnapshot[] = units.map((u) => ({
+      key: u.key, ownerId: u.ownerId, designId: u.designId, name: u.name, maxHits: u.maxArmor + u.maxStructure,
+      x: u.x, y: u.y, isPlanet: u.kind === "planet", kind: u.kind, hullId: u.hullId, sizeClass: u.sizeClass,
+      maxArmor: u.maxArmor, maxStructure: u.maxStructure, maxShield: u.shieldMax,
+    }));
+    const rounds: CombatRoundEvent[][] = [];
+    const retreated = new Set<PlayerId>();
+    const first = rng.int(0, 1);
+    let idle = 0;
 
-  for (let round = 0; round < MAX_ROUNDS; round++) {
-    const log: CombatRoundEvent[] = [];
-    rounds.push(log);
-    // Faster ships act first; random tiebreak.
-    const order = units.filter(active).map((u) => ({ u, r: rng.next() }));
-    order.sort((x, y) => y.u.speed - x.u.speed || x.r - y.r);
-
-    for (const { u } of order) {
-      if (!active(u)) continue;
-      const enemies = units.filter((e) => e.side !== u.side && active(e));
-      if (enemies.length === 0) break;
-
-      // Unarmed ships try to slip away.
-      if (!u.isPlanet && u.mounts.length === 0) {
-        if (rng.chance(0.5)) {
-          u.retreated = true;
-          log.push({ kind: "retreat", ship: u.key });
-        }
-        continue;
+    for (this.round = 0; this.round < MAX_ROUNDS; this.round++) {
+      this.log = [];
+      rounds.push(this.log);
+      if (this.round === 0) this.mines();
+      this.startRound();
+      let acted = false;
+      for (const k of [0, 1]) {
+        const side = ((first + this.round + k) % 2) as 0 | 1;
+        const order = units
+          .filter((u) => u.side === side && active(u))
+          .sort((x, y) => this.currentSpeed(y) - this.currentSpeed(x) || (x.key < y.key ? -1 : 1));
+        for (const u of order) if (this.act(u)) acted = true;
+        if (this.moveProjectiles(side)) acted = true;
+        // Time Warp Facilitators give their ships a second turn.
+        for (const u of order) if (u.fx.extraTurn && active(u) && this.act(u)) acted = true;
       }
+      this.retreats(retreated);
 
-      const target = chooseTarget(state, u, enemies, sides[u.side]!);
-      if (!target) continue;
-
-      if (u.speed > 0) {
-        const want = preferredRange(u);
-        const d = dist(u, target);
-        if (d > want) {
-          const step = Math.min(u.speed, d - want);
-          u.x = round1(u.x + ((target.x - u.x) / d) * step);
-          u.y = round1(u.y + ((target.y - u.y) / d) * step);
-          log.push({ kind: "move", ship: u.key, x: u.x, y: u.y });
-        }
-      }
-      fire(rng, u, target, log);
+      const armedA = units.some((x) => x.side === 0 && armed(x));
+      const armedB = units.some((x) => x.side === 1 && armed(x));
+      const anyA = units.some((x) => x.side === 0 && active(x));
+      const anyB = units.some((x) => x.side === 1 && active(x));
+      if (!anyA || !anyB || (!armedA && !armedB)) break;
+      idle = acted || this.projectiles.length > 0 ? 0 : idle + 1;
+      if (idle >= 2) break;
     }
 
+    const aliveArmed = (idx: 0 | 1) => units.some((x) => x.side === idx && armed(x));
+    const winnerIdx = aliveArmed(0) && !aliveArmed(1) ? 0 : aliveArmed(1) && !aliveArmed(0) ? 1 : null;
+
+    const captured: CapturedShip[] = [];
+    const survivors = new Map<string, ShipStack[]>();
+    for (const s of sides) {
+      for (const f of s.fleets) {
+        const counts = new Map<string, number>();
+        for (const u of units) if (u.fleetId === f.id && u.alive) counts.set(u.designId, (counts.get(u.designId) ?? 0) + 1);
+        survivors.set(f.id, [...counts].map(([designId, count]) => ({ designId, count })));
+      }
+    }
     for (const u of units) {
-      if (active(u) && u.repair > 0) u.hits = Math.min(u.maxHits, u.hits + Math.round(u.maxHits * u.repair));
+      if (!u.captured) continue;
+      const by = u.captured.by;
+      // The prize is only kept if one of the captor's ships is still here to crew it home.
+      const home = units.find((x) => x.side === by.side && x.alive && !x.retreated && x.fleetId);
+      if (home?.fleetId && u.fleetId) captured.push({ ownerId: by.ownerId, fleetId: home.fleetId, fromOwner: u.ownerId, designId: u.designId });
+    }
+    const losses: Record<string, number> = {};
+    for (const u of units) {
+      if (!u.alive && (u.kind === "ship" || u.kind === "monster")) losses[u.ownerId] = (losses[u.ownerId] ?? 0) + 1;
     }
 
-    // Retreat by doctrine once the first exchange shows how the fight is going.
-    if (round >= 1) {
-      for (const idx of [0, 1] as const) {
-        const side = sides[idx]!;
-        const owner = state.players[side.ownerId]!;
-        if (owner.kind !== "empire") continue;
-        const mine = units.filter((x) => x.side === idx && active(x));
-        if (mine.length === 0 || mine.some((x) => x.isPlanet)) continue;
-        const myStrength = sideStrength(mine);
-        const theirStrength = sideStrength(units.filter((x) => x.side !== idx && active(x)));
-        if (theirStrength > 0 && myStrength < owner.doctrine.retreatBelow * theirStrength) {
-          for (const x of mine) {
-            x.retreated = true;
-            log.push({ kind: "retreat", ship: x.key });
-          }
-          retreated.add(side.ownerId);
+    const fled = new Set<string>();
+    for (const s of sides) {
+      for (const f of s.fleets) {
+        const mine = units.filter((u) => u.fleetId === f.id && u.alive);
+        if (mine.length > 0 && mine.every((u) => u.retreated)) fled.add(f.id);
+      }
+    }
+
+    const planetSilenced = new Map<PlayerId, boolean>();
+    const stationsLost = new Set<string>();
+    for (const [i, s] of sides.entries()) {
+      if (!s.colony) continue;
+      const planet = units.find((u) => u.kind === "planet" && u.side === i && u.installations.length > 0);
+      const station = units.find((u) => u.kind === "station" && u.side === i);
+      if (station && !station.alive) stationsLost.add(s.colony.id);
+      const planetDown = !planet || !planet.alive || !hasWeapons(planet);
+      const stationDown = !station || !station.alive;
+      planetSilenced.set(s.ownerId, planetDown && stationDown);
+    }
+
+    return {
+      report: {
+        id: reportId,
+        turn: state.turn,
+        starId,
+        sides: [sides[0].ownerId, sides[1].ownerId],
+        ships: snapshots,
+        rounds,
+        winner: winnerIdx === null ? null : sides[winnerIdx]!.ownerId,
+        losses,
+      },
+      survivors,
+      retreated,
+      fled,
+      planetSilenced,
+      stationsLost,
+      captured,
+    };
+  }
+
+  // ------------------------------------------------------------ round upkeep
+
+  startRound(): void {
+    for (const u of this.units) {
+      if (!active(u)) continue;
+      u.firedLastRound = u.firedThisRound;
+      u.firedThisRound = false;
+      u.tractor = 0;
+      u.moved = false;
+      if (u.phasingLeft > 0) u.phasingLeft--;
+      for (const m of u.mounts) {
+        m.firedThisRound = false;
+        if (m.cooldown > 0) m.cooldown--;
+        if (!m.out && m.rearm > 0) m.rearm--;
+      }
+      // Shields recover a share of their strength every turn.
+      if (this.shieldWorks(u)) {
+        const regen = u.shieldMax * (SHIELD_REGEN + u.fx.shieldRegen);
+        for (let f = 0; f < SHIELD_FACINGS; f++) u.shields[f] = Math.min(u.shieldMax, u.shields[f]! + regen);
+      }
+      if (u.fx.repair > 0) {
+        const total = u.maxArmor + u.maxStructure;
+        let heal = Math.round(total * u.fx.repair);
+        const before = u.armor + u.structure;
+        const s = Math.min(heal, u.maxStructure - u.structure);
+        u.structure += s;
+        heal -= s;
+        u.armor = Math.min(u.maxArmor, u.armor + heal);
+        for (const sys of this.systems(u)) if (sys.hp > 0) sys.hp = Math.min(sys.max, sys.hp + Math.max(1, Math.round(sys.max * u.fx.repairSystems)));
+        const healed = u.armor + u.structure - before;
+        if (healed > 0) this.log.push({ kind: "repair", ship: u.key, damage: -healed });
+      }
+      if (u.web) {
+        const web = u.web;
+        this.applyHit(web.by, u, web.damage, {}, "plasmaWeb");
+        web.damage -= PLASMA_WEB_DECAY;
+        if (web.damage <= 0) u.web = null;
+      }
+      if (u.blackHole) {
+        if (!active(u.blackHole.by)) u.blackHole = null;
+        else if (++u.blackHole.turns > BLACK_HOLE_TURNS) {
+          this.log.push({ kind: "fire", ship: u.blackHole.by.key, target: u.key, weapon: "blackHoleGenerator", hit: true, damage: u.armor + u.structure, armorDamage: u.armor, structureDamage: u.structure });
+          u.armor = 0;
+          u.structure = 0;
+          this.destroy(u);
         }
       }
     }
-
-    const armedA = units.some((x) => x.side === 0 && armed(x));
-    const armedB = units.some((x) => x.side === 1 && armed(x));
-    const anyA = units.some((x) => x.side === 0 && active(x));
-    const anyB = units.some((x) => x.side === 1 && active(x));
-    if (!anyA || !anyB || (!armedA && !armedB)) break;
-  }
-
-  const aliveArmed = (idx: 0 | 1) => units.some((x) => x.side === idx && armed(x));
-  const winnerIdx = aliveArmed(0) && !aliveArmed(1) ? 0 : aliveArmed(1) && !aliveArmed(0) ? 1 : null;
-
-  const survivors = new Map<string, ShipStack[]>();
-  for (const s of sides) {
-    for (const f of s.fleets) {
-      const counts = new Map<string, number>();
-      for (const u of units) if (u.fleetId === f.id && u.alive) counts.set(u.designId, (counts.get(u.designId) ?? 0) + 1);
-      survivors.set(f.id, [...counts].map(([designId, count]) => ({ designId, count })));
-    }
-  }
-  const losses: Record<string, number> = {};
-  for (const u of units) if (!u.alive && !u.isPlanet) losses[u.ownerId] = (losses[u.ownerId] ?? 0) + 1;
-
-  const fled = new Set<string>();
-  for (const s of sides) {
-    for (const f of s.fleets) {
-      const mine = units.filter((u) => u.fleetId === f.id && u.alive);
-      if (mine.length > 0 && mine.every((u) => u.retreated)) fled.add(f.id);
+    for (const side of [0, 1]) {
+      this.fleetEvasion[side] = Math.max(0, ...this.units.filter((u) => u.side === side && active(u)).map((u) => u.fx.fleetMissileEvasion));
     }
   }
 
-  const planetSilenced = new Map<PlayerId, boolean>();
-  for (const [i, s] of sides.entries()) {
-    if (!s.colony) continue;
-    const p = units.find((u) => u.isPlanet && u.side === i);
-    planetSilenced.set(s.ownerId, !p || !p.alive);
-  }
-
-  return {
-    report: {
-      id: reportId,
-      turn: state.turn,
-      starId,
-      sides: [a.ownerId, b.ownerId],
-      ships: snapshots,
-      rounds,
-      winner: winnerIdx === null ? null : sides[winnerIdx]!.ownerId,
-      losses,
-    },
-    survivors,
-    retreated,
-    fled,
-    planetSilenced,
-  };
-}
-
-function sideStrength(units: Unit[]): number {
-  return units.reduce((sum, u) => sum + (u.mounts.length ? u.strength * (u.hits / u.maxHits) : 0), 0);
-}
-
-function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function preferredRange(u: Unit): number {
-  const beams = u.mounts.filter((m) => m.weapon.kind === "beam");
-  if (beams.length > 0) return Math.max(1, Math.min(...beams.map((m) => m.weapon.range)) / 2);
-  return 8;
-}
-
-function chooseTarget(state: GameState, u: Unit, enemies: Unit[], side: CombatSide): Unit | undefined {
-  // Planets are only shot at by sides that came to attack them, and only once their ships are gone.
-  const ships = enemies.filter((e) => !e.isPlanet);
-  // Planets never duel each other; ships go after a planet only when they came to attack it.
-  const pool = ships.length > 0 || u.isPlanet ? ships : side.attacksPlanet ? enemies : [];
-  if (pool.length === 0) return undefined;
-  const owner = state.players[u.ownerId]!;
-  const focus = owner.kind === "empire" ? owner.doctrine.focus : "nearest";
-  const by = (f: (e: Unit) => number) => pool.reduce((best, e) => (f(e) < f(best) ? e : best), pool[0]!);
-  if (focus === "weakest") return by((e) => e.hits);
-  if (focus === "strongest") return by((e) => -e.strength);
-  return by((e) => dist(u, e));
-}
-
-function fire(rng: Rng, u: Unit, target: Unit, log: CombatRoundEvent[]): void {
-  const d = dist(u, target);
-  for (const m of u.mounts) {
-    if (!target.alive) return;
-    if (m.ammo <= 0 || d > m.weapon.range + 0.01) continue;
-    const isMissile = m.weapon.kind === "missile" || m.weapon.kind === "torpedo";
-    if (isMissile) m.ammo -= 1;
-    let total = 0;
-    let hits = 0;
-    for (let i = 0; i < m.count; i++) {
-      if (target.displacement > 0 && rng.chance(target.displacement)) continue;
-      if (isMissile) {
-        if (rng.chance(target.pointDefense)) continue;
-        const evasion = m.weapon.kind === "torpedo" ? target.missileEvasion / 2 : target.missileEvasion;
-        if (rng.chance(evasion)) continue;
-      } else {
-        const chance = Math.max(0.05, Math.min(0.95, 0.5 + (u.attack - target.defense) / 100));
-        if (!rng.chance(chance)) continue;
+  /** Mines of an Artemis System Net strike the attacking ships as the battle opens. */
+  mines(): void {
+    for (const [i, s] of this.sides.entries()) {
+      if (!s.colony || !planetDefense(s.colony).mines) continue;
+      const source = this.units.find((u) => u.kind === "planet" && u.side === i);
+      if (!source) continue;
+      for (const u of this.units) {
+        if (u.side === i || u.immobile || !active(u)) continue;
+        const size = Math.min(5, u.sizeClass);
+        if (!this.rng.chance(Math.min(1, ARTEMIS.chancePerSize * size))) continue;
+        this.applyHit(source, u, ARTEMIS.damagePerSize * size, {}, "artemisSystemNet");
       }
-      let dmg = rng.int(m.weapon.damageMin, m.weapon.damageMax) + (isMissile ? 0 : u.damageBonus);
-      if (!isMissile && d > m.weapon.range / 2) dmg = Math.floor(dmg * 0.75);
-      const shield = Math.max(0, target.shield * (1 - u.shieldPierce) - (m.weapon.pierce ?? 0));
-      dmg = Math.max(0, dmg - (isMissile ? Math.ceil(shield / 2) : shield));
-      if (dmg <= 0) continue;
-      hits++;
-      total += dmg;
-      target.hits -= dmg;
-      if (target.hits <= 0) break;
     }
-    log.push({ kind: "fire", ship: u.key, target: target.key, weapon: m.weapon.id, damage: total, hit: hits > 0 });
-    if (target.hits <= 0 && target.alive) {
-      target.alive = false;
-      target.hits = 0;
-      log.push({ kind: "destroyed", ship: target.key });
+  }
+
+  // ------------------------------------------------------------ derived values
+
+  shieldWorks(u: Unit): boolean {
+    return u.shieldClass > 0 && (u.shieldGen === null || u.shieldGen.hp > 0);
+  }
+
+  systems(u: Unit): System[] {
+    const out: System[] = [];
+    if (u.drive && u.drive.hp > 0) out.push(u.drive);
+    if (u.computer && u.computer.hp > 0) out.push(u.computer);
+    if (u.shieldGen && u.shieldGen.hp > 0) out.push(u.shieldGen);
+    for (const s of u.specials) if (s.hp > 0) out.push(s);
+    u.mounts.forEach((m, i) => {
+      if (m.count > 0 && u.kind === "ship") out.push({ id: m.def.id, hp: m.count * m.hpEach - m.wound, max: m.count * m.hpEach, mount: i });
+    });
+    return out;
+  }
+
+  currentSpeed(u: Unit): number {
+    if (u.immobile || this.round <= u.stasisUntil || u.blackHole) return 0;
+    let speed = u.speed;
+    if (u.drive) {
+      if (u.drive.hp <= 0) return 0;
+      if (u.drive.hp < u.drive.max / 2) speed *= u.drive.hp / (u.drive.max / 2);
     }
+    if (u.tractor > 0) speed *= Math.max(0, 1 - u.tractor / u.sizeClass);
+    return Math.max(0, Math.floor(speed));
+  }
+
+  attackOf(u: Unit, target: Unit): number {
+    let ba = u.attackBase + this.sideBonus[u.side]!.attack;
+    if (u.computer === null || u.computer.hp > 0) ba += u.computerAttack;
+    if (target.kind === "monster") ba += this.monsterBonus[u.side]!;
+    return ba;
+  }
+
+  defenseOf(u: Unit): number {
+    if (u.fixedDefense !== null) return u.fixedDefense + (u.immobile ? 0 : this.sideBonus[u.side]!.defense);
+    const speed = this.currentSpeed(u);
+    let bd = speed > 0 ? speed * DEFENSE_PER_SPEED : IMMOBILE_DEFENSE;
+    bd += u.defenseBonus + this.sideBonus[u.side]!.defense;
+    if (this.cloaked(u)) bd += u.fx.cloakDefense;
+    return bd;
+  }
+
+  cloaked(u: Unit): boolean {
+    return u.fx.cloakDefense > 0 && !u.firedLastRound && !u.firedThisRound && this.specialWorks(u, u.fx.phasing > 0 ? "phasingCloak" : "cloakingDevice");
+  }
+
+  /** Phased-out ships cannot be seen or shot. */
+  untouchable(u: Unit): boolean {
+    return u.phasingLeft > 0 && !u.firedThisRound && !u.firedLastRound || this.round <= u.stasisUntil;
+  }
+
+  specialWorks(u: Unit, id: string): boolean {
+    const s = u.specials.find((x) => x.id === id);
+    return !s || s.hp > 0;
+  }
+
+  missileEvasionOf(u: Unit): number {
+    return Math.max(u.missileEvasion, this.fleetEvasion[u.side]!);
+  }
+
+  // ------------------------------------------------------------ geometry
+
+  dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  radius(u: Unit): number {
+    return u.kind === "planet" ? 1.5 : 0.4 + 0.1 * Math.min(u.sizeClass, 10);
+  }
+
+  /** Squares between the edges of two units. */
+  edge(a: Unit, b: Unit): number {
+    return Math.max(0, this.dist(a, b) - this.radius(a) - this.radius(b));
+  }
+
+  band(a: Unit, b: Unit): number {
+    return Math.floor((this.edge(a, b) + 2) / 3);
+  }
+
+  /** Which shield facing of the target faces a point: 0 front, 1 right, 2 back, 3 left. */
+  facingToward(target: Unit, from: { x: number; y: number }): number {
+    const rel = normAngle(Math.atan2(from.y - target.y, from.x - target.x) - target.heading);
+    const q = Math.round(rel / (Math.PI / 2));
+    return ((q % 4) + 4) % 4;
+  }
+
+  inArc(u: Unit, m: Mount, target: Unit): boolean {
+    const arc = ARCS[m.arc];
+    if (arc.half >= 180) return true;
+    const rel = normAngle(Math.atan2(target.y - u.y, target.x - u.x) - u.heading - (arc.back ? Math.PI : 0));
+    return Math.abs(rel) <= (arc.half * Math.PI) / 180 + 1e-6;
+  }
+
+  // ------------------------------------------------------------ targeting
+
+  /** Enemies a unit may shoot at. Planets are only attacked by sides that came for them, once their defenders are gone. */
+  targets(u: Unit): Unit[] {
+    const enemies = this.units.filter((e) => e.side !== u.side && active(e) && !this.untouchable(e));
+    const ships = enemies.filter((e) => e.kind !== "planet");
+    if (u.immobile) return ships.filter((e) => e.kind !== "station");
+    if (ships.length > 0) return ships;
+    return this.sides[u.side]!.attacksPlanet ? enemies : [];
+  }
+
+  chooseTarget(u: Unit): Unit | undefined {
+    const pool = this.targets(u);
+    if (pool.length === 0) return undefined;
+    const owner = u.player;
+    const focus = owner.kind === "empire" ? owner.doctrine.focus : "nearest";
+    const by = (f: (e: Unit) => number) => pool.reduce((best, e) => (f(e) < f(best) ? e : best), pool[0]!);
+    if (focus === "weakest") return by((e) => e.armor + e.structure);
+    if (focus === "strongest") return by((e) => -e.strength);
+    return by((e) => this.dist(u, e));
+  }
+
+  // ------------------------------------------------------------ a unit's turn
+
+  /** Turns, moves and fires. Returns whether the unit did anything. */
+  act(u: Unit): boolean {
+    if (!active(u) || this.round <= u.stasisUntil) return false;
+
+    // Unarmed ships try to slip away.
+    if (u.kind === "ship" && !hasWeapons(u)) {
+      if (!this.retreatBlocked(u) && this.rng.chance(0.5)) {
+        u.retreated = true;
+        this.log.push({ kind: "retreat", ship: u.key });
+        return true;
+      }
+      return false;
+    }
+    const target = this.chooseTarget(u);
+    if (!target) {
+      if (u.kind === "station") this.stationTurn(u);
+      return false;
+    }
+    let did = false;
+    if (u.kind === "station") this.stationTurn(u);
+    else if (!u.immobile && !u.moved) did = this.move(u, target);
+    u.moved = true;
+    if (this.fire(u, target)) did = true;
+    if (this.transport(u, target)) did = true;
+    return did;
+  }
+
+  /** Stations swing their best shield toward the nearest enemy. */
+  stationTurn(u: Unit): void {
+    const enemy = this.units.filter((e) => e.side !== u.side && active(e) && !e.immobile).sort((x, y) => this.dist(u, x) - this.dist(u, y))[0];
+    if (!enemy) return;
+    const step = (STATION_TURN_DEG * Math.PI) / 180;
+    let best = u.heading;
+    let bestShield = -1;
+    for (const h of [u.heading - step, u.heading, u.heading + step]) {
+      const save = u.heading;
+      u.heading = h;
+      const f = this.facingToward(u, enemy);
+      u.heading = save;
+      if (u.shields[f]! > bestShield + 1e-9) {
+        bestShield = u.shields[f]!;
+        best = h;
+      }
+    }
+    u.heading = normAngle(best);
+  }
+
+  /** Distance a unit wants to keep from its target: beam ships close in, missile boats stand off. */
+  preferredRange(u: Unit): number {
+    const close = u.mounts.some((m) => m.count > 0 && (m.def.kind === "beam" || m.def.kind === "special" || m.def.kind === "bay") && m.def.effect !== "antiMissile");
+    return close ? 1 : 18;
+  }
+
+  move(u: Unit, target: Unit): boolean {
+    let mp = this.currentSpeed(u);
+    if (mp <= 0) return false;
+    const want = this.preferredRange(u);
+    const gap = this.edge(u, target) - want;
+    const goal = Math.atan2(target.y - u.y, target.x - u.x);
+    // Turning costs movement: two points per 22.5 degrees, less with inertial systems.
+    const turnCost = TURN_COST_PER_STEP * u.fx.turnCost;
+    const steps = Math.ceil(Math.abs(normAngle(goal - u.heading)) / STEP - 1e-9);
+    if (turnCost === 0 || mp >= steps * turnCost) {
+      u.heading = goal;
+      mp -= steps * turnCost;
+    } else {
+      const can = Math.floor(mp / turnCost);
+      u.heading = normAngle(u.heading + Math.sign(normAngle(goal - u.heading)) * can * STEP);
+      mp -= can * turnCost;
+    }
+    if (gap <= 0.05) return false;
+    let step = Math.min(mp, gap);
+    // Teleporters jump instead of flying when the gap is wide.
+    if (u.fx.teleport > 0 && gap > mp && this.specialWorks(u, u.fx.teleport === 20 ? "subspaceTeleporter" : "phaseShifter")) {
+      step = Math.min(gap, u.fx.teleport);
+    }
+    if (step <= 0) return false;
+    u.x = round1(Math.min(FIELD_WIDTH - 0.5, Math.max(0.5, u.x + Math.cos(u.heading) * step)));
+    u.y = round1(Math.min(FIELD_HEIGHT - 0.5, Math.max(0.5, u.y + Math.sin(u.heading) * step)));
+    this.log.push({ kind: "move", ship: u.key, x: u.x, y: u.y });
+    return true;
+  }
+
+  /** Beams, launchers and special weapons fire at the target, then at whatever else is in reach. */
+  fire(u: Unit, primary: Unit): boolean {
+    let did = false;
+    const incoming = this.projectiles.some((p) => p.target === u && p.owner.side !== u.side);
+    const hyper = u.fx.hyperX && this.specialWorks(u, "hyperXCapacitors");
+    let beamFired = false;
+    u.mounts.forEach((m, mi) => {
+      if (m.count <= 0 || m.shots <= 0 || m.cooldown > 0 || m.firedThisRound) return;
+      const kind = m.def.kind;
+      if (kind === "beam") {
+        // Point-defense mounts hold their fire for incoming missiles and fighters.
+        if (m.mods.has("pointDefense") && incoming) return;
+        if (u.hyperXRest && hyper) return;
+        const volleys = hyper ? 2 : 1;
+        for (let v = 0; v < volleys; v++) if (this.fireBeams(u, m, primary)) did = beamFired = true;
+        m.firedThisRound = true;
+      } else if (kind === "missile" || kind === "torpedo") {
+        if (!active(primary)) return;
+        if (u.fastRackRest && kind === "missile") return;
+        const volleys = kind === "missile" && u.fx.fastRacks ? 2 : 1;
+        for (let v = 0; v < volleys && m.shots > 0; v++) {
+          if (this.launch(u, mi, m, primary)) did = true;
+        }
+        if (kind === "missile" && u.fx.fastRacks) u.fastRackRest = !u.fastRackRest;
+        m.firedThisRound = true;
+      } else if (kind === "bay") {
+        if (m.out || m.rearm > 0 || !active(primary)) return;
+        if (this.launchCraft(u, mi, m, primary)) did = true;
+      } else if (kind === "special") {
+        if (this.fireSpecial(u, m, primary)) did = true;
+      }
+    });
+    if (hyper) u.hyperXRest = beamFired ? !u.hyperXRest : false;
+    if (did) {
+      u.firedThisRound = true;
+      u.phasingLeft = Math.min(u.phasingLeft, 0);
+    }
+    return did;
+  }
+
+  /** Whether a beam mount can reach a target, and the bands it fires at. */
+  beamBands(u: Unit, m: Mount, t: Unit): { hit: number; damage: number } | null {
+    let band = this.band(u, t);
+    if (m.mods.has("heavyMount")) band = Math.floor(band / 2);
+    if (band > MAX_BAND) return null;
+    if (m.mods.has("pointDefense")) band = Math.min(MAX_BAND, band * 2);
+    const hit = u.fx.rangeDivisor > 1 && this.specialWorks(u, "rangemasterUnit") ? Math.floor(band / u.fx.rangeDivisor) : band;
+    return { hit, damage: band };
+  }
+
+  fireBeams(u: Unit, m: Mount, primary: Unit): boolean {
+    const shots = m.count * (m.mods.has("autoFire") ? MOD_EFFECTS.autoFireShots : 1);
+    const tally = new Map<Unit, CombatRoundEvent>();
+    let fired = false;
+    for (let s = 0; s < shots; s++) {
+      let target: Unit | undefined = primary;
+      if (!active(target) || this.untouchable(target) || !this.inArc(u, m, target) || !this.beamBands(u, m, target)) {
+        target = this.targets(u)
+          .filter((e) => this.inArc(u, m, e) && this.beamBands(u, m, e))
+          .sort((x, y) => this.dist(u, x) - this.dist(u, y))[0];
+      }
+      if (!target) break;
+      fired = true;
+      const ev = tally.get(target) ?? { kind: "fire", ship: u.key, target: target.key, weapon: m.def.id, damage: 0, hit: false, absorbed: 0, armorDamage: 0, structureDamage: 0 };
+      tally.set(target, ev);
+      this.beamShot(u, m, target, ev);
+    }
+    for (const ev of tally.values()) this.log.push(ev);
+    return fired;
+  }
+
+  /** One beam shot: roll against defense, scale damage by the margin, then apply it. */
+  beamShot(u: Unit, m: Mount, t: Unit, ev: CombatRoundEvent): void {
+    const bands = this.beamBands(u, m, t)!;
+    const traits = m.traits;
+    let penalty = RANGE_BANDS.toHit[bands.hit]!;
+    if (traits.has("doubleRangePenalty")) penalty *= 2;
+    const threshold = Math.min(BEAM_HIT.maxThreshold, BEAM_HIT.threshold - penalty);
+    let diff = this.attackOf(u, t) - this.defenseOf(t);
+    if (traits.has("continuous") || m.mods.has("continuous")) diff += MOD_EFFECTS.continuousToHit;
+    if (m.mods.has("pointDefense")) diff += MOD_EFFECTS.pointDefenseToHit;
+    if (m.mods.has("autoFire")) diff += MOD_EFFECTS.autoFireToHit;
+    let r = this.rng.int(0, 99);
+    if (traits.has("alwaysHits")) r = 100;
+    else if (r <= BEAM_HIT.unmodifiedAbove) r = Math.min(100, r + diff);
+    if (t.fx.displacement > 0 && this.specialWorks(t, "displacementDevice") && this.rng.int(0, 99) < t.fx.displacement * 100) return;
+    if (r < threshold) return;
+    let pct = 100;
+    if (!traits.has("noRangeDissipation") && !m.mods.has("noRangeDissipation")) pct += RANGE_BANDS.damagePct[bands.damage]!;
+    if (m.mods.has("heavyMount")) pct += MOD_EFFECTS.heavyMountDamagePct;
+    if (m.mods.has("pointDefense")) pct += MOD_EFFECTS.pointDefenseDamagePct;
+    if (u.fx.beamDamagePct && this.specialWorks(u, "highEnergyFocus")) pct += u.fx.beamDamagePct;
+    const lo = Math.max(1, Math.round((m.def.damageMin * pct) / 100));
+    const hi = Math.max(1, Math.round((m.def.damageMax * pct) / 100));
+    let dmg = Math.min(hi, lo + Math.floor(((hi - lo + 1) * (r - threshold)) / Math.max(1, 100 - threshold)));
+    // Reflection fields bounce some beams back at the shooter.
+    if (t.fx.reflection > 0 && this.specialWorks(t, "reflectionField") && this.rng.chance(t.fx.reflection / (dmg + t.fx.reflection))) {
+      this.applyHit(t, u, dmg, { isBeam: true }, m.def.id);
+      return;
+    }
+    if (t.kind === "planet" && u.kind !== "planet") dmg = Math.max(1, Math.floor(dmg * PLANET_BEAM_DAMAGE));
+    const opts: HitOptions = {
+      shieldPiercing: traits.has("shieldPiercing") || m.mods.has("shieldPiercing"),
+      armorPiercing: m.mods.has("armorPiercing"),
+      systemsOnly: traits.has("systemsOnly"),
+      killsMarines: traits.has("killsMarines"),
+      extraStructural: traits.has("extraStructural"),
+      fromShip: true,
+      isBeam: true,
+    };
+    const env = traits.has("enveloping") || m.mods.has("enveloping");
+    const facings = env ? [0, 1, 2, 3] : [this.facingToward(t, u)];
+    for (const f of facings) {
+      if (!t.alive) break;
+      const h = this.hit(u, t, dmg, { ...opts, facing: f });
+      this.tally(ev, h);
+    }
+  }
+
+  tally(ev: CombatRoundEvent, h: Hit): void {
+    ev.hit = true;
+    ev.absorbed = (ev.absorbed ?? 0) + h.absorbed;
+    ev.armorDamage = (ev.armorDamage ?? 0) + h.armor;
+    ev.structureDamage = (ev.structureDamage ?? 0) + h.structure;
+    ev.damage = (ev.damage ?? 0) + h.armor + h.structure;
+    if (h.system) ev.systemHit = h.system;
+  }
+
+  // ------------------------------------------------------------ missiles, torpedoes and craft
+
+  launch(u: Unit, mi: number, m: Mount, target: Unit): boolean {
+    const w = m.def;
+    let damage = w.damageMax;
+    if (m.mods.has("overloaded")) damage = Math.round(damage * (1 + MOD_EFFECTS.overloadedDamagePct / 100));
+    m.shots -= 1;
+    if (w.reload) m.cooldown = w.reload;
+    const speed = (w.speed ?? 10) + (m.mods.has("fast") ? MOD_EFFECTS.fastSpeed : 0);
+    const p: Projectile = {
+      owner: u, mount: mi, weapon: w, mods: m.mods, target, x: u.x, y: u.y, speed, count: m.count,
+      hp: u.missileHP * (m.mods.has("armored") ? MOD_EFFECTS.armoredHpMult : 1), frontDamage: 0, damage, travelled: 0, craft: null,
+    };
+    this.log.push({ kind: "launch", ship: u.key, target: target.key, weapon: w.id });
+    if (!Number.isFinite(speed)) {
+      // Proton torpedoes strike the moment they are fired, within their reach.
+      if (this.edge(u, target) > (w.range ?? 24)) return true;
+      this.impact(p);
+      return true;
+    }
+    this.projectiles.push(p);
+    return true;
+  }
+
+  launchCraft(u: Unit, mi: number, m: Mount, target: Unit): boolean {
+    const effect = m.def.effect;
+    const craft = effect === "bombers" ? "bombers" : effect === "heavyFighters" ? "heavyFighters" : effect === "shuttles" ? "shuttles" : "fighters";
+    if (craft === "shuttles" && (target.kind !== "ship" || u.marines <= 0)) return false;
+    if (craft === "bombers" && !u.craftBomb) return false;
+    m.out = true;
+    const armorMult = bestArmor(u.player).mult;
+    this.projectiles.push({
+      owner: u, mount: mi, weapon: m.def, mods: new Set(), target, x: u.x, y: u.y, speed: m.def.speed ?? 10,
+      count: SQUADRON_SIZE * m.count, hp: CRAFT[craft].hp * armorMult, frontDamage: 0, damage: 0, travelled: 0, craft,
+    });
+    this.log.push({ kind: "launch", ship: u.key, target: target.key, weapon: m.def.id });
+    return true;
+  }
+
+  /** Projectiles of a side fly toward their targets; those that arrive strike. */
+  moveProjectiles(side: 0 | 1): boolean {
+    let any = false;
+    const flying = this.projectiles.filter((p) => p.owner.side === side);
+    for (const p of flying) {
+      if (!active(p.target) || this.untouchable(p.target)) {
+        // Guidance systems pick a new target when the first one is gone.
+        const next = knows(p.owner.player, "dauntlessGuidance") || p.craft
+          ? this.targets(p.owner).sort((x, y) => this.dist(p, x) - this.dist(p, y))[0]
+          : undefined;
+        if (!next) {
+          this.removeProjectile(p);
+          continue;
+        }
+        p.target = next;
+      }
+      const d = Math.max(0, this.dist(p, p.target) - this.radius(p.target));
+      any = true;
+      if (d <= p.speed) {
+        p.travelled += d;
+        p.x = p.target.x;
+        p.y = p.target.y;
+        this.removeProjectile(p);
+        this.impact(p);
+      } else {
+        const a = Math.atan2(p.target.y - p.y, p.target.x - p.x);
+        p.x += Math.cos(a) * p.speed;
+        p.y += Math.sin(a) * p.speed;
+        p.travelled += p.speed;
+      }
+    }
+    return any;
+  }
+
+  removeProjectile(p: Projectile): void {
+    const i = this.projectiles.indexOf(p);
+    if (i >= 0) this.projectiles.splice(i, 1);
+    if (p.craft) {
+      const m = p.owner.mounts[p.mount];
+      if (m) {
+        m.out = false;
+        m.rearm = CRAFT.rearm;
+      }
+    }
+  }
+
+  /** Point defense, anti-missile rockets and lightning fields thin out incoming missiles and craft. */
+  interceptions(p: Projectile): void {
+    const t = p.target;
+    const torpedo = p.weapon.kind === "torpedo";
+    if (!torpedo) {
+      const defense = (p.craft ? (p.weapon.speed ?? 10) : p.speed) * MISSILE_DEFENSE_PER_SPEED;
+      for (const m of t.mounts) {
+        if (p.count <= 0) break;
+        if (m.count <= 0) continue;
+        if (m.def.kind === "beam" && m.mods.has("pointDefense") && !m.firedThisRound) {
+          m.firedThisRound = true;
+          const ev: CombatRoundEvent = { kind: "fire", ship: t.key, target: p.owner.key, weapon: m.def.id, hit: false, damage: 0 };
+          for (let i = 0; i < m.count && p.count > 0; i++) {
+            const r = this.rng.int(0, 99);
+            const roll = r <= BEAM_HIT.unmodifiedAbove ? r + this.attackOf(t, p.owner) + MOD_EFFECTS.pointDefenseToHit - defense : r;
+            if (roll < BEAM_HIT.threshold) continue;
+            const pct = 100 + MOD_EFFECTS.pointDefenseDamagePct;
+            const dmg = Math.max(1, Math.round((this.rng.int(m.def.damageMin, m.def.damageMax) * pct) / 100));
+            p.frontDamage += dmg;
+            if (p.frontDamage >= p.hp) {
+              p.count--;
+              p.frontDamage = 0;
+              ev.hit = true;
+            }
+          }
+          this.log.push(ev);
+        }
+        if (m.def.effect === "antiMissile" && !p.craft && m.shots > 0) {
+          const chance = Math.max(0, ANTI_MISSILE.base - ANTI_MISSILE.perSquare * this.radius(t));
+          for (let i = 0; i < m.count && p.count > 0 && m.shots > 0; i++) {
+            m.shots--;
+            if (this.rng.chance(chance)) p.count--;
+          }
+        }
+      }
+    }
+    if (t.fx.lightning > 0 && this.specialWorks(t, "lightningField")) {
+      let kept = 0;
+      for (let i = 0; i < p.count; i++) if (!this.rng.chance(t.fx.lightning)) kept++;
+      p.count = kept;
+    }
+  }
+
+  impact(p: Projectile): void {
+    const t = p.target;
+    const u = p.owner;
+    if (!active(t)) return;
+    this.interceptions(p);
+    if (p.count <= 0) {
+      this.log.push({ kind: "fire", ship: u.key, target: t.key, weapon: p.weapon.id, hit: false, damage: 0 });
+      return;
+    }
+    if (p.craft) {
+      this.craftAttack(p);
+      return;
+    }
+    // Jammers send some missiles astray; the attacker's scanners and ECCM cut through.
+    let jam = Math.max(0, this.missileEvasionOf(t) - u.scannerEccm);
+    if (p.mods.has("eccm")) jam /= 2;
+    if (this.cloaked(t)) jam = 100 - (100 - jam) / 2;
+    const ev: CombatRoundEvent = { kind: "fire", ship: u.key, target: t.key, weapon: p.weapon.id, hit: false, damage: 0, absorbed: 0, armorDamage: 0, structureDamage: 0 };
+    let damage = p.damage;
+    if (p.weapon.traits?.includes("dissipates") && !p.mods.has("noRangeDissipation")) damage = Math.max(0, damage - TORPEDO_DISSIPATION * Math.round(p.travelled));
+    const warheads = p.mods.has("mirv") ? MOD_EFFECTS.mirvWarheads : 1;
+    const env = p.mods.has("enveloping");
+    const always = p.weapon.traits?.includes("alwaysHits");
+    for (let i = 0; i < p.count && t.alive; i++) {
+      if (!always && this.rng.int(0, 99) < jam) continue;
+      if (!always && t.fx.displacement > 0 && this.specialWorks(t, "displacementDevice") && this.rng.chance(t.fx.displacement)) continue;
+      for (let w = 0; w < warheads && t.alive; w++) {
+        const facings = env ? [0, 1, 2, 3] : [this.facingToward(t, u)];
+        for (const f of facings) {
+          if (!t.alive || damage <= 0) break;
+          this.tally(ev, this.hit(u, t, damage, { facing: f, emissions: p.mods.has("emissionsGuidance") }));
+        }
+      }
+    }
+    this.log.push(ev);
+  }
+
+  /** A squadron reaches its target: fighters strafe, bombers bomb, shuttles board. */
+  craftAttack(p: Projectile): void {
+    const t = p.target;
+    const u = p.owner;
+    if (p.craft === "shuttles") {
+      this.board(u, t, Math.min(u.marines, p.count), "assaultShuttles");
+      return;
+    }
+    const ev: CombatRoundEvent = { kind: "fire", ship: u.key, target: t.key, weapon: p.weapon.id, hit: false, damage: 0, absorbed: 0, armorDamage: 0, structureDamage: 0 };
+    // Craft come in on the weakest shield.
+    const facing = t.shields.indexOf(Math.min(...t.shields));
+    const beamShots = p.craft === "fighters" ? CRAFT.fighters.shots : p.craft === "heavyFighters" ? CRAFT.heavyFighters.shots : 0;
+    const bombs = p.craft === "bombers" ? CRAFT.bombers.shots : p.craft === "heavyFighters" ? CRAFT.heavyFighters.shots : 0;
+    for (let c = 0; c < p.count && t.alive; c++) {
+      for (let s = 0; s < beamShots && t.alive; s++) {
+        const r = this.rng.int(0, 99);
+        const roll = r <= BEAM_HIT.unmodifiedAbove ? r + this.attackOf(u, t) + MOD_EFFECTS.pointDefenseToHit - this.defenseOf(t) : r;
+        if (roll < BEAM_HIT.threshold) continue;
+        const dmg = Math.max(1, Math.round(this.rng.int(u.craftBeam.damageMin, u.craftBeam.damageMax) * (100 + MOD_EFFECTS.pointDefenseDamagePct) / 100));
+        this.tally(ev, this.hit(u, t, dmg, { facing, shieldPiercing: u.craftBeam.traits?.includes("shieldPiercing") }));
+      }
+      for (let s = 0; s < bombs && t.alive && u.craftBomb; s++) {
+        this.tally(ev, this.hit(u, t, this.rng.int(u.craftBomb.damageMin, u.craftBomb.damageMax), { facing }));
+      }
+    }
+    this.log.push(ev);
+  }
+
+  // ------------------------------------------------------------ special weapons
+
+  fireSpecial(u: Unit, m: Mount, primary: Unit): boolean {
+    const w = m.def;
+    const reach = w.range ?? Infinity;
+    const inReach = (t: Unit) => active(t) && !this.untouchable(t) && this.edge(u, t) <= reach;
+    const ev = (t: Unit): CombatRoundEvent => ({ kind: "fire", ship: u.key, target: t.key, weapon: w.id, hit: false, damage: 0, absorbed: 0, armorDamage: 0, structureDamage: 0 });
+    const roll = (t: Unit) => this.rng.int(w.damageMin, w.damageMax) * (w.perSize ? Math.min(10, t.sizeClass) : 1);
+    switch (w.effect) {
+      case "antiMissile":
+        return false;
+      case "tractor": {
+        if (!inReach(primary) || primary.immobile) return false;
+        primary.tractor += m.count;
+        this.log.push({ ...ev(primary), hit: true });
+        return true;
+      }
+      case "gyro": {
+        if (!inReach(primary)) return false;
+        const e = ev(primary);
+        for (let i = 0; i < m.count && primary.alive; i++) this.tally(e, this.hit(u, primary, roll(primary), { ignoreShields: true, bypassArmor: true }));
+        this.log.push(e);
+        return true;
+      }
+      case "plasmaWeb": {
+        if (!inReach(primary)) return false;
+        const dmg = Array.from({ length: m.count }, () => roll(primary)).reduce((s, x) => s + x, 0);
+        const e = ev(primary);
+        this.tally(e, this.hit(u, primary, dmg, { facing: this.facingToward(primary, u) }));
+        this.log.push(e);
+        if (primary.alive) primary.web = { by: u, damage: Math.max(primary.web?.damage ?? 0, dmg - PLASMA_WEB_DECAY) };
+        return true;
+      }
+      case "pulsar":
+      case "spatialCompressor": {
+        const near = this.units.filter((t) => t.side !== u.side && inReach(t));
+        if (near.length === 0) return false;
+        for (const t of near) {
+          const e = ev(t);
+          for (let i = 0; i < m.count && t.alive; i++) {
+            this.tally(e, this.hit(u, t, roll(t), { facing: this.facingToward(t, u), ignoreShields: w.effect === "spatialCompressor" }));
+          }
+          this.log.push(e);
+        }
+        // Pulsars also wreck missiles and craft around the ship.
+        for (const p of [...this.projectiles]) if (p.owner.side !== u.side && this.dist(p, u) <= reach + 1) this.removeProjectile(p);
+        return true;
+      }
+      case "stasis": {
+        if (!inReach(primary) || primary.kind === "planet") return false;
+        primary.stasisUntil = this.round + 1;
+        this.log.push({ ...ev(primary), hit: true });
+        return true;
+      }
+      case "blackHole": {
+        if (!inReach(primary) || primary.immobile || primary.blackHole) return false;
+        primary.blackHole = { by: u, turns: 0 };
+        this.log.push({ ...ev(primary), hit: true });
+        return true;
+      }
+      case "stellarConverter": {
+        if (!active(primary)) return false;
+        const e = ev(primary);
+        for (let i = 0; i < m.count && primary.alive; i++) {
+          for (let f = 0; f < SHIELD_FACINGS && primary.alive; f++) this.tally(e, this.hit(u, primary, w.damageMax, { facing: f }));
+        }
+        this.log.push(e);
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  // ------------------------------------------------------------ boarding
+
+  /** Transporters beam marines across once the target's facing shield is down. */
+  transport(u: Unit, target: Unit): boolean {
+    if (u.fx.transporters <= 0 || u.marines <= 0 || target.kind !== "ship" || !active(target)) return false;
+    if (!this.specialWorks(u, "transporters") || target.hardShields || this.edge(u, target) > u.fx.transporters) return false;
+    if (this.shieldWorks(target) && target.shields[this.facingToward(target, u)]! > 0) return false;
+    if (u.marines <= target.marines) return false;
+    this.board(u, target, u.marines, "transporters");
+    return true;
+  }
+
+  board(u: Unit, t: Unit, marines: number, via: string): void {
+    if (t.kind !== "ship" || !active(t) || marines <= 0) return;
+    const atkBonus = getRace(u.player.raceId).picks.groundCombat * 10;
+    const defBonus = getRace(t.player.raceId).picks.groundCombat * 10 + t.fx.boardingDefense;
+    let attackers = marines;
+    u.marines -= marines;
+    while (attackers > 0 && t.marines > 0) {
+      if (this.rng.int(1, 100) + atkBonus > this.rng.int(1, 100) + defBonus) t.marines--;
+      else attackers--;
+    }
+    const took = attackers > 0;
+    this.log.push({ kind: "board", ship: u.key, target: t.key, weapon: via, hit: took, damage: marines - attackers });
+    if (!took) return;
+    u.marines += attackers;
+    // Quantum detonators blow up half the ships boarders take.
+    if (t.fx.detonator > 0 && this.rng.chance(0.5)) {
+      this.destroy(t);
+      return;
+    }
+    t.captured = { by: u };
+    t.alive = false;
+    this.log.push({ kind: "destroyed", ship: t.key });
+  }
+
+  // ------------------------------------------------------------ damage
+
+  /** Applies a hit and logs it as one shot. */
+  applyHit(from: Unit, t: Unit, dmg: number, opts: HitOptions, weapon: string): void {
+    const ev: CombatRoundEvent = { kind: "fire", ship: from.key, target: t.key, weapon, hit: false, damage: 0, absorbed: 0, armorDamage: 0, structureDamage: 0 };
+    this.tally(ev, this.hit(from, t, dmg, { facing: this.facingToward(t, from), ...opts }));
+    this.log.push(ev);
+  }
+
+  /**
+   * Damage goes through shields (a flat amount per hit, then the facing's
+   * pool), then armor, then structure or an internal system.
+   */
+  hit(from: Unit | null, t: Unit, raw: number, o: HitOptions): Hit {
+    const h: Hit = { absorbed: 0, armor: 0, structure: 0 };
+    if (!t.alive || raw <= 0) return h;
+    let dmg = raw;
+    if (t.kind === "planet") return this.hitPlanet(t, dmg, o, h);
+    if (t.fx.damageTaken < 1 && this.specialWorks(t, "damperField")) {
+      const kept = Math.ceil(dmg * t.fx.damageTaken);
+      h.absorbed += dmg - kept;
+      dmg = kept;
+    }
+    if (t.fx.absorber > 0 && this.specialWorks(t, "energyAbsorber")) {
+      const taken = Math.floor(dmg * t.fx.absorber);
+      h.absorbed += taken;
+      dmg -= taken;
+    }
+    const pierce = o.ignoreShields || (o.shieldPiercing && !t.hardShields);
+    if (this.shieldWorks(t) && !pierce) {
+      const flat = Math.min(dmg, t.shieldClass);
+      dmg -= flat;
+      h.absorbed += flat;
+      const f = o.facing ?? 0;
+      const pool = t.shields[f]!;
+      const soak = Math.min(pool, dmg);
+      t.shields[f] = pool - soak;
+      dmg -= soak;
+      h.absorbed += soak;
+    }
+    dmg = Math.round(dmg);
+    if (dmg <= 0) return h;
+    if (o.killsMarines && !(t.fx.damageTaken < 1)) t.marines = Math.max(0, t.marines - Math.floor(dmg / 5));
+    if (from && from.fx.penetratingMult > 1 && this.specialWorks(from, "structuralAnalyzer")) dmg *= from.fx.penetratingMult;
+    if (o.systemsOnly) {
+      if (t.kind === "monster") {
+        dmg = Math.floor(dmg / 4);
+        const s = Math.min(t.structure, dmg);
+        t.structure -= s;
+        h.structure += s;
+      } else {
+        const sys = this.pickSystem(t, from);
+        if (sys) this.damageSystem(t, sys, dmg, h);
+      }
+      if (t.structure <= 0) this.destroy(t);
+      return h;
+    }
+    const achilles = !!from && from.fx.achilles > 0 && this.specialWorks(from, "achillesTargetingUnit");
+    const bypass = o.bypassArmor || o.emissions || achilles || (o.armorPiercing && !t.noArmorPierce);
+    if (!bypass && t.armor > 0) {
+      const a = Math.min(t.armor, dmg);
+      t.armor -= a;
+      h.armor += a;
+      dmg -= a;
+    }
+    if (dmg <= 0) return h;
+    if (o.emissions && t.drive && t.drive.hp > 0) {
+      this.damageSystem(t, t.drive, dmg, h);
+      return h;
+    }
+    const systems = this.systems(t);
+    const sysHP = systems.reduce((s, x) => s + x.hp, 0);
+    if (sysHP > 0 && this.rng.int(0, 99) < (sysHP * 100) / (sysHP + Math.max(0, t.structure))) {
+      const sys = this.pickSystem(t, from, systems);
+      if (sys) {
+        const used = Math.min(dmg, sys.hp);
+        this.damageSystem(t, sys, used, h);
+        dmg -= used;
+        if (!t.alive) return h;
+      }
+    }
+    if (dmg > 0) {
+      if (o.extraStructural) dmg = Math.round(dmg * 1.5);
+      const s = Math.min(t.structure, dmg);
+      t.structure -= s;
+      h.structure += s;
+    }
+    if (t.structure <= 0) this.destroy(t);
+    return h;
+  }
+
+  /** Planets have no armor; damage knocks out one installation after another. Ship beams do half. */
+  hitPlanet(t: Unit, raw: number, o: HitOptions, h: Hit): Hit {
+    let dmg = raw;
+    if (!o.ignoreShields) {
+      const flat = Math.min(dmg, t.planetShield);
+      dmg -= flat;
+      h.absorbed += flat;
+    }
+    for (const [i, inst] of t.installations.entries()) {
+      if (dmg <= 0) break;
+      if (inst.hp <= 0) continue;
+      const d = Math.min(inst.hp, dmg);
+      inst.hp -= d;
+      dmg -= d;
+      h.structure += d;
+      t.structure = Math.max(0, t.structure - d);
+      if (inst.hp <= 0) {
+        h.system = inst.name;
+        for (const m of t.mounts) if (m.installation === i) m.count = 0;
+      }
+    }
+    if (t.installations.every((i) => i.hp <= 0)) this.destroy(t);
+    return h;
+  }
+
+  pickSystem(t: Unit, from: Unit | null, list = this.systems(t)): System | undefined {
+    if (list.length === 0) return undefined;
+    const achilles = !!from && from.fx.achilles > 0;
+    const weight = (s: System) => s.hp * (achilles && (s.mount !== undefined || s.id === "shield") ? from!.fx.achilles : 1);
+    const total = list.reduce((sum, s) => sum + weight(s), 0);
+    let r = this.rng.next() * total;
+    for (const s of list) {
+      r -= weight(s);
+      if (r < 0) return s;
+    }
+    return list.at(-1);
+  }
+
+  damageSystem(t: Unit, sys: System, dmg: number, h: Hit): void {
+    if (sys.mount !== undefined) {
+      const m = t.mounts[sys.mount]!;
+      let left = dmg;
+      while (left > 0 && m.count > 0) {
+        const need = m.hpEach - m.wound;
+        if (left >= need) {
+          left -= need;
+          m.count--;
+          m.wound = 0;
+          h.system = m.def.id;
+        } else {
+          m.wound += left;
+          left = 0;
+        }
+      }
+      return;
+    }
+    sys.hp = Math.max(0, sys.hp - dmg);
+    if (sys.hp > 0) return;
+    h.system = sys.id;
+    if (sys.id === "drive") {
+      // A ship whose drive is destroyed explodes.
+      this.destroy(t);
+    } else if (sys.id === "shield") {
+      t.shields.fill(0);
+    }
+  }
+
+  destroy(t: Unit): void {
+    if (!t.alive) return;
+    t.alive = false;
+    t.armor = Math.max(0, t.armor);
+    t.structure = 0;
+    this.log.push({ kind: "destroyed", ship: t.key });
+    for (const p of [...this.projectiles]) if (p.owner === t) this.removeProjectile(p);
+  }
+
+  // ------------------------------------------------------------ retreat
+
+  retreatBlocked(u: Unit): boolean {
+    return this.units.some((e) => e.side !== u.side && active(e) && e.fx.warpDissipator && this.specialWorks(e, "warpDissipator"));
+  }
+
+  /** Each empire's ships fall back once their strength drops below its doctrine. */
+  retreats(retreated: Set<PlayerId>): void {
+    if (this.round < 1) return;
+    for (const idx of [0, 1] as const) {
+      const side = this.sides[idx]!;
+      const owner = this.state.players[side.ownerId]!;
+      if (owner.kind !== "empire") continue;
+      const all = this.units.filter((x) => x.side === idx && active(x));
+      if (all.length === 0 || all.some((x) => x.immobile)) continue;
+      const mine = all.filter((x) => !this.retreatBlocked(x));
+      if (mine.length === 0) continue;
+      const myStrength = this.sideStrength(all);
+      const theirStrength = this.sideStrength(this.units.filter((x) => x.side !== idx && active(x)));
+      if (theirStrength > 0 && myStrength < owner.doctrine.retreatBelow * theirStrength) {
+        for (const x of mine) {
+          x.retreated = true;
+          this.log.push({ kind: "retreat", ship: x.key });
+        }
+        retreated.add(side.ownerId);
+      }
+    }
+  }
+
+  sideStrength(units: Unit[]): number {
+    return units.reduce((sum, u) => {
+      if (!hasWeapons(u)) return sum;
+      const max = u.maxArmor + u.maxStructure;
+      return sum + u.strength * (max > 0 ? (u.armor + u.structure) / max : 1);
+    }, 0);
   }
 }
 
-/** Damage an attack-stance fleet's bombs do to an undefended colony in one turn. */
+/** Planet bombardment power of an attack-stance fleet against an undefended colony in one turn. */
 export function bombardment(state: GameState, fleet: Fleet): { bombs: number; spores: number } {
   const player = state.players[fleet.ownerId]!;
   let bombs = 0;
   let spores = 0;
+  const bestBomb = WEAPONS.filter((w) => w.kind === "bomb" && knows(player, w.requires)).at(-1);
   for (const s of fleet.ships) {
     const d = findDesign(player, s.designId);
     if (!d) continue;
@@ -403,9 +1536,18 @@ export function bombardment(state: GameState, fleet: Fleet): { bombs: number; sp
     for (const m of stats.weapons) {
       const w = ALL_WEAPONS[m.weaponId];
       if (!w) continue;
-      if (w.kind === "bomb") bombs += ((w.damageMin + w.damageMax) / 2) * m.count * s.count * (1 + stats.bombBonus);
+      if (w.kind === "bomb") bombs += ((w.damageMin + w.damageMax) / 2) * m.count * s.count;
       if (w.kind === "spores") spores += w.damageMax * m.count * s.count;
+      // Bomber squadrons carry one bomb per craft.
+      if (w.effect === "bombers" && bestBomb) bombs += ((bestBomb.damageMin + bestBomb.damageMax) / 2) * SQUADRON_SIZE * m.count * s.count;
     }
   }
   return { bombs, spores };
 }
+
+/** Best beam an empire would mount on its ground batteries, for display. */
+export function groundBatteryBeam(player: Player): WeaponDef {
+  return bestBeam(player);
+}
+
+export { ARMORS_BY_ID as _ARMORS_BY_ID, mergeEffects as _mergeEffects };
