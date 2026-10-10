@@ -30,7 +30,12 @@ export function ColoniesScreen({ onShowStar }: { onShowStar: (starId: string) =>
               const turns = head && Number.isFinite(cost) && o.industry > 0 ? Math.ceil((cost - c.progress) / o.industry) : null;
               return (
                 <tr key={c.id} className={`clickable${c.id === selected ? " selected" : ""}`} onClick={() => setSelected(c.id)}>
-                  <td>{c.name}{c.outpost && <small className="muted"> outpost</small>}</td>
+                  <td>
+                    <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                      {view.planets[c.planetId] && <PlanetIcon planet={view.planets[c.planetId]!} size={20} />}
+                      {c.name}{c.outpost && <small className="muted"> outpost</small>}
+                    </span>
+                  </td>
                   <td>{c.outpost ? "–" : `${population(c)}/${o.maxPopulation}`}</td>
                   <td className={o.foodNet < 0 ? "bad" : ""}>{c.outpost ? "" : signed(o.foodNet)}</td>
                   <td>{c.outpost ? "" : fmt(o.industry)}</td>
@@ -81,14 +86,18 @@ function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar: (sta
   return (
     <div className="col">
       <div className="panel col">
-        <div className="row">
-          <PlanetIcon planet={planet} />
-          <h2 style={{ margin: 0 }}>{colony.name}</h2>
-          {star && <button className="small" onClick={() => onShowStar(star.id)}>Show on map</button>}
-        </div>
-        <div className="muted">
-          {words(planet.size)} {climateName(planet.type)}, {words(planet.minerals)} minerals, {planet.gravity} gravity
-          {planet.special !== "none" && `, ${words(planet.special)}`}
+        <div className="row" style={{ flexWrap: "nowrap", gap: 14 }}>
+          <PlanetIcon planet={planet} size={96} />
+          <div className="col" style={{ gap: 4 }}>
+            <div className="row">
+              <h2 style={{ margin: 0 }}>{colony.name}</h2>
+              {star && <button className="small" onClick={() => onShowStar(star.id)}>Show on map</button>}
+            </div>
+            <div className="muted">
+              {words(planet.size)} {climateName(planet.type)}, {words(planet.minerals)} minerals, {planet.gravity} gravity
+              {planet.special !== "none" && `, ${words(planet.special)}`}
+            </div>
+          </div>
         </div>
         {!colony.outpost && (
           <>

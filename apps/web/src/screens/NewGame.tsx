@@ -21,7 +21,7 @@ function shuffled<T>(list: T[]): T[] {
   return a;
 }
 
-export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
+export function NewGame({ onStart, onBack }: { onStart: (s: GameSession) => void; onBack: () => void }) {
   const [raceId, setRaceId] = useState(RACES[0]!.id);
   const [opponents, setOpponents] = useState(3);
   const [galaxy, setGalaxy] = useState<GalaxySize>("medium");
@@ -90,8 +90,9 @@ export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
   }
 
   return (
-    <div className="title-screen">
+    <div className="title-screen setup">
       <div className="row">
+        <button onClick={onBack}>← Back</button>
         <div className="logo">STARLORD</div>
         <div className="spacer" />
         <span className="muted">Choose your people</span>

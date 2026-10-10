@@ -1,4 +1,4 @@
-import { Application, Circle, Container, Graphics, Text } from "pixi.js";
+import { Application, Assets, Circle, Container, Graphics, Sprite, Text, type Texture } from "pixi.js";
 import type { MapInput, MapRenderer } from "./renderer";
 import type { MapScene } from "./scene";
 
@@ -7,10 +7,14 @@ const UNIT = 48;
 const DRAG_THRESHOLD = 4;
 
 const hex = (c: string) => parseInt(c.replace("#", ""), 16);
+const NEBULA_URL = "art/galaxy.webp";
+/** How far the nebula moves relative to the map when panning, for a sense of depth. */
+const PARALLAX = 0.06;
 
 export class PixiMapRenderer implements MapRenderer {
   private app = new Application();
   private camera = new Container();
+  private nebula: Sprite | null = null;
   private backdrop = new Graphics();
   private world = new Container();
   private input!: MapInput;
@@ -40,6 +44,14 @@ export class PixiMapRenderer implements MapRenderer {
     this.app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.app.stage.addChild(this.camera);
     this.camera.addChild(this.backdrop, this.world);
+    void Assets.load<Texture>(NEBULA_URL).then((texture) => {
+      if (this.destroyed) return;
+      this.nebula = new Sprite(texture);
+      this.nebula.anchor.set(0.5);
+      this.nebula.alpha = 0.6;
+      this.app.stage.addChildAt(this.nebula, 0);
+      this.app.ticker.add(this.placeNebula);
+    }).catch(() => {});
     this.app.stage.eventMode = "static";
     this.app.stage.hitArea = this.app.screen;
     this.app.stage.on("pointerdown", (e) => {
@@ -67,6 +79,19 @@ export class PixiMapRenderer implements MapRenderer {
     this.mounted = true;
     if (this.pending) this.render(this.pending);
   }
+
+  /** Keep the nebula covering the screen, drifting slightly with the camera. */
+  private placeNebula = () => {
+    const n = this.nebula;
+    if (!n) return;
+    const { width, height } = this.app.screen;
+    const cover = Math.max(width / n.texture.width, height / n.texture.height) * 1.15;
+    n.scale.set(cover);
+    const maxX = (n.width - width) / 2;
+    const maxY = (n.height - height) / 2;
+    const clamp = (v: number, m: number) => Math.max(-m, Math.min(m, v));
+    n.position.set(width / 2 + clamp((this.camera.x - width / 2) * PARALLAX, maxX), height / 2 + clamp((this.camera.y - height / 2) * PARALLAX, maxY));
+  };
 
   private onWheel = (e: WheelEvent) => {
     e.preventDefault();
@@ -203,6 +228,7 @@ export class PixiMapRenderer implements MapRenderer {
     this.destroyed = true;
     if (!this.mounted) return;
     this.app.canvas.removeEventListener("wheel", this.onWheel);
+    this.app.ticker.remove(this.placeNebula);
     this.app.destroy(true, { children: true });
     this.mounted = false;
   }
