@@ -1,5 +1,6 @@
 import { useGame } from "../ui/hooks";
 import { words } from "../ui/format";
+import { Celebration } from "../ui/fx";
 
 const HOW: Record<string, string> = {
   conquest: "by conquest",
@@ -16,6 +17,7 @@ export function GameOver({ won, spectating, onClose, onQuit }: { won: boolean; s
   const bright = won || spectating;
   return (
     <div className={`game-over ${bright ? "won" : "lost"}`} style={{ backgroundImage: `url(art/${bright ? "victory" : "defeat"}.webp)` }}>
+      <Celebration mood={bright ? "victory" : "defeat"} />
       <div className="card">
         <h1>{spectating ? "Game over" : won ? "Victory" : "Defeat"}</h1>
         <div style={{ fontSize: 18, textShadow: "0 2px 8px #000" }}>

@@ -4,6 +4,14 @@ import { useGame } from "../ui/hooks";
 import { describeEvent, starName } from "../ui/format";
 import { CombatReplay } from "./CombatReplay";
 
+/** A small glyph per kind of turn report event. */
+const EVENT_ICONS: Record<string, string> = {
+  colonyFounded: "\u2691\uFE0E", techLearned: "\u2697\uFE0E", built: "\u2692\uFE0E", starvation: "\u26A0\uFE0E", explored: "\u2726",
+  commandRejected: "\u2716\uFE0E", combat: "\u2694\uFE0E", colonyLost: "\u2620\uFE0E", colonyCaptured: "\u2691\uFE0E", invasionFailed: "\u2716\uFE0E",
+  bombarded: "\u2604\uFE0E", diplomacy: "\u260D\uFE0E", spy: "\u25D0", leader: "\u265B\uFE0E", council: "\u2696\uFE0E", random: "\u2735", raid: "\u2620\uFE0E",
+  eliminated: "\u2620\uFE0E",
+};
+
 export function EventsScreen({ onShowStar }: { onShowStar: (starId: string) => void }) {
   const { session, view, me } = useGame();
   const [replay, setReplay] = useState<CombatReport | null>(null);
@@ -23,13 +31,14 @@ export function EventsScreen({ onShowStar }: { onShowStar: (starId: string) => v
         const combats = t.combats.filter((c) => c.sides.includes(me.id));
         if (events.length === 0 && combats.length === 0) return null;
         return (
-          <div className="panel col" key={t.turn} style={{ gap: 4 }}>
-            <h4>Turn {t.turn}</h4>
+          <div className="panel col" key={t.turn} style={{ gap: 6 }}>
+            <h4 className="turn-head">Turn {t.turn}</h4>
+            <div className="timeline">
             {events.map((e, i) => {
               const d = describeEvent(view, e);
               return (
-                <div className="row" key={i}>
-                  <span className={d.tone === "good" ? "good" : d.tone === "bad" ? "bad" : "muted"}>●</span>
+                <div className={`tl-event ${d.tone ?? ""} ${e.kind}`} key={i} style={{ animationDelay: `${Math.min(i, 8) * 0.04}s` }}>
+                  <span className="tl-icon">{EVENT_ICONS[e.kind] ?? "\u2022"}</span>
                   <span style={{ flex: 1 }}>{d.text}</span>
                   {e.kind === "combat" && (() => {
                     const report = combats.find((c) => c.id === e.reportId);
@@ -39,6 +48,7 @@ export function EventsScreen({ onShowStar }: { onShowStar: (starId: string) => v
                 </div>
               );
             })}
+            </div>
           </div>
         );
       })}

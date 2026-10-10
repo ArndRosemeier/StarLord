@@ -55,10 +55,12 @@ export function DesignScreen() {
           <span className="spacer" />
           <button className="small" onClick={() => setDraft(blank())}>New</button>
         </div>
-        <div className="row">
-          <ShipSprite hull={draft.hull} variantKey={draft.name} size={64} />
-          <input type="text" value={draft.name} onChange={(e) => update({ name: e.target.value })} style={{ flex: 1 }} />
+        <div className="blueprint">
+          <span className="blueprint-label">Schematic · {draft.name || "unnamed"}</span>
+          <span className="blueprint-ship" key={draft.hull}><ShipSprite hull={draft.hull} variantKey={draft.name} size={124} /></span>
+          <span className="blueprint-hull">{HULLS_BY_ID[draft.hull]?.name} · {words(stats.role)}</span>
         </div>
+        <input type="text" value={draft.name} onChange={(e) => update({ name: e.target.value })} />
         <div className="row">
           {hulls.map((h) => (
             <button key={h.id} className={`small${draft.hull === h.id ? " active" : ""}`} onClick={() => update({ hull: h.id as HullSize })}>
@@ -136,7 +138,7 @@ export function DesignScreen() {
           const s = designStats(me, d);
           const valid = validateDesign(me, d) === null;
           return (
-            <div key={d.id} className="row" style={{ opacity: d.obsolete ? 0.5 : 1, borderBottom: "1px solid var(--line)", paddingBottom: 6 }}>
+            <div key={d.id} className="row design-row" style={{ opacity: d.obsolete ? 0.5 : 1, borderBottom: "1px solid var(--line)", paddingBottom: 6 }}>
               <ShipSprite hull={d.hull} variantKey={d.name} />
               <div style={{ flex: 1 }}>
                 <b>{d.name}</b> <span className="muted">{HULLS_BY_ID[d.hull]?.name} · {words(s.role)}</span>

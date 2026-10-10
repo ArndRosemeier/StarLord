@@ -218,3 +218,93 @@ export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
     </svg>
   );
 }
+
+interface Spark { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; trail: boolean }
+
+/** Fireworks over the capital for a victory, drifting embers and ash for a defeat. */
+export function Celebration({ mood }: { mood: "victory" | "defeat" }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const reduced = useReducedMotion();
+  useEffect(() => {
+    const canvas = ref.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx || reduced) return;
+    let w = 0;
+    let h = 0;
+    const resize = () => {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      w = canvas.clientWidth;
+      h = canvas.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    const sparks: Spark[] = [];
+    const palette = ["#ffe39a", "#ff9f43", "#7fd3ff", "#b49cff", "#ff7ab6", "#7ed957", "#ffffff"];
+    let raf = 0;
+    let last = performance.now();
+    let nextShell = 300;
+    const tick = (t: number) => {
+      raf = requestAnimationFrame(tick);
+      const dt = Math.min(50, t - last) / 16.7;
+      last = t;
+      if (document.hidden) return;
+      if (mood === "victory") {
+        nextShell -= dt * 16.7;
+        if (nextShell <= 0) {
+          nextShell = 350 + Math.random() * 700;
+          // A rocket that bursts near the top of its climb.
+          sparks.push({ x: w * (0.15 + Math.random() * 0.7), y: h, vx: (Math.random() - 0.5) * 1.5, vy: -(9 + Math.random() * 4), life: 0, max: 45 + Math.random() * 15, color: "#fff4c2", size: 2, trail: true });
+        }
+      } else if (sparks.length < 140) {
+        const ember = Math.random() < 0.6;
+        sparks.push({ x: Math.random() * w, y: h + 10, vx: (Math.random() - 0.5) * 0.6, vy: -(0.6 + Math.random() * 1.4), life: 0, max: 200 + Math.random() * 200,
+          color: ember ? (Math.random() < 0.5 ? "#ff7a3d" : "#ffb347") : "#8a8f99", size: ember ? 1 + Math.random() * 1.8 : 1.5 + Math.random() * 2.5, trail: false });
+      }
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = `rgba(0,0,0,${mood === "victory" ? 0.18 : 0.5})`;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const s = sparks[i]!;
+        s.life += dt;
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        if (mood === "victory") {
+          s.vy += (s.trail ? 0.18 : 0.05) * dt;
+          s.vx *= Math.pow(0.985, dt);
+        } else s.vx += Math.sin((s.y + t / 10) / 60) * 0.01 * dt;
+        if (s.trail && (s.vy > -1.5 || s.life > s.max)) {
+          const color = palette[Math.floor(Math.random() * palette.length)]!;
+          const n = 60 + Math.floor(Math.random() * 40);
+          for (let j = 0; j < n; j++) {
+            const a = (j / n) * Math.PI * 2;
+            const v = 2 + Math.random() * 2.5;
+            sparks.push({ x: s.x, y: s.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0, max: 50 + Math.random() * 40, color, size: 1.4, trail: false });
+          }
+          sparks.splice(i, 1);
+          continue;
+        }
+        if (s.life > s.max || s.y < -20) {
+          sparks.splice(i, 1);
+          continue;
+        }
+        const fade = s.trail ? 1 : 1 - s.life / s.max;
+        ctx.globalAlpha = mood === "defeat" ? Math.min(1, s.life / 30) * fade : fade;
+        ctx.fillStyle = s.color;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", resize);
+    };
+  }, [mood, reduced]);
+  return <canvas ref={ref} aria-hidden />;
+}

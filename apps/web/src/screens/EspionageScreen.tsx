@@ -9,16 +9,25 @@ export function EspionageScreen() {
 
   return (
     <div className="col" style={{ maxWidth: 900 }}>
-      <div className="panel col">
+      <div className="panel row" style={{ flexWrap: "nowrap", gap: 18, alignItems: "center" }}>
+        <div className="radar" aria-hidden>
+          {targets.map((p, i) => {
+            const a = (i / Math.max(1, targets.length)) * Math.PI * 2 + 0.6;
+            const d = 22 + ((i * 37) % 24);
+            return <i key={p.id} style={{ left: `${50 + Math.cos(a) * d}%`, top: `${50 + Math.sin(a) * d}%`, animationDelay: `${(a / (Math.PI * 2)) * 3}s` }} />;
+          })}
+        </div>
+        <div className="col" style={{ flex: 1 }}>
         <h2>Espionage</h2>
         <div className="row">
-          <span className="chip">Spies at home: <b>{me.spies.home}</b></span>
+          <span className="chip">Spies at home: <b>{me.spies.home}</b> <span className="spy-chip">{Array.from({ length: Math.min(12, me.spies.home) }, (_, i) => <i key={i} />)}</span></span>
           <span className="chip">Spying level {spyingLevel(me)}</span>
           <span className="chip">Security level {securityLevel(view, me.id)}</span>
         </div>
         <div className="muted">
           Spies at home protect you from enemy agents. Train more with the "Train Spy" project in any colony's build queue.
           Abroad they steal technology or sabotage; each point of spying over the target's security improves the odds.
+        </div>
         </div>
       </div>
       <div className="panel">
