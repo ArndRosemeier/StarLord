@@ -1,9 +1,11 @@
-import { LAIR_MONSTERS, LUCKY_RAID_CHANCE, MONSTER_DESIGNS, RAID_INTERVAL, RAID_START, RAIDER_DESIGNS, raidFleet } from "./data/monsters.js";
+import { LAIR_MONSTERS, MONSTER_DESIGNS, RAID_INTERVAL, RAID_START, RAIDER_DESIGNS, raidFleet } from "./data/monsters.js";
 import { TIER_OF_TECH, emptyHyperLevels } from "./data/techs.js";
 import { newId, type TurnContext } from "./context.js";
 import { distance } from "./galaxy.js";
 import { maxPopulation } from "./economy.js";
 import { getRace, hasTrait } from "./data/races.js";
+import { TRAIT_EFFECTS } from "./data/racePicks.js";
+import { heroJoins } from "./leaders.js";
 import type { Rng } from "./rng.js";
 import type { Fleet, GameState, Player, Star } from "./types.js";
 
@@ -135,10 +137,11 @@ export function raidTick(ctx: TurnContext): void {
   }
   if (state.turn < state.raiders.nextRaid) return;
   state.raiders.nextRaid = state.turn + rng.int(RAID_INTERVAL[0], RAID_INTERVAL[1]);
-  // Lucky empires tend to be overlooked.
-  let targets = Object.values(state.colonies).filter((c) => state.players[c.ownerId]!.kind === "empire" && !c.outpost);
-  const lucky = (c: (typeof targets)[number]) => hasTrait(getRace(state.players[c.ownerId]!.raceId), "lucky");
-  if (targets.some((c) => !lucky(c))) targets = targets.filter((c) => !lucky(c) || rng.chance(LUCKY_RAID_CHANCE));
+  // Lucky races are usually overlooked by raiders.
+  const lucky = (c: { ownerId: number }) => hasTrait(getRace(state.players[c.ownerId]!.raceId), "lucky");
+  const targets = Object.values(state.colonies).filter(
+    (c) => state.players[c.ownerId]!.kind === "empire" && !c.outpost && !(lucky(c) && rng.chance(TRAIT_EFFECTS.luckyOverlook)),
+  );
   if (targets.length === 0) return;
   // Raiders prefer the most populous colonies.
   targets.sort((a, b) => b.farmers + b.workers + b.scientists - (a.farmers + a.workers + a.scientists));
@@ -156,6 +159,8 @@ export function guardianSlain(ctx: TurnContext, killer: number, starId: string):
     p.techs.push("deathRay");
     ctx.emit({ kind: "techLearned", playerId: killer, techId: "deathRay", tierId: "orion", source: "salvage" });
   }
+  // The last of the elders, freed with the guardian's fall, joins the victors.
+  if (star?.special === "orion" && p.kind === "empire") heroJoins(ctx.state, killer, "guardian", ctx.emit);
 }
 
 /** Every NPC weapon tech resolves to a tier or "never"; keep the helper close to its data. */

@@ -22,8 +22,9 @@ export function diplomacyOrders(view: PlayerView): Command[] {
   const myPop = empireTotals(view, view.viewer).population;
 
   for (const p of view.proposals.filter((x) => x.to === view.viewer)) {
-    // Xeno Psychology makes every deal the proposer offers more appealing.
-    const feel = attitude(view, view.viewer, p.from) + empireBonus(view.players[p.from]!).diplomacy;
+    // Xeno Psychology, telepathy, charisma and Diplomat leaders make every deal the proposer offers more appealing.
+    const proposer = view.players[p.from]!;
+    const feel = attitude(view, view.viewer, p.from) + empireBonus(proposer).diplomacy + (proposer.diplomacyBonus ?? 0);
     const r = relation(view, view.viewer, p.from);
     let accept = false;
     if (p.kind === "peace" || p.kind === "ceasefire") {

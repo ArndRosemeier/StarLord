@@ -10,6 +10,7 @@ export * from "./combat.js";
 export * from "./diplomacy.js";
 export * from "./espionage.js";
 export * from "./leaders.js";
+export * from "./raceEffects.js";
 export * from "./council.js";
 export * from "./npc.js";
 export * from "./jobs.js";

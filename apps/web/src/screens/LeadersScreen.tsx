@@ -1,25 +1,40 @@
 import type { ReactNode } from "react";
-import { MAX_LEADERS, type Leader } from "@starlord/sim";
+import { HERO_SKILLS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, abilityValue, type Leader } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
-import { fmt, words } from "../ui/format";
+import { fmt } from "../ui/format";
 import { LeaderPortrait } from "../ui/panels";
 
-function Skills({ l }: { l: Leader }) {
+const kindName = (k: Leader["kind"]) => (k === "captain" ? "Ship officer" : "Colony leader");
+
+function Abilities({ l }: { l: Leader }) {
   return (
-    <span className="row" style={{ gap: 4 }}>
-      {Object.entries(l.skills).map(([k, v]) => <span key={k} className="chip">{words(k)} +{v}</span>)}
+    <span className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+      {l.abilities.map((a) => {
+        const def = HERO_SKILLS[a.skill];
+        const text = def.text.replace("{v}", String(abilityValue(a, l.level)));
+        return (
+          <span key={a.skill} className="chip" title={text}>
+            {def.name}{a.improved ? "★" : ""}
+          </span>
+        );
+      })}
+      {l.techs.length > 0 && <span className="chip" title="Teaches these technologies when hired">Brings {l.techs.length} tech{l.techs.length > 1 ? "s" : ""}</span>}
     </span>
   );
 }
 
 function LeaderCard({ l, children }: { l: Leader; children: ReactNode }) {
+  const next = LEVEL_XP[l.level];
   return (
     <div className="leader-card">
       <LeaderPortrait name={l.name} />
       <div className="col" style={{ gap: 4, minWidth: 0 }}>
-        <div><b>{l.name}</b> <span className="level-stars" title={`Level ${l.level}`}>{"\u2605".repeat(Math.max(1, Math.min(5, l.level)))}</span></div>
-        <small className="muted">{words(l.kind)}, level {l.level}</small>
-        <Skills l={l} />
+        <div><b>{l.name}</b> <span className="level-stars" title={`Level ${l.level}`}>{"★".repeat(Math.max(1, Math.min(6, l.level)))}</span></div>
+        <small className="muted">{l.title}. {kindName(l.kind)}, level {l.level}, {l.xp}{next !== undefined ? `/${next}` : ""} XP</small>
+        <Abilities l={l} />
+        <small className="muted">
+          {l.abilities.map((a) => HERO_SKILLS[a.skill].text.replace("{v}", String(abilityValue(a, l.level)))).join(" ")}
+        </small>
         {children}
       </div>
     </div>
@@ -28,23 +43,35 @@ function LeaderCard({ l, children }: { l: Leader; children: ReactNode }) {
 
 export function LeadersScreen() {
   const { session, view, me, readOnly } = useGame();
-  const hired = Object.values(view.leaders).filter((l) => l.ownerId === me.id);
+  const hired = Object.values(view.leaders).filter((l) => l.ownerId === me.id && l.status === "hired");
+  const offers = Object.values(view.leaders).filter((l) => l.status === "offered" && l.offeredTo === me.id);
+  const ofKind = (k: Leader["kind"]) => hired.filter((l) => l.kind === k).length;
   const systems = [...new Set(Object.values(view.colonies).filter((c) => c.ownerId === me.id).map((c) => view.planets[c.planetId]!.starId))]
     .map((id) => view.galaxy.stars.find((s) => s.id === id)!)
     .filter(Boolean);
   const fleets = Object.values(view.fleets).filter((f) => f.ownerId === me.id);
+  const postName = (id: string) => view.galaxy.stars.find((s) => s.id === id)?.name ?? view.fleets[id]?.name ?? "a new post";
 
   return (
     <div className="col" style={{ maxWidth: 1100 }}>
       <div className="panel col">
-        <h2>Leaders <small className="muted">{hired.length}/{MAX_LEADERS}</small></h2>
-        <div className="muted">Administrators boost every colony in the system they govern. Captains boost the fleet they command. Each draws a salary in BC.</div>
+        <h2>
+          Leaders <small className="muted">{hired.length}/{MAX_LEADERS}: {ofKind("administrator")}/{LEADER_RULES.maxPerKind} colony leaders,
+          {" "}{ofKind("captain")}/{LEADER_RULES.maxPerKind} ship officers</small>
+        </h2>
+        <div className="muted">
+          Colony leaders boost every colony in the system they govern; ship officers boost the fleet they command. Common
+          skills help the whole empire. Moving to a post in another system takes {LEADER_RULES.travelTurns} turns.
+        </div>
         <div className="leader-grid">
           {hired.map((l) => (
             <LeaderCard key={l.id} l={l}>
-              <small className="muted">{l.salary} BC per turn</small>
+              <small className="muted">
+                {l.salary < 0 ? `Pays ${fmt(-l.salary)} BC per turn` : `${fmt(l.salary)} BC per turn`}
+                {l.travel && `, travelling to ${postName(l.travel.to)} (arrives turn ${l.travel.arrives})`}
+              </small>
               <div className="row" style={{ gap: 4 }}>
-                <select value={l.assignedTo ?? ""} disabled={readOnly} style={{ flex: 1, minWidth: 0 }}
+                <select value={l.travel?.to ?? l.assignedTo ?? ""} disabled={readOnly} style={{ flex: 1, minWidth: 0 }}
                   onChange={(e) => session.issue({ type: "assignLeader", leaderId: l.id, targetId: e.target.value || null })}>
                   <option value="">Unassigned</option>
                   {l.kind === "administrator"
@@ -61,19 +88,25 @@ export function LeadersScreen() {
       <div className="panel col">
         <h3>Offers</h3>
         <div className="leader-grid">
-          {me.leaderOffers.map((l) => (
-            <LeaderCard key={l.id} l={l}>
-              <small className="muted">Available until turn {l.availableUntil}</small>
-              <div>
-                <button className="small primary" disabled={readOnly || me.bc < l.hireCost || hired.length >= MAX_LEADERS}
-                  onClick={() => session.issue({ type: "hireLeader", leaderId: l.id })}>
-                  Hire for {fmt(l.hireCost)} BC
-                </button>
-              </div>
-            </LeaderCard>
-          ))}
+          {offers.map((l) => {
+            const full = hired.length >= MAX_LEADERS || ofKind(l.kind) >= LEADER_RULES.maxPerKind;
+            return (
+              <LeaderCard key={l.id} l={l}>
+                <small className="muted">
+                  Upkeep {l.salary < 0 ? `none, pays ${fmt(-l.salary)} BC` : `${fmt(l.salary)} BC`} per turn. Offer open until turn {l.availableUntil}
+                </small>
+                <div>
+                  <button className="small primary" disabled={readOnly || me.bc < l.hireCost || full}
+                    title={full ? `No room for another ${kindName(l.kind).toLowerCase()}` : undefined}
+                    onClick={() => session.issue({ type: "hireLeader", leaderId: l.id })}>
+                    Hire for {fmt(l.hireCost)} BC
+                  </button>
+                </div>
+              </LeaderCard>
+            );
+          })}
         </div>
-        {me.leaderOffers.length === 0 && <div className="muted">Nobody is offering their services right now.</div>}
+        {offers.length === 0 && <div className="muted">Nobody is offering their services right now.</div>}
       </div>
     </div>
   );

@@ -12,12 +12,8 @@ export const TROOPS = {
 } as const;
 export type TroopKind = keyof typeof TROOPS;
 
-/** Each race ground-combat pick level (and each tech level from data/techs) is worth this much on the rating. */
+/** Each ground combat tech level from data/techs is worth this much on the rating (race picks: raceEffects). */
 export const RATING_PER_LEVEL = 10;
-/** Low-G troops fight at -10; High-G troops take one more hit; subterranean defenders get +10. */
-export const LOW_G_RATING = -10;
-export const HIGH_G_EXTRA_HITS = 1;
-export const SUBTERRANEAN_DEFENSE = 10;
 /** Powered Armor: marines take one more hit. Battleoids: tanks take three. */
 export const POWERED_ARMOR_HITS = 1;
 export const BATTLEOID_HITS = 3;
@@ -60,5 +56,3 @@ export const SPORE_DEFENSE: { tech: string; mult: number }[] = [
 export const CAPTURE_TECH_CHANCE = 0.5;
 /** Turns of unrest after a conquest. */
 export const CONQUEST_UNREST_TURNS = 20;
-/** Mind control needs a ship of this size class or larger (cruiser) in the fleet. */
-export const MIND_CONTROL_MIN_SIZE = 3;

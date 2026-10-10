@@ -46,8 +46,6 @@ export const LAIR_MONSTERS = ["voidAmoeba", "latticeCrystal", "ionEel", "starHyd
 export const RAID_START = 120;
 export const RAID_INTERVAL: [number, number] = [15, 25];
 
-/** Chance a lucky empire's colony is even considered as a raid target ("raiders tend to overlook them"). */
-export const LUCKY_RAID_CHANCE = 0.25;
 
 /**
  * Monsters that invade the galaxy from outside (random events). Each picks an

@@ -1,6 +1,10 @@
 import { BUILDINGS_BY_ID } from "./data/buildings.js";
 import { CLIMATES } from "./data/planets.js";
 import { TIERS_BY_ID } from "./data/techs.js";
+import { hullIndex } from "./data/components.js";
+import { TRAIT_EFFECTS } from "./data/racePicks.js";
+import { getRace, hasTrait } from "./data/races.js";
+import { hasRoomFor, hiredLeaders, hirePrice } from "./leaders.js";
 import {
   audienceTired, canSign, giftProblem, hasTreaty, isHostile, relation, type Gift, type ProposalTerms, type TreatyName,
 } from "./diplomacy.js";
@@ -54,8 +58,7 @@ export type Command =
   | { type: "councilResponse"; accept: boolean }
   /** Kills a conquered colony's whole population (not under Democracy or Federation). */
   | { type: "exterminate"; colonyId: Id }
-  /** Telepathic takeover of an enemy colony whose defenses are down. */
-  | { type: "mindControl"; fleetId: Id; colonyId: Id }
+
   /** Pays a monster's demand so it leaves the system. */
   | { type: "bribeMonster"; eventId: Id }
   | { type: "respond"; proposalId: Id; accept: boolean }
@@ -179,7 +182,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
         const d = findDesign(player, s.designId);
         return n + (d ? designStats(player, d).troops * s.count : 0);
       }, 0);
-      if (troops <= 0) return fail("fleet carries no troops");
+      if (troops <= 0 && !canMindControl(state, f, c)) return fail("fleet carries no troops");
       return OK;
     }
     case "splitFleet": {
@@ -264,14 +267,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const why = exterminateProblem(state, playerId, cmd.colonyId);
       return why ? fail(why) : OK;
     }
-    case "mindControl": {
-      const f = ownFleet(state, playerId, cmd.fleetId);
-      if (!f) return fail("not your fleet");
-      const c = state.colonies[cmd.colonyId];
-      if (!c || state.planets[c.planetId]!.starId !== f.starId) return fail("no such colony here");
-      if (!isHostile(state, playerId, c.ownerId)) return fail("not at war with that colony's owner");
-      return canMindControl(state, f, c) ? OK : fail("needs a telepathic race and a big enough ship in orbit");
-    }
+
     case "bribeMonster": {
       const why = bribeProblem(state, playerId, cmd.eventId);
       return why ? fail(why) : OK;
@@ -292,15 +288,16 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       return OK;
     }
     case "hireLeader": {
-      const l = player.leaderOffers.find((x) => x.id === cmd.leaderId);
-      if (!l) return fail("no such offer");
-      if (player.bc < l.hireCost) return fail("not enough BC");
-      if (Object.values(state.leaders).filter((x) => x.ownerId === playerId).length >= MAX_LEADERS) return fail("too many leaders");
+      const l = state.leaders[cmd.leaderId];
+      if (!l || l.status !== "offered" || l.offeredTo !== playerId) return fail("no such offer");
+      if (player.bc < hirePrice(state, playerId, l)) return fail("not enough BC");
+      if (hiredLeaders(state, playerId).length >= MAX_LEADERS) return fail("too many leaders");
+      if (!hasRoomFor(state, playerId, l.kind)) return fail(`too many ${l.kind === "captain" ? "ship officers" : "colony leaders"}`);
       return OK;
     }
     case "assignLeader": {
       const l = state.leaders[cmd.leaderId];
-      if (!l || l.ownerId !== playerId) return fail("not your leader");
+      if (!l || l.ownerId !== playerId || l.status !== "hired") return fail("not your leader");
       if (cmd.targetId === null) return OK;
       if (l.kind === "captain") return ownFleet(state, playerId, cmd.targetId) ? OK : fail("captains command your fleets");
       const owns = Object.values(state.colonies).some(
@@ -310,7 +307,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
     }
     case "dismissLeader": {
       const l = state.leaders[cmd.leaderId];
-      return l && l.ownerId === playerId ? OK : fail("not your leader");
+      return l && l.ownerId === playerId && l.status === "hired" ? OK : fail("not your leader");
     }
     case "setCouncilVote":
       if (cmd.vote === "abstain" || cmd.vote === "auto") return OK;
@@ -319,6 +316,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       return Array.isArray(cmd.domains) ? OK : fail("bad automation list");
   }
 }
+
 
 export function shipsBuilt(state: GameState, playerId: PlayerId, designId: string): boolean {
   return Object.values(state.fleets).some((f) => f.ownerId === playerId && f.ships.some((s) => s.designId === designId)) ||

@@ -16,8 +16,6 @@ export const TREATY_YIELD = {
   trade: { perPop: 0.25, breakEven: 5, full: 10 },
   research: { perPop: 0.5, breakEven: 5, full: 10 },
 } as const;
-/** Fantastic traders multiply their trade treaty income by this. */
-export const FANTASTIC_TRADER_MULT = 2;
 
 /** Tribute payments, as a percentage of the payer's income each turn. */
 export const TRIBUTE_PERCENTS = [5, 10] as const;
@@ -77,11 +75,6 @@ export const ATTITUDE_EVENTS = {
   spyCaught: -8,
 } as const;
 
-/** Charismatic races double good diplomatic effects on them and halve bad ones. */
-export const CHARISMATIC_GOOD = 2;
-export const CHARISMATIC_BAD = 0.5;
-/** Bonus to the chance a deal is accepted: charismatic +50%, telepathic +25% (in AI deal points). */
-export const DEAL_BONUS = { charismatic: 50, telepathic: 25 } as const;
 
 /** Espionage rolls: d100 + 10 x (spying - security) - per counter-agent. */
 export const SPY = {

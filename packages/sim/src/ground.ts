@@ -1,9 +1,13 @@
 import {
   BARRACKS, BATTLEOID_HITS, BOMB_BUILDING_CHANCE, BOMB_DAMAGE_PER_POP, BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE,
-  CONQUEST_UNREST_TURNS, HIGH_G_EXTRA_HITS, LOW_G_RATING, MILITIA_PER_POP, MIND_CONTROL_MIN_SIZE, POWERED_ARMOR_HITS,
-  RATING_PER_LEVEL, SPORE_DEFENSE, SPORE_KILL_CHANCE_PER_POINT, SUBTERRANEAN_DEFENSE, TROOPS, WARLORD_TROOP_MULT, type TroopKind,
+  CONQUEST_UNREST_TURNS, MILITIA_PER_POP, POWERED_ARMOR_HITS,
+  RATING_PER_LEVEL, SPORE_DEFENSE, SPORE_KILL_CHANCE_PER_POINT, TROOPS, WARLORD_TROOP_MULT, type TroopKind,
 } from "./data/ground.js";
+import { hullIndex } from "./data/components.js";
+import { TRAIT_EFFECTS } from "./data/racePicks.js";
 import { getRace, hasTrait } from "./data/races.js";
+import { commandoBonusAt } from "./leaders.js";
+import { raceGroundBonus, troopHits } from "./raceEffects.js";
 import { TIER_OF_TECH } from "./data/techs.js";
 import { bombardment } from "./combat.js";
 import type { TurnContext } from "./context.js";
@@ -92,16 +96,19 @@ interface Unit {
 }
 
 /** Rating and toughness of one unit of a kind fighting for a player's race. */
-export function troopUnit(state: GameState, playerId: PlayerId, raceId: string, kind: TroopKind, defending: boolean): Unit {
+export function troopUnit(
+  state: GameState, playerId: PlayerId, raceId: string, kind: TroopKind, defending: boolean, starId?: Id,
+): Unit {
   const player = state.players[playerId]!;
   const race = getRace(raceId);
-  let rating = TROOPS[kind].rating + RATING_PER_LEVEL * (race.picks.groundCombat + empireBonus(player).groundCombat);
-  if (hasTrait(race, "lowG")) rating += LOW_G_RATING;
-  if (defending && hasTrait(race, "subterranean")) rating += SUBTERRANEAN_DEFENSE;
+  // Race picks, low-G and subterranean come from the race module; Commando leaders fight where they serve.
+  let rating = TROOPS[kind].rating + RATING_PER_LEVEL * empireBonus(player).groundCombat + raceGroundBonus(race, defending);
+  if (starId) rating += commandoBonusAt(state, playerId, starId);
   let hits: number = TROOPS[kind].hits;
   if (kind === "armor" && knows(player, "battleoids")) hits = BATTLEOID_HITS;
   if (kind === "marines" && knows(player, "poweredArmor")) hits += POWERED_ARMOR_HITS;
-  if (hasTrait(race, "highG")) hits += HIGH_G_EXTRA_HITS;
+  // High-G troops take one more hit.
+  hits += troopHits(race) - 1;
   return { rating, hits };
 }
 
@@ -142,7 +149,7 @@ export function canMindControl(state: GameState, fleet: Fleet, colony: Colony): 
   if (hasTrait(getRace(colony.raceId), "telepathic")) return false;
   return fleet.ships.some((s) => {
     const d = findDesign(owner, s.designId);
-    return !!d && !d.module && designStats(owner, d).sizeClass >= MIND_CONTROL_MIN_SIZE;
+    return !!d && !d.fixed && hullIndex(d.hull) >= TRAIT_EFFECTS.telepathicMindControlSize;
   });
 }
 
@@ -161,9 +168,10 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
 
     if (f.invadeTarget && targets.some((c) => c.id === f.invadeTarget)) {
       const target = state.colonies[f.invadeTarget]!;
-      if (f.mindControl && canMindControl(state, f, target)) {
+      // Telepaths take a beaten colony by will alone; their troops stay aboard.
+      if (canMindControl(state, f, target)) {
         delete f.invadeTarget;
-        delete f.mindControl;
+
         ctx.emit({ kind: "colonyLost", playerId: target.ownerId, colonyId: target.id, to: f.ownerId, how: "invaded" });
         captureColony(ctx, target, f.ownerId, { assimilated: true });
       } else invade(ctx, f, target);
@@ -229,12 +237,13 @@ export function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
     }
   }
   delete f.invadeTarget;
-  const atk = troopUnit(state, attacker.id, attacker.raceId, "marines", false);
+  const starId = state.planets[colony.planetId]!.starId;
+  const atk = troopUnit(state, attacker.id, attacker.raceId, "marines", false, starId);
   const attackers: number[] = Array(landed).fill(atk.hits);
   const g = garrisonOf(state, colony);
   const defenders: { unit: Unit; hp: number; kind: TroopKind }[] = [];
   for (const kind of ["armor", "marines", "militia"] as const) {
-    const unit = troopUnit(state, colony.ownerId, colony.raceId, kind, true);
+    const unit = troopUnit(state, colony.ownerId, colony.raceId, kind, true, starId);
     for (let i = 0; i < g[kind]; i++) defenders.push({ unit, hp: unit.hits, kind });
   }
   // Each clash pairs the next invader with a random defender; the higher roll wounds the other.

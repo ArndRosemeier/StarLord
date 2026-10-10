@@ -1,6 +1,7 @@
 import { EVENTS, EVENT_CHANCE, EVENT_NUMBERS as N, EVENT_START, type EventId } from "./data/events.js";
 import { MINERAL_STEPS } from "./data/galaxy.js";
 import { DRAGON_BRIBE_PER_POP, DRAGON_PILLAGE, HYDRA_KILL_SHARE, ROAMING_MONSTERS } from "./data/monsters.js";
+import { TRAIT_EFFECTS } from "./data/racePicks.js";
 import { getRace, hasTrait } from "./data/races.js";
 import { RESEARCH, TECHS, TECH_TIERS, TIERS_BY_ID, TIER_OF_TECH } from "./data/techs.js";
 import { newId, type TurnContext } from "./context.js";
@@ -48,7 +49,7 @@ export function randomEventTick(ctx: TurnContext): void {
   const victims = state.players.filter((p) => p.kind === "empire" && p.alive && !(def.mood === "bad" && lucky(p)));
   if (victims.length === 0) return;
   const pw: Record<string, number> = {};
-  for (const p of victims) pw[p.id] = def.mood === "good" && lucky(p) ? 2 : 1;
+  for (const p of victims) pw[p.id] = def.mood === "good" && lucky(p) ? TRAIT_EFFECTS.luckyGoodEvents : 1;
   const victim = state.players[Number(rng.weighted(pw))]!;
   HANDLERS[kind](ctx, victim);
 }
@@ -374,7 +375,8 @@ function invasion(ctx: TurnContext, p: Player, kind: keyof typeof ROAMING_MONSTE
   if (owner === null) return false;
   const list = coloniesOf(state, p.id, (c) => starOfColony(state, c) !== p.homeStarId);
   if (list.length === 0) return false;
-  const target = state.galaxy.stars.find((s) => s.id === starOfColony(state, rng.pick(list)))!;
+  const targetId = starOfColony(state, rng.pick(list));
+  const target = state.galaxy.stars.find((s) => s.id === targetId)!;
   const m = ROAMING_MONSTERS[kind]!;
   // It enters the galaxy at the rim nearest its target.
   const edges = [

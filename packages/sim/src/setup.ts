@@ -6,6 +6,7 @@ import { startingDesigns } from "./designs.js";
 import { distance, generateGalaxy, pickHomeStars, placeNebulae, placeSpecials } from "./galaxy.js";
 import { assignJobsForFood } from "./jobs.js";
 import { buildCustomRace, type CustomRaceSpec } from "./customRace.js";
+import { createRoster } from "./leaders.js";
 import { setupNpcs } from "./npc.js";
 import { COUNCIL_FIRST } from "./council.js";
 import { maxPopulation } from "./economy.js";
@@ -206,6 +207,7 @@ export function newGame(opts: NewGameOptions): GameState {
   state.nextId = nextId;
   setupNpcs(state, rng);
   placeSpecials(rng, state.galaxy.stars, state.planets, homes);
+  createRoster(state, rng);
   for (const p of state.players) {
     if (p.kind === "empire" && hasTrait(getRace(p.raceId), "omniscient")) {
       p.explored = state.galaxy.stars.filter((s) => s.special !== "raiderHome").map((s) => s.id);

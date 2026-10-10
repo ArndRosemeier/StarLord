@@ -1,8 +1,11 @@
 import { DIFFICULTIES } from "./data/galaxy.js";
 import {
-  ATTITUDE, ATTITUDE_EVENTS, AUDIENCE_ITEMS, CHARISMATIC_BAD, CHARISMATIC_GOOD, DEAL_BONUS, FANTASTIC_TRADER_MULT,
+  ATTITUDE, ATTITUDE_EVENTS, AUDIENCE_ITEMS,
   PEACE_TREATY_TURNS, PROPOSAL_LIFETIME, TREATY_YIELD, TRIBUTE_PERCENTS,
 } from "./data/diplomacy.js";
+import { TRAIT_EFFECTS } from "./data/racePicks.js";
+import { leaderTradeBonus } from "./leaders.js";
+import { treatyIncomeMult } from "./raceEffects.js";
 import { getRace, hasTrait } from "./data/races.js";
 import { TIER_OF_TECH } from "./data/techs.js";
 import type { Emit } from "./context.js";
@@ -75,7 +78,7 @@ function shiftAttitude(state: GameState, a: PlayerId, b: PlayerId, delta: number
  */
 export function adjustAttitude(state: GameState, a: PlayerId, b: PlayerId, delta: number): void {
   const pb = state.players[b];
-  if (pb?.kind === "empire" && hasTrait(getRace(pb.raceId), "charismatic")) delta *= delta > 0 ? CHARISMATIC_GOOD : CHARISMATIC_BAD;
+  if (pb?.kind === "empire" && hasTrait(getRace(pb.raceId), "charismatic")) delta *= delta > 0 ? TRAIT_EFFECTS.charismaticGood : TRAIT_EFFECTS.charismaticBad;
   shiftAttitude(state, a, b, delta);
 }
 
@@ -94,8 +97,8 @@ function everyoneFeels(state: GameState, actor: PlayerId, delta: number, except:
 export function dealBonus(state: GameState, proposer: PlayerId): number {
   const p = state.players[proposer]!;
   const race = getRace(p.raceId);
-  return empireBonus(p).diplomacy + (hasTrait(race, "charismatic") ? DEAL_BONUS.charismatic : 0) +
-    (hasTrait(race, "telepathic") ? DEAL_BONUS.telepathic : 0);
+  return empireBonus(p).diplomacy + (hasTrait(race, "charismatic") ? TRAIT_EFFECTS.charismaticDiplomacy : 0) +
+    (hasTrait(race, "telepathic") ? TRAIT_EFFECTS.telepathicDiplomacy : 0);
 }
 
 function repulsivePair(state: GameState, a: PlayerId, b: PlayerId): boolean {
@@ -526,9 +529,10 @@ export function treatyIncome(
   const out: TreatyIncome = { bc: 0, research: 0 };
   const me = totals.get(playerId);
   if (!me) return out;
-  const traders = hasTrait(getRace(state.players[playerId]!.raceId), "fantasticTraders") ? FANTASTIC_TRADER_MULT : 1;
   // Pirate activity (a random event) chokes off trade income.
   const pirated = (state.activeEvents ?? []).some((e) => e.kind === "pirates" && e.playerId === playerId);
+  // Fantastic traders earn 25% more from trade treaties, Trader leaders their skill in % on top.
+  const traders = treatyIncomeMult(getRace(state.players[playerId]!.raceId)) + leaderTradeBonus(state, playerId) / 100;
   for (const other of empires(state)) {
     if (other.id === playerId || !other.alive) continue;
     const r = relation(state, playerId, other.id);

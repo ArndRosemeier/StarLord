@@ -2,8 +2,6 @@
 
 /** Jump Gates add this many parsecs per turn to moves between two of your own colony systems. */
 export const JUMP_GATE_BONUS = 3;
-/** Trans-dimensional races fold space: +2 parsecs per turn. */
-export const TRANS_DIMENSIONAL_BONUS = 2;
 /** Ships inside a nebula crawl at this speed. */
 export const NEBULA_SPEED = 1;
 /** A Warp Interdictor slows enemy ships within this many parsecs of its system to INTERDICTOR_SPEED. */

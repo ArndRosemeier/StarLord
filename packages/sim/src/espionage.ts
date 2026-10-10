@@ -5,6 +5,7 @@ import { adjustAttitude } from "./diplomacy.js";
 import { grantTech, securityLevel, spyingLevel } from "./empire.js";
 import { population } from "./economy.js";
 import { removePopulation } from "./jobs.js";
+import { leaderAssassinChance } from "./leaders.js";
 import type { Rng } from "./rng.js";
 import type { GameState } from "./types.js";
 import type { Emit } from "./context.js";
@@ -37,7 +38,19 @@ export function espionageTick(state: GameState, rng: Rng, emit: Emit): void {
         continue;
       }
       if (cell.mission === "idle" || cell.count <= 0) continue;
-      const edge = spyingLevel(spyMaster) - securityLevel(state, targetId);
+      const edge = spyingLevel(spyMaster, state) - securityLevel(state, targetId);
+      // Assassin leaders hunt down foreign agents before they act.
+      const assassin = leaderAssassinChance(state, targetId);
+      if (assassin > 0) {
+        let killed = 0;
+        for (let i = 0; i < cell.count; i++) if (rng.int(0, 99) < assassin) killed++;
+        if (killed > 0) {
+          cell.count -= killed;
+          emit({ kind: "spy", playerId: targetId, other: spyMaster.id, what: `assassinated ${killed} enemy spy${killed > 1 ? "s" : ""}` });
+          emit({ kind: "spy", playerId: spyMaster.id, other: targetId, what: `lost ${killed} spy${killed > 1 ? "s" : ""} to assassins` });
+          if (cell.count <= 0) continue;
+        }
+      }
       for (let i = 0; i < cell.count; i++) {
         const roll = rng.int(1, 100) + edge * 10 - target.spies.home * SPY.perCounterAgent;
         if (roll >= SPY.success) {

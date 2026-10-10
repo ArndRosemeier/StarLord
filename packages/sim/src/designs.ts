@@ -8,6 +8,7 @@ import {
 import { BEAM_HIT, DEFENSE_PER_SPEED, PLANET_WEAPON_SPACE, RANGE_BANDS } from "./data/combat.js";
 import { NPC_WEAPONS } from "./data/monsters.js";
 import { getRace } from "./data/races.js";
+import { raceCombatSpeedBonus, shipAttackPickBonus, shipDefensePickBonus } from "./raceEffects.js";
 import { TIER_OF_TECH, TIERS_BY_ID } from "./data/techs.js";
 import { empireBonus, government, hyperLevel, knows } from "./empire.js";
 import type { Player, ShipDesign, WeaponMount } from "./types.js";
@@ -18,8 +19,6 @@ export const ALL_WEAPONS: Record<string, WeaponDef> = Object.fromEntries(
   [...WEAPONS, ...NPC_WEAPONS].map((w) => [w.id, w as WeaponDef]),
 );
 
-/** Beam attack and beam defense points per race pick level. */
-const PICK_POINTS = 20;
 
 /** Most weapon types a design may carry, as in the original's eight weapon slots. */
 export const MAX_WEAPON_SLOTS = 8;
@@ -244,9 +243,10 @@ export function designStats(player: Player, design: ShipDesign): DesignStats {
   cost *= government(player).shipCostMult;
   const spaceTotal = hullSpace(player, design);
 
-  const speed = combatSpeed(player, design.hull, space / spaceTotal) + fx.combatSpeed;
-  const attack = (computer?.attack ?? 0) + fx.beamAttack + race.picks.shipAttack * PICK_POINTS + bonus.shipAttack;
-  const defense = speed * DEFENSE_PER_SPEED + fx.beamDefense + race.picks.shipDefense * PICK_POINTS + bonus.shipDefense;
+  // Trans-dimensional races add +4 combat speed.
+  const speed = combatSpeed(player, design.hull, space / spaceTotal) + fx.combatSpeed + raceCombatSpeedBonus(race);
+  const attack = (computer?.attack ?? 0) + fx.beamAttack + shipAttackPickBonus(race) + bonus.shipAttack;
+  const defense = speed * DEFENSE_PER_SPEED + fx.beamDefense + shipDefensePickBonus(race) + bonus.shipDefense;
   const shieldClass = shield ? shield.absorb + fx.hardShields : 0;
   const role: DesignStats["role"] = design.module ?? (design.weapons.length === 0 ? "scout" : "warship");
 

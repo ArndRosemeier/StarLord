@@ -5,6 +5,8 @@ import { ORBITAL_BASES } from "./data/techs.js";
 import { relation, isHostile } from "./diplomacy.js";
 import { fleetRange, fleetSpeed, hasFtl, knows } from "./empire.js";
 import { blockedByBlackHole, distance } from "./galaxy.js";
+import { getRace } from "./data/races.js";
+import { ignoresSpaceHazards } from "./raceEffects.js";
 import type { Fleet, GameState, Id, Nebula, PlayerId, Star } from "./types.js";
 
 /**
@@ -51,9 +53,14 @@ export function hasColonyAt(state: GameState, playerId: PlayerId, starId: Id): b
   );
 }
 
-/** Whether a fleet's captain is a Navigator, who steers safely past black holes. */
+/** Parsecs per turn a Navigator captain adds to the fleet (0 without one). */
+export function navigatorBonus(state: GameState, fleet: Fleet): number {
+  return Math.max(0, ...Object.values(state.leaders).filter((l) => l.assignedTo === fleet.id).map((l) => l.skills.galaxySpeed ?? 0));
+}
+
+/** Whether a fleet's captain is a Navigator: nebulae don't slow it and it steers safely past black holes. */
 export function hasNavigator(state: GameState, fleet: Fleet): boolean {
-  return Object.values(state.leaders).some((l) => l.assignedTo === fleet.id && (l.skills.navigator ?? 0) > 0);
+  return navigatorBonus(state, fleet) > 0;
 }
 
 /** Star Gate: instant travel between two of your colonies once the technology is known. */
@@ -141,13 +148,17 @@ function legFor(state: GameState, fleet: Fleet, dest: Star): Leg {
   const owner = state.players[fleet.ownerId]!;
   const from = fleet.starId ?? null;
   const instant = isPortalMove(state, from, dest.id) || isStarGateMove(state, fleet.ownerId, from, dest.id) || isWormholeMove(state, from, dest.id);
-  let speed = fleet.speed ?? fleetSpeed(owner);
+  const navigator = navigatorBonus(state, fleet);
+  let speed = (fleet.speed ?? fleetSpeed(owner)) + navigator;
   // Jump gates speed travel between two of your colony systems.
   const origin = fleet.starId ?? fleet.fromStarId;
   if (origin && knows(owner, "jumpGate") && hasColonyAt(state, fleet.ownerId, origin) && hasColonyAt(state, fleet.ownerId, dest.id)) {
     speed += JUMP_GATE_BONUS;
   }
-  return { speed, nebulae: state.nebulae ?? [], interdictors: interdictorFields(state, fleet.ownerId), instant };
+  // Navigators and trans-dimensional races are not slowed by nebulae.
+  const hazardFree = navigator > 0 || ignoresSpaceHazards(getRace(owner.raceId));
+  return { speed, nebulae: hazardFree ? [] : (state.nebulae ?? []), interdictors: interdictorFields(state, fleet.ownerId), instant };
+
 }
 
 /**
@@ -203,10 +214,16 @@ export function moveFleet(state: GameState, fleet: Fleet): boolean {
   return false;
 }
 
+/** Hyperspace flux holds every empire's ships except those of trans-dimensional races. */
+function fluxBound(state: GameState, fleet: Fleet): boolean {
+  const owner = state.players[fleet.ownerId];
+  return owner?.kind === "empire" && !ignoresSpaceHazards(getRace(owner.raceId));
+}
+
 /** Hyperspace flux stops every ship; a warp funnel holds one fleet. */
 export function movementHalted(state: GameState, fleet: Fleet): boolean {
   return (state.activeEvents ?? []).some(
-    (e) => (e.kind === "hyperspaceFlux" && state.players[fleet.ownerId]?.kind === "empire") || (e.kind === "warpFunnel" && e.fleetId === fleet.id),
+    (e) => (e.kind === "hyperspaceFlux" && fluxBound(state, fleet)) || (e.kind === "warpFunnel" && e.fleetId === fleet.id),
   );
 }
 

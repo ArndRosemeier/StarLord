@@ -2,10 +2,12 @@ import { BUILDINGS_BY_ID } from "./data/buildings.js";
 import { DRIVES, FUEL_RANGES, HULLS_BY_ID, SUPPORT_SHIP_COMMAND_POINTS } from "./data/components.js";
 import { GOVERNMENTS, type GovernmentDef } from "./data/governments.js";
 import { getRace, hasTrait } from "./data/races.js";
-import { TRANS_DIMENSIONAL_BONUS } from "./data/movement.js";
 
 import { colonyOutput, type EmpireIncome } from "./economy.js";
 import { ORBITAL_BASES, RESEARCH, TECHS, type EmpireBonus, type TechField } from "./data/techs.js";
+import { leaderCommandPoints, leaderSpyDefense, leaderSpyOffense } from "./leaders.js";
+import { defensiveSpyPoints, offensiveSpyPoints, raceCommandPointsPerColony, raceFleetSpeedBonus } from "./raceEffects.js";
+import { PICK_VALUES } from "./data/racePicks.js";
 import type { Colony, GameState, Player, PlayerId } from "./types.js";
 
 /** Empire-wide derived numbers: tech bonuses, government, speed, range, command points. */
@@ -79,7 +81,7 @@ export function government(player: Player): GovernmentDef {
 export function fleetSpeed(player: Player): number {
   const known = DRIVES.filter((d) => knows(player, d.tech));
   const base = known.length ? known[known.length - 1]!.speed : 1;
-  return base + (hasTrait(getRace(player.raceId), "transDimensional") ? TRANS_DIMENSIONAL_BONUS : 0);
+  return base + raceFleetSpeedBonus(getRace(player.raceId));
 }
 
 /** Whether a player has any faster-than-light drive; pre-warp empires cannot leave their home system. */
@@ -105,19 +107,17 @@ export function colonyScanBonus(colony: Colony): number {
 }
 
 export const BASE_COMMAND_POINTS = 3;
-/** Warlord races get this many command points from every colony. */
-export const WARLORD_CP_PER_COLONY = 2;
 /** BC per turn for each command point over the limit. */
 export const COMMAND_OVERAGE_COST = 10;
 
 export function commandPointsAvailable(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId]!;
-  let cp = BASE_COMMAND_POINTS + empireBonus(player).commandPoints;
+  let cp = BASE_COMMAND_POINTS + empireBonus(player).commandPoints + leaderCommandPoints(state, playerId);
   const perBase = empireBonus(player).commandPointsPerBase;
-  const warlord = hasTrait(getRace(player.raceId), "warlord");
+  const perColony = raceCommandPointsPerColony(getRace(player.raceId));
   for (const c of Object.values(state.colonies)) {
     if (c.ownerId !== playerId) continue;
-    if (warlord && !c.outpost) cp += WARLORD_CP_PER_COLONY;
+    if (!c.outpost) cp += perColony;
     for (const b of c.buildings) {
       cp += BUILDINGS_BY_ID[b]?.effects.commandPoints ?? 0;
       // Communication techs add to every orbital base.
@@ -142,17 +142,14 @@ export function commandPointsUsed(state: GameState, playerId: PlayerId): number 
   return used;
 }
 
-/** Telepathic spies get +10 on every spy roll (one level). */
-export const TELEPATHIC_SPY_LEVELS = 1;
-
 /**
- * Offensive spy level (x10 on the roll): the full race pick, spy techs
- * (Neural Scanner, Stealth Suit, Cyber-Security Link, Telepathic Training,
- * Psionics) and telepathy.
+ * Spying level of an empire's agents abroad; one level is 10 points on the
+ * d100 spy roll. Race (full pick, telepathy), techs and, given the state, the
+ * best Spy Master leader.
  */
-export function spyingLevel(player: Player): number {
-  const race = getRace(player.raceId);
-  return race.picks.spying + empireBonus(player).spying + (hasTrait(race, "telepathic") ? TELEPATHIC_SPY_LEVELS : 0);
+export function spyingLevel(player: Player, state?: GameState): number {
+  const leader = state ? leaderSpyOffense(state, player.id) : 0;
+  return (offensiveSpyPoints(getRace(player.raceId)) + leader) / PICK_VALUES.spyingPerLevel + empireBonus(player).spying;
 }
 
 /**
@@ -161,10 +158,9 @@ export function spyingLevel(player: Player): number {
  */
 export function securityLevel(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId]!;
-  const race = getRace(player.raceId);
-  let sec = race.picks.spying / 2 + empireBonus(player).spying + empireBonus(player).security + government(player).security +
-    (hasTrait(race, "telepathic") ? TELEPATHIC_SPY_LEVELS : 0);
-
+  // Defending spies get half the racial spying bonus (telepaths +10 in full) and the best Telepath leader's points.
+  const points = defensiveSpyPoints(getRace(player.raceId)) + leaderSpyDefense(state, playerId);
+  let sec = points / PICK_VALUES.spyingPerLevel + empireBonus(player).security + government(player).security;
   for (const c of Object.values(state.colonies)) {
     if (c.ownerId !== playerId) continue;
     for (const b of c.buildings) sec += BUILDINGS_BY_ID[b]?.effects.security ?? 0;

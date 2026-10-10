@@ -1,10 +1,10 @@
-import { MAX_LEADERS } from "./data/leaders.js";
-import { CACHE_BC, DEBRIS_BC, HERO_LEVEL, SPLINTER_POP } from "./data/galaxy.js";
+import { HEROES } from "./data/leaders.js";
+import { CACHE_BC, DEBRIS_BC, SPLINTER_POP } from "./data/galaxy.js";
 import { TECH_TIERS } from "./data/techs.js";
 import { newId, type TurnContext } from "./context.js";
 import { grantTech } from "./empire.js";
 import { assignJobsForFood } from "./jobs.js";
-import { generateLeader } from "./leaders.js";
+import { hasRoomFor, hireLeader, hirePrice } from "./leaders.js";
 import { learnsWholeField, researchOptions } from "./rules.js";
 import type { Colony, Id, PlayerId } from "./types.js";
 
@@ -43,23 +43,22 @@ export function onExplore(ctx: TurnContext, playerId: PlayerId, starId: Id): voi
       break;
     }
     case "hero": {
-      const hired = Object.values(state.leaders).filter((l) => l.ownerId === playerId).length;
-      if (hired >= MAX_LEADERS) {
+      // A hero from the roster, stranded here, joins without a fee.
+      const stranded = Object.values(state.leaders)
+        .filter((l) => l.status === "pool" && !HEROES[l.heroId]?.special && hasRoomFor(state, playerId, l.kind))
+        .sort((a, b) => (a.id < b.id ? -1 : 1));
+      if (stranded.length === 0) {
         ctx.emit({ kind: "random", playerId, what: `A stranded officer at ${star.name} could not join: you have no room for another leader.`, starId });
         break;
       }
-      const hero = generateLeader(state, rng, rng.chance(0.5) ? "administrator" : "captain");
-      const level = rng.int(HERO_LEVEL[0], HERO_LEVEL[1]);
-      for (const k of Object.keys(hero.skills) as (keyof typeof hero.skills)[]) hero.skills[k] = (hero.skills[k]! / hero.level) * level;
-      hero.level = level;
-      hero.salary = level;
-      hero.hireCost = 0;
-      hero.ownerId = playerId;
-      state.leaders[hero.id] = hero;
+      const hero = rng.pick(stranded);
+      player.bc += hirePrice(state, playerId, hero);
+      hireLeader(state, playerId, hero.id, ctx.emit);
       delete star.feature;
       ctx.emit({ kind: "leader", playerId, leaderId: hero.id, what: `${hero.name}, marooned at ${star.name}, joined your empire in gratitude.` });
       break;
     }
+
   }
   // A splinter colony of the explorer's own people, lost long ago.
   for (const pid of star.planetIds) {
