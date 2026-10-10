@@ -26,7 +26,7 @@ export const COMM_REDIRECT_RANGE: { tech: string; range: number }[] = [
 /** A blockaded colony's production is halved. */
 export const BLOCKADE_PRODUCTION = 0.5;
 
-/** Fleets in transit are seen this many parsecs further per size class of their largest ship. */
+/** Fleets are seen this many parsecs further per size class of their largest ship above a frigate. */
 export const TRANSIT_DETECTION_PER_SIZE = 1;
 /** A Battle Scanner adds this to the scanner range of the fleet carrying it. */
 export const BATTLE_SCANNER_RANGE = 2;

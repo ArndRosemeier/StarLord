@@ -1,8 +1,10 @@
+import { BATTLE_SCANNER_RANGE, TRANSIT_DETECTION_PER_SIZE } from "./data/movement.js";
 import { getRace, registerRaces } from "./data/races.js";
+import { designStats, findDesign } from "./designs.js";
 import { hasStealthyShips, seesAllFleets } from "./raceEffects.js";
 import { colonyScanBonus, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
-import type { GameState, PlayerId } from "./types.js";
+import type { Fleet, GameState, PlayerId } from "./types.js";
 
 export type PlayerView = GameState & { viewer: PlayerId };
 
@@ -22,8 +24,12 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
     Object.entries(state.colonies).filter(([, c]) => c.ownerId === viewer || planets[c.planetId]),
   );
   const range = scanRange(me);
+  const hasSpecial = (f: Fleet, special: string) =>
+    f.ships.some((s) => findDesign(me, s.designId)?.specials?.includes(special));
   const eyes: { x: number; y: number; range: number }[] = [
-    ...Object.values(state.fleets).filter((f) => f.ownerId === viewer).map((f) => ({ x: f.x, y: f.y, range })),
+    ...Object.values(state.fleets)
+      .filter((f) => f.ownerId === viewer)
+      .map((f) => ({ x: f.x, y: f.y, range: range + (hasSpecial(f, "battleScanner") ? BATTLE_SCANNER_RANGE : 0) })),
     ...Object.values(state.colonies)
       .filter((c) => c.ownerId === viewer)
       .map((c) => {
@@ -41,11 +47,28 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
     const p = state.players[ownerId]!;
     return p.kind === "empire" && hasStealthyShips(getRace(p.raceId));
   };
+  // Fleets whose every ship carries a Stealth Field or a cloak hide the same way.
+  // Big ships are easier to spot: each size class past the frigate adds to the range they are seen at.
+  const fleetLooks = (f: Fleet): { hidden: boolean; size: number } => {
+    const owner = state.players[f.ownerId]!;
+    let hidden = f.ships.length > 0;
+    let size = 1;
+    for (const s of f.ships) {
+      const d = findDesign(owner, s.designId);
+      if (!d) continue;
+      const stats = designStats(owner, d);
+      size = Math.max(size, stats.sizeClass);
+      if (!stats.effects.stealth && !(stats.effects.cloakDefense > 0)) hidden = false;
+    }
+    return { hidden, size };
+  };
   const fleets = Object.fromEntries(
     Object.entries(state.fleets).filter(([, f]) => {
       if (f.ownerId === viewer || omniscient || lair(f)) return true;
-      if (stealthy(f.ownerId)) return eyes.some((e) => distance(e, f) === 0);
-      return eyes.some((e) => distance(e, f) <= e.range);
+      const look = fleetLooks(f);
+      if (stealthy(f.ownerId) || look.hidden) return eyes.some((e) => distance(e, f) === 0);
+      const bonus = (look.size - 1) * TRANSIT_DETECTION_PER_SIZE;
+      return eyes.some((e) => distance(e, f) <= e.range + bonus);
     }),
   );
   // Leaders in the viewer's service and those offering to join; other empires' hiring queues stay private.
@@ -56,10 +79,17 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
   const proposals = state.proposals.filter((p) => p.from === viewer || p.to === viewer);
   const combats = state.combats.filter((c) => c.sides.includes(viewer));
   const events = state.events.filter((e) => e.playerId === viewer);
+  // One-time finds (pirate caches, wrecks, stranded heroes) are only known once a system is explored.
+  const shownStars = stars.map((s) => {
+    if (!s.feature || s.feature === "wormhole" || explored.has(s.id)) return s;
+    const { feature: _hidden, ...rest } = s;
+    return rest;
+  });
   return structuredClone({
     ...state,
     players,
-    galaxy: { ...state.galaxy, stars },
+    galaxy: { ...state.galaxy, stars: shownStars },
+
     planets, colonies, fleets, leaders, proposals, combats, events, viewer,
   });
 }
