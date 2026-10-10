@@ -177,8 +177,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </Ul>
       <h3>Miniaturization</h3>
       <P>
-        Every tier you research in a field after the one that gave a ship component makes that component 10% smaller
-        and cheaper, down to half its size. Old weapons become cheap filler on big hulls.
+        Every later level you research in the field that gave a ship component counts as a refinement of it, and so does
+        each hyper-advanced level of that category. Refinements make the component smaller and cheaper, down to about a
+        quarter of its first size and cost, and open the stronger weapon modifications. Old weapons become cheap filler
+        on big hulls.
       </P>
     </>
   ),
@@ -187,13 +189,16 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
     <>
       <P>
         On the <b>Ship design</b> screen you pick a hull, armor, an optional shield and computer, weapons and special
-        systems. Everything must fit in the hull's space; shields, computers and specials take a share of it, so
-        they cost more space on bigger hulls. A module turns the hull into a colony ship, outpost ship or transport.
+        systems. Everything must fit in the hull's space. Armor and the computer take no space; shields and specials
+        need more space on bigger hulls. A module turns the hull into a colony ship, outpost ship or transport.
       </P>
       <Ul>
-        <li>Hit points come from the hull's structure plus its armor base times the armor grade (<HelpLink to="page:hulls" />, <HelpLink to="page:armor" />).</li>
-        <li>Beam defense comes from the hull size, specials, race picks and combat speed; attack from the computer, specials and race picks.</li>
+        <li>The armor grade multiplies the hull's armor and structure (<HelpLink to="page:hulls" />, <HelpLink to="page:armor" />).</li>
+        <li>Each weapon mount has a count, optional modifications (heavy, point defense, autofire and so on) and, for beams, a firing arc. Missile mounts also choose how many shots their rack holds (<HelpLink to="page:weapons" />).</li>
+        <li>A ship can carry at most eight weapon mounts.</li>
+        <li>Combat speed depends on how full the hull is: an empty hull is fast, a packed one slow. Speed gives beam defense; the computer, specials and race picks give attack.</li>
         <li>Ship cost is scaled by your government (<HelpLink to="page:governments" />).</li>
+        <li>Cruisers and larger hulls can only be built at colonies with a star base, battlestation or star fortress.</li>
         <li>Mark old designs obsolete to hide them from build lists.</li>
       </Ul>
       <P>
@@ -211,11 +216,15 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         your colonies and outposts. See <HelpLink to="page:drives" />.
       </P>
       <h3>Scanners</h3>
-      <P>Your colonies and ships see {BASE_SCAN_RANGE} parsecs around them, more with scanner techs. Empires meet when their scanners overlap.</P>
+      <P>
+        Your colonies and ships see {BASE_SCAN_RANGE} parsecs around them, more with scanner techs. Orbital stations add
+        to the range around their colony. Empires meet when their scanners overlap.
+      </P>
       <h3>Command points</h3>
       <P>
-        Armed ships use command points by hull size; scouts, colony ships, outposts and transports are free. You have{" "}
-        {BASE_COMMAND_POINTS} to start with, more from star bases, the space academy and communication techs. Each point
+        Every warship uses command points by hull size, from 1 for a frigate up to 6 for a doom star; colony ships,
+        outpost ships and transports use 1. You have {BASE_COMMAND_POINTS} to start with, more from star bases,
+        battlestations, star fortresses, the space academy and communication techs. Each point
         over the limit costs {COMMAND_OVERAGE_COST} BC a turn.
       </P>
       <h3>Stance</h3>
@@ -230,17 +239,25 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
   combat: () => (
     <>
       <P>
-        Battles happen when hostile armed fleets meet, or when an armed planet sees enemy ships. They are fought
+        Battles happen when hostile armed fleets meet, or when an armed colony sees enemy ships. They are fought
         automatically on a {FIELD_WIDTH}×{FIELD_HEIGHT} battlefield for up to {MAX_ROUNDS} rounds and can be replayed from
         the turn report.
       </P>
+      <h3>Moving and firing</h3>
       <Ul>
-        <li>Faster ships act first. Each ship closes to its preferred range and fires everything in range.</li>
-        <li>Beams hit with 50% + (attack − defense)%, between 5% and 95%. Beyond half range they do a quarter less damage.</li>
-        <li>Shields subtract from every beam hit and half as much from missiles and torpedoes. Some weapons pierce shields.</li>
-        <li>Missiles and torpedoes have limited volleys; point defense can shoot them down and ECM can dodge them (half as well against torpedoes).</li>
-        <li>Unarmed ships try to slip away each round.</li>
-        <li>Repair systems restore hit points every round.</li>
+        <li>The two sides take turns ship by ship; which side starts is rolled at the beginning and swaps every round.</li>
+        <li>Ships spend their combat speed to move and turn. Each beam fires only into its arc, so facing matters.</li>
+        <li>A beam's hit chance is its attack against the target's beam defense, minus a penalty that grows with range. Damage also drops with range unless the mount ignores it.</li>
+        <li>Better rolls do more damage: a shot that barely hits does its minimum, a near-certain one close to its maximum.</li>
+        <li>Missiles and torpedoes fly across the field at their own speed. On arrival they can be shot down by point-defense beams, anti-missile rockets or a lightning field, or misled by jammers.</li>
+        <li>Fighter and bomber bays launch craft that fly to their target, attack and return to rearm.</li>
+      </Ul>
+      <h3>Damage</h3>
+      <Ul>
+        <li>Shields take their class off every hit, then soak what is left from the pool on the side that was hit. Each side recovers part of its pool every round.</li>
+        <li>Damage that gets through wears down armor first, then structure. Hits on structure may knock out weapons, the shield generator, the computer or the drive; losing the drive destroys the ship.</li>
+        <li>Armor-piercing and shield-piercing weapons skip part of this, and some specials change it further.</li>
+        <li>Repair units fix armor, structure and systems every round.</li>
       </Ul>
       <h3>Combat doctrine</h3>
       <P>
@@ -248,11 +265,17 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         enemy's) and whom they target first: the nearest, weakest or strongest enemy. Retreating fleets head to your
         nearest colony.
       </P>
-      <h3>Planets</h3>
+      <h3>Stations and planets</h3>
       <P>
-        Star bases, missile bases, ground batteries and shields defend a colony (<HelpLink to="page:buildings" />). Planet
-        guns use your best known beam and missile. Ships only shoot at a planet when their fleet is set to attack, and
-        only after the planet's defending ships are gone.
+        A star base, battlestation or star fortress fights as an immobile ship that carries your best weapons and
+        systems, fires in every direction and never runs out of missiles. A battlestation also makes your ships in the
+        battle more accurate, and a star fortress makes them harder to hit as well. If the station is destroyed, the
+        building is lost.
+      </P>
+      <P>
+        The planet itself is a separate target with its own ground batteries and missile base, protected by planetary
+        shields (<HelpLink to="page:buildings" />). Ship beams do only half damage to it. Stations are fair game in any
+        battle, but only fleets set to attack fire on the planet, and only once no defending ships or station remain.
       </P>
     </>
   ),

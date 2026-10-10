@@ -1,5 +1,5 @@
 import type { RngState } from "./rng.js";
-import type { HullSize } from "./data/components.js";
+import type { FiringArc, HullSize, WeaponModId } from "./data/components.js";
 import type { Gravity, Minerals, PlanetSize, PlanetType, StarColor } from "./data/planets.js";
 import type { Government, RaceDef } from "./data/races.js";
 import type { TechField } from "./data/techs.js";
@@ -103,6 +103,12 @@ export interface Fleet {
 export interface WeaponMount {
   weaponId: string;
   count: number;
+  /** Weapon modifications (heavy mount, point defense, autofire …). */
+  mods?: WeaponModId[];
+  /** Beams fire forward unless given a wider arc; missiles and stations always fire all round. */
+  arc?: FiringArc;
+  /** Missile rack size: shots per battle (2, 5, 10, 15 or 20). */
+  ammo?: number;
 }
 
 export type DesignModule = "colony" | "outpost" | "transport";
@@ -124,12 +130,19 @@ export interface ShipDesign {
 }
 
 export interface FixedStats {
+  /** Structure points; monsters have no armor layer unless given one. */
   hits: number;
+  armor?: number;
+  /** Beam attack and beam defense. */
   attack: number;
   defense: number;
+  /** Damage taken off every hit. */
   shield: number;
+  /** Squares per combat turn. */
   combatSpeed: number;
   weapons: WeaponMount[];
+  missileEvasion?: number;
+  sizeClass?: number;
 }
 
 export type PlayerKind = "empire" | "monsters" | "raiders";

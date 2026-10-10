@@ -8,7 +8,7 @@ import { population } from "./economy.js";
 import { distance } from "./galaxy.js";
 import { MAX_LEADERS } from "./data/leaders.js";
 import {
-  availableBuildings, availableDesigns, availableProjects, availableTiers, itemCost, researchOptions, starOf,
+  availableBuildings, canBuildShips, availableDesigns, availableProjects, availableTiers, itemCost, researchOptions, starOf,
 } from "./rules.js";
 import { validateMutation } from "./mutation.js";
 import type { RacePicks } from "./data/races.js";
@@ -102,6 +102,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
           seen.add(item.id);
         }
         if (item.kind === "ship" && !designs.has(item.designId)) return fail(`design ${item.designId} not available`);
+        if (item.kind === "ship" && !canBuildShips(c, findDesign(player, item.designId))) return fail("ships larger than destroyers need an orbital station here");
         // A one-off project already queued here stays valid when the queue is reordered.
         const alreadyHere = item.kind === "project" && c.queue.some((q) => q.kind === "project" && q.id === item.id);
         if (item.kind === "project" && !projects.has(item.id) && !alreadyHere) return fail(`project ${item.id} not available`);

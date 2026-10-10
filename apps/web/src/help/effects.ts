@@ -9,12 +9,17 @@ import { fmt, pct, signed } from "../ui/format";
 
 type Explain<T> = { [K in keyof Required<T>]: (v: NonNullable<T[K]>) => string };
 
+const STATION_NAMES = { starBase: "star base", battlestation: "battlestation", starFortress: "star fortress" } as const;
+const INSTALLATION_NAMES = {
+  groundBatteries: "ground batteries: 300 space of your best beam weapon on the planet",
+  missileBase: "missile base: 300 space of your best missile, never out of ammunition",
+} as const;
+
 const PLANET_DEFENSE: Explain<PlanetDefense> = {
-  hits: (v) => `${fmt(v)} defense hit points`,
+  station: (v) => `orbital ${STATION_NAMES[v]} that fights in every battle here and lets the colony build cruisers and larger hulls`,
+  installation: (v) => INSTALLATION_NAMES[v],
+  mines: () => "space mines that strike attacking ships before the battle starts",
   shield: (v) => `planetary shield stops ${v} damage per hit`,
-  beams: (v) => `${v} beam batteries (best known beam weapon)`,
-  missiles: (v) => `${v} missile launchers (best known missile)`,
-  attack: (v) => `${signed(v)} attack for its guns`,
 };
 
 const BUILDING: Explain<BuildingEffects> = {
@@ -35,6 +40,7 @@ const BUILDING: Explain<BuildingEffects> = {
   security: (v) => `${signed(v)} spy defense, empire-wide`,
   gravityFix: () => "removes the gravity penalty on this planet",
   defense: (d) => explain(PLANET_DEFENSE, d).join(", "),
+  scanRange: (v) => `${signed(v)} parsec scanner range around this colony`,
 };
 
 const BONUS: Explain<EmpireBonus> = {
@@ -60,19 +66,44 @@ const BONUS: Explain<EmpireBonus> = {
 };
 
 const SPECIAL: Explain<SpecialEffects> = {
-  attack: (v) => `${signed(v)} beam attack`,
-  defense: (v) => `${signed(v)} beam defense`,
-  missileEvasion: (v) => `${pct(v)} chance to dodge each missile (half against torpedoes)`,
-  pointDefense: (v) => `${pct(v)} chance to shoot down each incoming missile or torpedo`,
-  structureMult: (v) => `structure ×${fmt(v, 2)}`,
-  armorMult: (v) => `armor ×${fmt(v, 2)}`,
-  repair: (v) => `repairs ${pct(v)} of max hit points every combat round`,
+  beamAttack: (v) => `${signed(v)} beam attack`,
+  beamDefense: (v) => `${signed(v)} beam defense`,
+  cloakDefense: (v) => `${signed(v)} beam defense until the ship fires`,
+  phasing: (v) => `out of phase for the first ${v} rounds: cannot be targeted`,
+  missileEvasion: (v) => `${signed(v)} missile evasion`,
+  fleetMissileEvasion: (v) => `${signed(v)} missile evasion for every ship in the fleet`,
   combatSpeed: (v) => `${signed(v)} combat speed`,
-  shieldPierce: (v) => `weapons ignore ${pct(v)} of enemy shields`,
-  displacement: (v) => `${pct(v)} chance that each enemy shot misses outright`,
-  damageBonus: (v) => `${signed(v)} damage per beam hit`,
-  bombBonus: (v) => `${signed(v * 100)}% bombing damage`,
-  troops: (v) => `carries ${v} troop${v === 1 ? "" : "s"}`,
+  armorMult: (v) => `armor ×${fmt(v, 2)}`,
+  structureMult: (v) => `structure ×${fmt(v, 2)}`,
+  hardShields: (v) => `shields stop ${v} more damage per hit and cannot be pierced`,
+  shieldStrengthMult: (v) => `shield strength ×${fmt(v, 2)}`,
+  shieldRegen: (v) => `shields recover ${pct(v)} more each round`,
+  damageTaken: (v) => `only ${pct(v)} of each hit's damage gets through`,
+  absorber: (v) => `soaks up ${pct(v)} of beam damage that would hit the ship`,
+  displacement: (v) => `${pct(v)} chance that any shot at the ship misses`,
+  reflection: (v) => `may reflect beam hits back at the shooter (strength ${v})`,
+  beamDamagePct: (v) => `${signed(v)}% beam damage`,
+  penetratingMult: (v) => `damage that gets past shields ×${fmt(v, 1)}`,
+  achilles: () => "hits skip armor and favor weapons and shield generators",
+  rangeDivisor: (v) => `range penalties as if targets were ${v}× closer`,
+  repair: (v) => `repairs ${pct(v)} of armor and structure each round`,
+  repairSystems: (v) => `repairs ${pct(v)} of damaged systems each round`,
+  hyperX: () => "beams fire twice every other round",
+  fastRacks: () => "missile racks fire two volleys every other round",
+  lightning: (v) => `${pct(v)} chance to destroy each incoming missile, torpedo or fighter`,
+  marinesMult: (v) => `marines ×${fmt(v, 1)}`,
+  boardingDefense: (v) => `${signed(v)} to marines repelling boarders`,
+  extraTurn: () => "acts twice each round",
+  teleport: (v) => `can jump up to ${v} squares once a round`,
+  hullSpacePct: (v) => `${signed(v)}% hull space`,
+  fuelRangePct: (v) => `${signed(v)}% fuel range`,
+  warpDissipator: () => "enemies cannot retreat from the battle",
+  detonator: (v) => `explodes with ×${v} force when destroyed`,
+  monsterAttackPerSize: (v) => `${signed(v)} attack per size class against monsters, for the whole fleet`,
+  scoutLab: () => "produces research each turn, more on bigger hulls",
+  transporters: (v) => `beams marines aboard enemy ships up to ${v} squares away`,
+  stealth: () => "hidden from enemy scanners on the galaxy map",
+  turnCost: (v) => (v === 0 ? "turns for free" : `turning costs ${pct(v)} of normal`),
 };
 
 function explain<T extends object>(table: Explain<T>, values: T): string[] {
