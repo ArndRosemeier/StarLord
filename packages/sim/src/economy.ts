@@ -108,6 +108,11 @@ export function capitalLost(player: Player): boolean {
   return player.capitol === "lost" && government(player).capitalLossMorale > 0;
 }
 
+/** Buildings that sabotage, comets and bombs can destroy: everything but the Capitol. */
+export function destructibleBuildings(colony: Colony): string[] {
+  return colony.buildings.filter((b) => !BUILDINGS_BY_ID[b]?.effects.capitol);
+}
+
 /** A colony of another race than its ruler's counts as multi-racial. */
 export function isMultiRacial(player: Player, colony: Colony): boolean {
   return colony.raceId !== player.raceId;

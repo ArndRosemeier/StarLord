@@ -413,7 +413,7 @@ function ProjectPage({ id }: { id: string }) {
             <thead><tr><th>From</th><th>Becomes</th></tr></thead>
             <tbody>
               {Object.entries(TERRAFORM_STEP).map(([from, to]) => (
-                <tr key={from}><td><HelpLink to={`climate:${from}`} /></td><td><HelpLink to={`climate:${to}`} /></td></tr>
+                <tr key={from}><td><HelpLink to={`climate:${from}`} /></td><td>{to.map((t, i) => <span key={t}>{i > 0 ? " or " : ""}<HelpLink to={`climate:${t}`} /></span>)}</td></tr>
               ))}
             </tbody>
           </table>

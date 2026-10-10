@@ -12,7 +12,7 @@ import { designStats, findDesign } from "./designs.js";
 import { acceptProposal, adjustAttitude, declareWar, diplomacyTick, isHostile, treatyIncome } from "./diplomacy.js";
 import { COMMAND_OVERAGE_COST, commandPointsAvailable, commandPointsUsed, empireBonus, fleetSpeed, grantTech } from "./empire.js";
 import {
-  androids, assimilationTurns, colonyOutput, colonyTroops, foodPlan, maxPopulation, population, revoltChance, type ColonyOutput,
+  androids, assimilationTurns, colonyOutput, colonyTroops, destructibleBuildings, foodPlan, maxPopulation, population, revoltChance, type ColonyOutput,
 } from "./economy.js";
 import { espionageTick } from "./espionage.js";
 import { distance } from "./galaxy.js";
@@ -604,8 +604,10 @@ function groundPhase(ctx: TurnContext, silenced: Silenced): void {
       if (bombs <= 0 && spores <= 0) continue;
       const kills = Math.floor(bombs * POP_PER_BOMB_DAMAGE + rng.next()) + spores;
       raze(ctx, c, kills);
-      if (bombs > 0 && c.buildings.length > 0 && rng.chance(Math.min(0.5, bombs / 200))) {
-        c.buildings.splice(rng.int(0, c.buildings.length - 1), 1);
+      const targets = destructibleBuildings(c);
+      if (bombs > 0 && targets.length > 0 && rng.chance(Math.min(0.5, bombs / 200))) {
+        const hit = targets[rng.int(0, targets.length - 1)]!;
+        c.buildings.splice(c.buildings.indexOf(hit), 1);
       }
     }
   }
