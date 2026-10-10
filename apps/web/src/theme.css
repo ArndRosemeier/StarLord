@@ -1,0 +1,246 @@
+/*
+ * In-game look: painted backdrops, glass panels, glowing accents and motion.
+ * Loaded after styles.css and scoped to the game shell, modals and overlays,
+ * so the title and setup screens keep their own styling.
+ */
+
+:root {
+  --glass: rgba(12, 17, 34, 0.74);
+  --glass-2: rgba(20, 28, 52, 0.72);
+  --glass-line: rgba(120, 160, 255, 0.18);
+  --glow: rgba(91, 157, 255, 0.55);
+  --display: Orbitron, Inter, system-ui, sans-serif;
+}
+
+/* ---- stage and backdrop */
+.shell { background: #04050b; }
+.stage { position: relative; min-height: 0; min-width: 0; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); overflow: hidden; }
+.stage > .content { position: relative; z-index: 1; grid-area: 1 / 1; }
+.content.full > .screen { height: 100%; }
+.backdrop { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; grid-area: 1 / 1; }
+.backdrop-art {
+  position: absolute; inset: -4%; background: center / cover no-repeat;
+  animation: bg-in 0.9s ease-out both, bg-drift 60s ease-in-out infinite alternate;
+}
+.backdrop-art.leaving { animation: bg-out 0.9s ease-in both; }
+@keyframes bg-in { from { opacity: 0; transform: scale(1.06); } }
+@keyframes bg-out { to { opacity: 0; } }
+@keyframes bg-drift { to { transform: scale(1.07) translate(-1.2%, 0.8%); } }
+.backdrop-shade {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 40%, rgba(4, 6, 14, 0.45), rgba(4, 6, 14, 0.76) 70%, rgba(2, 3, 8, 0.92)),
+    linear-gradient(180deg, rgba(4, 6, 14, 0.35), transparent 30%, rgba(4, 6, 14, 0.6));
+}
+.stardust { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: screen; }
+
+/* ---- screen entrance: the screen fades up and its panels follow one after another */
+/* Fill backwards only, so no transform lingers to trap fixed-position dialogs inside the screen. */
+.screen { animation: screen-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+@keyframes screen-in { from { opacity: 0; transform: translateY(10px); } }
+.screen .panel { animation: panel-in 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+.screen .panel:nth-child(2) { animation-delay: 0.05s; }
+.screen .panel:nth-child(3) { animation-delay: 0.1s; }
+.screen .panel:nth-child(4) { animation-delay: 0.15s; }
+.screen .panel:nth-child(n + 5) { animation-delay: 0.2s; }
+@keyframes panel-in { from { opacity: 0; transform: translateY(14px) scale(0.985); } }
+
+/* ---- glass panels with corner brackets */
+.shell .panel, .modal {
+  position: relative;
+  background: linear-gradient(180deg, var(--glass-2), var(--glass));
+  border: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.shell .panel::before, .modal::before {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  background:
+    linear-gradient(var(--accent), var(--accent)) top left / 14px 2px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) top left / 2px 14px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom right / 14px 2px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom right / 2px 14px no-repeat;
+  opacity: 0.55;
+}
+.shell .panel.bad { border-color: rgba(255, 107, 107, 0.45); }
+.shell h2, .shell h3, .modal h2, .modal h3 { font-family: var(--display); letter-spacing: 0.06em; font-weight: 600; }
+.shell h2 { font-size: 17px; color: #eaf1ff; text-shadow: 0 0 14px rgba(91, 157, 255, 0.35); }
+.shell h3 { font-size: 14px; color: #dce6ff; }
+.shell h4 { color: #8fa3d6; letter-spacing: 0.12em; font-size: 11.5px; display: flex; align-items: center; gap: 8px; }
+.shell h4::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--glass-line), transparent); }
+
+/* ---- controls */
+.shell button, .modal button {
+  background: linear-gradient(180deg, rgba(34, 46, 80, 0.85), rgba(20, 27, 50, 0.85));
+  border-color: rgba(120, 160, 255, 0.22);
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, transform 0.08s;
+}
+.shell button:hover:not(:disabled), .modal button:hover:not(:disabled) {
+  border-color: var(--accent); box-shadow: 0 0 12px rgba(91, 157, 255, 0.35), inset 0 0 8px rgba(91, 157, 255, 0.15);
+}
+.shell button:active:not(:disabled), .modal button:active:not(:disabled) { transform: translateY(1px); }
+.shell button.active, .modal button.active {
+  background: linear-gradient(180deg, rgba(47, 111, 224, 0.55), rgba(30, 64, 140, 0.55));
+  border-color: var(--accent); box-shadow: 0 0 10px rgba(91, 157, 255, 0.35);
+}
+.shell button.primary, .modal button.primary {
+  position: relative; overflow: hidden;
+  background: linear-gradient(180deg, #3d84f5, #2257c4); border-color: #7fb2ff; color: #fff;
+  box-shadow: 0 0 14px rgba(61, 132, 245, 0.35);
+}
+.shell button.primary::after, .modal button.primary::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: skewX(-20deg); animation: sheen 4.5s ease-in-out infinite;
+}
+@keyframes sheen { 0%, 70% { left: -60%; } 100% { left: 130%; } }
+.shell button.danger, .modal button.danger { background: linear-gradient(180deg, rgba(90, 30, 36, 0.8), rgba(54, 18, 24, 0.8)); border-color: rgba(255, 107, 107, 0.4); }
+.shell button.danger:hover:not(:disabled) { border-color: var(--bad); box-shadow: 0 0 12px rgba(255, 107, 107, 0.35); }
+.shell select, .shell input[type="text"], .shell input[type="number"] {
+  background: rgba(10, 14, 28, 0.8); border-color: rgba(120, 160, 255, 0.22);
+}
+.shell select:focus, .shell input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(91, 157, 255, 0.25); }
+
+.shell .chip { background: rgba(20, 28, 52, 0.8); border-color: rgba(120, 160, 255, 0.2); }
+.shell .chip.good { border-color: rgba(79, 209, 139, 0.45); }
+.shell .chip.bad { border-color: rgba(255, 107, 107, 0.45); }
+.shell .chip.warn { border-color: rgba(255, 200, 87, 0.45); }
+
+/* Progress bars fill smoothly and carry a slow moving glint. */
+.shell .bar { height: 7px; background: rgba(8, 12, 24, 0.9); border: 1px solid rgba(120, 160, 255, 0.12); border-radius: 4px; }
+.shell .bar > div {
+  position: relative; overflow: hidden; border-radius: 3px; transition: width 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  background: linear-gradient(90deg, var(--accent-2), var(--accent)); box-shadow: 0 0 8px var(--glow);
+}
+.shell .bar > div::after {
+  content: ""; position: absolute; inset: 0; width: 50%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: glint 2.8s ease-in-out infinite;
+}
+@keyframes glint { from { transform: translateX(-120%); } to { transform: translateX(260%); } }
+
+/* Tables */
+.shell th { color: #8fa3d6; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; border-bottom-color: rgba(120, 160, 255, 0.25); }
+.shell td { border-bottom-color: rgba(120, 160, 255, 0.1); }
+.shell tr.clickable td { transition: background 0.15s; }
+.shell tr.clickable:hover td { background: rgba(60, 100, 200, 0.12); }
+.shell tr.selected td { background: rgba(60, 110, 230, 0.2); }
+.shell tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
+.dot.glow { box-shadow: 0 0 8px currentColor; }
+
+/* ---- top bar */
+.shell .topbar {
+  position: relative; z-index: 5;
+  background: linear-gradient(180deg, rgba(18, 26, 50, 0.96), rgba(9, 13, 27, 0.96));
+  border-bottom: 1px solid rgba(120, 160, 255, 0.25);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+}
+.shell .topbar::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent) 20%, #a78bfa 50%, var(--accent) 80%, transparent);
+  opacity: 0.7; animation: line-flow 8s linear infinite; background-size: 200% 100%;
+}
+@keyframes line-flow { to { background-position: -200% 0; } }
+.shell .topbar .brand {
+  font-family: var(--display); font-weight: 800; letter-spacing: 0.22em; font-size: 15px;
+  background: linear-gradient(90deg, #8ec5ff, #e0e9ff, #b49cff, #8ec5ff); background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 6px rgba(91, 157, 255, 0.5)); animation: brand-shift 10s linear infinite;
+}
+@keyframes brand-shift { to { background-position: 300% 0; } }
+.shell .stat small { display: inline-flex; align-items: center; gap: 4px; text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
+.shell .stat > span, .shell .stat > b { font-variant-numeric: tabular-nums; }
+.stat-meter { display: block; height: 2px; margin-top: 2px; background: rgba(84, 160, 255, 0.15); border-radius: 1px; overflow: hidden; }
+.stat-meter > span { display: block; height: 100%; background: var(--research); box-shadow: 0 0 6px var(--research); transition: width 0.7s; }
+.turn-stat b { font-family: var(--display); font-size: 16px; color: #fff; }
+.turn-num { display: inline-block; animation: turn-pop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
+@keyframes turn-pop { from { transform: scale(1.8); color: #9fd0ff; text-shadow: 0 0 12px #5b9dff; } }
+.num-flash.up { animation: flash-up 1.1s ease-out; }
+.num-flash.down { animation: flash-down 1.1s ease-out; }
+@keyframes flash-up { from { text-shadow: 0 0 10px var(--good); color: var(--good); } }
+@keyframes flash-down { from { text-shadow: 0 0 10px var(--bad); color: var(--bad); } }
+.icon { flex: none; vertical-align: -2px; }
+.shell button.end-turn { padding: 7px 16px; font-family: var(--display); letter-spacing: 0.1em; font-size: 13px; animation: end-turn-pulse 3s ease-in-out infinite; }
+@keyframes end-turn-pulse { 50% { box-shadow: 0 0 22px rgba(91, 157, 255, 0.7); } }
+
+/* ---- side navigation */
+.shell .nav {
+  position: relative; z-index: 4;
+  background: linear-gradient(180deg, rgba(14, 20, 40, 0.97), rgba(8, 11, 23, 0.97));
+  border-right: 1px solid rgba(120, 160, 255, 0.18); gap: 3px;
+}
+.shell .nav button {
+  position: relative; background: transparent; border: 1px solid transparent; padding: 7px 10px;
+  transition: background 0.2s, color 0.2s, padding-left 0.2s; color: #b9c5e4;
+}
+.shell .nav button:hover:not(:disabled) { background: rgba(60, 100, 200, 0.12); border-color: transparent; box-shadow: none; padding-left: 13px; color: #fff; }
+.shell .nav button.active {
+  background: linear-gradient(90deg, rgba(60, 120, 255, 0.28), rgba(60, 120, 255, 0.04));
+  border-color: transparent; box-shadow: none; color: #fff;
+}
+.shell .nav button.active::before {
+  content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; border-radius: 2px;
+  background: var(--accent); box-shadow: 0 0 10px var(--accent), 0 0 20px var(--accent);
+}
+.nav-icon { width: 18px; text-align: center; transition: transform 0.2s, text-shadow 0.2s; }
+.shell .nav button.active .nav-icon, .shell .nav button:hover .nav-icon { transform: scale(1.18); text-shadow: 0 0 8px var(--accent); }
+.shell .nav .badge { animation: badge-pulse 1.6s ease-in-out infinite; box-shadow: 0 0 8px var(--accent); }
+@keyframes badge-pulse { 50% { transform: scale(1.15); box-shadow: 0 0 14px var(--accent); } }
+
+/* ---- the galaxy map side column sits on glass too */
+.shell .side { background: linear-gradient(180deg, rgba(14, 20, 40, 0.94), rgba(8, 11, 23, 0.96)); border-left-color: rgba(120, 160, 255, 0.18); }
+
+/* ---- turn banner */
+.turn-banner { position: fixed; inset: 0; z-index: 25; pointer-events: none; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.turn-banner-streak {
+  position: absolute; left: 0; right: 0; top: 50%; height: 110px; margin-top: -55px;
+  background: linear-gradient(90deg, transparent, rgba(30, 60, 140, 0.55) 30%, rgba(30, 60, 140, 0.55) 70%, transparent);
+  border-top: 1px solid rgba(140, 180, 255, 0.5); border-bottom: 1px solid rgba(140, 180, 255, 0.5);
+  animation: streak 1.7s cubic-bezier(0.3, 0.7, 0.2, 1) both;
+}
+.turn-banner-text {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  font-family: var(--display); font-weight: 800; font-size: 48px; letter-spacing: 0.3em; padding-left: 0.3em; color: #f0f6ff;
+  text-shadow: 0 0 20px rgba(91, 157, 255, 0.9), 0 0 50px rgba(120, 80, 255, 0.6);
+  animation: turn-text 1.7s cubic-bezier(0.3, 0.7, 0.2, 1) both;
+}
+.turn-banner-text small { font-size: 12px; letter-spacing: 0.6em; font-weight: 600; color: #9fb8ec; }
+@keyframes streak {
+  0% { transform: scaleY(0); opacity: 0; }
+  15% { transform: scaleY(1); opacity: 1; }
+  75% { transform: scaleY(1); opacity: 1; }
+  100% { transform: scaleY(0.2); opacity: 0; }
+}
+@keyframes turn-text {
+  0% { opacity: 0; transform: translateX(-60px); filter: blur(6px); letter-spacing: 0.6em; }
+  20% { opacity: 1; transform: none; filter: none; letter-spacing: 0.3em; }
+  75% { opacity: 1; transform: translateX(10px); }
+  100% { opacity: 0; transform: translateX(60px); filter: blur(4px); }
+}
+
+/* ---- modals */
+.modal-back { backdrop-filter: blur(3px); animation: fade-in 0.25s both; }
+.modal { background: linear-gradient(180deg, rgba(20, 28, 52, 0.97), rgba(10, 14, 28, 0.98)); animation: modal-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1.2) both; }
+@keyframes modal-in { from { opacity: 0; transform: translateY(16px) scale(0.96); } }
+.shell .toast, .toast { background: var(--glass-2); border-color: var(--glass-line); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); animation: modal-in 0.3s both; }
+
+/* ---- scrollbars */
+.shell ::-webkit-scrollbar { width: 10px; height: 10px; }
+.shell ::-webkit-scrollbar-thumb { background: rgba(120, 160, 255, 0.22); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+.shell ::-webkit-scrollbar-thumb:hover { background-color: rgba(120, 160, 255, 0.4); }
+.shell ::-webkit-scrollbar-track { background: transparent; }
+
+@media (max-width: 900px) {
+  .shell .nav { border-right: none; border-bottom: 1px solid rgba(120, 160, 255, 0.18); }
+  .shell .nav button.active::before { left: 6px; right: 6px; top: auto; bottom: 0; width: auto; height: 2px; }
+  .turn-banner-text { font-size: 32px; }
+}
+
+/* Players who ask for less motion get the same look, standing still. */
+@media (prefers-reduced-motion: reduce) {
+  .shell *, .shell *::before, .shell *::after, .modal-back, .modal, .turn-banner * {
+    animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important;
+    transition-duration: 0.001ms !important;
+  }
+  .shell button.primary::after { display: none; }
+}
