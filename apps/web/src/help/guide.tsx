@@ -1,12 +1,14 @@
 import type { ReactNode } from "react";
 import { ALL_DOMAINS, DOMAIN_INFO } from "@starlord/ai";
 import {
-  ADMIN_SKILLS, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, CAPTAIN_SKILLS, CAPTURE_THRESHOLD, COMMAND_OVERAGE_COST,
+  BASE_COMMAND_POINTS, BASE_SCAN_RANGE, CAPTURE_THRESHOLD, COMMAND_OVERAGE_COST,
   COUNCIL_FIRST, COUNCIL_INTERVAL, COUNCIL_MAJORITY, EVENT_CHANCE, FIELD_HEIGHT, FIELD_WIDTH, GROUND_BASE, GROUND_PER_LEVEL,
-  LEADER_OFFER_INTERVAL, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, POP_PER_BOMB_DAMAGE, PROPOSAL_LIFETIME, RESEARCH,
-  SKILL_PER_LEVEL, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_PER_POP, TAX_STEPS, TRADE_GOODS_RATE, FREIGHTERS, ANDROIDS, ASSIMILATION, TAX_BC_PER_INDUSTRY, PROJECT_COSTS,
+  HERO_SKILLS, HEROES, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, PICK_VALUES, POP_PER_BOMB_DAMAGE,
+  PROPOSAL_LIFETIME, RESEARCH, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_PER_POP, TAX_STEPS, TRADE_GOODS_RATE,
+  FREIGHTERS, ANDROIDS, ASSIMILATION, TAX_BC_PER_INDUSTRY, PROJECT_COSTS, TRAIT_EFFECTS,
+  abilityValue, type HeroSkill, type HeroSkillGroup,
 } from "@starlord/sim";
-import { fmt, pct, words } from "../ui/format";
+import { fmt, pct } from "../ui/format";
 import type { GuideSlug } from "./entries";
 import { HelpLink } from "./HelpDialog";
 
@@ -176,8 +178,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Each population eats 1 food (cybernetic races half, lithovores and androids none). Food doesn't move by itself:
         a Freighter Fleet ({PROJECT_COSTS.freighterFleet} production) adds {FREIGHTERS.perFleet} freighters, and each
         carries {FREIGHTERS.foodPerShip} food a turn from colonies with a surplus to hungry ones. A colony whose need is not
-        met loses {FREIGHTERS.starvationPerTurn} population a turn. Food nobody needs is sold for {fmt(FREIGHTERS.foodPrice, 1)}{" "}
-        BC a unit ({fmt(FREIGHTERS.traderFoodPrice, 1)} for fantastic traders). A blockaded system can neither send nor receive.
+        met loses {FREIGHTERS.starvationPerTurn} population a turn. Food nobody needs is sold for {fmt(TRAIT_EFFECTS.normalFoodBc, 1)}{" "}
+        BC a unit ({fmt(TRAIT_EFFECTS.traderFoodBc, 1)} for fantastic traders). A blockaded system can neither send nor receive.
       </P>
       <P>
         Freighters also move colonists to another colony of the same race: each colonist needs {FREIGHTERS.perColonist} idle
@@ -333,9 +335,13 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         barracks troops plus one per two population, and fight from prepared positions.
       </P>
       <P>
-        Ground strength is {GROUND_BASE} + {GROUND_PER_LEVEL} per ground combat level, from race picks and techs such as
-        powered armor and personal shields. A captured colony keeps its people and buildings, suffers unrest, and may
-        yield one of the loser's techs.
+        Ground strength is {GROUND_BASE} + {GROUND_PER_LEVEL} per ground combat level from techs such as powered armor
+        and personal shields, ±{PICK_VALUES.groundCombatPerLevel} per racial ground combat pick, −10 for{" "}
+        <HelpLink to="trait:lowG" /> troops, +10 for <HelpLink to="trait:subterranean" /> defenders, plus any Commando
+        leader in the system. <HelpLink to="trait:highG" /> troops take two hits to kill. A captured colony keeps its
+        buildings and its people, who must be assimilated (see Colonies), and may yield one of the loser's techs.
+        {" "}<HelpLink to="trait:telepathic" /> empires can take a colony whose defenses are down without troops, with a
+        cruiser or larger in orbit, unless its people are telepathic too.
       </P>
     </>
   ),
@@ -350,11 +356,13 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><b>Trade treaty</b>: both sides earn BC that grows with the smaller partner's population.</li>
         <li><b>Research treaty</b>: both sides gain research that grows with the smaller partner's research.</li>
       </Ul>
-      <P>Treaty income starts small and ramps up over ten turns. <HelpLink to="trait:fantasticTraders" /> double trade income; <HelpLink to="trait:repulsive" /> races can't sign alliances or treaties.</P>
+      <P>Treaty income starts small and ramps up over ten turns. <HelpLink to="trait:fantasticTraders" /> earn 25% more from trade treaties; <HelpLink to="trait:repulsive" /> races can't sign alliances or treaties.</P>
       <h3>Attitude</h3>
       <P>
-        Every empire has an attitude toward every other, drifting toward a baseline: treaties, alliances, common enemies
-        and charisma raise it; war, shared borders, caught spies and repulsiveness lower it. Computer empires use it to
+        Every empire has an attitude toward every other, drifting toward a baseline: treaties, alliances and common
+        enemies raise it; war, shared borders, caught spies and repulsiveness lower it. Good turns done by a{" "}
+        <HelpLink to="trait:charismatic" /> race count double and bad ones half. Charisma (+50), telepathy (+25),
+        Xeno Psychology and Diplomat leaders add diplomatic points to every deal an empire offers. Computer empires use it to
         decide what to accept and whom to attack, and how to vote in the council.
       </P>
     </>
@@ -369,30 +377,49 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>
         Each turn every spy abroad rolls 1–100, plus 10 per point your spying beats their security, minus 2 per spy
         they keep at home. {SUCCESS_THRESHOLD} or more succeeds; {CAPTURE_THRESHOLD} or less gets the spy caught.
-        Telepathic targets are much harder to crack. Successful spies are sometimes identified, which hurts relations.
+        Successful spies are sometimes identified, which hurts relations.
       </P>
-      <P>Spying comes from race picks and techs; security from race picks, government, techs and security buildings.</P>
+      <P>
+        Spying comes from race picks (10 per level), techs and Spy Master leaders; security from half the race's spying
+        picks, government, techs, security buildings and Telepath leaders. <HelpLink to="trait:telepathic" /> races add
+        10 to both. Assassin leaders kill enemy spies before they act.
+      </P>
     </>
   ),
 
   leaders: () => (
     <>
       <P>
-        Every {LEADER_OFFER_INTERVAL} turns or so a leader offers their services on the <b>Leaders</b> screen. You can
-        employ up to {MAX_LEADERS}. Leaders have a level from 1 to 5; higher levels have more and stronger skills, cost
-        more to hire, and draw their level in BC salary each turn.
+        {HEROES.length} legendary leaders roam the galaxy. From turn {LEADER_RULES.firstOfferTurn} one may offer their
+        services on the <b>Leaders</b> screen; the longer since the last offer the likelier the next, and the more leaders
+        you already have the rarer. Stronger leaders appear as the game goes on. An offer you don't take stays open for
+        {" "}{LEADER_RULES.queueTurns} turns. You can employ up to {MAX_LEADERS}, at most {LEADER_RULES.maxPerKind} of each kind.
       </P>
-      <Ul>
-        <li>
-          <b>Administrators</b> govern a star system and boost every colony in it:{" "}
-          {ADMIN_SKILLS.map((s) => `${words(s)} +${SKILL_PER_LEVEL[s]}% per level`).join(", ")}.
-        </li>
-        <li>
-          <b>Captains</b> command a fleet in battle:{" "}
-          {CAPTAIN_SKILLS.map((s) => `${words(s)} +${SKILL_PER_LEVEL[s]} per level`).join(", ")}.
-        </li>
-      </Ul>
-      <P>Only one leader can hold each post. A captain whose fleet is destroyed returns to the pool.</P>
+      <P>
+        <b>Colony leaders</b> govern a star system; <b>ship officers</b> command a fleet. Common skills help the whole empire
+        wherever the leader is. Reaching a post in another system takes {LEADER_RULES.travelTurns} turns.
+      </P>
+      <P>
+        Leaders gain {LEADER_RULES.xpPerTurn} experience a turn, more in battle and with an Instructor. Levels come at{" "}
+        {LEVEL_XP.slice(1).join(", ")} experience (the last only for <HelpLink to="trait:warlord" /> races). The price is
+        the leader's skill weights (and the techs they bring) × level × {LEADER_RULES.costPerWeightLevel} BC; upkeep is a
+        hundredth of that, at least 1 BC a turn. <HelpLink to="trait:charismatic" /> races pay half and are offered more
+        and better leaders; <HelpLink to="trait:repulsive" /> races pay half again as much and see fewer.
+      </P>
+      {(["common", "colony", "ship"] as HeroSkillGroup[]).map((g) => (
+        <div key={g}>
+          <h3>{g === "common" ? "Common skills" : g === "colony" ? "Colony leader skills" : "Ship officer skills"}</h3>
+          <Ul>
+            {(Object.keys(HERO_SKILLS) as HeroSkill[]).filter((s) => HERO_SKILLS[s].group === g).map((s) => (
+              <li key={s}>
+                <b>{HERO_SKILLS[s].name}</b>: {HERO_SKILLS[s].text.replace("{v}", `${abilityValue({ skill: s, improved: false }, 1)}`)}
+                {" "}(per level; improved: {abilityValue({ skill: s, improved: true }, 1)}).
+              </li>
+            ))}
+          </Ul>
+        </div>
+      ))}
+      <P>Only one leader can hold each post. A leader whose post is lost waits at home for a new one.</P>
     </>
   ),
 

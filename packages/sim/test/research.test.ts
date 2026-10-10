@@ -97,11 +97,11 @@ describe("research rules", () => {
     s.players[0]!.tiers.push(...TECH_TIERS.filter((t) => t.field === "biology" && t.id !== "transGenetics" && !t.hyper).map((t) => t.id));
     s = research(s, "transGenetics", "evolutionaryMutation");
     expect(s.players[0]!.mutationPoints).toBe(RESEARCH.mutationPicks);
-    // Terrans start at +1 research; +2 costs 3 more points.
-    const picks = { ...getRace(s.players[0]!.raceId).picks, science: 2 };
+    // Terrans start at normal research; +1 costs 3 points.
+    const picks = { ...getRace(s.players[0]!.raceId).picks, science: 1 };
     s = processTurn(s, { 0: [{ type: "mutateRace", picks }] });
     const p = s.players[0]!;
-    expect(getRace(p.raceId).picks.science).toBe(2);
+    expect(getRace(p.raceId).picks.science).toBe(1);
     expect(p.mutationPoints).toBe(RESEARCH.mutationPicks - 3);
     expect(Object.values(s.colonies).filter((c) => c.ownerId === 0).every((c) => c.raceId === p.raceId)).toBe(true);
   });

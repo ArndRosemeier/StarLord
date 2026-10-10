@@ -29,9 +29,6 @@ export const FREIGHTERS = {
   perColonist: 5,
   /** BC upkeep per freighter in use; idle freighters cost nothing. */
   upkeepInUse: 0.5,
-  /** BC per unit of surplus food sold; Fantastic Traders get `traderFoodPrice`. */
-  foodPrice: 0.5,
-  traderFoodPrice: 1,
   /** Population lost per turn by a colony whose food need isn't met. */
   starvationPerTurn: 1,
 } as const;

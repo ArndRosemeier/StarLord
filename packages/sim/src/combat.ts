@@ -16,6 +16,7 @@ import {
 } from "./designs.js";
 import { empireBonus, knows } from "./empire.js";
 import { getRace } from "./data/races.js";
+import { raceCombatRepair, raceGroundBonus, shipAttackPickBonus, shipDefensePickBonus } from "./raceEffects.js";
 import type { Rng } from "./rng.js";
 import type {
   Colony, CombatReport, CombatRoundEvent, CombatShipSnapshot, Fleet, GameState, LeaderSkills, Player, PlayerId,
@@ -223,7 +224,7 @@ function normAngle(a: number): number {
 
 function captainSkills(state: GameState, fleetId: string): LeaderSkills {
   for (const l of Object.values(state.leaders)) {
-    if (l.kind === "captain" && l.assignedTo === fleetId) return l.skills;
+    if (l.kind === "captain" && l.ownerId !== null && l.assignedTo === fleetId) return l.skills;
   }
   return {};
 }
@@ -283,6 +284,7 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
   let n = 0;
   for (const f of side.fleets) {
     const cap = captainSkills(state, f.id);
+    const cyber = raceCombatRepair(getRace(player.raceId));
     for (const stack of f.ships) {
       const design = findDesign(player, stack.designId);
       if (!design) continue;
@@ -310,9 +312,16 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
           computerAttack: design.computer && !monster ? computerBonus(design.computer) : 0,
           defenseBonus: monster ? 0 : s.defense - s.combatSpeed * DEFENSE_PER_SPEED + (cap.defense ?? 0),
           fixedDefense: monster ? s.defense : null,
-          speed: s.combatSpeed + (cap.combatSpeed ?? 0),
+          speed: s.combatSpeed,
           missileEvasion: s.missileEvasion,
-          fx: s.effects,
+          // Captains' Engineer and Security skills; cybernetic races patch their ships up mid-battle.
+          fx: monster ? s.effects : {
+            ...s.effects,
+            shieldRegen: s.effects.shieldRegen + (cap.shieldRecharge ?? 0) / 100,
+            boardingDefense: s.effects.boardingDefense + (cap.boardingDefense ?? 0),
+            repair: Math.max(s.effects.repair, cyber.hull),
+            repairSystems: Math.max(s.effects.repairSystems, cyber.systems),
+          },
           marines: s.marines,
           noArmorPierce: design.specials.includes("heavyArmor") || design.armor === "xentroniumArmor",
           phasingLeft: s.effects.phasing,
@@ -378,7 +387,7 @@ function stationUnit(player: Player, colony: Colony, hull: HullDef<StationHull>,
   const bonus = empireBonus(player);
   const weapons = stationWeapons(player, hull);
   const shieldMax = shield ? shield.absorb * 5 * hull.sizeClass : 0;
-  const attackBase = race.picks.shipAttack * 20 + bonus.shipAttack;
+  const attackBase = shipAttackPickBonus(race) + bonus.shipAttack;
   const u: Unit = {
     ...baseUnit(player, sideIdx),
     key: `station:${colony.id}`,
@@ -397,7 +406,7 @@ function stationUnit(player: Player, colony: Colony, hull: HullDef<StationHull>,
     attackBase,
     computerAttack: computer?.attack ?? 0,
     defenseBonus: 0,
-    fixedDefense: (hull.fixedDefense ?? 0) + race.picks.shipDefense * 20 + bonus.shipDefense,
+    fixedDefense: (hull.fixedDefense ?? 0) + shipDefensePickBonus(race) + bonus.shipDefense,
     speed: 0,
     marines: hull.marines,
     immobile: true,
@@ -427,7 +436,7 @@ function planetUnit(player: Player, colony: Colony, d: ColonyDefense, sideIdx: 0
   }
   const computer = bestComputer(player);
   const hp = installations.reduce((s, i) => s + i.max, 0);
-  const attackBase = race.picks.shipAttack * 20 + bonus.shipAttack;
+  const attackBase = shipAttackPickBonus(race) + bonus.shipAttack;
   const u: Unit = {
     ...baseUnit(player, sideIdx),
     key: `planet:${colony.id}`,
@@ -509,7 +518,9 @@ class Battle {
     }
     for (const side of [0, 1] as const) {
       const mine = this.units.filter((u) => u.side === side);
-      this.monsterBonus[side] = Math.max(0, ...mine.filter((u) => u.fx.scoutLab).map((u) => u.fx.monsterAttackPerSize * u.sizeClass));
+      this.monsterBonus[side] = Math.max(0, ...mine.filter((u) => u.fx.scoutLab).map((u) => u.fx.monsterAttackPerSize * u.sizeClass))
+        // Captains with Galactic Lore know how monsters fight.
+        + Math.max(0, ...this.sides[side].fleets.map((f) => captainSkills(state, f.id).monsterBonus ?? 0));
     }
   }
 
@@ -1296,8 +1307,10 @@ class Battle {
 
   board(u: Unit, t: Unit, marines: number, via: string): void {
     if (t.kind !== "ship" || !active(t) || marines <= 0) return;
-    const atkBonus = getRace(u.player.raceId).picks.groundCombat * 10;
-    const defBonus = getRace(t.player.raceId).picks.groundCombat * 10 + t.fx.boardingDefense;
+    // Race ground combat picks, and Commando captains leading the marines on either side.
+    const commando = (x: Unit) => (x.fleetId ? captainSkills(this.state, x.fleetId).groundCombat ?? 0 : 0);
+    const atkBonus = raceGroundBonus(getRace(u.player.raceId)) + commando(u);
+    const defBonus = raceGroundBonus(getRace(t.player.raceId)) + commando(t) + t.fx.boardingDefense;
     let attackers = marines;
     u.marines -= marines;
     while (attackers > 0 && t.marines > 0) {

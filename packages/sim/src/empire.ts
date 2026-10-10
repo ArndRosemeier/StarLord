@@ -4,6 +4,9 @@ import { GOVERNMENTS, type GovernmentDef } from "./data/governments.js";
 import { getRace } from "./data/races.js";
 import { colonyOutput, foodPlan, type EmpireIncome } from "./economy.js";
 import { ORBITAL_BASES, RESEARCH, TECHS, type EmpireBonus, type TechField } from "./data/techs.js";
+import { leaderCommandPoints, leaderSpyDefense, leaderSpyOffense } from "./leaders.js";
+import { defensiveSpyPoints, offensiveSpyPoints, raceCommandPointsPerColony, raceFleetSpeedBonus } from "./raceEffects.js";
+import { PICK_VALUES } from "./data/racePicks.js";
 import type { Colony, GameState, Player, PlayerId } from "./types.js";
 
 /** Empire-wide derived numbers: tech bonuses, government, speed, range, command points. */
@@ -71,7 +74,8 @@ export function government(player: Player): GovernmentDef {
 export function fleetSpeed(player: Player): number {
   const known = DRIVES.filter((d) => knows(player, d.tech));
   const base = known.length ? known[known.length - 1]!.speed : 1;
-  return base + (knows(player, "jumpGate") ? 1 : 0);
+  // Trans-dimensional races fold space: +2 parsecs a turn, even without a drive.
+  return base + (knows(player, "jumpGate") ? 1 : 0) + raceFleetSpeedBonus(getRace(player.raceId));
 }
 
 export function fleetRange(player: Player): number {
@@ -96,10 +100,12 @@ export const COMMAND_OVERAGE_COST = 10;
 
 export function commandPointsAvailable(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId]!;
-  let cp = BASE_COMMAND_POINTS + empireBonus(player).commandPoints;
+  let cp = BASE_COMMAND_POINTS + empireBonus(player).commandPoints + leaderCommandPoints(state, playerId);
   const perBase = empireBonus(player).commandPointsPerBase;
+  const perColony = raceCommandPointsPerColony(getRace(player.raceId));
   for (const c of Object.values(state.colonies)) {
     if (c.ownerId !== playerId) continue;
+    if (!c.outpost) cp += perColony;
     for (const b of c.buildings) {
       cp += BUILDINGS_BY_ID[b]?.effects.commandPoints ?? 0;
       // Communication techs add to every orbital base.
@@ -125,13 +131,21 @@ export function commandPointsUsed(state: GameState, playerId: PlayerId): number 
   return used;
 }
 
-export function spyingLevel(player: Player): number {
-  return getRace(player.raceId).picks.spying + empireBonus(player).spying;
+/**
+ * Spying level of an empire's agents abroad; one level is 10 points on the
+ * d100 spy roll. Race (full pick, telepathy), techs and, given the state, the
+ * best Spy Master leader.
+ */
+export function spyingLevel(player: Player, state?: GameState): number {
+  const leader = state ? leaderSpyOffense(state, player.id) : 0;
+  return (offensiveSpyPoints(getRace(player.raceId)) + leader) / PICK_VALUES.spyingPerLevel + empireBonus(player).spying;
 }
 
 export function securityLevel(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId]!;
-  let sec = getRace(player.raceId).picks.spying + empireBonus(player).security + government(player).security;
+  // Defending spies get half the racial spying bonus (telepaths +10 in full) and the best Telepath leader's points.
+  const points = defensiveSpyPoints(getRace(player.raceId)) + leaderSpyDefense(state, playerId);
+  let sec = points / PICK_VALUES.spyingPerLevel + empireBonus(player).security + government(player).security;
   for (const c of Object.values(state.colonies)) {
     if (c.ownerId !== playerId) continue;
     for (const b of c.buildings) sec += BUILDINGS_BY_ID[b]?.effects.security ?? 0;

@@ -3,6 +3,7 @@ import type { FiringArc, HullSize, WeaponModId } from "./data/components.js";
 import type { Gravity, Minerals, PlanetSize, PlanetType, StarColor } from "./data/planets.js";
 import type { Government, RaceDef } from "./data/races.js";
 import type { TechField } from "./data/techs.js";
+import type { HeroSkill } from "./data/leaders.js";
 
 export type PlayerId = number;
 export type Id = string;
@@ -212,7 +213,12 @@ export interface Player {
   homeStarId: Id;
   designs: ShipDesign[];
   spies: { home: number; abroad: Record<string, { count: number; mission: SpyMission }> };
+  /** Heroes offering their services to this empire (copies kept current by the turn; the roster is in GameState.leaders). */
   leaderOffers: Leader[];
+  /** Turn of the last hero offer, which sets the chance of the next. */
+  lastLeaderOffer?: number;
+  /** Diplomatic points from race and leaders, public so rivals' deal-making can read it. */
+  diplomacyBonus?: number;
   /** Empires this player votes for at the council; "self" and "abstain" are allowed. */
   councilVote: PlayerId | "abstain" | "auto";
   doctrine: CombatDoctrine;
@@ -232,30 +238,79 @@ export type AdvancedGovernment = "confederation" | "imperium" | "federation" | "
 
 export type LeaderKind = "administrator" | "captain";
 
+/**
+ * What a leader does where they serve, derived from their skills and level
+ * (see leaders.ts). Administrators' numbers apply to every colony in their
+ * system, captains' to their fleet. Percentages are whole numbers.
+ */
 export interface LeaderSkills {
+  /** Administrator: % more industry, research, food and BC, morale points (%). */
   industry?: number;
   research?: number;
   food?: number;
   bc?: number;
   morale?: number;
+  /** Administrator: % less pollution, % faster growth, initiative for own ships in the system. */
+  pollution?: number;
+  growth?: number;
+  initiative?: number;
+  /** Captain: beam attack and defense points for the fleet. */
   attack?: number;
   defense?: number;
+  /** Combat speed for the fleet (no original skill gives it; kept for older saves). */
   combatSpeed?: number;
+  /** Captain: parsecs per turn added to the fleet's galaxy speed; nebulae don't slow it. */
+  galaxySpeed?: number;
+  /** Captain: % faster shield recharge; full repair after battle. */
+  shieldRecharge?: number;
+  /** Captain: attack and defense for the fleet's fighters. */
+  fighters?: number;
+  /** Captain: attack and defense against monsters and raiders. */
+  monsterBonus?: number;
+  /** Captain: % more maximum weapon damage. */
+  maxDamage?: number;
+  /** Captain: points for the fleet's marines defending against boarders. */
+  boardingDefense?: number;
+  /** Either: ground combat points for own troops in the leader's system (Commando). */
+  groundCombat?: number;
 }
+
+export interface LeaderAbility {
+  skill: HeroSkill;
+  /** The improved ("starred") version of the skill. */
+  improved: boolean;
+}
+
+/** Where a hero stands: waiting to be offered, offered to one empire, in an empire's service. */
+export type LeaderStatus = "pool" | "offered" | "hired";
 
 export interface Leader {
   id: Id;
+  /** Index into HEROES. */
+  heroId: number;
   name: string;
+  title: string;
   kind: LeaderKind;
+  xp: number;
+  /** Level 1-5, or 6 with the Warlord trait, from experience. */
   level: number;
+  abilities: LeaderAbility[];
+  /** Applications the leader teaches the empire that hires them. */
+  techs: string[];
+  /** Effects where the leader serves, recomputed from abilities and level. */
   skills: LeaderSkills;
   hireCost: number;
-  /** BC per turn. */
+  /** BC per turn; negative when the leader pays into the treasury (Megawealth). */
   salary: number;
+  status: LeaderStatus;
+  /** Empire the hero is offered to while status is "offered". */
+  offeredTo: PlayerId | null;
   ownerId: PlayerId | null;
   /** Star system for administrators, fleet for captains. */
   assignedTo: Id | null;
-  /** Offer expires after this turn. */
+  /** Post the leader is travelling to, and the turn they arrive. */
+  travel: { to: Id; arrives: number } | null;
+  /** An offer waits in the hiring queue until this turn. */
   availableUntil: number;
 }
 

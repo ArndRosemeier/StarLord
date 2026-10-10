@@ -12,6 +12,7 @@ import {
 import { getRace, hasTrait, type RaceDef } from "./data/races.js";
 import { findDesign } from "./designs.js";
 import { isHostile } from "./diplomacy.js";
+import { raceFoodPerFarmer, racePopPerSize, surplusFoodBc } from "./raceEffects.js";
 import { empireBonus, government, knows } from "./empire.js";
 import type { AndroidCounts, Colony, GameState, LeaderSkills, Planet, Player, PlayerId } from "./types.js";
 
@@ -60,10 +61,8 @@ export function maxPopulation(planet: Planet, race: RaceDef, buildings: string[]
   const climate = CLIMATES[planet.type];
   if (!climate.habitable) return 0;
   const size = SIZE_FACTOR[planet.size];
-  let perSize = climate.popPerSize;
-  if (hasTrait(race, "aquatic") && (planet.type === "ocean" || planet.type === "swamp")) perSize += 1;
-  if (hasTrait(race, "tolerant") && climate.hostile) perSize += 1;
-  if (hasTrait(race, "subterranean")) perSize += 1;
+  // Aquatic, tolerant and subterranean races live as the race hooks say.
+  let perSize = racePopPerSize(race, planet.type);
   let flat = sumEffect(buildings, "maxPopFlat");
   if (player) {
     const bonus = empireBonus(player);
@@ -82,9 +81,11 @@ export function gravityMultiplier(race: RaceDef | null, gravity: Gravity): numbe
   return gravity === "low" ? 0.75 : 0.5;
 }
 
-/** Whether farmers can grow anything on this planet. */
-export function canFarm(planet: Planet, player?: Player): boolean {
-  if (CLIMATES[planet.type].foodPerFarmer > 0) return true;
+/** Whether farmers can grow anything on this planet (for the given race, or the player's). */
+export function canFarm(planet: Planet, player?: Player, race?: RaceDef): boolean {
+  const r = race ?? (player ? getRace(player.raceId) : null);
+  const base = r ? raceFoodPerFarmer(r, planet.type) : CLIMATES[planet.type].foodPerFarmer;
+  if (base > 0) return true;
   return !!player && empireBonus(player).hostileFarming > 0;
 }
 
@@ -250,15 +251,17 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   const unit = (v: number, g: number) => Math.max(MIN_OUTPUT_PER_UNIT, v * g);
 
   // Food
-  const farmable = canFarm(planet, player);
+  const farmable = canFarm(planet, player, race);
   const soil = !SOILLESS.includes(planet.type);
   const farmBuildings = b.reduce((s, id) => {
     const e = BUILDINGS_BY_ID[id]?.effects;
     return s + (e?.foodPerFarmer && (soil || !e.needsSoil) ? e.foodPerFarmer : 0);
   }, 0);
-  const landFood = climate.foodPerFarmer + bonus.foodPerFarmer + farmBuildings;
+  // Aquatic races farm tundra and swamp as terran, ocean and terran as gaia; androids see the plain climate.
+  const landFood = raceFoodPerFarmer(race, planet.type) + bonus.foodPerFarmer + farmBuildings;
   const perFarmer = farmable ? unit(landFood + race.picks.farming, grav) : 0;
-  const androidFood = (farmable ? Math.max(0, landFood) * androidGrav : 0) + ANDROIDS.bonus;
+  const androidLand = climate.foodPerFarmer + bonus.foodPerFarmer + farmBuildings;
+  const androidFood = (climate.foodPerFarmer > 0 || bonus.hostileFarming > 0 ? Math.max(0, androidLand) * androidGrav : 0) + ANDROIDS.bonus;
   const foodProduced =
     (colony.farmers * perFarmer * effort + sumEffect(b, "foodFlat")) * gov.foodMult * moraleMult * (1 + (lead.food ?? 0) / 100) +
     andr.farmers * androidFood * gov.foodMult;
@@ -277,7 +280,9 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   const recycled = (pop + nAndroids) * sumEffect(b, "industryPerPop") * gov.industryMult * moraleMult * leadIndustry * blockade;
   const tolerance = pollutionTolerance(planet, race, player);
   const polluting = industryGross * pollutionFactor(b);
-  const pollution = Math.min(industryGross, Math.max(0, polluting - tolerance) * POLLUTION_PER_EXCESS);
+  // An Environmentalist administrator cuts the system's pollution.
+  const cleaner = Math.max(0, 1 - (lead.pollution ?? 0) / 100);
+  const pollution = Math.min(industryGross, Math.max(0, polluting - tolerance) * POLLUTION_PER_EXCESS * cleaner);
   const upkeep = (cyber ? pop * CYBERNETIC_INDUSTRY : 0) + nAndroids * ANDROIDS.industryUpkeep;
   let net = Math.max(0, industryGross + recycled - pollution - upkeep);
 
@@ -325,7 +330,8 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
     bc,
     incomeMult,
     maintenance,
-    growthK: growthPerTurn(pop, bioMax, race, b, bonus.growth),
+    // A Medicine administrator speeds growth in the system.
+    growthK: Math.floor(growthPerTurn(pop, bioMax, race, b, bonus.growth) * (1 + (lead.growth ?? 0) / 100)),
     troops,
     blockaded: !!ctx.blockaded,
   };
@@ -405,7 +411,6 @@ export function foodPlan(state: GameState, playerId: PlayerId, outputs?: { colon
     if (need - got > 1e-9) shortfall[colony.id] = need - got;
   }
   const carryingFood = Math.ceil(delivered / FREIGHTERS.foodPerShip - 1e-9);
-  const traders = hasTrait(getRace(player.raceId), "fantasticTraders");
   const sold = Math.max(0, supply);
   return {
     freighters,
@@ -416,7 +421,7 @@ export function foodPlan(state: GameState, playerId: PlayerId, outputs?: { colon
     delivered,
     shortfall,
     sold,
-    saleBC: sold * (traders ? FREIGHTERS.traderFoodPrice : FREIGHTERS.foodPrice),
+    saleBC: sold * surplusFoodBc(getRace(player.raceId)),
     upkeep: (carryingFood + movingColonists) * FREIGHTERS.upkeepInUse,
   };
 }
