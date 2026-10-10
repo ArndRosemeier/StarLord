@@ -114,14 +114,14 @@ describe("turns", () => {
     s.players[0]!.research.progress = 1000;
     s = processTurn(s, { 0: [{ type: "setResearch", tierId: "astroBiology", techId: "biospheres" }] });
     expect(s.players[0]!.techs).toContain("biospheres");
-    expect(s.players[0]!.techs).not.toContain("soilEnrichment");
+    expect(s.players[0]!.techs).not.toContain("hydroponicFarm");
   });
 
   it("gives creative races every tech in a tier", () => {
     let s = newGame({ seed: "tech", races: ["ythari", "kordex"], ...quiet });
     s.players[0]!.research.progress = 1000;
     s = processTurn(s, { 0: [{ type: "setResearch", tierId: "astroBiology", techId: "biospheres" }] });
-    expect(s.players[0]!.techs).toEqual(expect.arrayContaining(["biospheres", "soilEnrichment"]));
+    expect(s.players[0]!.techs).toEqual(expect.arrayContaining(["biospheres", "hydroponicFarm"]));
   });
 
   it("builds a queued building", () => {

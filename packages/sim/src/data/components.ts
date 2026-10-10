@@ -22,9 +22,9 @@ export interface HullDef {
 
 export const HULLS: HullDef[] = [
   { id: "frigate", name: "Frigate", space: 25, cost: 10, structure: 3, armorBase: 3, defense: 40, commandPoints: 1, requires: null },
-  { id: "destroyer", name: "Destroyer", space: 60, cost: 30, structure: 8, armorBase: 8, defense: 25, commandPoints: 1, requires: "destroyerHull" },
-  { id: "cruiser", name: "Cruiser", space: 120, cost: 60, structure: 20, armorBase: 20, defense: 15, commandPoints: 2, requires: "cruiserHull" },
-  { id: "battleship", name: "Battleship", space: 250, cost: 120, structure: 50, armorBase: 50, defense: 0, commandPoints: 3, requires: "battleshipHull" },
+  { id: "destroyer", name: "Destroyer", space: 60, cost: 30, structure: 8, armorBase: 8, defense: 25, commandPoints: 1, requires: null },
+  { id: "cruiser", name: "Cruiser", space: 120, cost: 60, structure: 20, armorBase: 20, defense: 15, commandPoints: 2, requires: null },
+  { id: "battleship", name: "Battleship", space: 250, cost: 120, structure: 50, armorBase: 50, defense: 0, commandPoints: 3, requires: null },
   { id: "titan", name: "Titan", space: 500, cost: 250, structure: 120, armorBase: 120, defense: -10, commandPoints: 5, requires: "titanHull" },
   { id: "doomStar", name: "Doom Star", space: 1200, cost: 600, structure: 300, armorBase: 300, defense: -25, commandPoints: 10, requires: "doomStarHull" },
 ];
@@ -76,7 +76,7 @@ export const WEAPONS: WeaponDef[] = [
   { id: "antimatterBomb", name: "Anti-Matter Bomb", kind: "bomb", damageMin: 5, damageMax: 20, space: 10, cost: 10, range: 1, requires: "antimatterBomb" },
   { id: "neutroniumBomb", name: "Neutronium Bomb", kind: "bomb", damageMin: 7, damageMax: 28, space: 12, cost: 14, range: 1, requires: "neutroniumBomb" },
   { id: "deathSpores", name: "Death Spores", kind: "spores", damageMin: 1, damageMax: 1, space: 10, cost: 10, range: 1, requires: "deathSpores" },
-  { id: "doomVirus", name: "Doom Virus", kind: "spores", damageMin: 2, damageMax: 2, space: 10, cost: 15, range: 1, requires: "doomVirus" },
+  { id: "doomVirus", name: "Doom Virus", kind: "spores", damageMin: 2, damageMax: 2, space: 10, cost: 15, range: 1, requires: "bioTerminator" },
 ];
 
 export interface ArmorDef {

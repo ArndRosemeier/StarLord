@@ -83,11 +83,12 @@ function build(): HelpEntry[] {
   page("techTree", "tech", "Tech tree", "research overview chart");
   page("techList", "tech", "All technologies", "table list every tech");
   for (const f of TECH_FIELDS) e.push({ id: `field:${f}`, group: "tech", title: FIELD_NAMES[f], subtitle: "Research field", overview: true });
-  for (const t of TECH_TIERS) e.push({ id: `tier:${t.id}`, group: "tech", title: t.name, subtitle: `${FIELD_NAMES[t.field]} tier ${t.level}`, keywords: "tier" });
+  for (const t of TECH_TIERS) e.push({ id: `tier:${t.id}`, group: "tech", title: t.name, subtitle: `${FIELD_NAMES[t.field]} field, level ${t.level}`, keywords: "tier field" });
   for (const id of Object.keys(TECHS)) {
-    const tier = TIER_OF_TECH[id]!;
+    const tier = TIER_OF_TECH[id];
     const unlocks = techUnlocks(id).map((u) => u.name).join(" ");
-    e.push({ id: `tech:${id}`, group: "tech", title: TECHS[id]!.name, subtitle: `${FIELD_NAMES[tier.field]}, ${tier.name}`, keywords: `${tier.name} ${unlocks}` });
+    const where = tier ? `${FIELD_NAMES[tier.field]}, ${tier.name}` : "Not researched";
+    e.push({ id: `tech:${id}`, group: "tech", title: TECHS[id]!.name, subtitle: where, keywords: `${tier?.name ?? ""} ${unlocks}` });
   }
 
   page("buildings", "colony", "Buildings", "building structure colony");

@@ -3,7 +3,7 @@ import { ALL_DOMAINS, DOMAIN_INFO } from "@starlord/ai";
 import {
   ADMIN_SKILLS, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, CAPTAIN_SKILLS, CAPTURE_THRESHOLD, COMMAND_OVERAGE_COST,
   COUNCIL_FIRST, COUNCIL_INTERVAL, COUNCIL_MAJORITY, EVENT_CHANCE, FIELD_HEIGHT, FIELD_WIDTH, GROUND_BASE, GROUND_PER_LEVEL,
-  LEADER_OFFER_INTERVAL, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MORALE_RANGE, POP_PER_BOMB_DAMAGE, PROPOSAL_LIFETIME,
+  LEADER_OFFER_INTERVAL, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MORALE_RANGE, POP_PER_BOMB_DAMAGE, PROPOSAL_LIFETIME, RESEARCH,
   SKILL_PER_LEVEL, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_PER_POP, TAX_STEPS, TRADE_GOODS_RATE, UNREST_MORALE,
 } from "@starlord/sim";
 import { fmt, pct, words } from "../ui/format";
@@ -155,26 +155,30 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
   research: () => (
     <>
       <P>
-        Research is organised in eight fields, each a ladder of tiers. You research one tier at a time; when it
-        completes you learn the tech you picked from it, and the next tier of that field opens. Tier costs rise with
-        each rung. See the <HelpLink to="page:techTree" /> for the whole tree with costs, and{" "}
-        <HelpLink to="page:techList" /> for every tech's effect.
+        Research is organised in eight categories, each a chain of fields. You research one field at a time; when it
+        completes you learn its applications and the next field of that category opens. Every field has its own cost.
+        See the <HelpLink to="page:techTree" /> for the whole tree with costs, and{" "}
+        <HelpLink to="page:techList" /> for every application's effect.
       </P>
       <Ul>
-        <li><HelpLink to="trait:creative">Creative</HelpLink> races learn every tech in a tier they finish.</li>
-        <li><HelpLink to="trait:uncreative">Uncreative</HelpLink> races get one random tech instead of choosing.</li>
-        <li>Research points left over after a tier carry into the next one.</li>
-        <li>Techs you skipped can still be gained: stolen by spies, captured with a colony, found on a derelict ship, or learned from the guardian of Orion.</li>
+        <li>General fields (the basic ones) give every race all their applications. Every empire starts with them.</li>
+        <li>In any other field you pick one application; the others can only be stolen or captured later.</li>
+        <li><HelpLink to="trait:creative">Creative</HelpLink> races learn every application of a field they finish.</li>
+        <li><HelpLink to="trait:uncreative">Uncreative</HelpLink> races get one random application instead of choosing.</li>
+        <li>
+          Once the research points reach a field's cost, a breakthrough can come any turn ({Math.round(RESEARCH.breakthroughStartChance * 100)}%
+          chance at first, rising to certain at {RESEARCH.maxCostMult}x the cost). Points past the cost carry into the next field.
+        </li>
+        <li>
+          When a category is finished, its hyper-advanced field ({fmt(RESEARCH.hyperCost)} RP) can be researched again
+          and again: each level makes that category's components smaller and adds {RESEARCH.hyperScore} to the score.
+        </li>
+        <li>Applications you skipped can still be gained: stolen by spies, captured with a colony, found on a derelict ship, or learned from the guardian of Orion.</li>
       </Ul>
       <h3>Miniaturization</h3>
       <P>
         Every tier you research in a field after the one that gave a ship component makes that component 10% smaller
         and cheaper, down to half its size. Old weapons become cheap filler on big hulls.
-      </P>
-      <h3>How it differs from the classic tier system</h3>
-      <P>
-        The fields, tiers and costs here are this game's own: some techs sit in different fields or tiers, a few are new
-        and a few are placeholders that have no effect yet (they are shown faded in the tree).
       </P>
     </>
   ),

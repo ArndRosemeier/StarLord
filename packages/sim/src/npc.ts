@@ -1,5 +1,5 @@
 import { LAIR_MONSTERS, MONSTER_DESIGNS, RAID_INTERVAL, RAID_START, RAIDER_DESIGNS, raidFleet } from "./data/monsters.js";
-import { TIER_OF_TECH } from "./data/techs.js";
+import { TIER_OF_TECH, emptyHyperLevels } from "./data/techs.js";
 import { newId, type TurnContext } from "./context.js";
 import { distance } from "./galaxy.js";
 import { maxPopulation } from "./economy.js";
@@ -26,6 +26,8 @@ function npcPlayer(id: number, kind: "monsters" | "raiders"): Player {
     techs: ["deathRay"],
     tiers: [],
     research: { tierId: null, techChoice: null, progress: 0 },
+    hyperLevels: emptyHyperLevels(),
+    mutationPoints: 0,
     explored: [],
     contacts: [],
     homeStarId: "",

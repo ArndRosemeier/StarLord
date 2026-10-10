@@ -2,7 +2,7 @@ import { BUILDINGS_BY_ID } from "./data/buildings.js";
 import { getRace, hasTrait } from "./data/races.js";
 import { TIER_OF_TECH } from "./data/techs.js";
 import { adjustAttitude } from "./diplomacy.js";
-import { securityLevel, spyingLevel } from "./empire.js";
+import { grantTech, securityLevel, spyingLevel } from "./empire.js";
 import { population } from "./economy.js";
 import type { Rng } from "./rng.js";
 import type { GameState } from "./types.js";
@@ -60,7 +60,7 @@ function steal(state: GameState, rng: Rng, thief: number, victim: number, emit: 
   const options = them.techs.filter((t) => !me.techs.includes(t) && TIER_OF_TECH[t]);
   if (options.length === 0) return;
   const tech = rng.pick(options);
-  me.techs.push(tech);
+  grantTech(me, tech);
   const tier = TIER_OF_TECH[tech]!;
   emit({ kind: "techLearned", playerId: thief, techId: tech, tierId: tier.id, source: "stolen" });
   emit({ kind: "spy", playerId: victim, other: thief, what: `had ${tech} stolen` });

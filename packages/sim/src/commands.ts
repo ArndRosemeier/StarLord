@@ -8,8 +8,10 @@ import { population } from "./economy.js";
 import { distance } from "./galaxy.js";
 import { MAX_LEADERS } from "./data/leaders.js";
 import {
-  availableBuildings, availableDesigns, availableProjects, availableTiers, itemCost, starOf,
+  availableBuildings, availableDesigns, availableProjects, availableTiers, itemCost, researchOptions, starOf,
 } from "./rules.js";
+import { validateMutation } from "./mutation.js";
+import type { RacePicks } from "./data/races.js";
 import type {
   BuildItem, Colony, CombatDoctrine, Fleet, FleetStance, GameState, Id, PlayerId, ProposalKind, ShipDesign, SpyMission,
 } from "./types.js";
@@ -23,7 +25,10 @@ export type Command =
   | { type: "setJobs"; colonyId: Id; farmers: number; workers: number; scientists: number }
   | { type: "setQueue"; colonyId: Id; queue: BuildItem[] }
   | { type: "buy"; colonyId: Id }
-  | { type: "setResearch"; tierId: string; techId: string }
+  /** techId picks the application; general and hyper-advanced fields need none. */
+  | { type: "setResearch"; tierId: string; techId?: string }
+  /** Spends Evolutionary Mutation points on new race picks (same government). */
+  | { type: "mutateRace"; picks: RacePicks }
   | { type: "setTaxRate"; rate: number }
   | { type: "moveFleet"; fleetId: Id; destStarId: Id }
   | { type: "colonize"; fleetId: Id; planetId: Id }
@@ -115,8 +120,12 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const tier = TIERS_BY_ID[cmd.tierId];
       if (!tier) return fail("unknown tier");
       if (!availableTiers(state, playerId).includes(cmd.tierId)) return fail("tier not available");
-      if (!tier.techs.includes(cmd.techId)) return fail("tech not in tier");
+      if (cmd.techId !== undefined && !researchOptions(player, tier).includes(cmd.techId)) return fail("tech not offered by this field");
       return OK;
+    }
+    case "mutateRace": {
+      const why = validateMutation(player, cmd.picks);
+      return why ? fail(why) : OK;
     }
     case "setTaxRate":
       return TAX_STEPS.includes(cmd.rate) ? OK : fail("tax rate must be 0-50% in 10% steps");

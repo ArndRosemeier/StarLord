@@ -471,5 +471,6 @@ function describe(report: CombatReport, e: CombatRoundEvent | undefined): string
     case "fire": return e.hit ? `${n(e.ship)} hits ${n(e.target)} for ${e.damage}` : `${n(e.ship)} misses ${n(e.target)}`;
     case "destroyed": return `${n(e.ship)} destroyed`;
     case "retreat": return `${n(e.ship)} retreats`;
+    default: return "";
   }
 }

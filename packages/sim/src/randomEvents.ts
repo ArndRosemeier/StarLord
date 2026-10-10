@@ -1,6 +1,7 @@
 import type { TurnContext } from "./context.js";
 import { population } from "./economy.js";
-import { TECH_TIERS } from "./data/techs.js";
+import { TECHS, TECH_TIERS } from "./data/techs.js";
+import { grantTech } from "./empire.js";
 
 /** Occasional galactic events, MoO2-style. About one every 25 turns. */
 export const EVENT_CHANCE = 0.04;
@@ -32,13 +33,13 @@ export function randomEventTick(ctx: TurnContext): void {
       return;
     }
     case "derelict": {
-      const next = TECH_TIERS.filter((t) => !p.tiers.includes(t.id) && t.level <= 4)
+      const next = TECH_TIERS.filter((t) => !p.tiers.includes(t.id) && t.cost <= 400)
         .flatMap((t) => t.techs)
         .filter((t) => !p.techs.includes(t));
       if (next.length === 0) return;
       const tech = rng.pick(next);
-      p.techs.push(tech);
-      ctx.emit({ kind: "random", playerId: p.id, what: `Scientists reverse-engineered a derelict ship and learned ${tech}.` });
+      grantTech(p, tech);
+      ctx.emit({ kind: "random", playerId: p.id, what: `Scientists reverse-engineered a derelict ship and learned ${TECHS[tech]?.name ?? tech}.` });
       return;
     }
     case "comet": {
