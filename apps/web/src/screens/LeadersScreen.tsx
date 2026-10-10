@@ -17,7 +17,8 @@ function LeaderCard({ l, children }: { l: Leader; children: ReactNode }) {
     <div className="leader-card">
       <LeaderPortrait name={l.name} />
       <div className="col" style={{ gap: 4, minWidth: 0 }}>
-        <div><b>{l.name}</b> <small className="muted">lvl {l.level} {words(l.kind)}</small></div>
+        <div><b>{l.name}</b> <span className="level-stars" title={`Level ${l.level}`}>{"\u2605".repeat(Math.max(1, Math.min(5, l.level)))}</span></div>
+        <small className="muted">{words(l.kind)}, level {l.level}</small>
         <Skills l={l} />
         {children}
       </div>

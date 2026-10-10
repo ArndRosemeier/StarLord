@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   CLIMATES, designStats, findDesign, getRace, isHostile, maxPopulation, population, relation, travelTurns,
   type Fleet, type Planet, type PlayerView,
@@ -219,4 +219,51 @@ export function LeaderPortrait({ name, size = 84 }: { name: string; size?: numbe
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   const n = String((h % LEADER_PORTRAITS) + 1).padStart(2, "0");
   return <img src={`leaders/${n}.webp`} alt={name} width={size} height={size} loading="lazy" style={{ borderRadius: 6, objectFit: "cover", background: "#000", display: "block", flex: "none" }} />;
+}
+
+/** A large planet for detail views: it floats, glows at the rim and has a small moon circling it. */
+export function PlanetOrb({ planet, size = 128, populated = false }: { planet: Planet; size?: number; populated?: boolean }) {
+  return (
+    <div className={`planet-orb${populated ? " populated" : ""}`} style={{ width: size, height: size, ["--orb" as string]: `${size}px` }}>
+      <img src={`planets/${planet.type}.webp`} alt={climateName(planet.type)} width={size} height={size} />
+      <span className="orb-shade" />
+      <span className="orb-moon"><span /></span>
+    </div>
+  );
+}
+
+/** A circular progress gauge with a glowing arc and a slowly turning outer ring. */
+export function ProgressRing({ value, max, size = 120, color = "var(--accent)", children }: {
+  value: number; max: number; size?: number; color?: string; children?: ReactNode;
+}) {
+  const r = 44;
+  const c = 2 * Math.PI * r;
+  const frac = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
+  return (
+    <div className="ring" style={{ width: size, height: size, ["--ring" as string]: color }}>
+      <svg viewBox="0 0 100 100" width={size} height={size}>
+        <circle className="ring-outer" cx="50" cy="50" r="48" />
+        <circle className="ring-track" cx="50" cy="50" r={r} />
+        <circle className="ring-fill" cx="50" cy="50" r={r} strokeDasharray={c} strokeDashoffset={c * (1 - frac)} />
+      </svg>
+      <div className="ring-label">{children}</div>
+    </div>
+  );
+}
+
+/** A race's portrait that comes alive with its video while hovered (or always, with `autoPlay`). */
+export function Envoy({ raceId, color, className = "envoy", autoPlay = false }: { raceId: string; color?: string; className?: string; autoPlay?: boolean }) {
+  const r = getRace(raceId);
+  const [active, setActive] = useState(autoPlay);
+  const [ready, setReady] = useState(false);
+  return (
+    <div className={`${className}${active && ready ? " playing" : ""}`} style={{ ["--envoy" as string]: color }}
+      onPointerEnter={() => setActive(true)} onPointerLeave={() => { if (!autoPlay) { setActive(false); setReady(false); } }}>
+      <img src={`races/${r.assetKey}.webp`} alt={r.name} />
+      {active && (
+        <video src={`races/${r.assetKey}.mp4`} autoPlay muted loop playsInline
+          onPlaying={() => setReady(true)} onError={() => setActive(false)} />
+      )}
+    </div>
+  );
 }

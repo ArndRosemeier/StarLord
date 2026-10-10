@@ -51,6 +51,7 @@ export interface SceneStar {
   special: Star["special"];
   /** A monster lair or other hostile guard is known to be here. */
   guarded: boolean;
+  blackHole: boolean;
 }
 
 export interface SceneFleet {
@@ -104,6 +105,7 @@ export function buildScene(
     owners: colonyOwners.get(s.id) ?? [],
     special: s.special,
     guarded: guarded.has(s.id),
+    blackHole: s.color === "blackHole",
   }));
   const fleets: SceneFleet[] = Object.values(view.fleets).map((f) => {
     const dest = f.destStarId ? starById.get(f.destStarId) : undefined;

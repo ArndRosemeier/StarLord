@@ -4,7 +4,7 @@ import {
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { words } from "../ui/format";
-import { Portrait } from "../ui/panels";
+import { Envoy } from "../ui/panels";
 
 const KINDS: { kind: ProposalKind; label: string }[] = [
   { kind: "peace", label: "Peace treaty" },
@@ -33,7 +33,7 @@ export function DiplomacyScreen() {
   return (
     <div className="col">
       {incoming.length > 0 && (
-        <div className="panel col">
+        <div className="panel col incoming">
           <h3>Proposals to you</h3>
           {incoming.map((p) => (
             <div className="row" key={p.id}>
@@ -58,14 +58,16 @@ export function DiplomacyScreen() {
           const race = getRace(p.raceId);
           const sent = new Set(outgoing.filter((o) => o.to === p.id).map((o) => o.kind));
           return (
-            <div className="panel col" key={p.id} style={{ opacity: p.alive ? 1 : 0.5 }}>
-              <div className="row">
-                <Portrait raceId={p.raceId} size={56} />
-                <div>
+            <div className={`panel col empire-card ${r.status}`} key={p.id} style={{ opacity: p.alive ? 1 : 0.5 }}>
+              <div className="row" style={{ flexWrap: "nowrap", alignItems: "flex-start" }}>
+                <Envoy raceId={p.raceId} color={p.color} />
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row"><span className="dot" style={{ background: p.color }} /><b>{p.name}</b></div>
                   <div className="muted">{race.plural} · {government(p).name}</div>
+                  <div className="mood-meter" style={{ marginTop: 10 }} title={`Attitude toward you: ${feel.text}`}>
+                    <span style={{ left: `${(attitude(view, p.id, me.id) + 100) / 2}%` }} />
+                  </div>
                 </div>
-                <span className="spacer" />
                 <div className="col" style={{ alignItems: "flex-end", gap: 2 }}>
                   <span className={`chip ${r.status === "war" ? "bad" : r.status === "alliance" ? "good" : ""}`}>{r.status === "none" ? "No treaty" : words(r.status)}</span>
                   <small className={feel.cls}>{feel.text}</small>

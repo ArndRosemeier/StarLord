@@ -2,7 +2,8 @@ import { ALL_DOMAINS, DOMAIN_INFO } from "@starlord/ai";
 import { TAX_STEPS, empireIncome, empireTotals, empires, getRace, government, score } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, pct, signed } from "../ui/format";
-import { Portrait } from "../ui/panels";
+import { Envoy } from "../ui/panels";
+import { AnimatedNumber, useReducedMotion } from "../ui/fx";
 
 export function EmpireScreen() {
   const { session, view, me, readOnly } = useGame();
@@ -11,17 +12,18 @@ export function EmpireScreen() {
   const totals = empireTotals(view, me.id);
   const on = new Set(me.automation);
   const setAuto = (domains: string[]) => session.issue({ type: "setAutomation", domains });
+  const still = useReducedMotion();
 
   return (
     <div className="grid2">
       <div className="col">
         <div className="panel col">
-          <div className="row">
-            <Portrait raceId={me.raceId} size={72} />
-            <div>
-              <h2 style={{ margin: 0 }}>{me.name}</h2>
+          <div className="row" style={{ flexWrap: "nowrap", gap: 18 }}>
+            <Envoy key={me.raceId} raceId={me.raceId} color={me.color} className="empire-portrait" autoPlay={!still} />
+            <div className="col" style={{ gap: 4 }}>
+              <h2 className="empire-title" style={{ margin: 0 }}>{me.name}</h2>
               <div className="muted">{race.plural} · {government(me).name}</div>
-              <div>Score {fmt(score(view, me.id))}</div>
+              <div><small className="muted" style={{ letterSpacing: "0.12em" }}>SCORE</small><div className="score-big"><AnimatedNumber value={score(view, me.id)} format={fmt} /></div></div>
             </div>
           </div>
           <table>
@@ -81,7 +83,7 @@ export function EmpireScreen() {
         </div>
         {ALL_DOMAINS.map((d) => (
           <label key={d} className="row" style={{ alignItems: "flex-start", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
-            <input type="checkbox" checked={on.has(d)} disabled={readOnly}
+            <input type="checkbox" className="switch" checked={on.has(d)} disabled={readOnly}
               onChange={(e) => setAuto(e.target.checked ? [...me.automation, d] : me.automation.filter((x) => x !== d))} />
             <span>
               <b>{DOMAIN_INFO[d].name}</b>

@@ -5,6 +5,19 @@ import { useGame } from "../ui/hooks";
 import { fmt } from "../ui/format";
 import { researchPerTurn } from "./GameShell";
 import { useHelp } from "../help/HelpDialog";
+import { ProgressRing } from "../ui/panels";
+
+/** Colour and glyph per field of science. */
+const FIELD_LOOK: Record<string, { color: string; glyph: string }> = {
+  construction: { color: "#ff9f43", glyph: "\u2692\uFE0E" },
+  power: { color: "#ffd32a", glyph: "\u26A1\uFE0E" },
+  chemistry: { color: "#7ed957", glyph: "\u2697\uFE0E" },
+  sociology: { color: "#ff7ab6", glyph: "\u2696\uFE0E" },
+  computers: { color: "#3ee8ff", glyph: "\u232C\uFE0E" },
+  biology: { color: "#4fd18b", glyph: "\u2766\uFE0E" },
+  physics: { color: "#a78bfa", glyph: "\u269B\uFE0E" },
+  forceFields: { color: "#5b9dff", glyph: "\u26E8\uFE0E" },
+};
 
 export function ResearchScreen() {
   const { session, view, me, readOnly } = useGame();
@@ -28,14 +41,19 @@ export function ResearchScreen() {
           <button className="small" onClick={() => openHelp("page:techTree")}>Full tech tree</button>
         </div>
         {current ? (
-          <div className="col" style={{ marginTop: 8 }}>
-            <div>
-              Researching <b>{current.name}</b> ({FIELD_NAMES[current.field]})
-              {me.research.techChoice && <> → <b>{TECHS[me.research.techChoice]?.name}</b></>}
-              {eta !== null && <span className="muted"> · about {eta} turn{eta === 1 ? "" : "s"}</span>}
+          <div className="research-now" style={{ marginTop: 8 }}>
+            <ProgressRing value={me.research.progress} max={current.cost} size={124} color={FIELD_LOOK[current.field]?.color}>
+              <b>{Math.floor((me.research.progress / current.cost) * 100)}%</b>
+              {eta !== null && <small>{eta} turn{eta === 1 ? "" : "s"}</small>}
+            </ProgressRing>
+            <div className="col" style={{ gap: 4, flex: 1 }}>
+              <small className="muted" style={{ letterSpacing: "0.12em", textTransform: "uppercase" }}>Now researching</small>
+              <div style={{ fontSize: 18 }}>
+                <b>{current.name}</b> <span className="muted">({FIELD_NAMES[current.field]})</span>
+              </div>
+              {me.research.techChoice && <div>Goal: <b style={{ color: FIELD_LOOK[current.field]?.color }}>{TECHS[me.research.techChoice]?.name}</b> <span className="muted">{TECHS[me.research.techChoice]?.description}</span></div>}
+              <small className="muted">{fmt(me.research.progress)} / {fmt(current.cost)} research points</small>
             </div>
-            <div className="bar"><div style={{ width: `${Math.min(100, (me.research.progress / current.cost) * 100)}%`, background: "var(--research)" }} /></div>
-            <small className="muted">{fmt(me.research.progress)} / {fmt(current.cost)}</small>
           </div>
         ) : (
           <div className="warn">Nothing is being researched. Pick a technology below.</div>
@@ -47,8 +65,9 @@ export function ResearchScreen() {
           const done = tiers.filter((t) => me.tiers.includes(t.id));
           const next = tiers.filter((t) => open.has(t.id));
           return (
-            <div className="panel col" key={field}>
-              <h3>{FIELD_NAMES[field]} <small className="muted">{done.length}/{tiers.length}</small></h3>
+            <div className="panel col field-card" key={field} style={{ ["--field" as string]: FIELD_LOOK[field]?.color }}>
+              <h3><span className="field-glyph">{FIELD_LOOK[field]?.glyph}</span>{FIELD_NAMES[field]} <small className="muted">{done.length}/{tiers.length}</small></h3>
+              <div className="field-meter"><span style={{ width: `${(done.length / Math.max(1, tiers.length)) * 100}%` }} /></div>
               {next.map((t) => (
                 <div key={t.id} className="col" style={{ gap: 4 }}>
                   <div className="row">
@@ -60,7 +79,7 @@ export function ResearchScreen() {
                       const tech = TECHS[id]!;
                       const active = me.research.tierId === t.id && me.research.techChoice === id;
                       return (
-                        <button key={id} className={`small${active ? " active" : ""}`} disabled={readOnly} title={tech.description}
+                        <button key={id} className={`small tech${active ? " active" : ""}`} disabled={readOnly} title={tech.description}
                           onClick={() => session.issue({ type: "setResearch", tierId: t.id, techId: id })}>
                           {tech.name}
                         </button>

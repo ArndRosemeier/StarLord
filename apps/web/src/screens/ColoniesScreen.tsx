@@ -6,7 +6,8 @@ import {
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { climateName, fmt, itemName, signed, words } from "../ui/format";
-import { PlanetIcon, viewStarOfColony } from "../ui/panels";
+import { PlanetIcon, PlanetOrb, viewStarOfColony } from "../ui/panels";
+import { Icon } from "../ui/fx";
 
 export function ColoniesScreen({ onShowStar }: { onShowStar: (starId: string) => void }) {
   const { view, me } = useGame();
@@ -86,8 +87,8 @@ function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar: (sta
   return (
     <div className="col">
       <div className="panel col">
-        <div className="row" style={{ flexWrap: "nowrap", gap: 14 }}>
-          <PlanetIcon planet={planet} size={96} />
+        <div className="colony-hero">
+          <PlanetOrb planet={planet} size={124} populated={!colony.outpost} />
           <div className="col" style={{ gap: 4 }}>
             <div className="row">
               <h2 style={{ margin: 0 }}>{colony.name}</h2>
@@ -103,11 +104,11 @@ function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar: (sta
           <>
             <table>
               <tbody>
-                <tr><td>Population</td><td>{population(colony)} / {o.maxPopulation} <small className="muted">(+{fmt(o.growthK)}k per turn, {fmt(colony.growthK)}k toward next)</small></td></tr>
-                <tr><td className="food">Food</td><td>{fmt(o.foodProduced, 1)} produced, {fmt(o.foodEaten)} eaten <b className={o.foodNet < 0 ? "bad" : "good"}>{signed(o.foodNet, 1)}</b></td></tr>
-                <tr><td className="industry">Industry</td><td>{fmt(o.industryGross, 1)} gross, {fmt(o.pollution, 1)} pollution, {fmt(o.taxes, 1)} taxed <b>{fmt(o.industry, 1)}</b></td></tr>
-                <tr><td className="research">Research</td><td>{fmt(o.research, 1)}</td></tr>
-                <tr><td className="bc">BC</td><td>{signed(o.bc, 1)} income, {fmt(o.maintenance, 1)} upkeep</td></tr>
+                <tr><td><span className="stat-label"><Icon name="population" />Population</span></td><td>{population(colony)} / {o.maxPopulation} <small className="muted">(+{fmt(o.growthK)}k per turn, {fmt(colony.growthK)}k toward next)</small></td></tr>
+                <tr><td className="food"><span className="stat-label"><Icon name="food" />Food</span></td><td>{fmt(o.foodProduced, 1)} produced, {fmt(o.foodEaten)} eaten <b className={o.foodNet < 0 ? "bad" : "good"}>{signed(o.foodNet, 1)}</b></td></tr>
+                <tr><td className="industry"><span className="stat-label"><Icon name="industry" />Industry</span></td><td>{fmt(o.industryGross, 1)} gross, {fmt(o.pollution, 1)} pollution, {fmt(o.taxes, 1)} taxed <b>{fmt(o.industry, 1)}</b></td></tr>
+                <tr><td className="research"><span className="stat-label"><Icon name="research" />Research</span></td><td>{fmt(o.research, 1)}</td></tr>
+                <tr><td className="bc"><span className="stat-label"><Icon name="bc" />BC</span></td><td>{signed(o.bc, 1)} income, {fmt(o.maintenance, 1)} upkeep</td></tr>
                 <tr><td>Morale</td><td className={o.morale < 0 ? "bad" : o.morale > 0 ? "good" : ""}>{signed(o.morale)}%{colony.unrestUntil > view.turn && <span className="bad"> · unrest</span>}</td></tr>
                 <tr><td>Troops</td><td>{fmt(o.troops)}</td></tr>
               </tbody>
@@ -119,7 +120,9 @@ function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar: (sta
                 <button className="small" disabled={readOnly || jobs[k] === 0} onClick={() => move(k, -1)}>−</button>
                 <b style={{ width: 22, textAlign: "center" }}>{jobs[k]}</b>
                 <button className="small" disabled={readOnly || jobs[k] === population(colony)} onClick={() => move(k, 1)}>+</button>
-                <span style={{ letterSpacing: 2 }}>{"●".repeat(jobs[k])}</span>
+                <span className={`pips ${k === "farmers" ? "food" : k === "workers" ? "industry" : "research"}`}>
+                  {Array.from({ length: jobs[k] }, (_, i) => <i key={i} />)}
+                </span>
               </div>
             ))}
           </>
