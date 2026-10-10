@@ -5,7 +5,8 @@ import {
   LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
   PLANETS_PER_STAR, PLANET_SIZE_WEIGHTS, PLANET_TYPE_WEIGHTS, PROJECTS, PROJECTS_BY_ID, PROJECT_COSTS, RACES, RACES_BY_ID,
   RAIDER_DESIGNS, RAID_INTERVAL, RAID_START, SHIELDS, SHIELDS_BY_ID, SIZE_FACTOR, SPECIALS, SPECIALS_BY_ID,
-  STAR_COLOR_WEIGHTS, TECHS, TECH_FIELDS, TECH_TIERS, TERRAFORM_STEP, TIERS_BY_ID, TRAIT_COSTS, WEAPONS, WEAPONS_BY_ID,
+  RESEARCH, STARTING_TECH_APPS, STARTING_TIERS, STAR_COLOR_WEIGHTS, TECHS, TECH_FIELDS, TECH_TIERS, TERRAFORM_STEP,
+  TIERS_BY_ID, TRAIT_COSTS, WEAPONS, WEAPONS_BY_ID, nextTier, previousTier,
   combatSpeed, cumulativeTierCost, fleetRange, fleetSpeed, gravityMultiplier, gravityOf, raidFleet, techHasEffect,
   techInfo, techUnlocks, type GovernmentDef, type Minerals, type NumericPick, type PlanetSize, type PlanetType, type Player,
   type RaceDef, type RaceTrait, type ShipDesign, type StarColor, type TechTier, type Unlock, type WeaponDef,
@@ -83,9 +84,10 @@ function Links({ ids }: { ids: string[] }) {
 /** Link to the tech that unlocks something, or a note when it cannot be researched. */
 export function Requires({ tech }: { tech: string | null }) {
   if (tech === null) return <span>Available from the start</span>;
-  if (!TECHS[tech]) return <span>Not in the tech tree: only salvaged (see <HelpLink to="page:monsters" />)</span>;
-  const tier = techInfo(tech)!.tier;
-  return <span><HelpLink to={`tech:${tech}`} /> <small className="muted">({FIELD_NAMES[tier.field]}, tier {tier.level})</small></span>;
+  if (STARTING_TECH_APPS.includes(tech)) return <span>Available from the start</span>;
+  const info = techInfo(tech);
+  if (!info) return <span>Not in the tech tree: only salvaged (see <HelpLink to="page:monsters" />)</span>;
+  return <span><HelpLink to={`tech:${tech}`} /> <small className="muted">({FIELD_NAMES[info.tier.field]}, {info.tier.name})</small></span>;
 }
 
 function KnownChip({ tech }: { tech: string }) {
@@ -163,46 +165,48 @@ const miniNote = (
 
 // ---------------------------------------------------------------- technology
 
+const startsKnown = (t: TechTier) => STARTING_TIERS.includes(t.id);
+const tierCost = (t: TechTier) => (startsKnown(t) ? "known from the start" : `${fmt(t.cost)} RP`);
+
 function TechTreePage() {
   const { me } = useHelpNav();
-  const levels = Math.max(...TECH_TIERS.map((t) => t.level));
+  const rungs = Math.max(...TECH_TIERS.map((t) => t.rung));
   return (
     <div className="col">
       <p>
-        Research runs in eight fields. Each field is a ladder of tiers; finishing a tier opens the next rung and
-        grants one tech of your choice from it (creative races get all of them, uncreative races one at random).
-        Tier 0 of every field is known from the start. Costs depend only on the rung, so the left column gives the
-        price of every tier in that row. Click any name for its full data.
-        {me && " Techs you know are marked green."}
+        Research runs in eight categories. Each category is a chain of fields; finishing a field opens the next one.
+        General fields give every race all their applications; any other field gives you the one application you
+        picked (creative races get all of them, uncreative races one at random). Every field has its own cost, shown
+        under its name. The general fields are known from the start. When a category is finished, its hyper-advanced
+        field can be researched again and again. Click any name for its full data.
+        {me && " Applications you know are marked green."}
       </p>
-      <div className="help-tree" style={{ gridTemplateColumns: `52px repeat(${TECH_FIELDS.length}, minmax(112px, 1fr))` }}>
-        <div className="help-tree-head" style={{ textAlign: "right" }}>Tier<br /><small className="muted">RP</small></div>
+      <div className="help-tree" style={{ gridTemplateColumns: `32px repeat(${TECH_FIELDS.length}, minmax(112px, 1fr))` }}>
+        <div className="help-tree-head" style={{ textAlign: "right" }}>#</div>
         {TECH_FIELDS.map((f) => <div key={f} className="help-tree-head"><HelpLink to={`field:${f}`} /></div>)}
-        {Array.from({ length: levels + 1 }, (_, level) => {
-          const row = TECH_TIERS.filter((t) => t.level === level);
-          return [
-            <div key={`l${level}`} className="help-tree-level">{level}<br /><small className="muted">{fmt(row[0]?.cost ?? 0)}</small></div>,
-            ...TECH_FIELDS.map((f) => {
-              const tier = row.find((t) => t.field === f);
-              if (!tier) return <div key={`${f}${level}`} />;
-              const done = me?.tiers.includes(tier.id);
-              return (
-                <div key={tier.id} className={`help-tree-cell${done ? " done" : ""}`}>
-                  <HelpLink to={`tier:${tier.id}`} />
-                  <div className="help-tree-techs">
-                    {tier.techs.map((t) => (
-                      <span key={t} className={`help-tech${me?.techs.includes(t) ? " known" : ""}${techHasEffect(t) ? "" : " empty"}`}>
-                        <HelpLink to={`tech:${t}`} />
-                      </span>
-                    ))}
-                  </div>
+        {Array.from({ length: rungs + 1 }, (_, rung) => [
+          <div key={`l${rung}`} className="help-tree-level">{rung + 1}</div>,
+          ...TECH_FIELDS.map((f) => {
+            const tier = TECH_TIERS.find((t) => t.field === f && t.rung === rung);
+            if (!tier) return <div key={`${f}${rung}`} />;
+            const done = me?.tiers.includes(tier.id);
+            return (
+              <div key={tier.id} className={`help-tree-cell${done ? " done" : ""}`}>
+                <HelpLink to={`tier:${tier.id}`} />
+                <small className="muted"> {startsKnown(tier) ? "start" : fmt(tier.cost)}{tier.general ? ", general" : ""}</small>
+                <div className="help-tree-techs">
+                  {tier.techs.map((t) => (
+                    <span key={t} className={`help-tech${me?.techs.includes(t) ? " known" : ""}${techHasEffect(t) ? "" : " empty"}`}>
+                      <HelpLink to={`tech:${t}`} />
+                    </span>
+                  ))}
                 </div>
-              );
-            }),
-          ];
-        })}
+              </div>
+            );
+          }),
+        ])}
       </div>
-      <small className="muted">Faded techs have no effect in the rules yet.</small>
+      <small className="muted">Faded applications have no effect in the rules yet.</small>
     </div>
   );
 }
@@ -211,16 +215,16 @@ function TechListPage() {
   const { me } = useHelpNav();
   return (
     <div className="col">
-      <p>Every technology with its field, tier, research cost and effect.</p>
+      <p>Every application with its category, field, research cost and effect.</p>
       <table className="help-table">
-        <thead><tr><th>Tech</th><th>Field</th><th>Tier</th><th>RP</th><th>Effect</th></tr></thead>
+        <thead><tr><th>Application</th><th>Category</th><th>Field</th><th>RP</th><th>Effect</th></tr></thead>
         <tbody>
           {TECH_TIERS.flatMap((tier) => tier.techs.map((id) => (
             <tr key={id} className={me?.techs.includes(id) ? "help-known" : ""}>
               <td><HelpLink to={`tech:${id}`} /></td>
               <td>{FIELD_NAMES[tier.field]}</td>
-              <td><HelpLink to={`tier:${tier.id}`}>{tier.level}</HelpLink></td>
-              <td>{fmt(tier.cost)}</td>
+              <td><HelpLink to={`tier:${tier.id}`} /></td>
+              <td>{startsKnown(tier) ? "start" : fmt(tier.cost)}</td>
               <td className={techHasEffect(id) ? "" : "muted"}>{techSummary(id)}</td>
             </tr>
           )))}
@@ -232,19 +236,22 @@ function TechListPage() {
 
 function FieldPage({ field }: { field: TechTier["field"] }) {
   const tiers = TECH_TIERS.filter((t) => t.field === field);
+  const normal = tiers.filter((t) => !t.hyper);
   return (
     <div className="col">
       <p>
-        {tiers.length} tiers, {fmt(cumulativeTierCost(tiers.at(-1)!))} research points to finish the field.
-        Each tier needs the one above it.
+        {normal.length} fields, {fmt(cumulativeTierCost(normal.at(-1)!))} research points to finish the category.
+        Each field needs the one above it.
       </p>
       {tiers.map((t) => (
         <div key={t.id} className="panel col help-tier">
           <div className="row">
             <b><HelpLink to={`tier:${t.id}`} /></b>
-            <span className="muted">tier {t.level} · {t.level === 0 ? "known from the start" : `${fmt(t.cost)} RP`}</span>
+            <span className="muted">{t.hyper ? `${fmt(t.cost)} RP per level, repeatable` : tierCost(t)}{t.general ? " · general" : ""}</span>
           </div>
-          <List items={t.techs.map((id) => <><HelpLink to={`tech:${id}`} />: <span className={techHasEffect(id) ? "" : "muted"}>{techSummary(id)}</span></>)} />
+          {t.hyper
+            ? <span>Each level makes this category's components smaller and cheaper and adds {RESEARCH.hyperScore} to your score.</span>
+            : <List items={t.techs.map((id) => <><HelpLink to={`tech:${id}`} />: <span className={techHasEffect(id) ? "" : "muted"}>{techSummary(id)}</span></>)} />}
         </div>
       ))}
     </div>
@@ -252,39 +259,56 @@ function FieldPage({ field }: { field: TechTier["field"] }) {
 }
 
 function TierPage({ tier }: { tier: TechTier }) {
-  const info = techInfo(tier.techs[0]!)!;
+  const prev = previousTier(tier);
+  const next = nextTier(tier);
   return (
     <div className="col">
       <Facts rows={[
-        ["Field", <HelpLink to={`field:${tier.field}`} />],
-        ["Tier", tier.level],
-        ["Cost", tier.level === 0 ? "Known from the start" : `${fmt(tier.cost)} RP (${fmt(cumulativeTierCost(tier))} RP for the whole ladder up to here)`],
-        ["Requires", info.prerequisite ? <HelpLink to={`tier:${info.prerequisite.id}`} /> : "Nothing"],
-        ["Leads to", info.leadsTo ? <HelpLink to={`tier:${info.leadsTo.id}`} /> : "End of the field"],
+        ["Category", <HelpLink to={`field:${tier.field}`} />],
+        ["Tech level", tier.level],
+        ["Cost", tier.hyper
+          ? `${fmt(tier.cost)} RP per level`
+          : startsKnown(tier) ? "Known from the start" : `${fmt(tier.cost)} RP (${fmt(cumulativeTierCost(tier))} RP for the whole chain up to here)`],
+        ["Requires", prev ? <HelpLink to={`tier:${prev.id}`} /> : "Nothing"],
+        ["Leads to", next ? <HelpLink to={`tier:${next.id}`} /> : tier.hyper ? "Itself: it can be researched again" : "End of the category"],
       ]} />
-      <h3>Choose one</h3>
-      <List items={tier.techs.map((id) => <><HelpLink to={`tech:${id}`} />: <span className={techHasEffect(id) ? "" : "muted"}>{techSummary(id)}</span></>)} />
+      {tier.hyper ? (
+        <p>
+          A hyper-advanced field. It opens once every other field of the category is researched and can be researched
+          again and again. Each level makes this category's ship components smaller and cheaper and adds{" "}
+          {RESEARCH.hyperScore} to your score.
+        </p>
+      ) : (
+        <>
+          <h3>{tier.general ? "Every race learns all of these" : "Choose one"}</h3>
+          <List items={tier.techs.map((id) => <><HelpLink to={`tech:${id}`} />: <span className={techHasEffect(id) ? "" : "muted"}>{techSummary(id)}</span></>)} />
+        </>
+      )}
     </div>
   );
 }
 
 function TechPage({ id }: { id: string }) {
   const tech = TECHS[id]!;
-  const info = techInfo(id)!;
+  const info = techInfo(id);
   const unlocks = techUnlocks(id);
   const bonus = tech.bonus ? empireBonus(tech.bonus) : [];
   return (
     <div className="col">
       <div className="row"><KnownChip tech={id} />{!techHasEffect(id) && <span className="chip warn">No effect in the rules yet</span>}</div>
       {tech.description && <p>{tech.description}</p>}
-      <Facts rows={[
-        ["Field", <HelpLink to={`field:${info.tier.field}`} />],
-        ["Tier", <><HelpLink to={`tier:${info.tier.id}`} /> (tier {info.tier.level})</>],
-        ["Research cost", info.tier.level === 0 ? "Known from the start" : `${fmt(info.tier.cost)} RP for the tier`],
-        ["Requires", info.prerequisite ? <><HelpLink to={`tier:${info.prerequisite.id}`} /> researched</> : "Nothing"],
-        ["Alternatives", info.alternatives.length ? <Links ids={info.alternatives.map((a) => `tech:${a}`)} /> : "None: the tier offers only this tech"],
-        ["Leads to", info.leadsTo ? <HelpLink to={`tier:${info.leadsTo.id}`} /> : "End of the field"],
-      ]} />
+{info ? (
+        <Facts rows={[
+          ["Category", <HelpLink to={`field:${info.tier.field}`} />],
+          ["Field", <HelpLink to={`tier:${info.tier.id}`} />],
+          ["Research cost", startsKnown(info.tier) ? "Known from the start" : `${fmt(info.tier.cost)} RP for the field`],
+          ["Requires", info.prerequisite ? <><HelpLink to={`tier:${info.prerequisite.id}`} /> researched</> : "Nothing"],
+          ["Alternatives", info.tier.general ? "None: everyone learns the whole field" : info.alternatives.length ? <Links ids={info.alternatives.map((a) => `tech:${a}`)} /> : "None: the field offers only this application"],
+          ["Leads to", info.leadsTo ? <HelpLink to={`tier:${info.leadsTo.id}`} /> : "End of the category"],
+        ]} />
+      ) : (
+        <p className="muted">{STARTING_TECH_APPS.includes(id) ? "Known by every empire from the start." : "Xenon technology: never researched, only salvaged."}</p>
+      )}
       {bonus.length > 0 && <><h3>Empire-wide effect</h3><List items={bonus} /></>}
       {unlocks.length > 0 && (
         <>
@@ -836,8 +860,8 @@ function GovernmentsPage() {
   return (
     <div className="col">
       <p>
-        Every race starts with a basic government. Researching <HelpLink to="tech:advancedGovernment" /> upgrades it to its
-        advanced form automatically.
+        Every race starts with a basic government. The <HelpLink to="tier:advancedGovernments" /> field offers the
+        advanced form of your own government; researching it upgrades your government automatically.
       </p>
       <table className="help-table">
         <thead><tr><th /> {ids.map((id) => <th key={id}><HelpLink to={`government:${id}`} /></th>)}</tr></thead>

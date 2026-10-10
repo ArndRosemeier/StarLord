@@ -2,14 +2,14 @@ import { BUILDINGS_BY_ID, TERRAFORM_STEP } from "./data/buildings.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import { CLIMATES, gravityOf, type PlanetType } from "./data/planets.js";
 import { getRace, hasTrait, registerRaces } from "./data/races.js";
-import { TIERS_BY_ID, TIER_OF_TECH } from "./data/techs.js";
+import { RESEARCH, TECHS, TIERS_BY_ID, TIER_OF_TECH, emptyHyperLevels } from "./data/techs.js";
 import { bombardment, planetDefense, resolveCombat, type CombatSide } from "./combat.js";
 import { buyCost, validateCommand, type Command } from "./commands.js";
 import { newId, type TurnContext } from "./context.js";
 import { councilTick } from "./council.js";
 import { designStats, findDesign } from "./designs.js";
 import { acceptProposal, adjustAttitude, declareWar, diplomacyTick, isHostile, treatyIncome } from "./diplomacy.js";
-import { COMMAND_OVERAGE_COST, commandPointsAvailable, commandPointsUsed, empireBonus, fleetSpeed } from "./empire.js";
+import { COMMAND_OVERAGE_COST, commandPointsAvailable, commandPointsUsed, empireBonus, fleetSpeed, grantTech } from "./empire.js";
 import { TRADE_GOODS_RATE, colonyOutput, population, type ColonyOutput } from "./economy.js";
 import { espionageTick } from "./espionage.js";
 import { distance } from "./galaxy.js";
@@ -18,7 +18,8 @@ import { leaderTick, salaries } from "./leaders.js";
 import { guardianSlain, raidTick } from "./npc.js";
 import { randomEventTick } from "./randomEvents.js";
 import { Rng } from "./rng.js";
-import { freePlanetsInSystem, isContinuous, itemCost, starOf } from "./rules.js";
+import { freePlanetsInSystem, isContinuous, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
+import { applyMutation } from "./mutation.js";
 import { score } from "./score.js";
 import type { BuildItem, Colony, Fleet, GameState, Id, PlayerId } from "./types.js";
 
@@ -140,7 +141,10 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     }
     case "setResearch":
       player.research.tierId = cmd.tierId;
-      player.research.techChoice = cmd.techId;
+      player.research.techChoice = cmd.techId ?? null;
+      break;
+    case "mutateRace":
+      applyMutation(state, playerId, cmd.picks);
       break;
     case "setTaxRate":
       player.taxRate = cmd.rate;
@@ -591,8 +595,7 @@ function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
   const loserTechs = state.players[loser]!.techs.filter((t) => !attacker.techs.includes(t) && TIER_OF_TECH[t]);
   if (loserTechs.length > 0 && rng.chance(0.5)) {
     const tech = rng.pick(loserTechs);
-    attacker.techs.push(tech);
-    ctx.emit({ kind: "techLearned", playerId: attacker.id, techId: tech, tierId: TIER_OF_TECH[tech]!.id, source: "salvage" });
+    learnTech(ctx, attacker.id, tech, TIER_OF_TECH[tech]!.id, "salvage");
   }
   for (const l of Object.values(state.leaders)) {
     if (l.ownerId === loser && l.assignedTo === state.planets[colony.planetId]!.starId) l.assignedTo = null;
@@ -670,10 +673,10 @@ function bankrupt(ctx: TurnContext, playerId: PlayerId): void {
   if (player.bc < 0) player.bc = 0;
 }
 
+/** Researching the advanced form of your government (Advanced Governments) switches to it. */
 function upgradeGovernment(player: GameState["players"][number]): void {
-  if (!player.techs.includes("advancedGovernment")) return;
   const next = GOVERNMENTS[player.government].advanced;
-  if (next) player.government = next;
+  if (next && player.techs.some((t) => TECHS[t]?.government === next)) player.government = next;
 }
 
 function starve(ctx: TurnContext, playerId: PlayerId, list: { colony: Colony; out: ColonyOutput }[], deficit: number): void {
@@ -826,6 +829,11 @@ function grow(colony: Colony, out: ColonyOutput): void {
   }
 }
 
+/**
+ * Adds research points. Once they reach the field's cost, every turn has a
+ * chance of a breakthrough, certain at twice the cost. Points past the cost
+ * carry over to the next field.
+ */
 function advanceResearch(ctx: TurnContext, playerId: PlayerId, points: number): void {
   const player = ctx.state.players[playerId]!;
   const r = player.research;
@@ -833,19 +841,39 @@ function advanceResearch(ctx: TurnContext, playerId: PlayerId, points: number): 
   if (!r.tierId) return;
   const tier = TIERS_BY_ID[r.tierId]!;
   if (r.progress < tier.cost) return;
+  if (!ctx.rng.chance(breakthroughChance(r.progress, tier.cost))) return;
   r.progress -= tier.cost;
-  const race = getRace(player.raceId);
-  let learned: string[];
-  if (hasTrait(race, "creative")) learned = tier.techs;
-  else if (hasTrait(race, "uncreative")) learned = [ctx.rng.pick(tier.techs)];
-  else learned = [r.techChoice && tier.techs.includes(r.techChoice) ? r.techChoice : tier.techs[0]!];
-  player.tiers.push(tier.id);
-  for (const t of learned) {
-    if (!player.techs.includes(t)) player.techs.push(t);
-    ctx.emit({ kind: "techLearned", playerId, techId: t, tierId: tier.id, source: "research" });
-  }
   r.tierId = null;
+  const choice = r.techChoice;
   r.techChoice = null;
+  if (tier.hyper) {
+    player.hyperLevels ??= emptyHyperLevels();
+    player.hyperLevels[tier.field] = (player.hyperLevels[tier.field] ?? 0) + 1;
+    ctx.emit({ kind: "hyperAdvance", playerId, field: tier.field, level: player.hyperLevels[tier.field] });
+    return;
+  }
+  const options = researchOptions(player, tier);
+  let learned: string[];
+  if (learnsWholeField(player, tier)) learned = options;
+  else if (options.length === 0) learned = [];
+  else if (hasTrait(getRace(player.raceId), "uncreative")) learned = [ctx.rng.pick(options)];
+  else learned = [choice && options.includes(choice) ? choice : (options.find((t) => !player.techs.includes(t)) ?? options[0]!)];
+  player.tiers.push(tier.id);
+  for (const t of learned) learnTech(ctx, playerId, t, tier.id, "research");
+}
+
+/** Chance that research at `progress` points breaks through a field costing `cost`. */
+export function breakthroughChance(progress: number, cost: number): number {
+  if (progress < cost) return 0;
+  const span = (RESEARCH.maxCostMult - 1) * cost;
+  const t = span > 0 ? Math.min(1, (progress - cost) / span) : 1;
+  return RESEARCH.breakthroughStartChance + (1 - RESEARCH.breakthroughStartChance) * t;
+}
+
+/** Gives a player an application, with the side effects some applications have. */
+export function learnTech(ctx: TurnContext, playerId: PlayerId, tech: string, tierId: string, source: "research" | "stolen" | "salvage" | "event"): void {
+  if (!grantTech(ctx.state.players[playerId]!, tech)) return;
+  ctx.emit({ kind: "techLearned", playerId, techId: tech, tierId, source });
 }
 
 // ---------------------------------------------------------------- end of turn

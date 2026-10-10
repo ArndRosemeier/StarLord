@@ -1,6 +1,6 @@
 import { gravityOf, type Minerals, type PlanetSize, type PlanetType } from "./data/planets.js";
 import { RACES, getRace, hasTrait } from "./data/races.js";
-import { STARTING_TECHS, STARTING_TIERS } from "./data/techs.js";
+import { STARTING_TECHS, STARTING_TIERS, emptyHyperLevels } from "./data/techs.js";
 import { startingDesigns } from "./designs.js";
 import { generateGalaxy, pickHomeStars } from "./galaxy.js";
 import { assignJobsForFood } from "./jobs.js";
@@ -117,6 +117,8 @@ export function newGame(opts: NewGameOptions): GameState {
       techs: [...STARTING_TECHS],
       tiers: [...STARTING_TIERS],
       research: { tierId: null, techChoice: null, progress: 0 },
+      hyperLevels: emptyHyperLevels(),
+      mutationPoints: 0,
       explored: [home.id],
       contacts: [],
       homeStarId: home.id,

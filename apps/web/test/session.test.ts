@@ -8,7 +8,7 @@ const opts = { seed: "ui", galaxySize: "small" as const, races: ["terran", "kord
 describe("GameSession", () => {
   it("shows orders in the view before the turn ends", () => {
     const s = GameSession.create(opts, 0);
-    const tier = availableTiers(s.state, 0).find((t) => TIERS_BY_ID[t]!.level === 1)!;
+    const tier = availableTiers(s.state, 0).find((t) => TIERS_BY_ID[t]!.techs.length > 1)!;
     s.issue({ type: "setResearch", tierId: tier, techId: TIERS_BY_ID[tier]!.techs[0]! });
     expect(s.view.players[0]!.research.tierId).toBe(tier);
     expect(s.state.players[0]!.research.tierId).toBeNull();

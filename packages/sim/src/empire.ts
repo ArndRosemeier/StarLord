@@ -3,7 +3,7 @@ import { DRIVES, FUEL_RANGES, HULLS_BY_ID } from "./data/components.js";
 import { GOVERNMENTS, type GovernmentDef } from "./data/governments.js";
 import { getRace } from "./data/races.js";
 import { colonyOutput, type EmpireIncome } from "./economy.js";
-import { TECHS, type EmpireBonus } from "./data/techs.js";
+import { ORBITAL_BASES, RESEARCH, TECHS, type EmpireBonus, type TechField } from "./data/techs.js";
 import type { GameState, Player, PlayerId } from "./types.js";
 
 /** Empire-wide derived numbers: tech bonuses, government, speed, range, command points. */
@@ -12,23 +12,54 @@ export function knows(player: Player, tech: string | null): boolean {
   return tech === null || player.techs.includes(tech);
 }
 
+/** Adds an application to a player, with the side effects some have. Returns false if already known. */
+export function grantTech(player: Player, tech: string): boolean {
+  if (player.techs.includes(tech)) return false;
+  player.techs.push(tech);
+  if (tech === "evolutionaryMutation") player.mutationPoints = (player.mutationPoints ?? 0) + RESEARCH.mutationPicks;
+  return true;
+}
+
+/**
+ * Hyper-advanced levels researched in a category. Each level improves
+ * miniaturization of that category's components (applied in ship design).
+ */
+export function hyperLevel(player: Player, field: TechField): number {
+  return player.hyperLevels?.[field] ?? 0;
+}
+
 const bonusCache = new Map<string, Required<EmpireBonus>>();
 
+const ZERO_BONUS: Required<EmpireBonus> = {
+  foodPerFarmer: 0, industryPerWorker: 0, researchPerScientist: 0, maxPopPerSize: 0, growth: 0,
+  groundCombat: 0, spying: 0, scanRange: 0, bcPerPop: 0, morale: 0, shipAttack: 0, shipDefense: 0,
+  commandPoints: 0, commandPointsPerBase: 0, pollutionCleanup: 0, maxPopFlat: 0, freeFood: 0, security: 0, diplomacy: 0,
+};
+
+/**
+ * Sum of every known tech's bonus. Techs in the same group don't stack: only
+ * the best value of each number in a group counts, like MoO2's equipment.
+ */
 export function empireBonus(player: Player): Required<EmpireBonus> {
-  const key = player.techs.join(",");
+  const key = `${player.government}|${player.techs.join(",")}`;
   const cached = bonusCache.get(key);
   if (cached) return cached;
   if (bonusCache.size > 5000) bonusCache.clear();
-  const total: Required<EmpireBonus> = {
-    foodPerFarmer: 0, industryPerWorker: 0, researchPerScientist: 0, maxPopPerSize: 0, growth: 0,
-    groundCombat: 0, spying: 0, scanRange: 0, bcPerPop: 0, morale: 0, shipAttack: 0, shipDefense: 0,
-    commandPoints: 0, pollutionCleanup: 0, maxPopFlat: 0, freeFood: 0, security: 0,
+  const total: Required<EmpireBonus> = { ...ZERO_BONUS };
+  const best = new Map<string, number>();
+  const add = (b: EmpireBonus | undefined, group: string | undefined) => {
+    for (const [k, v] of Object.entries(b ?? {}) as [keyof EmpireBonus, number][]) {
+      if (!group) total[k] += v;
+      else best.set(`${group}.${k}`, Math.max(best.get(`${group}.${k}`) ?? -Infinity, v));
+    }
   };
   for (const t of player.techs) {
-    const b = TECHS[t]?.bonus;
-    if (!b) continue;
-    for (const [k, v] of Object.entries(b) as [keyof EmpireBonus, number][]) total[k] += v;
+    const def = TECHS[t];
+    if (!def) continue;
+    add(def.bonus, def.group);
+    if (def.governmentBonus?.governments.includes(player.government)) add(def.governmentBonus.bonus, def.group);
   }
+  for (const [k, v] of best) total[k.slice(k.indexOf(".") + 1) as keyof EmpireBonus] += v;
   total.pollutionCleanup = Math.min(1, total.pollutionCleanup);
   bonusCache.set(key, total);
   return total;
@@ -67,9 +98,14 @@ export const COMMAND_OVERAGE_COST = 10;
 export function commandPointsAvailable(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId]!;
   let cp = BASE_COMMAND_POINTS + empireBonus(player).commandPoints;
+  const perBase = empireBonus(player).commandPointsPerBase;
   for (const c of Object.values(state.colonies)) {
     if (c.ownerId !== playerId) continue;
-    for (const b of c.buildings) cp += BUILDINGS_BY_ID[b]?.effects.commandPoints ?? 0;
+    for (const b of c.buildings) {
+      cp += BUILDINGS_BY_ID[b]?.effects.commandPoints ?? 0;
+      // Communication techs add to every orbital base.
+      if (ORBITAL_BASES.includes(b)) cp += perBase;
+    }
   }
   return cp;
 }

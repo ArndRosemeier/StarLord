@@ -1,5 +1,5 @@
 import {
-  attitude, canSign, empireTotals, relation, type Command, type PlayerView, type ProposalKind,
+  attitude, canSign, empireBonus, empireTotals, relation, type Command, type PlayerView, type ProposalKind,
 } from "@starlord/sim";
 import { fleetStrength, me, myFleets, personality } from "./util.js";
 
@@ -22,7 +22,8 @@ export function diplomacyOrders(view: PlayerView): Command[] {
   const myPop = empireTotals(view, view.viewer).population;
 
   for (const p of view.proposals.filter((x) => x.to === view.viewer)) {
-    const feel = attitude(view, view.viewer, p.from);
+    // Xeno Psychology makes every deal the proposer offers more appealing.
+    const feel = attitude(view, view.viewer, p.from) + empireBonus(view.players[p.from]!).diplomacy;
     const r = relation(view, view.viewer, p.from);
     let accept = false;
     if (p.kind === "peace" || p.kind === "ceasefire") {
