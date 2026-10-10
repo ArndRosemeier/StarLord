@@ -30,6 +30,7 @@ export * from "./data/leaders.js";
 export * from "./record.js";
 export * from "./lockstep.js";
 export * from "./customRace.js";
+export * from "./mutation.js";
 export * from "./data/racePicks.js";
 export * from "./encyclopedia.js";
 export { EVENT_CHANCE } from "./randomEvents.js";

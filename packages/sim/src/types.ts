@@ -162,6 +162,10 @@ export interface Player {
     techChoice: string | null;
     progress: number;
   };
+  /** Hyper-advanced levels researched per category; each improves miniaturization in that category. */
+  hyperLevels: Record<TechField, number>;
+  /** Unspent race pick points from Evolutionary Mutation. */
+  mutationPoints: number;
   explored: Id[];
   /** Other empires this one has met. */
   contacts: PlayerId[];
@@ -267,6 +271,7 @@ export type VictoryKind = "conquest" | "council" | "raiders" | "score";
 export type GameEvent =
   | { turn: number; kind: "colonyFounded"; playerId: PlayerId; colonyId: Id; planetId: Id }
   | { turn: number; kind: "techLearned"; playerId: PlayerId; techId: string; tierId: string; source?: "research" | "stolen" | "trade" | "salvage" | "event" }
+  | { turn: number; kind: "hyperAdvance"; playerId: PlayerId; field: TechField; level: number }
   | { turn: number; kind: "built"; playerId: PlayerId; colonyId: Id; item: BuildItem }
   | { turn: number; kind: "starvation"; playerId: PlayerId; colonyId: Id }
   | { turn: number; kind: "explored"; playerId: PlayerId; starId: Id }
