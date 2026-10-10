@@ -3,3 +3,5 @@ dist/
 *.log
 .DS_Store
 runs/
+# Raw art drops on a local checkout; curated copies go in public/
+Media/

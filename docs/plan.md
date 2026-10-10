@@ -24,18 +24,20 @@
 
 ## Race names
 
-| StarLord | Archetype | Art file |
-| --- | --- | --- |
-| Kyrrin | Avian pilots | Alkari |
-| Gorvath | Heavy-world brutes | none yet |
-| Shadar | Shapeshifting spies | Darlok |
-| Lysari | Telepathic matriarchy | Elerian |
-| Quillan | Merchant clans | none yet |
-| Terrans | Diplomatic generalists | Terran |
-| Zhrikk | Hive insectoids | Klackon |
-| Kordex | Cyborg engineers | Meklar |
-| Felhari | Feline warrior caste | Mrrshan |
-| Ythari | Scholar savants | Psilon |
-| Draskar | Burrowing reptiles | Sakkra |
-| Petrani | Silicon lifeforms | Silicoid |
-| Thalassi | Aquatic mystics | Trilarian |
+Each race's video and portrait live in `public/races/<id>.mp4` and `public/races/<id>.webp`.
+
+| StarLord | Archetype |
+| --- | --- |
+| Kyrrin | Avian pilots |
+| Gorvath | Heavy-world brutes |
+| Shadar | Shapeshifting spies |
+| Lysari | Telepathic matriarchy |
+| Quillan | Amphibian merchant clans |
+| Terrans | Diplomatic generalists |
+| Zhrikk | Hive insectoids |
+| Kordex | Cyborg engineers |
+| Felhari | Feline warrior caste |
+| Ythari | Scholar savants |
+| Draskar | Burrowing reptiles |
+| Petrani | Silicon lifeforms |
+| Thalassi | Aquatic mystics |

@@ -81,3 +81,14 @@ describe("turns", () => {
     expect(s.players[0]!.techs.sort()).toEqual(["biospheres", "hydroponicFarm"]);
   });
 });
+
+describe("race media", () => {
+  it("has a video and portrait for every race", async () => {
+    const { existsSync } = await import("node:fs");
+    const root = new URL("../../../public/races/", import.meta.url);
+    const missing = RACES.flatMap((r) => [`${r.assetKey}.mp4`, `${r.assetKey}.webp`]).filter(
+      (f) => !existsSync(new URL(f, root)),
+    );
+    expect(missing).toEqual([]);
+  });
+});

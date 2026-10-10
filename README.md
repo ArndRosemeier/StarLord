@@ -12,7 +12,7 @@ multiplayer and a 3D view.
 | `packages/sim` | The game rules. Pure TypeScript with no browser code: game state, seeded RNG, commands, turn processing, galaxy generation, data tables. |
 | `packages/ai` | Controllers that turn a player's view into commands. The AI and the player's automation are the same code. |
 | `apps/cli` | Headless runner for all-AI games and balance batches. |
-| `public` | Race videos, portraits and art. |
+| `public` | Art. Race videos and portraits are in `public/races`. |
 | `docs/plan.md` | Roadmap. |
 
 ## Getting started
@@ -34,5 +34,5 @@ pnpm sim --games 100 --turns 150      # batch run, race win rates
   Same seed and same orders give the same `stateHash`.
 - **Fog of war by construction.** Controllers receive `playerView(state, id)`, never the full state.
 - **Rules are data.** Races, planets, buildings, techs, ships and governments live in `packages/sim/src/data`.
-- **Original names.** Races are renamed versions of the MoO2 archetypes. The art files in
-  `public` still use the old names and are mapped through each race's `assetKey`.
+- **Original names.** Races are renamed versions of the MoO2 archetypes. Their media
+  lives in `public/races`, named by race id.
