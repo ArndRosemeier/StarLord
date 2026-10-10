@@ -238,10 +238,22 @@ export interface CombatShipSnapshot {
   x: number;
   y: number;
   isPlanet: boolean;
+  /** What the unit is: a ship, an immobile orbital station, or the planet with its ground defenses. */
+  kind?: "ship" | "station" | "planet" | "monster";
+  /** Hull id for ships and stations (frigate … doomStar, starBase, battlestation, starFortress), for picking a 3D model. */
+  hullId?: string;
+  /** MoO2 size class (frigate 1 … doom star 7, stations 8-10); scales the model. */
+  sizeClass?: number;
+  /** Damage layers, when the combat model tracks them separately. maxHits is their sum. */
+  maxArmor?: number;
+  maxStructure?: number;
+  /** Shield points per facing at the start of the battle. */
+  maxShield?: number;
 }
 
 export interface CombatRoundEvent {
-  kind: "move" | "fire" | "destroyed" | "retreat";
+  /** Viewers must ignore kinds they don't know. */
+  kind: "move" | "fire" | "destroyed" | "retreat" | "launch" | "board" | "repair";
   ship: string;
   target?: string;
   x?: number;
@@ -249,6 +261,12 @@ export interface CombatRoundEvent {
   damage?: number;
   weapon?: string;
   hit?: boolean;
+  /** Damage split of a hit: soaked by shields, taken by armor, by structure. */
+  absorbed?: number;
+  armorDamage?: number;
+  structureDamage?: number;
+  /** Internal system knocked out by the hit (drive, computer, shield, weapon id, special id). */
+  systemHit?: string;
 }
 
 export interface CombatReport {
