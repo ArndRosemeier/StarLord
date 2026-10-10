@@ -8,5 +8,5 @@ export default defineConfig({
       "@starlord/ai": fileURLToPath(new URL("./packages/ai/src/index.ts", import.meta.url)),
     },
   },
-  test: { include: ["packages/*/test/**/*.test.ts", "apps/*/test/**/*.test.ts"] },
+  test: { include: ["packages/*/test/**/*.test.ts", "apps/*/test/**/*.test.{ts,tsx}"] },
 });

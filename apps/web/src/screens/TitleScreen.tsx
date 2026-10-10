@@ -3,11 +3,13 @@ import { audio } from "../audio/sound";
 import { GameSession } from "../game/session";
 import { listSaves, readSave, readSaveFile } from "../game/saves";
 import { AudioControls } from "../ui/AudioControls";
+import { useHelp } from "../help/HelpDialog";
 
 /** The game's front door: key art, theme music and the main menu. */
 export function TitleScreen({ onNewGame, onStart }: { onNewGame: () => void; onStart: (s: GameSession) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState(false);
+  const openHelp = useHelp();
   const latest = listSaves().sort((a, b) => b.savedAt.localeCompare(a.savedAt))[0];
 
   useEffect(() => audio.setMood("menu"), []);
@@ -41,6 +43,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: () => void; onS
               if (f) load(await readSaveFile(f).catch((err: Error) => setError(err.message)));
             }} />
           </label>
+          <button className="title-button" onClick={() => openHelp()}>Encyclopedia</button>
           <button className="title-button" onClick={() => setSettings(!settings)}>Sound</button>
           {settings && <div className="panel title-settings"><AudioControls /></div>}
           {error && <div className="bad">{error}</div>}
