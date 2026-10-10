@@ -6,8 +6,9 @@ import {
   PLANETS_PER_STAR, PLANET_SIZE_WEIGHTS, PLANET_TYPE_WEIGHTS, PROJECTS, PROJECTS_BY_ID, PROJECT_COSTS, RACES, RACES_BY_ID,
   RAIDER_DESIGNS, RAID_INTERVAL, RAID_START, SHIELDS, SHIELDS_BY_ID, SIZE_FACTOR, SPECIALS, SPECIALS_BY_ID,
   RESEARCH, STARTING_TECH_APPS, STARTING_TIERS, STAR_COLOR_WEIGHTS, TECHS, TECH_FIELDS, TECH_TIERS, TERRAFORM_STEP,
-  TIERS_BY_ID, TRAIT_COSTS, WEAPONS, WEAPONS_BY_ID, nextTier, previousTier,
-  combatSpeed, cumulativeTierCost, fleetRange, fleetSpeed, gravityMultiplier, gravityOf, raidFleet, techHasEffect,
+  TIERS_BY_ID, TRAIT_COSTS, WEAPONS, WEAPONS_BY_ID, nextTier, previousTier, ARCS, MISSILE_RACKS, STATION_HULLS,
+  WEAPON_MODS, WEAPON_MODS_BY_ID, SHIELD_SPACE_BY_HULL, SHIELD_COST_BY_HULL, COMPUTER_COST_BY_HULL,
+  cumulativeTierCost, fleetRange, fleetSpeed, gravityMultiplier, gravityOf, raidFleet, techHasEffect,
   techInfo, techUnlocks, type GovernmentDef, type Minerals, type NumericPick, type PlanetSize, type PlanetType, type Player,
   type RaceDef, type RaceTrait, type ShipDesign, type StarColor, type TechTier, type Unlock, type WeaponDef,
 } from "@starlord/sim";
@@ -119,19 +120,19 @@ function unlockSummary(u: Unlock): string {
     case "project": return PROJECTS_BY_ID[u.id]!.description;
     case "hull": {
       const h = HULLS_BY_ID[u.id as keyof typeof HULLS_BY_ID];
-      return `Space ${h.space}, structure ${h.structure}, armor ${h.armorBase} per grade, defense ${signed(h.defense)}, cost ${h.cost}, ${h.commandPoints} command.`;
+      return `Space ${h.space}, armor ${h.armor} and structure ${h.structure} (times the armor grade), size class ${h.sizeClass}, cost ${h.cost}, ${h.commandPoints} command.`;
     }
     case "weapon": {
       const w = WEAPONS_BY_ID[u.id]!;
-      return `${words(w.kind)}: ${dmg(w)} damage, range ${w.range}, space ${w.space}, cost ${w.cost}${w.ammo ? `, ${w.ammo} volleys` : ""}${w.pierce ? `, pierces ${w.pierce}` : ""}.`;
+      return `${words(w.kind)}: ${dmg(w)} damage, base space ${w.space}, cost ${w.cost}${w.ammo ? `, ${w.ammo} shots` : ""}${w.mods.length ? `, takes ${w.mods.length} mods` : ""}.`;
     }
     case "armor": return `Armor grade ×${ARMORS_BY_ID[u.id]!.mult}.`;
-    case "shield": return `Stops ${SHIELDS_BY_ID[u.id]!.absorb} damage per hit; ${pct(SHIELDS_BY_ID[u.id]!.spaceFraction)} of hull space.`;
-    case "computer": return `${signed(COMPUTERS_BY_ID[u.id]!.attack)} beam attack; ${pct(COMPUTERS_BY_ID[u.id]!.spaceFraction)} of hull space.`;
-    case "special": return `${specialEffects(SPECIALS_BY_ID[u.id]!.effects).join(", ")}; ${pct(SPECIALS_BY_ID[u.id]!.spaceFraction)} of hull space.`;
+    case "shield": return `Stops ${SHIELDS_BY_ID[u.id]!.absorb} damage per hit, with ${SHIELDS_BY_ID[u.id]!.absorb * 5} points per facing per size class.`;
+    case "computer": return `${signed(COMPUTERS_BY_ID[u.id]!.attack)} beam attack; takes no space.`;
+    case "special": return `${specialEffects(SPECIALS_BY_ID[u.id]!.effects).join(", ")}; ${SPECIALS_BY_ID[u.id]!.space.join("/")} space by hull.`;
     case "drive": {
       const d = DRIVES.find((x) => x.tech === u.id)!;
-      return `Ships move ${d.speed} parsecs per turn, combat speed ${d.combatSpeed}.`;
+      return `Ships move ${d.speed} parsecs per turn; combat speed ${d.combatFull[0]}–${d.combatEmpty[0]} on a frigate.`;
     }
     case "fuel": {
       const f = FUEL_RANGES.find((x) => x.tech === u.id)!;
@@ -146,22 +147,28 @@ function unlockSummary(u: Unlock): string {
 
 const noTech = { techs: [], tiers: [], raceId: RACES[0]!.id, government: "dictatorship" } as unknown as Player;
 
-/** Space a fractional component takes on each hull. */
-function SpaceByHull({ fraction }: { fraction: number }) {
+/** Space and cost of a component on each hull, before miniaturization. */
+function SpaceByHull({ space, cost }: { space: number[]; cost: number[] }) {
   return (
     <table>
       <thead><tr><th>Hull</th>{HULLS.map((h) => <th key={h.id}>{h.name}</th>)}</tr></thead>
-      <tbody><tr><td>Space</td>{HULLS.map((h) => <td key={h.id}>{fmt(h.space * fraction, 1)}</td>)}</tr></tbody>
+      <tbody>
+        <tr><td>Space</td>{HULLS.map((h, i) => <td key={h.id}>{space[i] ?? 0}</td>)}</tr>
+        <tr><td>Cost</td>{HULLS.map((h, i) => <td key={h.id}>{cost[i] ?? 0}</td>)}</tr>
+      </tbody>
     </table>
   );
 }
 
 const miniNote = (
   <p className="muted">
-    Miniaturization: every tier you research in the same field after this one makes the component 10% smaller and
-    cheaper, down to half. See <HelpLink to="guide:design" />.
+    Miniaturization: each later level researched in the same field shrinks the part and makes it cheaper, down to a
+    floor. Weapons also unlock their stronger modifications this way. See <HelpLink to="guide:design" />.
   </p>
 );
+
+/** Total hit points (armor plus structure) of a hull with a given armor grade. */
+const hullHits = (h: { armor: number; structure: number }, mult: number) => (h.armor + h.structure) * mult;
 
 // ---------------------------------------------------------------- technology
 
@@ -422,17 +429,33 @@ function HullsPage() {
   return (
     <div className="col">
       <p>
-        The hull sets how much space a design has for weapons and systems, its base hit points and how hard it is to
-        hit. Armed ships use command points; going over your limit costs BC (see <HelpLink to="guide:fleets" />).
+        The hull sets how much space a design has, its armor and structure before the armor grade multiplies them, its
+        size class (which scales shields and some weapons) and its marines. Every warship uses command points; going
+        over your limit costs BC (see <HelpLink to="guide:fleets" />). Cruisers and larger hulls can only be built at
+        a colony with an orbital station.
       </p>
       <table className="help-table">
-        <thead><tr><th>Hull</th><th>Space</th><th>Cost</th><th>Structure</th><th>Armor base</th><th>Defense</th><th>Command</th><th>Requires</th></tr></thead>
+        <thead><tr><th>Hull</th><th>Space</th><th>Cost</th><th>Armor</th><th>Structure</th><th>Size class</th><th>Marines</th><th>Command</th><th>Requires</th></tr></thead>
         <tbody>
           {HULLS.map((h) => (
             <tr key={h.id}>
-              <td><HelpLink to={`hull:${h.id}`} /></td><td>{h.space}</td><td>{h.cost}</td><td>{h.structure}</td><td>{h.armorBase}</td>
-              <td>{signed(h.defense)}</td><td>{h.commandPoints}</td><td><Requires tech={h.requires} /></td>
+              <td><HelpLink to={`hull:${h.id}`} /></td><td>{h.space}</td><td>{h.cost}</td><td>{h.armor}</td><td>{h.structure}</td>
+              <td>{h.sizeClass}</td><td>{h.marines}</td><td>{h.commandPoints}</td><td><Requires tech={h.requires} /></td>
             </tr>
+          ))}
+        </tbody>
+      </table>
+      <h3>Orbital stations</h3>
+      <p>
+        Stations are buildings, but they fight as immobile ships fitted automatically with your best weapons, armor,
+        shield and computer. They are easy to hit, never run out of ammunition and fire in every direction. Losing one in
+        battle destroys the building.
+      </p>
+      <table className="help-table">
+        <thead><tr><th>Station</th><th>Space</th><th>Cost</th><th>Armor</th><th>Structure</th><th>Beam defense</th></tr></thead>
+        <tbody>
+          {STATION_HULLS.map((h) => (
+            <tr key={h.id}><td><HelpLink to={`building:${h.id}`} /></td><td>{h.space}</td><td>{h.cost}</td><td>{h.armor}</td><td>{h.structure}</td><td>{signed(h.fixedDefense ?? 0)}</td></tr>
           ))}
         </tbody>
       </table>
@@ -442,29 +465,32 @@ function HullsPage() {
 
 function HullPage({ id }: { id: string }) {
   const h = HULLS_BY_ID[id as keyof typeof HULLS_BY_ID];
+  const index = HULLS.findIndex((x) => x.id === h.id);
   return (
     <div className="col">
       <Facts rows={[
-        ["Space", h.space], ["Base cost", `${h.cost} production`], ["Structure", `${h.structure} hit points`],
-        ["Armor", `${h.armorBase} hit points per armor grade`], ["Beam defense", signed(h.defense)],
+        ["Space", h.space], ["Base cost", `${h.cost} production`], ["Armor", `${h.armor} points per armor grade`],
+        ["Structure", `${h.structure} points per armor grade`], ["Size class", h.sizeClass], ["Marines", h.marines],
         ["Command points", h.commandPoints], ["Requires", <Requires tech={h.requires} />],
       ]} />
       <h3>Hit points by armor</h3>
       <table className="help-table">
         <thead><tr>{ARMORS.map((a) => <th key={a.id}><HelpLink to={`armor:${a.id}`}>{a.name}</HelpLink></th>)}</tr></thead>
-        <tbody><tr>{ARMORS.map((a) => <td key={a.id}>{h.structure + h.armorBase * a.mult}</td>)}</tr></tbody>
+        <tbody><tr>{ARMORS.map((a) => <td key={a.id}>{hullHits(h, a.mult)}</td>)}</tr></tbody>
       </table>
-      <p className="muted">Reinforced Hull, Heavy Armor and Battle Pods raise these further. Modules that fit: {Object.entries(MODULES).filter(([, m]) => HULLS.findIndex((x) => x.id === m.minHull) <= HULLS.indexOf(h)).map(([, m]) => m.name).join(", ") || "none"}.</p>
+      <p className="muted">Heavy Armor and Reinforced Hull raise these further. Modules that fit: {Object.entries(MODULES).filter(([, m]) => HULLS.findIndex((x) => x.id === m.minHull) <= index).map(([, m]) => m.name).join(", ") || "none"}.</p>
     </div>
   );
 }
 
+const speedText = (w: WeaponDef) => (w.speed === undefined ? "–" : Number.isFinite(w.speed) ? `${w.speed}` : "instant");
+
 function weaponRow(w: WeaponDef) {
   return (
     <tr key={w.id}>
-      <td><HelpLink to={`weapon:${w.id}`} /></td><td>{words(w.kind)}</td>
-      <td>{w.damageMin === w.damageMax ? w.damageMin : `${w.damageMin}–${w.damageMax}`}</td>
-      <td>{w.range}</td><td>{w.space}</td><td>{w.cost}</td><td>{w.ammo ?? "–"}</td><td>{w.pierce ?? "–"}</td>
+      <td><HelpLink to={`weapon:${w.id}`} /></td><td>{words(w.kind)}</td><td>{dmg(w)}</td>
+      <td>{w.space}</td><td>{w.cost}</td><td>{w.ammo ?? "–"}</td><td>{speedText(w)}</td>
+      <td>{w.mods.map((m) => WEAPON_MODS_BY_ID[m].abbr).join(" ") || "–"}</td>
       <td><Requires tech={w.requires} /></td>
     </tr>
   );
@@ -474,35 +500,52 @@ function WeaponsPage() {
   return (
     <div className="col">
       <p>
-        Beams fire every round and lose a quarter of their damage beyond half range. Missiles and torpedoes have
-        limited volleys, always hit unless shot down or dodged, and are stopped by only half of a shield. Bombs and
-        spores only work against colonies. See <HelpLink to="guide:combat" />.
+        Beams fire every round; their chance to hit and their damage both fall off with range. Missiles fly across the
+        field and can be shot down or jammed; torpedoes reload every other round. Bombs and spores only work against
+        colonies. Missiles add the space of their rack to the numbers below. See <HelpLink to="guide:combat" />.
       </p>
       <table className="help-table">
-        <thead><tr><th>Weapon</th><th>Kind</th><th>Damage</th><th>Range</th><th>Space</th><th>Cost</th><th>Volleys</th><th>Pierce</th><th>Requires</th></tr></thead>
+        <thead><tr><th>Weapon</th><th>Kind</th><th>Damage</th><th>Space</th><th>Cost</th><th>Shots</th><th>Speed</th><th>Mods</th><th>Requires</th></tr></thead>
         <tbody>{WEAPONS.map(weaponRow)}</tbody>
       </table>
+      <h3>Modifications</h3>
+      <p>
+        Each mount can take modifications that change its size and cost by a percentage. Heavy and point-defense mounts
+        scale the base size; the rest add on top. Most need the weapon refined by later research in its field.
+      </p>
+      <table className="help-table">
+        <thead><tr><th>Mod</th><th>Name</th><th>Size and cost</th><th>Refinement levels</th></tr></thead>
+        <tbody>{WEAPON_MODS.map((m) => (
+          <tr key={m.id}><td>{m.abbr}</td><td>{m.name}</td><td>{signed(m.pct)}%</td><td>{m.refinement}</td></tr>
+        ))}</tbody>
+      </table>
+      <h3>Firing arcs</h3>
+      <p>Beams fire forward by default. Wider arcs cost extra space: {(Object.values(ARCS)).map((a) => `${a.name} ${signed(a.pct)}%`).join(", ")}.</p>
+      <h3>Missile racks</h3>
+      <p>A missile mount picks how many shots it carries: {MISSILE_RACKS.map((r) => `${r.shots} shots for ${r.space} space`).join(", ")}.</p>
     </div>
   );
 }
 
 function WeaponPage({ w }: { w: WeaponDef }) {
   const kindText: Record<WeaponDef["kind"], string> = {
-    beam: "Fires every round. Hit chance depends on attack against the target's defense; damage beyond half range drops by a quarter. Shields subtract from every hit.",
-    missile: "Fires a limited number of volleys. Missiles can be shot down by point defense or dodged by ECM; shields stop only half as much.",
-    torpedo: "Like a missile but harder to dodge: ECM works only half as well against it.",
+    beam: "Fires every round. Attack against the target's beam defense sets the chance to hit; range lowers both the hit chance and the damage. Shields subtract from every hit.",
+    missile: "Launched as a salvo that flies across the field at its own speed. Point defense, anti-missile rockets and jammers can stop it before it lands.",
+    torpedo: "Flies like a missile but cannot be shot down, and its launcher needs a round to reload after each shot.",
     bomb: "Only used against colonies whose defenses are down, by fleets set to attack. Kills population and may wreck buildings.",
     spores: "Biological weapon against colonies: kills population directly, ignoring buildings.",
+    special: "A special-purpose device with its own effect in battle, described below.",
+    bay: "Launches small craft that fly to their targets, attack and return to rearm.",
   };
   return (
     <div className="col">
       <p>{kindText[w.kind]}</p>
       <Facts rows={[
-        ["Damage", w.damageMin === w.damageMax ? `${w.damageMin}` : `${w.damageMin}–${w.damageMax}`],
-        ["Range", `${w.range} squares`],
-        ["Space", w.space], ["Cost", w.cost],
-        ...(w.ammo ? [["Volleys per battle", w.ammo] as [string, ReactNode]] : []),
-        ...(w.pierce ? [["Ignores shields", `${w.pierce} points`] as [string, ReactNode]] : []),
+        ["Damage", dmg(w)],
+        ["Base space", w.space], ["Base cost", w.cost],
+        ...(w.ammo ? [["Shots per battle", w.ammo] as [string, ReactNode]] : []),
+        ...(w.speed !== undefined ? [["Speed", speedText(w)] as [string, ReactNode]] : []),
+        ...(w.mods.length ? [["Modifications", w.mods.map((m) => WEAPON_MODS_BY_ID[m].name).join(", ")] as [string, ReactNode]] : []),
         ["Requires", <Requires tech={w.requires} />],
       ]} />
       {miniNote}
@@ -514,12 +557,12 @@ function ArmorPage({ id }: { id: string }) {
   const a = ARMORS_BY_ID[id]!;
   return (
     <div className="col">
-      <p>Armor is chosen once per design and multiplies the hull's armor hit points. Better grades cost more on bigger hulls.</p>
+      <p>Armor is chosen once per design and multiplies the hull's armor and structure. It takes no space and costs nothing.</p>
       <Facts rows={[["Armor grade", `×${a.mult}`], ["Requires", <Requires tech={a.requires} />]]} />
       <h3>Hit points by hull</h3>
       <table className="help-table">
         <thead><tr>{HULLS.map((h) => <th key={h.id}>{h.name}</th>)}</tr></thead>
-        <tbody><tr>{HULLS.map((h) => <td key={h.id}>{h.structure + h.armorBase * a.mult}</td>)}</tr></tbody>
+        <tbody><tr>{HULLS.map((h) => <td key={h.id}>{hullHits(h, a.mult)}</td>)}</tr></tbody>
       </table>
     </div>
   );
@@ -544,9 +587,12 @@ function ShieldPage({ id }: { id: string }) {
   const s = SHIELDS_BY_ID[id]!;
   return (
     <div className="col">
-      <p>Shields subtract from the damage of every beam hit, and half as much from missiles and torpedoes.</p>
-      <Facts rows={[["Stops", `${s.absorb} damage per hit`], ["Space", `${pct(s.spaceFraction)} of the hull`], ["Cost", `${s.costPerSpace} per space`], ["Requires", <Requires tech={s.requires} />]]} />
-      <SpaceByHull fraction={s.spaceFraction} />
+      <p>
+        A shield first takes its class off every hit, then soaks damage from a pool on the side that was hit. Each of
+        the four sides holds class × 5 × size class points and recovers part of that every round.
+      </p>
+      <Facts rows={[["Stops", `${s.absorb} damage per hit`], ["Pool per side", `${s.absorb * 5} × size class`], ["Requires", <Requires tech={s.requires} />]]} />
+      <SpaceByHull space={SHIELD_SPACE_BY_HULL} cost={SHIELD_COST_BY_HULL} />
       {miniNote}
     </div>
   );
@@ -556,9 +602,9 @@ function ComputerPage({ id }: { id: string }) {
   const c = COMPUTERS_BY_ID[id]!;
   return (
     <div className="col">
-      <p>The combat computer adds to beam attack, which raises the chance to hit against the target's defense.</p>
-      <Facts rows={[["Beam attack", signed(c.attack)], ["Space", `${pct(c.spaceFraction)} of the hull`], ["Cost", `${c.costPerSpace} per space`], ["Requires", <Requires tech={c.requires} />]]} />
-      <SpaceByHull fraction={c.spaceFraction} />
+      <p>The combat computer adds to beam attack, which raises the chance to hit against the target's defense. It takes no space.</p>
+      <Facts rows={[["Beam attack", signed(c.attack)], ["Requires", <Requires tech={c.requires} />]]} />
+      <SpaceByHull space={HULLS.map(() => 0)} cost={COMPUTER_COST_BY_HULL} />
       {miniNote}
     </div>
   );
@@ -570,9 +616,12 @@ function SpecialPage({ id }: { id: string }) {
     <div className="col">
       <h3>Effects</h3>
       <List items={specialEffects(s.effects)} />
-      <Facts rows={[["Space", `${pct(s.spaceFraction)} of the hull`], ["Cost", `${s.costPerSpace} per space`], ["Requires", <Requires tech={s.requires} />]]} />
-      <SpaceByHull fraction={s.spaceFraction} />
-      <p className="muted">A design can carry each special system once. Effects of different systems add up, with caps on evasion and point defense.</p>
+      <Facts rows={[
+        ["Requires", <Requires tech={s.requires} />],
+        ...(s.excludes?.length ? [["Cannot be combined with", s.excludes.map((x) => SPECIALS_BY_ID[x]?.name ?? x).join(", ")] as [string, ReactNode]] : []),
+      ]} />
+      <SpaceByHull space={s.space} cost={s.cost} />
+      <p className="muted">A design can carry each special system once.</p>
       {miniNote}
     </div>
   );
@@ -603,12 +652,13 @@ function DrivesPage() {
     <div className="col">
       <p>
         Fleet speed and combat speed come from the best drive you know; it is not a design choice. Without any
-        drive, ships move {fleetSpeed(noTech)} parsec per turn with combat speed {combatSpeed(noTech)}.
+        drive, ships move {fleetSpeed(noTech)} parsec per turn. In battle a ship is fastest with an empty hull and slowest
+        when fully loaded; designs fall in between, and every point of combat speed adds 5 to beam defense.
         {TECHS.jumpGate && <> <HelpLink to="tech:jumpGate" /> adds 1 parsec per turn.</>}
       </p>
       <table className="help-table">
-        <thead><tr><th>Drive</th><th>Parsecs per turn</th><th>Combat speed</th><th>Tech</th></tr></thead>
-        <tbody>{DRIVES.map((d) => <tr key={d.tech}><td>{d.name}</td><td>{d.speed}</td><td>{d.combatSpeed}</td><td><Requires tech={d.tech} /></td></tr>)}</tbody>
+        <thead><tr><th>Drive</th><th>Parsecs per turn</th><th>Combat speed, loaded to empty, frigate … doom star</th><th>Tech</th></tr></thead>
+        <tbody>{DRIVES.map((d) => <tr key={d.tech}><td>{d.name}</td><td>{d.speed}</td><td>{d.combatFull.map((f, i) => `${f}–${d.combatEmpty[i]}`).join(", ")}</td><td><Requires tech={d.tech} /></td></tr>)}</tbody>
       </table>
       <h3>Fuel range</h3>
       <p>Ships can only fly this far from your nearest colony or outpost. Without fuel cells the range is {fleetRange(noTech)} parsecs.</p>
@@ -899,13 +949,13 @@ function MonsterRow({ d }: { d: ShipDesign }) {
   const f = d.fixed!;
   return (
     <tr>
-      <td><HelpLink to={`monster:${d.id}`} /></td><td>{fmt(f.hits)}</td><td>{f.attack}</td><td>{f.defense}</td><td>{f.shield}</td><td>{f.combatSpeed}</td>
+      <td><HelpLink to={`monster:${d.id}`} /></td><td>{fmt(f.hits)}</td><td>{fmt(f.armor ?? 0)}</td><td>{f.attack}</td><td>{f.defense}</td><td>{f.shield}</td><td>{f.combatSpeed}</td>
       <td>{f.weapons.map((w) => `${w.count}× ${npcWeapon(w.weaponId)?.name ?? w.weaponId}`).join(", ")}</td>
     </tr>
   );
 }
 
-const monsterHead = <thead><tr><th>Name</th><th>Hit points</th><th>Attack</th><th>Defense</th><th>Shield</th><th>Speed</th><th>Weapons</th></tr></thead>;
+const monsterHead = <thead><tr><th>Name</th><th>Structure</th><th>Armor</th><th>Attack</th><th>Defense</th><th>Shield</th><th>Speed</th><th>Weapons</th></tr></thead>;
 
 function MonstersPage() {
   const sampleTurns = [0, 30, 60, 120, 180].map((t) => RAID_START + t);
@@ -936,10 +986,10 @@ function MonstersPage() {
       </table>
       <h3>Their weapons</h3>
       <table className="help-table">
-        <thead><tr><th>Weapon</th><th>Kind</th><th>Damage</th><th>Range</th><th>Volleys</th><th>Pierce</th><th /></tr></thead>
+        <thead><tr><th>Weapon</th><th>Kind</th><th>Damage</th><th>Shots</th><th /></tr></thead>
         <tbody>{[...NPC_WEAPONS, WEAPONS_BY_ID.deathRay!].filter(Boolean).map((w) => (
           <tr key={w.id}><td>{WEAPONS_BY_ID[w.id] ? <HelpLink to={`weapon:${w.id}`} /> : w.name}</td><td>{words(w.kind)}</td>
-            <td>{w.damageMin === w.damageMax ? w.damageMin : `${w.damageMin}–${w.damageMax}`}</td><td>{w.range}</td><td>{w.ammo ?? "–"}</td><td>{w.pierce ?? "–"}</td><td /></tr>
+            <td>{dmg(w)}</td><td>{w.ammo ?? "–"}</td><td /></tr>
         ))}</tbody>
       </table>
     </div>
@@ -952,11 +1002,11 @@ function MonsterPage({ id }: { id: string }) {
   return (
     <div className="col">
       <Facts rows={[
-        ["Hit points", fmt(f.hits)], ["Attack", f.attack], ["Defense", f.defense], ["Shield", `${f.shield} per hit`], ["Combat speed", f.combatSpeed],
+        ["Structure", fmt(f.hits)], ["Armor", fmt(f.armor ?? 0)], ["Attack", f.attack], ["Defense", f.defense], ["Shield", `${f.shield} per hit`], ["Combat speed", f.combatSpeed],
         ["Weapons", <List items={f.weapons.map((w) => {
           const wd = npcWeapon(w.weaponId);
           const label = `${w.count}× ${wd?.name ?? w.weaponId}`;
-          return wd && WEAPONS_BY_ID[wd.id] ? <HelpLink to={`weapon:${wd.id}`}>{label}</HelpLink> : <>{label}{wd && <small className="muted"> ({wd.damageMin}–{wd.damageMax} damage, range {wd.range})</small>}</>;
+          return wd && WEAPONS_BY_ID[wd.id] ? <HelpLink to={`weapon:${wd.id}`}>{label}</HelpLink> : <>{label}{wd && <small className="muted"> ({dmg(wd)} damage)</small>}</>;
         })} />],
       ]} />
       <p className="muted">See <HelpLink to="page:monsters" /> for where they appear.</p>
@@ -975,26 +1025,26 @@ const PAGES: Record<string, () => ReactNode> = {
   weapons: () => <WeaponsPage />,
   armor: () => (
     <div className="col">
-      <p>Armor grade multiplies the hull's armor hit points.</p>
-      <ComponentTable items={ARMORS} kind="armor" cols={[["Grade", (a) => `×${a.mult}`], ["Battleship hit points", (a) => HULLS_BY_ID.battleship.structure + HULLS_BY_ID.battleship.armorBase * a.mult]]} />
+      <p>Armor grade multiplies the hull's armor and structure. Armor is free.</p>
+      <ComponentTable items={ARMORS} kind="armor" cols={[["Grade", (a) => `×${a.mult}`], ["Battleship hit points", (a) => hullHits(HULLS_BY_ID.battleship, a.mult)]]} />
     </div>
   ),
   shields: () => (
     <div className="col">
-      <p>Shields take a share of the hull's space and stop a fixed amount of every hit.</p>
-      <ComponentTable items={SHIELDS} kind="shield" cols={[["Stops", (s) => `${s.absorb} per hit`], ["Space", (s) => pct(s.spaceFraction)], ["Cost/space", (s) => s.costPerSpace]]} />
+      <p>Shields take space by hull size, stop their class from every hit and hold a pool of points on each side of the ship.</p>
+      <ComponentTable items={SHIELDS} kind="shield" cols={[["Stops", (s) => `${s.absorb} per hit`], ["Pool per side", (s) => `${s.absorb * 5} × size class`]]} />
     </div>
   ),
   computers: () => (
     <div className="col">
       <p>The combat computer raises beam attack.</p>
-      <ComponentTable items={COMPUTERS} kind="computer" cols={[["Attack", (c) => signed(c.attack)], ["Space", (c) => pct(c.spaceFraction)], ["Cost/space", (c) => c.costPerSpace]]} />
+      <ComponentTable items={COMPUTERS} kind="computer" cols={[["Attack", (c) => signed(c.attack)]]} />
     </div>
   ),
   specials: () => (
     <div className="col">
-      <p>Special systems each take a share of the hull's space.</p>
-      <ComponentTable items={SPECIALS} kind="special" cols={[["Effect", (s) => specialEffects(s.effects).join(", ")], ["Space", (s) => pct(s.spaceFraction)]]} />
+      <p>Special systems take a set amount of space that grows with the hull.</p>
+      <ComponentTable items={SPECIALS} kind="special" cols={[["Effect", (s) => specialEffects(s.effects).join(", ")], ["Space by hull", (s) => s.space.join("/")]]} />
     </div>
   ),
   modules: () => (

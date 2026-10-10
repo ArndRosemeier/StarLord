@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import {
-  ARMORS, COMPUTERS, HULLS, HULLS_BY_ID, MODULES, SHIELDS, SPECIALS, WEAPONS, designStats, knows, validateDesign,
-  type DesignModule, type HullSize, type ShipDesign,
+  ARCS, ARMORS, COMPUTERS, HULLS, HULLS_BY_ID, MISSILE_RACKS, MODULES, SHIELDS, SPECIALS, WEAPONS, WEAPON_MODS,
+  DEFAULT_MISSILE_SHOTS, designStats, knows, refinement, validateDesign, weaponUnitCost,
+  type DesignModule, type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponModId, type WeaponMount,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, pct, words } from "../ui/format";
@@ -29,13 +30,12 @@ export function DesignScreen() {
   const stats = useMemo(() => designStats(me, draft), [me, draft]);
   const error = validateDesign(me, draft);
   const update = (patch: Partial<ShipDesign>) => setDraft({ ...draft, ...patch });
-  const mount = (weaponId: string, delta: number) => {
-    const list = draft.weapons.map((w) => ({ ...w }));
-    const m = list.find((w) => w.weaponId === weaponId);
-    if (m) m.count = Math.max(0, m.count + delta);
-    else if (delta > 0) list.push({ weaponId, count: delta });
+  // Mounts are edited by position: the same weapon may sit in several mounts with different mods or arcs.
+  const editMount = (i: number, patch: Partial<WeaponMount>) => {
+    const list = draft.weapons.map((w, j) => (j === i ? { ...w, ...patch } : { ...w }));
     update({ weapons: list.filter((w) => w.count > 0) });
   };
+  const addMount = (weaponId: string) => update({ weapons: [...draft.weapons, { weaponId, count: 1 }] });
 
   const save = () => {
     let n = 1;
@@ -87,23 +87,15 @@ export function DesignScreen() {
         </div>
 
         <h4>Weapons</h4>
-        {draft.weapons.map((w) => {
-          const def = WEAPONS.find((x) => x.id === w.weaponId);
-          return (
-            <div className="row" key={w.weaponId}>
-              <span style={{ flex: 1 }}>{def?.name ?? w.weaponId} <small className="muted">{def && `${def.damageMin}-${def.damageMax} dmg, ${words(def.kind)}`}</small></span>
-              <button className="small" onClick={() => mount(w.weaponId, -1)}>−</button>
-              <b style={{ width: 24, textAlign: "center" }}>{w.count}</b>
-              <button className="small" onClick={() => mount(w.weaponId, 1)}>+</button>
-            </div>
-          );
-        })}
+        {draft.weapons.map((w, i) => (
+          <MountRow key={i} player={me} mount={w} onChange={(patch) => editMount(i, patch)} />
+        ))}
         <div className="row">
           <select value={addWeapon} onChange={(e) => setAddWeapon(e.target.value)}>
             <option value="">Add weapon…</option>
             {weapons.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.damageMin}-{w.damageMax})</option>)}
           </select>
-          <button className="small" disabled={!addWeapon} onClick={() => { mount(addWeapon, 1); setAddWeapon(""); }}>Add</button>
+          <button className="small" disabled={!addWeapon} onClick={() => { addMount(addWeapon); setAddWeapon(""); }}>Add</button>
         </div>
 
         {specials.length > 0 && (
@@ -159,20 +151,70 @@ export function DesignScreen() {
   );
 }
 
+function MountRow({ player, mount, onChange }: { player: Player; mount: WeaponMount; onChange: (patch: Partial<WeaponMount>) => void }) {
+  const def = WEAPONS.find((x) => x.id === mount.weaponId);
+  if (!def) return null;
+  const level = refinement(player, def.requires);
+  const mods = new Set(mount.mods ?? []);
+  const unit = weaponUnitCost(player, mount);
+  const toggle = (id: WeaponModId) => {
+    const next = new Set(mods);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange({ mods: [...next] });
+  };
+  return (
+    <div className="col" style={{ gap: 2, borderBottom: "1px solid var(--line)", paddingBottom: 4 }}>
+      <div className="row">
+        <span style={{ flex: 1 }}>
+          {def.name} <small className="muted">{def.damageMin}-{def.damageMax} dmg, {words(def.kind)} · {fmt(unit.space)} space, {fmt(unit.cost)} BC each</small>
+        </span>
+        <button className="small" onClick={() => onChange({ count: mount.count - 1 })}>−</button>
+        <b style={{ width: 24, textAlign: "center" }}>{mount.count}</b>
+        <button className="small" onClick={() => onChange({ count: mount.count + 1 })}>+</button>
+      </div>
+      <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+        {def.kind === "beam" && (
+          <select value={mount.arc ?? "forward"} onChange={(e) => onChange({ arc: e.target.value as FiringArc })}>
+            {(Object.keys(ARCS) as FiringArc[]).map((a) => <option key={a} value={a}>{ARCS[a].name}</option>)}
+          </select>
+        )}
+        {def.kind === "missile" && (
+          <select value={mount.ammo ?? DEFAULT_MISSILE_SHOTS} onChange={(e) => onChange({ ammo: Number(e.target.value) })}>
+            {MISSILE_RACKS.map((r) => <option key={r.shots} value={r.shots}>{r.shots} shots</option>)}
+          </select>
+        )}
+        {WEAPON_MODS.filter((m) => def.mods.includes(m.id)).map((m) => {
+          const ready = level >= m.refinement && (!m.requires || knows(player, m.requires));
+          return (
+            <button key={m.id} className={`small${mods.has(m.id) ? " active" : ""}`} disabled={!ready && !mods.has(m.id)}
+              title={ready ? m.name : `${m.name}: needs ${m.refinement} refinement level${m.refinement === 1 ? "" : "s"} beyond this weapon's tech`}
+              onClick={() => toggle(m.id)}>
+              {m.abbr}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function StatsTable({ stats }: { stats: ReturnType<typeof designStats> }) {
   const rows: [string, string][] = [
     ["Cost", fmt(stats.cost)],
-    ["Hit points", fmt(stats.hits)],
-    ["Shield", fmt(stats.shield)],
+    ["Armor", fmt(stats.armor)],
+    ["Structure", fmt(stats.structure)],
+    ["Shield class", fmt(stats.shield)],
+    ["Shield strength per facing", fmt(stats.shieldStrength)],
     ["Attack", fmt(stats.attack)],
     ["Defense", fmt(stats.defense)],
     ["Combat speed", fmt(stats.combatSpeed)],
+    ["Marines", fmt(stats.marines)],
     ["Troops", fmt(stats.troops)],
     ["Strength", fmt(stats.strength)],
   ];
-  if (stats.missileEvasion) rows.push(["Missile evasion", pct(stats.missileEvasion)]);
-  if (stats.pointDefense) rows.push(["Point defense", pct(stats.pointDefense)]);
-  if (stats.repair) rows.push(["Repair per round", pct(stats.repair)]);
+  if (stats.missileEvasion) rows.push(["Missile evasion", fmt(stats.missileEvasion)]);
+  if (stats.effects.repair) rows.push(["Repair per round", pct(stats.effects.repair)]);
   return (
     <table>
       <tbody>

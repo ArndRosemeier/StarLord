@@ -77,14 +77,3 @@ export const PLANET_WEAPON_SPACE = 300;
 
 /** Artemis System Net mines: chance per size class to strike an attacking ship, and damage per size class. */
 export const ARTEMIS = { chancePerSize: 0.2, damagePerSize: 100 } as const;
-
-/** Missile evasion per point of a ship's jamming against the attacker's scanner, as a percent chance. */
-export const BOARDING = {
-  /** A marine's fighting strength roll is 1..this plus bonuses. */
-  roll: 100,
-  /** Ships whose drive is out or that are held by tractors can be boarded from adjacent squares. */
-  adjacent: 1.5,
-} as const;
-
-/** Ship explosions hit everything within this many squares for a share of the ship's structure. */
-export const EXPLOSION = { radius: 2, structureShare: 0.25 } as const;

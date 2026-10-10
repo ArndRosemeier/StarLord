@@ -1,6 +1,6 @@
 import { BUILDINGS_BY_ID } from "./data/buildings.js";
 import {
-  ARCS, ARMORS_BY_ID, HULLS_BY_ID, MOD_EFFECTS, SCANNER_ECCM, SPECIALS_BY_ID, STATION_HULLS, UNHITTABLE_SPECIALS, WEAPONS,
+  ARCS, HULLS_BY_ID, MOD_EFFECTS, SCANNER_ECCM, SPECIALS_BY_ID, STATION_HULLS, UNHITTABLE_SPECIALS, WEAPONS,
   hullIndex, type FiringArc, type HullDef, type StationHull, type WeaponDef, type WeaponModId, type WeaponTrait,
 } from "./data/components.js";
 import {
@@ -11,7 +11,7 @@ import {
 } from "./data/combat.js";
 import {
   ALL_WEAPONS, bestArmor, bestBeam, bestComputer, bestShield, designStats, findDesign, groundBatteryWeapons,
-  mergeEffects, missileBaseWeapons, noEffects, rackShots, stationWeapons, strengthOf, weaponHP, weaponUnitCost,
+  missileBaseWeapons, noEffects, rackShots, stationWeapons, strengthOf, weaponHP, weaponUnitCost,
   type MergedEffects,
 } from "./designs.js";
 import { empireBonus, knows } from "./empire.js";
@@ -646,7 +646,7 @@ class Battle {
         u.armor = Math.min(u.maxArmor, u.armor + heal);
         for (const sys of this.systems(u)) if (sys.hp > 0) sys.hp = Math.min(sys.max, sys.hp + Math.max(1, Math.round(sys.max * u.fx.repairSystems)));
         const healed = u.armor + u.structure - before;
-        if (healed > 0) this.log.push({ kind: "repair", ship: u.key, damage: -healed });
+        if (healed > 0) this.log.push({ kind: "repair", ship: u.key, damage: healed });
       }
       if (u.web) {
         const web = u.web;
@@ -1550,4 +1550,3 @@ export function groundBatteryBeam(player: Player): WeaponDef {
   return bestBeam(player);
 }
 
-export { ARMORS_BY_ID as _ARMORS_BY_ID, mergeEffects as _mergeEffects };
