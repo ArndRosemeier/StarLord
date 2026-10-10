@@ -1,10 +1,11 @@
 import { BUILDINGS_BY_ID } from "./data/buildings.js";
+import { FREIGHTERS, TAX_STEPS } from "./data/economy.js";
 import { CLIMATES } from "./data/planets.js";
 import { TIERS_BY_ID } from "./data/techs.js";
 import { canSign, isHostile, relation } from "./diplomacy.js";
 import { designStats, findDesign, validateDesign } from "./designs.js";
 import { fleetRange, fleetSpeed } from "./empire.js";
-import { population } from "./economy.js";
+import { foodPlan, population } from "./economy.js";
 import { distance } from "./galaxy.js";
 import { MAX_LEADERS } from "./data/leaders.js";
 import { hullIndex } from "./data/components.js";
@@ -34,6 +35,10 @@ export type Command =
   /** Spends Evolutionary Mutation points on new race picks (same government). */
   | { type: "mutateRace"; picks: RacePicks }
   | { type: "setTaxRate"; rate: number }
+  /** Freighters carry colonists to another colony of the same race; a whole fleet per colonist. */
+  | { type: "moveColonists"; fromColonyId: Id; toColonyId: Id; count: number }
+  /** Scraps idle freighters; they are worth nothing, but no longer need upkeep. */
+  | { type: "scrapFreighters"; count: number }
   | { type: "moveFleet"; fleetId: Id; destStarId: Id }
   | { type: "colonize"; fleetId: Id; planetId: Id }
   | { type: "invade"; fleetId: Id; colonyId: Id }
@@ -63,7 +68,6 @@ const fail = (reason: string): CommandResult => ({ ok: false, reason });
 const OK: CommandResult = { ok: true };
 
 export const MAX_QUEUE = 7;
-export const TAX_STEPS = [0, 0.1, 0.2, 0.3, 0.4, 0.5];
 
 function ownColony(state: GameState, playerId: PlayerId, id: Id): Colony | undefined {
   const c = state.colonies[id];
@@ -134,6 +138,20 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
     }
     case "setTaxRate":
       return TAX_STEPS.includes(cmd.rate) ? OK : fail("tax rate must be 0-50% in 10% steps");
+    case "moveColonists": {
+      const from = ownColony(state, playerId, cmd.fromColonyId);
+      const to = ownColony(state, playerId, cmd.toColonyId);
+      if (!from || !to || from.id === to.id) return fail("not your colonies");
+      if (from.outpost || to.outpost) return fail("outposts hold no colonists");
+      if (from.raceId !== to.raceId) return fail("colonists only join colonies of their own race");
+      if (!Number.isInteger(cmd.count) || cmd.count <= 0) return fail("bad colonist count");
+      if (population(from) - (from.aliens ?? 0) - cmd.count < 1) return fail("a colony must keep at least one loyal colonist");
+      if (freeFreighters(state, playerId) < cmd.count * FREIGHTERS.perColonist) return fail("not enough idle freighters");
+      return OK;
+    }
+    case "scrapFreighters":
+      return Number.isInteger(cmd.count) && cmd.count > 0 && cmd.count <= freeFreighters(state, playerId)
+        ? OK : fail("not that many idle freighters");
     case "moveFleet": {
       const f = ownFleet(state, playerId, cmd.fleetId);
       if (!f) return fail("not your fleet");
@@ -162,6 +180,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const c = state.colonies[cmd.colonyId];
       if (!c || state.planets[c.planetId]!.starId !== f.starId) return fail("no such colony here");
       if (!isHostile(state, playerId, c.ownerId)) return fail("not at war with that colony's owner");
+      if (blocksInvasion(c)) return fail("a planetary barrier shield keeps troops out");
       const troops = f.ships.reduce((n, s) => {
         const d = findDesign(player, s.designId);
         return n + (d ? designStats(player, d).troops * s.count : 0);
@@ -268,6 +287,16 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
     case "setAutomation":
       return Array.isArray(cmd.domains) ? OK : fail("bad automation list");
   }
+}
+
+/** Freighters not carrying colonists or food this turn. */
+export function freeFreighters(state: GameState, playerId: PlayerId): number {
+  return foodPlan(state, playerId).free;
+}
+
+/** A Planetary Barrier Shield keeps out troops and biological weapons. */
+export function blocksInvasion(colony: Colony): boolean {
+  return colony.buildings.some((id) => BUILDINGS_BY_ID[id]?.effects.blocksInvasion);
 }
 
 /**

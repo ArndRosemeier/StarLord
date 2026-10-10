@@ -413,7 +413,7 @@ function ProjectPage({ id }: { id: string }) {
             <thead><tr><th>From</th><th>Becomes</th></tr></thead>
             <tbody>
               {Object.entries(TERRAFORM_STEP).map(([from, to]) => (
-                <tr key={from}><td><HelpLink to={`climate:${from}`} /></td><td><HelpLink to={`climate:${to}`} /></td></tr>
+                <tr key={from}><td><HelpLink to={`climate:${from}`} /></td><td>{to.map((t, i) => <span key={t}>{i > 0 ? " or " : ""}<HelpLink to={`climate:${t}`} /></span>)}</td></tr>
               ))}
             </tbody>
           </table>
@@ -710,7 +710,7 @@ function PlanetsPage() {
 
 function ClimatePage({ type }: { type: PlanetType }) {
   const c = CLIMATES[type];
-  const from = Object.entries(TERRAFORM_STEP).filter(([, to]) => to === type).map(([f]) => `climate:${f}`);
+  const from = Object.entries(TERRAFORM_STEP).filter(([, to]) => to.includes(type)).map(([f]) => `climate:${f}`);
   const to = TERRAFORM_STEP[type];
   return (
     <div className="col">
@@ -720,7 +720,8 @@ function ClimatePage({ type }: { type: PlanetType }) {
         ["Population per size step", c.popPerSize],
         ["Food per farmer", c.foodPerFarmer],
         ...(c.habitable ? [["Max population", SIZES.map((s) => `${words(s)} ${c.popPerSize * SIZE_FACTOR[s]}`).join(", ")] as [string, ReactNode]] : []),
-        ...(to ? [["Terraforms into", <HelpLink to={`climate:${to}`} />] as [string, ReactNode]] : []),
+        ...(to ? [["Terraforms into", <Links ids={to.map((t) => `climate:${t}`)} />] as [string, ReactNode]] : []),
+        ["Building upkeep", c.maintenancePenalty ? `+${Math.round(c.maintenancePenalty * 100)}%` : "normal"],
         ...(from.length ? [["Terraformed from", <Links ids={from} />] as [string, ReactNode]] : []),
         ...(type === "terran" ? [["Gaia", <HelpLink to="project:gaiaTransform" />] as [string, ReactNode]] : []),
         ...(!c.habitable ? [["Artificial planet", <HelpLink to="project:artificialPlanet" />] as [string, ReactNode]] : []),

@@ -1,24 +1,41 @@
+import type { Minerals } from "./planets.js";
+
 /** Colony buildings. Effects are declarative so the economy code stays generic. */
 
 export interface BuildingEffects {
   foodFlat?: number;
   foodPerFarmer?: number;
+  /** The per-farmer bonus needs real soil: no effect on barren, radiated, toxic or inferno worlds. */
+  needsSoil?: boolean;
   industryFlat?: number;
   industryPerWorker?: number;
+  /** Flat industry by the planet's mineral class. */
+  industryByMinerals?: Record<Minerals, number>;
+  /** Industry from every population unit whatever its job; it never pollutes. */
+  industryPerPop?: number;
   researchFlat?: number;
   researchPerScientist?: number;
-  maxPopBySize?: number;
+  /** Flat max population. */
+  maxPopFlat?: number;
   bcFlat?: number;
-  /** Fraction added to the colony's BC income. */
+  /** Fraction added to all BC this colony earns: population taxes, industry taxes and trade goods. */
   bcMult?: number;
   /** Percent morale on this colony. */
   morale?: number;
-  /** Fraction of this colony's pollution removed. */
-  pollutionCleanup?: number;
+  /** Share of industry that counts toward pollution; several multiply (½ × ¼ = ⅛). */
+  pollutionFactor?: number;
+  /** No pollution at all on this colony. */
+  noPollution?: boolean;
+  /** Turns this much industry into 1 food whenever the colony itself is short. */
+  foodReplicator?: number;
   /** Extra population growth in thousands per turn. */
   growthK?: number;
-  /** Defending ground troops. */
+  /** Ground troops present as soon as the building is finished. */
   troops?: number;
+  /** Trains more troops over time, see `TroopTraining`. */
+  training?: TroopTraining;
+  /** Removes the government's morale penalty for colonies without barracks. */
+  garrison?: boolean;
   /** Empire command points. */
   commandPoints?: number;
   /** Spy defense, empire-wide. */
@@ -27,8 +44,28 @@ export interface BuildingEffects {
   gravityFix?: boolean;
   /** Planetary defense, see `PlanetDefense`. */
   defense?: PlanetDefense;
+  /** Removes the multi-race morale penalty, sets assimilation to this many turns and scales the revolt chance. */
+  alienManagement?: { assimilationTurns: number; revoltMult: number };
+  /** Seat of government; losing it hurts morale everywhere (see GovernmentDef.capitalLossMorale). */
+  capitol?: boolean;
+  /** Ships built here start this many crew levels higher; ships in the system gain experience every turn. */
+  crew?: { startLevels: number; xpPerTurn: number };
+  /** Hostile fleets within this many parsecs of the star crawl at `INTERDICTED_SPEED`. */
+  interdictRadius?: number;
+  /** Ground troops and biological weapons can't get through. */
+  blocksInvasion?: boolean;
+  /** A radiated world under this shield becomes barren. */
+  radiatedToBarren?: boolean;
   /** Parsecs added to scanner range around this colony. */
   scanRange?: number;
+}
+
+export interface TroopTraining {
+  kind: "marines" | "tanks";
+  /** One new unit every this many turns. */
+  every: number;
+  /** Cap as a fraction of the colony's maximum population. */
+  capOfMaxPop: number;
 }
 
 export interface PlanetDefense {
@@ -40,6 +77,12 @@ export interface PlanetDefense {
   mines?: boolean;
   /** Damage taken off every hit on the planet. */
   shield?: number;
+  /**
+   * Interceptors based on the planet. Once Bomber Bays or Heavy Fighter Bays
+   * are known they are replaced by fewer, stronger craft: see
+   * `FIGHTER_GARRISON` here and `fighterGarrison` in the economy module.
+   */
+  fighters?: number;
 }
 
 export interface BuildingDef {
@@ -56,12 +99,30 @@ export interface BuildingDef {
   description: string;
 }
 
+/** Fighters a Fighter Garrison holds, by the best fighter type known. */
+export const FIGHTER_GARRISON = {
+  interceptors: 10,
+  bombers: 6,
+  heavyFighters: 4,
+  /** Lost fighters are replaced after this many combat rounds. */
+  replenishRounds: 10,
+} as const;
+
+/** Fleet speed in parsecs per turn inside an enemy Warp Interdictor's field. */
+export const INTERDICTED_SPEED = 1;
+
 export const BUILDINGS: BuildingDef[] = [
+  // Government
+  { id: "capitol", name: "Capitol", cost: 200, maintenance: 0, requires: "capitol",
+    effects: { capitol: true }, description: "Seat of your government. It can't be built, only rebuilt after it is lost; until then morale suffers everywhere, by how much depends on the government." },
+
   // Defense and military
   { id: "marineBarracks", name: "Marine Barracks", cost: 60, maintenance: 1, requires: "marineBarracks",
-    effects: { troops: 4, morale: 10 }, description: "+4 defending troops. Dictatorships need one for full morale." },
+    effects: { troops: 4, training: { kind: "marines", every: 5, capOfMaxPop: 1 }, garrison: true },
+    description: "Starts with 4 marines and trains one more every 5 turns, up to the colony's maximum population. Lifts the feudal and dictatorial morale penalty." },
   { id: "armorBarracks", name: "Armor Barracks", cost: 150, maintenance: 2, requires: "armorBarracks",
-    effects: { troops: 6 }, description: "+6 armored defending troops." },
+    effects: { troops: 2, training: { kind: "tanks", every: 10, capOfMaxPop: 0.5 }, garrison: true },
+    description: "Starts with 2 tank battalions and adds one every 10 turns, up to half the maximum population. Lifts the feudal and dictatorial morale penalty." },
   { id: "starBase", name: "Star Base", cost: 400, maintenance: 2, requires: "starBase",
     effects: { commandPoints: 1, scanRange: 2, defense: { station: "starBase" } }, description: "Armed orbital station and star dock: ships larger than destroyers can be built here. +1 command point, +2 parsec scanner range." },
   { id: "battlestation", name: "Battlestation", cost: 1000, maintenance: 3, requires: "battlestation", replaces: ["starBase"],
@@ -72,30 +133,38 @@ export const BUILDINGS: BuildingDef[] = [
     effects: { defense: { installation: "missileBase" } }, description: "300 space of your best missiles on the planet, never out of ammunition." },
   { id: "groundBatteries", name: "Ground Batteries", cost: 200, maintenance: 2, requires: "groundBatteries",
     effects: { defense: { installation: "groundBatteries" } }, description: "300 space of heavy-mount and point-defense versions of your best beam on the planet." },
+  { id: "fighterGarrison", name: "Fighter Garrison", cost: 150, maintenance: 2, requires: "fighterGarrison",
+    effects: { defense: { fighters: FIGHTER_GARRISON.interceptors } },
+    description: "Planet-based squadrons: 10 interceptors, or 6 bombers or 4 heavy fighters once those are known. Losses are replaced during long battles." },
   { id: "artemisSystemNet", name: "Artemis System Net", cost: 1000, maintenance: 5, requires: "artemisSystemNet",
     effects: { defense: { mines: true } }, description: "Space mines that strike attacking ships as a battle opens; bigger ships are hit more often and harder." },
   { id: "radiationShield", name: "Planetary Radiation Shield", cost: 80, maintenance: 1, requires: "planetaryRadiationShield",
-    effects: { defense: { shield: 5 } }, description: "Planetary shield blocking 5 damage per hit." },
+    effects: { defense: { shield: 5 }, radiatedToBarren: true }, description: "Blocks 5 damage per hit against the planet. A radiated world under it becomes barren." },
   { id: "fluxShield", name: "Planetary Flux Shield", cost: 200, maintenance: 3, requires: "planetaryFluxShield", replaces: ["radiationShield"],
-    effects: { defense: { shield: 10 } }, description: "Planetary shield blocking 10 damage per hit." },
+    effects: { defense: { shield: 10 }, radiatedToBarren: true }, description: "Blocks 10 damage per hit against the planet. A radiated world under it becomes barren." },
   { id: "barrierShield", name: "Planetary Barrier Shield", cost: 500, maintenance: 5, requires: "planetaryBarrierShield", replaces: ["radiationShield", "fluxShield"],
-    effects: { defense: { shield: 20 } }, description: "Planetary shield blocking 20 damage per hit." },
-  { id: "spaceAcademy", name: "Space Academy", cost: 75, maintenance: 1, requires: "spaceAcademy",
-    effects: { commandPoints: 1 }, description: "Trains officers. +1 command point." },
+    effects: { defense: { shield: 20 }, radiatedToBarren: true, blocksInvasion: true },
+    description: "Blocks 20 damage per hit; no troops or biological weapons get through. A radiated world under it becomes barren." },
+  { id: "warpInterdictor", name: "Warp Interdictor", cost: 300, maintenance: 3, requires: "warpInterdictor",
+    effects: { interdictRadius: 2 }, description: "Hostile fleets within 2 parsecs of the system move only 1 parsec per turn." },
+  { id: "spaceAcademy", name: "Space Academy", cost: 100, maintenance: 2, requires: "spaceAcademy",
+    effects: { crew: { startLevels: 1, xpPerTurn: 2 } }, description: "Ships built here start one crew level higher, and crews in the system train every turn." },
   { id: "securityStations", name: "Security Stations", cost: 100, maintenance: 1, requires: "securityStations",
     effects: { security: 2 }, description: "+2 spy defense." },
 
   // Food and population
-  { id: "hydroponicFarm", name: "Hydroponic Farm", cost: 60, maintenance: 1, requires: "hydroponicFarm",
+  { id: "hydroponicFarm", name: "Hydroponic Farm", cost: 60, maintenance: 2, requires: "hydroponicFarm",
     effects: { foodFlat: 2 }, description: "+2 food." },
-  { id: "subterraneanFarms", name: "Subterranean Farms", cost: 150, maintenance: 2, requires: "subterraneanFarms",
+  { id: "subterraneanFarms", name: "Subterranean Farms", cost: 150, maintenance: 4, requires: "subterraneanFarms",
     effects: { foodFlat: 4 }, description: "+4 food." },
-  { id: "soilEnrichment", name: "Soil Enrichment", cost: 80, maintenance: 1, requires: "soilEnrichment",
-    effects: { foodPerFarmer: 1 }, description: "+1 food per farmer." },
+  { id: "soilEnrichment", name: "Soil Enrichment", cost: 120, maintenance: 0, requires: "soilEnrichment",
+    effects: { foodPerFarmer: 1, needsSoil: true }, description: "+1 food per farmer. Useless on barren, radiated, toxic and inferno worlds." },
   { id: "weatherController", name: "Weather Controller", cost: 200, maintenance: 3, requires: "weatherControl",
-    effects: { foodPerFarmer: 1 }, description: "+1 food per farmer." },
+    effects: { foodPerFarmer: 2 }, description: "+2 food per farmer." },
+  { id: "foodReplicators", name: "Food Replicators", cost: 200, maintenance: 10, requires: "foodReplicators",
+    effects: { foodReplicator: 2 }, description: "Whenever the colony is short of food, turns 2 industry into 1 food." },
   { id: "biospheres", name: "Biospheres", cost: 60, maintenance: 1, requires: "biospheres",
-    effects: { maxPopBySize: 0.67 }, description: "Raises max population by about 2 on a medium planet." },
+    effects: { maxPopFlat: 2 }, description: "+2 max population." },
   { id: "cloningCenter", name: "Cloning Center", cost: 100, maintenance: 2, requires: "cloningCenter",
     effects: { growthK: 100 }, description: "+100k population growth per turn." },
   { id: "gravityGenerator", name: "Gravity Generator", cost: 120, maintenance: 2, requires: "gravityGenerator",
@@ -106,14 +175,19 @@ export const BUILDINGS: BuildingDef[] = [
     effects: { industryFlat: 5, industryPerWorker: 1 }, description: "+5 industry and +1 per worker." },
   { id: "roboMinerPlant", name: "Robo Miner Plant", cost: 150, maintenance: 2, requires: "roboMinerPlant",
     effects: { industryFlat: 10, industryPerWorker: 2 }, description: "+10 industry and +2 per worker." },
+  { id: "deepCoreMining", name: "Deep Core Mining", cost: 250, maintenance: 3, requires: "deepCoreMining",
+    effects: { industryFlat: 15, industryPerWorker: 3 }, description: "+15 industry and +3 per worker." },
   { id: "roboticFactory", name: "Robotic Factory", cost: 200, maintenance: 3, requires: "roboticFactory",
-    effects: { industryFlat: 15, industryPerWorker: 2 }, description: "+15 industry and +2 per worker." },
+    effects: { industryByMinerals: { ultraPoor: 5, poor: 8, abundant: 10, rich: 15, ultraRich: 20 } },
+    description: "Flat industry by the planet's minerals: +5 ultra poor, +8 poor, +10 abundant, +15 rich, +20 ultra rich." },
   { id: "recyclotron", name: "Recyclotron", cost: 200, maintenance: 3, requires: "recyclotron",
-    effects: { industryPerWorker: 1, pollutionCleanup: 0.25 }, description: "+1 industry per worker, less pollution." },
+    effects: { industryPerPop: 1 }, description: "+1 industry from every population unit whatever its job. This industry never pollutes." },
   { id: "pollutionProcessor", name: "Pollution Processor", cost: 80, maintenance: 1, requires: "pollutionProcessor",
-    effects: { pollutionCleanup: 0.5 }, description: "Halves pollution." },
+    effects: { pollutionFactor: 0.5 }, description: "Only half of the colony's industry counts toward pollution." },
   { id: "atmosphericRenewer", name: "Atmospheric Renewer", cost: 150, maintenance: 3, requires: "atmosphericRenewer",
-    effects: { pollutionCleanup: 0.75 }, description: "Removes three quarters of pollution." },
+    effects: { pollutionFactor: 0.25 }, description: "Only a quarter of the colony's industry counts toward pollution; an eighth together with a Pollution Processor." },
+  { id: "coreWasteDumps", name: "Core Waste Dumps", cost: 200, maintenance: 8, requires: "coreWasteDump",
+    effects: { noPollution: true }, description: "No pollution at this colony." },
 
   // Research
   { id: "researchLab", name: "Research Laboratory", cost: 60, maintenance: 1, requires: "researchLab",
@@ -124,18 +198,23 @@ export const BUILDINGS: BuildingDef[] = [
     effects: { researchFlat: 30 }, description: "+30 research." },
   { id: "galacticCybernet", name: "Galactic Cybernet", cost: 250, maintenance: 3, requires: "galacticNetwork",
     effects: { researchFlat: 15, researchPerScientist: 3 }, description: "+15 research and +3 per scientist." },
-  { id: "astroUniversity", name: "Astro University", cost: 200, maintenance: 3, requires: "astroUniversity",
+  { id: "astroUniversity", name: "Astro University", cost: 200, maintenance: 4, requires: "astroUniversity",
     effects: { researchPerScientist: 1, foodPerFarmer: 1, industryPerWorker: 1 }, description: "+1 output for every job." },
 
   // Money and morale
   { id: "spacePort", name: "Spaceport", cost: 80, maintenance: 1, requires: "spacePort",
-    effects: { bcMult: 0.5 }, description: "+50% BC from this colony." },
-  { id: "planetaryStockExchange", name: "Planetary Stock Exchange", cost: 150, maintenance: 3, requires: "planetaryStockExchange",
-    effects: { bcMult: 1 }, description: "+100% BC from this colony." },
+    effects: { bcMult: 0.5 }, description: "+50% BC from every source at this colony." },
+  { id: "planetaryStockExchange", name: "Planetary Stock Exchange", cost: 150, maintenance: 2, requires: "planetaryStockExchange",
+    effects: { bcMult: 1 }, description: "+100% BC from every source at this colony." },
+  { id: "galacticCurrencyExchange", name: "Galactic Currency Exchange", cost: 250, maintenance: 3, requires: "galacticCurrencyExchange",
+    effects: { bcMult: 0.5 }, description: "+50% BC from every source at this colony." },
   { id: "holoSimulator", name: "Holo Simulator", cost: 120, maintenance: 1, requires: "holoSimulator",
     effects: { morale: 20 }, description: "+20% morale." },
-  { id: "alienManagementCenter", name: "Alien Management Center", cost: 150, maintenance: 3, requires: "alienManagementCenter",
-    effects: { morale: 15 }, description: "+15% morale." },
+  { id: "pleasureDome", name: "Pleasure Dome", cost: 250, maintenance: 3, requires: "pleasureDome",
+    effects: { morale: 30 }, description: "+30% morale; adds to a Holo Simulator." },
+  { id: "alienManagementCenter", name: "Alien Management Center", cost: 60, maintenance: 1, requires: "alienManagementCenter",
+    effects: { alienManagement: { assimilationTurns: 2, revoltMult: 0.5 } },
+    description: "Conquered people assimilate at one unit every 2 turns whatever the government, revolt half as often, and the multi-race morale penalty is lifted." },
 ];
 
 export const BUILDINGS_BY_ID: Record<string, BuildingDef> = Object.fromEntries(BUILDINGS.map((b) => [b.id, b]));
@@ -148,31 +227,68 @@ export interface ProjectDef {
   description: string;
 }
 
+export type AndroidJob = "farmers" | "workers" | "scientists";
+
 export const PROJECTS: ProjectDef[] = [
   { id: "colonyBase", name: "Colony Base", requires: "colonyBase", description: "Settles another planet in this star system with 1 pop." },
   { id: "outpostBase", name: "Outpost Base", requires: "outpostShip", description: "Places an outpost on a free planet in this system." },
+  { id: "freighterFleet", name: "Freighter Fleet", requires: "freighters", description: "Five freighters. Each carries 1 food a turn between your colonies; a whole fleet moves 1 colonist." },
+  { id: "androidFarmers", name: "Android Farmers", requires: "androidFarmers", description: "A robot farmer: the planet's food per farmer +3, eats no food, costs 1 industry a turn, ignores morale and pays no tax." },
+  { id: "androidWorkers", name: "Android Workers", requires: "androidWorkers", description: "A robot worker: the planet's industry per worker +3, eats no food, costs 1 industry a turn, ignores morale and pays no tax." },
+  { id: "androidScientists", name: "Android Scientists", requires: "androidScientists", description: "A robot scientist: 3 research more than a normal scientist, eats no food, costs 1 industry a turn, ignores morale and pays no tax." },
   { id: "terraform", name: "Terraforming", requires: "terraforming", description: "Improves this planet's climate one step. Cost rises each time." },
   { id: "gaiaTransform", name: "Gaia Transformation", requires: "gaiaTransformation", description: "Turns a terran planet into a Gaia world." },
-  { id: "artificialPlanet", name: "Artificial Planet", requires: "artificialPlanet", description: "Turns an asteroid belt or gas giant in this system into a barren planet." },
-  { id: "dimensionalPortal", name: "Dimensional Portal", requires: "dimensionalPortal", description: "Opens a way to the raiders' home dimension." },
+  { id: "artificialPlanet", name: "Artificial Planet", requires: "artificialPlanet", description: "Turns an asteroid belt in this system into a large barren planet, or a gas giant into a huge one; normal gravity, abundant minerals." },
+  { id: "dimensionalPortal", name: "Dimensional Portal", requires: "dimensionalPortal", description: "Opens a way to the raiders' home dimension. 2 BC upkeep." },
   { id: "spy", name: "Train Spy", requires: null, description: "Trains a spy for espionage or counter-espionage." },
   { id: "housing", name: "Housing", requires: null, description: "Turns industry into extra population growth." },
 ];
 
 export const PROJECTS_BY_ID: Record<string, ProjectDef> = Object.fromEntries(PROJECTS.map((p) => [p.id, p]));
 
+/** Android projects and the job each android does. */
+export const ANDROID_PROJECTS: Record<string, AndroidJob> = {
+  androidFarmers: "farmers",
+  androidWorkers: "workers",
+  androidScientists: "scientists",
+};
+
+/**
+ * Freighter Fleets, Android and Spy costs are not in the reference tables;
+ * these are our estimates.
+ */
 export const PROJECT_COSTS = {
   colonyBase: 200,
   outpostBase: 80,
+  freighterFleet: 50,
+  android: 50,
   terraformBase: 250,
   gaiaTransform: 500,
-  artificialPlanet: 400,
-  dimensionalPortal: 1500,
+  artificialPlanet: 800,
+  dimensionalPortal: 500,
   spy: 25,
 } as const;
 
-/** Climate after one terraforming step. */
-export const TERRAFORM_STEP: Record<string, string> = {
-  radiated: "barren", toxic: "barren", inferno: "barren",
-  barren: "tundra", desert: "arid", tundra: "arid", arid: "terran", swamp: "terran", ocean: "terran",
+/** BC upkeep per turn of one-off projects that stay in place. */
+export const PROJECT_UPKEEP = {
+  dimensionalPortal: 2,
+} as const;
+
+/** Climates one terraforming step can lead to; when there are two, the result is random. */
+export const TERRAFORM_STEP: Record<string, string[]> = {
+  barren: ["desert", "tundra"],
+  desert: ["arid"],
+  tundra: ["swamp"],
+  arid: ["terran"],
+  swamp: ["terran"],
+  ocean: ["terran"],
 };
+
+/** What an Artificial Planet becomes, by the body it is built from. */
+export const ARTIFICIAL_PLANET = {
+  asteroids: "large",
+  gasGiant: "huge",
+  type: "barren",
+  minerals: "abundant",
+  gravity: "normal",
+} as const;

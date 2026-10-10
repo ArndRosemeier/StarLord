@@ -1,5 +1,5 @@
 import type { TurnContext } from "./context.js";
-import { population } from "./economy.js";
+import { destructibleBuildings, population } from "./economy.js";
 import { TECHS, TECH_TIERS } from "./data/techs.js";
 import { grantTech } from "./empire.js";
 import { TRAIT_EFFECTS } from "./data/racePicks.js";
@@ -50,8 +50,8 @@ export function randomEventTick(ctx: TurnContext): void {
     }
     case "comet": {
       const c = colonies.length ? rng.pick(colonies) : undefined;
-      if (!c || c.buildings.length === 0) return;
-      const b = rng.pick(c.buildings);
+      if (!c || destructibleBuildings(c).length === 0) return;
+      const b = rng.pick(destructibleBuildings(c));
       c.buildings = c.buildings.filter((x) => x !== b);
       ctx.emit({ kind: "random", playerId: p.id, what: `A comet strike destroyed a building at ${c.name}.` });
       return;

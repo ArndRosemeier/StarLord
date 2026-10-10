@@ -2,7 +2,7 @@ import { BUILDINGS_BY_ID } from "./data/buildings.js";
 import { TIER_OF_TECH } from "./data/techs.js";
 import { adjustAttitude } from "./diplomacy.js";
 import { grantTech, securityLevel, spyingLevel } from "./empire.js";
-import { population } from "./economy.js";
+import { destructibleBuildings, population } from "./economy.js";
 import { leaderAssassinChance } from "./leaders.js";
 import type { Rng } from "./rng.js";
 import type { GameState } from "./types.js";
@@ -81,8 +81,8 @@ function sabotage(state: GameState, rng: Rng, saboteur: number, victim: number, 
   const colonies = Object.values(state.colonies).filter((c) => c.ownerId === victim && !c.outpost);
   if (colonies.length === 0) return;
   const c = rng.pick(colonies);
-  if (c.buildings.length > 0 && rng.chance(0.6)) {
-    const b = rng.pick(c.buildings);
+  if (destructibleBuildings(c).length > 0 && rng.chance(0.6)) {
+    const b = rng.pick(destructibleBuildings(c));
     c.buildings = c.buildings.filter((x) => x !== b);
     emit({ kind: "spy", playerId: victim, other: saboteur, what: `${BUILDINGS_BY_ID[b]?.name ?? b} destroyed at ${c.name}` });
   } else if (population(c) > 1) {
