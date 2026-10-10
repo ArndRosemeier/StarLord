@@ -9,7 +9,7 @@ import { BEAM_HIT, DEFENSE_PER_SPEED, PLANET_WEAPON_SPACE, RANGE_BANDS } from ".
 import { NPC_WEAPONS } from "./data/monsters.js";
 import { getRace } from "./data/races.js";
 import { TIER_OF_TECH, TIERS_BY_ID } from "./data/techs.js";
-import { empireBonus, government, knows } from "./empire.js";
+import { empireBonus, government, hyperLevel, knows } from "./empire.js";
 import type { Player, ShipDesign, WeaponMount } from "./types.js";
 
 export { MODULES };
@@ -32,12 +32,12 @@ export const MAX_WEAPON_SLOTS = 8;
 export function refinement(player: Player, tech: string): number {
   const tier = TIER_OF_TECH[tech];
   if (!tier) return 0;
-  let best = tier.level;
+  let level = hyperLevel(player, tier.field);
   for (const t of player.tiers) {
     const other = TIERS_BY_ID[t];
-    if (other && other.field === tier.field) best = Math.max(best, other.level);
+    if (other && !other.hyper && other.field === tier.field && other.rung > tier.rung) level++;
   }
-  return best - tier.level;
+  return level;
 }
 
 const at = (table: readonly number[], level: number) => table[Math.min(level, table.length - 1)]! / 100;

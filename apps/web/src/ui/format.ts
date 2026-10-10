@@ -1,5 +1,5 @@
 import {
-  BUILDINGS_BY_ID, PROJECTS_BY_ID, TECHS, findDesign,
+  BUILDINGS_BY_ID, FIELD_NAMES, PROJECTS_BY_ID, TECHS, findDesign,
   type BuildItem, type GameEvent, type PlayerView,
 } from "@starlord/sim";
 
@@ -48,6 +48,8 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
       const how = e.source === "stolen" ? " (stolen by our spies)" : e.source === "trade" ? " (through a treaty)" : e.source === "salvage" ? " (salvaged)" : e.source === "event" ? "" : "";
       return { text: `Learned ${TECHS[e.techId]?.name ?? e.techId}${how}.`, tone: "good" };
     }
+    case "hyperAdvance":
+      return { text: `Hyper-advanced ${FIELD_NAMES[e.field]} reached level ${e.level}.`, tone: "good" };
     case "built":
       return { text: `${colonyName(view, e.colonyId)} finished ${itemName(view, e.item)}.`, starId: colonyStar(e.colonyId), tone: "info" };
     case "starvation":

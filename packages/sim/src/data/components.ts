@@ -40,9 +40,9 @@ export interface HullDef<Id extends HullId = HullId> {
 
 export const HULLS: HullDef<HullSize>[] = [
   { id: "frigate", name: "Frigate", space: 25, cost: 20, armor: 4, structure: 4, marines: 5, computerHP: 1, driveHP: 2, shieldGenHP: 1, sizeClass: 1, commandPoints: 1, requires: null, autoSlots: [1, 0, 0, 0] },
-  { id: "destroyer", name: "Destroyer", space: 60, cost: 70, armor: 10, structure: 10, marines: 8, computerHP: 2, driveHP: 5, shieldGenHP: 2, sizeClass: 2, commandPoints: 2, requires: "destroyerHull", autoSlots: [2, 0, 0, 0] },
-  { id: "cruiser", name: "Cruiser", space: 120, cost: 250, armor: 30, structure: 30, marines: 12, computerHP: 5, driveHP: 10, shieldGenHP: 6, sizeClass: 3, commandPoints: 3, requires: "cruiserHull", autoSlots: [2, 1, 0, 2] },
-  { id: "battleship", name: "Battleship", space: 250, cost: 600, armor: 50, structure: 50, marines: 20, computerHP: 7, driveHP: 15, shieldGenHP: 7, sizeClass: 4, commandPoints: 4, requires: "battleshipHull", autoSlots: [4, 2, 1, 5] },
+  { id: "destroyer", name: "Destroyer", space: 60, cost: 70, armor: 10, structure: 10, marines: 8, computerHP: 2, driveHP: 5, shieldGenHP: 2, sizeClass: 2, commandPoints: 2, requires: null, autoSlots: [2, 0, 0, 0] },
+  { id: "cruiser", name: "Cruiser", space: 120, cost: 250, armor: 30, structure: 30, marines: 12, computerHP: 5, driveHP: 10, shieldGenHP: 6, sizeClass: 3, commandPoints: 3, requires: null, autoSlots: [2, 1, 0, 2] },
+  { id: "battleship", name: "Battleship", space: 250, cost: 600, armor: 50, structure: 50, marines: 20, computerHP: 7, driveHP: 15, shieldGenHP: 7, sizeClass: 4, commandPoints: 4, requires: null, autoSlots: [4, 2, 1, 5] },
   { id: "titan", name: "Titan", space: 500, cost: 1500, armor: 80, structure: 80, marines: 30, computerHP: 10, driveHP: 20, shieldGenHP: 10, sizeClass: 5, commandPoints: 5, requires: "titanHull", autoSlots: [6, 4, 3, 10] },
   { id: "doomStar", name: "Doom Star", space: 1200, cost: 4000, armor: 150, structure: 150, marines: 50, computerHP: 20, driveHP: 40, shieldGenHP: 20, sizeClass: 7, commandPoints: 6, requires: "doomStarHull", autoSlots: [10, 10, 5, 25] },
 ];
@@ -148,8 +148,7 @@ export const WEAPONS: WeaponDef[] = [
   { id: "antimatterBomb", name: "Anti-Matter Bomb", kind: "bomb", damageMin: 5, damageMax: 40, space: 7, cost: 6, ammo: 10, mods: [], requires: "antimatterBomb" },
   { id: "neutroniumBomb", name: "Neutronium Bomb", kind: "bomb", damageMin: 10, damageMax: 60, space: 10, cost: 9, ammo: 10, mods: [], requires: "neutroniumBomb" },
   { id: "deathSpores", name: "Death Spores", kind: "spores", damageMin: 1, damageMax: 1, space: 5, cost: 5, ammo: 10, mods: [], requires: "deathSpores" },
-  { id: "bioTerminator", name: "Bio-Terminator", kind: "spores", damageMin: 2, damageMax: 2, space: 7, cost: 8, ammo: 10, mods: [], requires: "bioTerminator" },
-  { id: "doomVirus", name: "Doom Virus", kind: "spores", damageMin: 2, damageMax: 2, space: 7, cost: 8, ammo: 10, mods: [], requires: "doomVirus" },
+  { id: "doomVirus", name: "Bio-Terminator", kind: "spores", damageMin: 2, damageMax: 2, space: 7, cost: 8, ammo: 10, mods: [], requires: "bioTerminator" },
 
   { id: "antiMissileRockets", name: "Anti-Missile Rockets", kind: "special", damageMin: 0, damageMax: 0, space: 20, cost: 5, ammo: 20, range: 15, effect: "antiMissile", mods: [], requires: "antiMissileRockets" },
   { id: "tractorBeam", name: "Tractor Beam", kind: "special", damageMin: 0, damageMax: 0, space: 30, cost: 20, range: 12, effect: "tractor", mods: [], requires: "tractorBeam" },

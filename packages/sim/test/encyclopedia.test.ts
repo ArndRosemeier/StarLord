@@ -6,7 +6,7 @@ import {
 describe("encyclopedia cross-references", () => {
   it("finds what a tech unlocks across the tables", () => {
     expect(techUnlocks("laserCannon").map((u) => u.kind)).toContain("weapon");
-    expect(techUnlocks("cruiserHull")).toEqual([{ kind: "hull", id: "cruiser", name: "Cruiser hull" }]);
+    expect(techUnlocks("titanHull")).toEqual([{ kind: "hull", id: "titan", name: "Titan hull" }]);
     expect(techUnlocks("outpostShip").map((u) => u.kind).sort()).toEqual(["module", "project"]);
     expect(techUnlocks("ionDrive")[0]!.kind).toBe("drive");
   });
@@ -25,8 +25,8 @@ describe("encyclopedia cross-references", () => {
     expect(info.tier.id).toBe("fusionPhysics");
     expect(info.prerequisite?.id).toBe("physics");
     expect(info.leadsTo?.id).toBe("tachyonPhysics");
-    expect(info.alternatives).toEqual(["fusionRifle2"]);
-    expect(cumulativeTierCost(info.tier)).toBe(info.tier.cost);
+    expect(info.alternatives).toEqual(["fusionRifle"]);
+    expect(cumulativeTierCost(info.tier)).toBe(50 + 150);
   });
 
   it("knows which techs do something", () => {

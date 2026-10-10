@@ -1,10 +1,12 @@
 import { BUILDINGS, BUILDINGS_BY_ID, PROJECTS, PROJECT_COSTS, TERRAFORM_STEP } from "./data/buildings.js";
 import { CLIMATES } from "./data/planets.js";
-import { TECH_TIERS, previousTier } from "./data/techs.js";
+import { GOVERNMENTS } from "./data/governments.js";
+import { getRace, hasTrait } from "./data/races.js";
+import { TECHS, TECH_TIERS, previousTier, type TechTier } from "./data/techs.js";
 import { designStats, validateDesign } from "./designs.js";
 import { knows } from "./empire.js";
 import { population } from "./economy.js";
-import type { BuildItem, Colony, GameState, Id, Planet, PlayerId } from "./types.js";
+import type { BuildItem, Colony, GameState, Id, Planet, Player, PlayerId } from "./types.js";
 
 /** Derived rules: what a player can currently build, research and reach. */
 
@@ -57,13 +59,34 @@ export function availableProjects(state: GameState, playerId: PlayerId, colony: 
   }).map((p) => p.id);
 }
 
+/**
+ * Fields a player can research now: the next field of each category, and a
+ * category's hyper-advanced field (again and again) once its chain is done.
+ */
 export function availableTiers(state: GameState, playerId: PlayerId): string[] {
   const done = state.players[playerId]!.tiers;
   return TECH_TIERS.filter((t) => {
-    if (done.includes(t.id)) return false;
+    if (!t.hyper && done.includes(t.id)) return false;
     const prev = previousTier(t);
     return prev === null || done.includes(prev.id);
   }).map((t) => t.id);
+}
+
+/**
+ * Applications a player may pick from a field. Advanced Governments only
+ * offers the form of the player's own government.
+ */
+export function researchOptions(player: Player, tier: TechTier): string[] {
+  const advanced = GOVERNMENTS[player.government].advanced;
+  return tier.techs.filter((t) => {
+    const gov = TECHS[t]?.government;
+    return !gov || gov === advanced;
+  });
+}
+
+/** Whether a player learns every application of a field instead of picking one. */
+export function learnsWholeField(player: Player, tier: TechTier): boolean {
+  return tier.general || hasTrait(getRace(player.raceId), "creative");
 }
 
 /** Designs a player may build now: not obsolete and still valid. */

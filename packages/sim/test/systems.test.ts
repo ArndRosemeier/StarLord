@@ -25,7 +25,7 @@ describe("ship design", () => {
     const s = twoEmpires();
     const p = s.players[0]!;
     for (const d of startingDesigns()) {
-      expect(validateDesign(p, d)).toBe(d.module === "outpost" ? "outposts not researched" : null);
+      expect(validateDesign(p, d)).toBe(null);
     }
     const greedy: ShipDesign = { ...startingDesigns()[1]!, id: "x", weapons: [{ weaponId: "laserCannon", count: 10 }] };
     expect(validateDesign(p, greedy)).toBe("not enough space");
@@ -112,6 +112,8 @@ describe("espionage", () => {
   it("lets spies steal technology eventually", () => {
     let s = twoEmpires("spy");
     s.players[1]!.techs.push("automatedFactory", "researchLab", "hydroponicFarm");
+    // Spying applications (+10 each on spy rolls) make the outcome reliable.
+    s.players[0]!.techs.push("neuralScanner", "cyberSecurityLink", "stealthSuit");
     s.players[0]!.spies.home = 6;
     s = processTurn(s, { 0: [{ type: "setSpies", target: 1, count: 6, mission: "steal" }] });
     for (let i = 0; i < 40 && !s.players[0]!.techs.includes("automatedFactory") && !s.players[0]!.techs.includes("researchLab"); i++) {

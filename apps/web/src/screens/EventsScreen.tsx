@@ -6,7 +6,7 @@ import { CombatReplay } from "./CombatReplay";
 
 /** A small glyph per kind of turn report event. */
 const EVENT_ICONS: Record<string, string> = {
-  colonyFounded: "\u2691\uFE0E", techLearned: "\u2697\uFE0E", built: "\u2692\uFE0E", starvation: "\u26A0\uFE0E", explored: "\u2726",
+  colonyFounded: "\u2691\uFE0E", techLearned: "\u2697\uFE0E", hyperAdvance: "\u2697\uFE0E", built: "\u2692\uFE0E", starvation: "\u26A0\uFE0E", explored: "\u2726",
   commandRejected: "\u2716\uFE0E", combat: "\u2694\uFE0E", colonyLost: "\u2620\uFE0E", colonyCaptured: "\u2691\uFE0E", invasionFailed: "\u2716\uFE0E",
   bombarded: "\u2604\uFE0E", diplomacy: "\u260D\uFE0E", spy: "\u25D0", leader: "\u265B\uFE0E", council: "\u2696\uFE0E", random: "\u2735", raid: "\u2620\uFE0E",
   eliminated: "\u2620\uFE0E",

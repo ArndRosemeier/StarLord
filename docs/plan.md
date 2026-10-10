@@ -32,7 +32,7 @@
 
 - **Economy:** farmers, workers and scientists; climate, minerals, gravity, pollution, morale,
   taxes, buildings with upkeep, buying, trade goods, housing, gold and gem deposits, artifacts.
-- **Research:** 8 fields, about 75 tiers and 160 techs; creative and uncreative races; miniaturization.
+- **Research:** 8 categories of 73 fields and 191 applications with the original costs; general fields, random breakthroughs between 1x and 2x the cost, repeatable hyper-advanced fields; creative and uncreative races; miniaturization.
 - **Ships:** six hulls, beams, missiles, torpedoes, bombs, armor, shields, computers, specials,
   colony, outpost and troop modules, command points.
 - **Combat:** round-based tactical battles on a 30x20 field with movement, range, shields,

@@ -43,8 +43,8 @@ const BONUS: Explain<EmpireBonus> = {
   researchPerScientist: (v) => `${signed(v)} research per scientist`,
   maxPopPerSize: (v) => `${signed(v)} max population per planet size step`,
   growth: (v) => `${signed(v * 100)}% population growth`,
-  groundCombat: (v) => `${signed(v)} ground combat`,
-  spying: (v) => `${signed(v)} spying`,
+  groundCombat: (v) => `${signed(v, 1)} ground combat`,
+  spying: (v) => `${signed(v, 1)} spying`,
   scanRange: (v) => `${signed(v)} parsec scanner range`,
   bcPerPop: (v) => `${signed(v, 1)} BC per population`,
   morale: (v) => `${signed(v)}% morale on every colony`,
@@ -55,6 +55,8 @@ const BONUS: Explain<EmpireBonus> = {
   maxPopFlat: (v) => `${signed(v)} max population on every colony`,
   freeFood: (v) => `each population eats ${fmt(v, 1)} food less`,
   security: (v) => `${signed(v)} spy defense`,
+  commandPointsPerBase: (v) => `${signed(v)} command point${v === 1 ? "" : "s"} per star base, battlestation or star fortress`,
+  diplomacy: (v) => `${signed(v)} diplomatic points on every deal you offer`,
 };
 
 const SPECIAL: Explain<SpecialEffects> = {

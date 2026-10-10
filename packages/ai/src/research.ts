@@ -1,17 +1,21 @@
-import { TIERS_BY_ID, availableTiers, type Command, type PlayerView } from "@starlord/sim";
+import {
+  PICK_OPTIONS, TIERS_BY_ID, TRAIT_COSTS, availableTiers, getRace, learnsWholeField, mutationCost, researchOptions,
+  type Command, type NumericPick, type PlayerView, type RacePicks,
+} from "@starlord/sim";
 import { me } from "./util.js";
 
-/** Techs the AI wants, best first. Anything else is taken cheapest first. */
+/** Applications the AI wants, best first. Anything else is taken cheapest first. */
 const PRIORITY = [
-  "automatedFactory", "hydroponicFarm", "researchLab", "deuteriumFuelCells", "outpostShip", "biospheres",
-  "fusionBeam", "classIShield", "fusionDrive", "soilEnrichment", "destroyerHull", "tritaniumArmor", "spacePort",
-  "cloningCenter", "optronicComputer", "missileBase", "roboMinerPlant", "pollutionProcessor", "merculiteMissile",
-  "cruiserHull", "iridiumFuelCells", "battleScanner", "terraforming", "supercomputer", "planetaryStockExchange",
-  "neutronBlaster", "classIIIShield", "ionDrive", "zortriumArmor", "microbiotics", "battleshipHull",
-  "planetaryRadiationShield", "advancedCityPlanning", "roboticFactory", "positronicComputer", "autolab", "gravitonBeam",
-  "astroUniversity", "holoSimulator", "advancedGovernment", "deepCoreMining", "classVShield", "neutroniumArmor",
-  "phasor", "antimatterDrive", "galacticNetwork", "gaiaTransformation", "titanHull", "plasmaCannon",
-  "cyberneticComputer", "adamantiumArmor", "classVIIShield", "dimensionalPortal", "disruptorCannon",
+  "automatedFactory", "hydroponicFarm", "researchLab", "biospheres", "deuteriumFuelCells", "fusionBeam", "fusionDrive",
+  "classIShield", "soilEnrichment", "tritaniumArmor", "spacePort", "cloningCenter", "optronicComputer", "missileBase",
+  "roboMinerPlant", "pollutionProcessor", "merculiteMissile", "iridiumFuelCells", "battleScanner", "terraforming",
+  "supercomputer", "planetaryStockExchange", "neutronBlaster", "classIIIShield", "ionDrive", "zortriumArmor",
+  "microbiotics", "planetaryRadiationShield", "roboticFactory", "positronicComputer", "autolab", "gravitonBeam",
+  "astroUniversity", "holoSimulator", "confederation", "federation", "galacticUnification", "imperium",
+  "heightenedIntelligence", "deepCoreMining", "androidWorkers", "classVShield", "neutroniumArmor", "phasor",
+  "antimatterDrive", "galacticNetwork", "advancedCityPlanning", "titanHull", "plasmaCannon", "cyberneticComputer",
+  "universalAntidote", "gaiaTransformation", "adamantiumArmor", "classVIIShield", "dimensionalPortal", "disruptorCannon",
+  "hyperDrive", "evolutionaryMutation", "doomStarHull", "classXShield", "stellarConverter",
 ];
 
 const rank = (tech: string) => {
@@ -21,15 +25,51 @@ const rank = (tech: string) => {
 
 export function researchOrders(view: PlayerView): Command[] {
   const player = me(view);
-  if (player.research.tierId) return [];
+  const out = mutationOrders(view);
+  if (player.research.tierId) return out;
   const tiers = availableTiers(view, view.viewer).map((id) => TIERS_BY_ID[id]!);
-  if (tiers.length === 0) return [];
+  if (tiers.length === 0) return out;
   const scored = tiers.map((t) => {
-    const best = [...t.techs].sort((a, b) => rank(a) - rank(b))[0]!;
-    // Wanted techs pull hard; otherwise prefer cheap tiers.
-    return { t, best, value: rank(best) * 40 + t.cost };
+    const options = researchOptions(player, t).filter((x) => !player.techs.includes(x));
+    const best = [...options].sort((a, b) => rank(a) - rank(b))[0];
+    const r = best ? rank(best) : PRIORITY.length + (t.hyper ? 10 : 0);
+    // Wanted applications pull hard; otherwise prefer cheap fields.
+    return { t, best, value: r * 40 + t.cost * 0.25 };
   });
   scored.sort((a, b) => a.value - b.value);
   const pick = scored[0]!;
-  return [{ type: "setResearch", tierId: pick.t.id, techId: pick.best }];
+  const whole = pick.t.hyper || learnsWholeField(player, pick.t);
+  out.push(whole || !pick.best ? { type: "setResearch", tierId: pick.t.id } : { type: "setResearch", tierId: pick.t.id, techId: pick.best });
+  return out;
+}
+
+/** Order in which the AI improves its race with Evolutionary Mutation. */
+const MUTATION_ORDER: NumericPick[] = ["science", "industry", "growth", "farming", "money", "shipAttack", "shipDefense", "groundCombat", "spying"];
+
+/** Spends mutation points greedily: drop drawbacks first, then raise the most useful picks. */
+export function mutationOrders(view: PlayerView): Command[] {
+  const player = me(view);
+  if (player.mutationPoints <= 0) return [];
+  const base = getRace(player.raceId).picks;
+  let picks: RacePicks = { ...base, traits: [...base.traits] };
+  const affordable = (next: RacePicks) => {
+    const cost = mutationCost(base, next);
+    return typeof cost === "number" && cost <= player.mutationPoints;
+  };
+  for (const t of base.traits) {
+    if ((TRAIT_COSTS[t]?.cost ?? 0) >= 0) continue;
+    const next = { ...picks, traits: picks.traits.filter((x) => x !== t) };
+    if (affordable(next)) picks = next;
+  }
+  for (const key of MUTATION_ORDER) {
+    const better = PICK_OPTIONS[key].options.filter((o) => o.value > picks[key]).sort((a, b) => b.value - a.value);
+    for (const o of better) {
+      const next = { ...picks, [key]: o.value };
+      if (affordable(next)) {
+        picks = next;
+        break;
+      }
+    }
+  }
+  return typeof mutationCost(base, picks) === "number" ? [{ type: "mutateRace", picks }] : [];
 }

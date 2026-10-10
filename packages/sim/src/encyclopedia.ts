@@ -1,6 +1,6 @@
 import { BUILDINGS, PROJECTS } from "./data/buildings.js";
 import { ARMORS, COMPUTERS, DRIVES, FUEL_RANGES, HULLS, SHIELDS, SPECIALS, WEAPONS } from "./data/components.js";
-import { TECHS, TECH_TIERS, TIER_OF_TECH, previousTier, type TechTier } from "./data/techs.js";
+import { TECHS, TIER_OF_TECH, nextTier, previousTier, type TechTier } from "./data/techs.js";
 import { MODULES } from "./designs.js";
 import type { DesignModule } from "./types.js";
 
@@ -72,12 +72,14 @@ export function techInfo(techId: string): TechInfo | null {
   return {
     tier,
     prerequisite: previousTier(tier),
-    leadsTo: TECH_TIERS.find((t) => t.field === tier.field && t.level === tier.level + 1) ?? null,
+    leadsTo: nextTier(tier),
     alternatives: tier.techs.filter((t) => t !== techId),
   };
 }
 
 /** Research points needed to reach and finish a tier, counting every earlier rung in its field. */
 export function cumulativeTierCost(tier: TechTier): number {
-  return TECH_TIERS.filter((t) => t.field === tier.field && t.level <= tier.level).reduce((sum, t) => sum + t.cost, 0);
+  let sum = 0;
+  for (let t: TechTier | null = tier; t; t = previousTier(t)) sum += t.cost;
+  return sum;
 }
