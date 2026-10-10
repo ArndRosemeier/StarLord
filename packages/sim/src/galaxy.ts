@@ -40,6 +40,7 @@ export function generateGalaxy(rng: Rng, size: GalaxySize, newId: (prefix: strin
       y: round1(y),
       color: rng.weighted(STAR_COLOR_WEIGHTS),
       planetIds: [],
+      special: null,
     });
   }
 

@@ -1,26 +1,25 @@
 import { CLIMATES, computeOutput, population, type Colony, type Command, type PlayerView } from "@starlord/sim";
-import { myColonies } from "./util.js";
-
-/** Share of non-farmers that do research. */
-const SCIENCE_SHARE = 0.35;
+import { me, myColonies, personality } from "./util.js";
 
 /**
  * Feeds the empire with as few farmers as possible, putting them where food
  * yield is best, then splits the rest between industry and research.
  */
 export function jobOrders(view: PlayerView): Command[] {
-  const me = view.players[view.viewer]!;
+  const player = me(view);
   const colonies = myColonies(view);
+  const share = personality(view).science;
   const plan = new Map<string, Colony>();
   for (const c of colonies) {
     const pop = population(c);
-    const sci = pop >= 3 ? Math.round(pop * SCIENCE_SHARE) : 0;
+    const sci = pop >= 3 ? Math.round(pop * share) : 0;
     plan.set(c.id, { ...c, farmers: 0, workers: pop - sci, scientists: sci });
   }
 
+  const ctx = { turn: view.turn };
   const foodYield = (c: Colony) => CLIMATES[view.planets[c.planetId]!.type].foodPerFarmer;
   const balance = () =>
-    [...plan.values()].reduce((sum, c) => sum + computeOutput(view.planets[c.planetId]!, me, c).foodNet, 0);
+    [...plan.values()].reduce((sum, c) => sum + computeOutput(view.planets[c.planetId]!, player, c, ctx).foodNet, 0);
 
   // Add farmers one at a time on the best farmland until the empire is fed.
   let guard = 0;

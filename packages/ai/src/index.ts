@@ -1,7 +1,12 @@
 import type { Command, PlayerView } from "@starlord/sim";
 import { colonizationOrders } from "./colonization.js";
+import { designOrders } from "./design.js";
+import { diplomacyOrders } from "./diplomacy.js";
+import { espionageOrders } from "./espionage.js";
 import { explorationOrders } from "./exploration.js";
 import { jobOrders } from "./jobs.js";
+import { leaderOrders } from "./leaders.js";
+import { militaryOrders } from "./military.js";
 import { productionOrders } from "./production.js";
 import { researchOrders } from "./research.js";
 
@@ -16,26 +21,56 @@ export interface Controller {
 
 /**
  * Areas of play that can be handed to the computer. The AI is simply every
- * domain switched on; a human player switches on only the ones they find dull.
+ * area switched on; a human player switches on only the ones they find dull.
  */
-export type AutomationDomain = "jobs" | "production" | "research" | "exploration" | "colonization";
+export type AutomationDomain =
+  | "jobs" | "production" | "research" | "exploration" | "colonization" | "design" | "military"
+  | "diplomacy" | "espionage" | "leaders";
 
-export const ALL_DOMAINS: AutomationDomain[] = ["jobs", "production", "research", "exploration", "colonization"];
-
-const MODULES: Record<AutomationDomain, (view: PlayerView) => Command[]> = {
-  jobs: jobOrders,
-  production: productionOrders,
-  research: researchOrders,
-  exploration: explorationOrders,
-  colonization: colonizationOrders,
+export const DOMAIN_INFO: Record<AutomationDomain, { name: string; description: string }> = {
+  jobs: { name: "Jobs", description: "Balance farmers, workers and scientists on every colony." },
+  production: { name: "Production", description: "Pick what each colony builds and rush items when rich." },
+  research: { name: "Research", description: "Choose the next technology." },
+  exploration: { name: "Exploration", description: "Send scouts to unexplored stars." },
+  colonization: { name: "Colonization", description: "Send colony and outpost ships to the best planets." },
+  design: { name: "Ship design", description: "Keep warship designs up to date with new technology." },
+  military: { name: "Military", description: "Defend colonies, attack enemies and clear monster lairs." },
+  diplomacy: { name: "Diplomacy", description: "Answer proposals, offer treaties and decide on war." },
+  espionage: { name: "Espionage", description: "Assign spies to steal technology or sabotage." },
+  leaders: { name: "Leaders", description: "Hire and assign leaders." },
 };
 
-export function createController(domains: AutomationDomain[] = ALL_DOMAINS): Controller {
+export const ALL_DOMAINS = Object.keys(DOMAIN_INFO) as AutomationDomain[];
+
+/** Order matters: designs before production, leaders before military merges fleets. */
+const MODULES: [AutomationDomain, (view: PlayerView) => Command[]][] = [
+  ["diplomacy", diplomacyOrders],
+  ["research", researchOrders],
+  ["design", designOrders],
+  ["jobs", jobOrders],
+  ["production", productionOrders],
+  ["exploration", explorationOrders],
+  ["colonization", colonizationOrders],
+  ["leaders", leaderOrders],
+  ["military", militaryOrders],
+  ["espionage", espionageOrders],
+];
+
+export function createController(domains: readonly AutomationDomain[] = ALL_DOMAINS): Controller {
+  const on = new Set(domains);
   return {
     orders(view) {
-      return domains.flatMap((d) => MODULES[d](view));
+      return MODULES.filter(([d]) => on.has(d)).flatMap(([, run]) => run(view));
     },
   };
 }
 
-export { colonizationTargets } from "./colonization.js";
+/** Orders for one player: full AI for computer empires, chosen areas for humans. */
+export function automationOrders(view: PlayerView): Command[] {
+  const p = view.players[view.viewer]!;
+  const domains = p.isHuman ? (p.automation.filter((d) => d in DOMAIN_INFO) as AutomationDomain[]) : ALL_DOMAINS;
+  return createController(domains).orders(view);
+}
+
+export { colonizationTargets, outpostTargets } from "./colonization.js";
+export { bestWarship } from "./design.js";
