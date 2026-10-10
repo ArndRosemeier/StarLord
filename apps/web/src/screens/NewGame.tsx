@@ -103,7 +103,7 @@ export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
               <button className="primary" onClick={() => start(false)}>Play as the {race.plural}</button>
               <button onClick={() => start(true)} title="All empires are run by the computer; you watch.">Watch an AI game</button>
               <label className="row" style={{ gap: 6 }}>
-                <span className="muted">or load a file</span>
+                <span className="muted">or load a save or replay file</span>
                 <input type="file" accept="application/json,.json" onChange={async (e) => {
                   const f = e.target.files?.[0];
                   if (f) load(await readSaveFile(f).catch((err: Error) => setError(err.message)));

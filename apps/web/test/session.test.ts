@@ -49,3 +49,16 @@ describe("GameSession", () => {
     expect(s.history).toHaveLength(5);
   });
 });
+
+describe("GameSession records", () => {
+  it("records every turn so the game can be replayed and verified", () => {
+    const s = GameSession.create(opts, 0);
+    s.issue({ type: "setTaxRate", rate: 0.3 });
+    for (let i = 0; i < 4; i++) s.endTurn();
+    expect(s.record!.turns).toHaveLength(4);
+    expect(s.verifyRecord().ok).toBe(true);
+    const watched = GameSession.fromJSON(JSON.parse(JSON.stringify(s.record)));
+    expect(watched.spectator).toBe(true);
+    expect(watched.state).toEqual(s.state);
+  });
+});

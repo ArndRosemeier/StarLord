@@ -9,7 +9,9 @@
     "sim": "tsx apps/cli/src/main.ts",
     "sim:events": "tsx apps/cli/src/stats.ts",
     "dev": "pnpm --filter @starlord/web dev",
-    "build": "pnpm --filter @starlord/web build"
+    "build": "pnpm --filter @starlord/web build",
+    "balance": "tsx apps/cli/src/balance.ts",
+    "replay": "tsx apps/cli/src/replay.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

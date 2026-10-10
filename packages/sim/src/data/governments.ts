@@ -18,7 +18,7 @@ export interface GovernmentDef {
 }
 
 export const GOVERNMENTS: Record<Government | AdvancedGovernment, GovernmentDef> = {
-  feudal: { name: "Feudal", foodMult: 1, industryMult: 1, researchMult: 0.5, bcMult: 1, shipCostMult: 0.67, morale: 0, ungarrisonedPenalty: 20, security: 0, advanced: "confederation" },
+  feudal: { name: "Feudal", foodMult: 1, industryMult: 1, researchMult: 0.67, bcMult: 1, shipCostMult: 0.67, morale: 0, ungarrisonedPenalty: 20, security: 0, advanced: "confederation" },
   dictatorship: { name: "Dictatorship", foodMult: 1, industryMult: 1, researchMult: 1, bcMult: 1, shipCostMult: 1, morale: 0, ungarrisonedPenalty: 20, security: 1, advanced: "imperium" },
   democracy: { name: "Democracy", foodMult: 1, industryMult: 1, researchMult: 1.2, bcMult: 1.5, shipCostMult: 1, morale: 0, ungarrisonedPenalty: 0, security: -1, advanced: "federation" },
   unification: { name: "Unification", foodMult: 1.25, industryMult: 1.25, researchMult: 1, bcMult: 1, shipCostMult: 1, morale: 0, ungarrisonedPenalty: 0, security: 2, advanced: "galacticUnification" },

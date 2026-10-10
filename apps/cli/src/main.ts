@@ -1,7 +1,8 @@
 import { parseArgs } from "node:util";
+import { writeFileSync } from "node:fs";
 import { automationOrders } from "@starlord/ai";
 import {
-  RACES_BY_ID, empireTotals, newGame, playerView, processTurn, score, stateHash,
+  RACES_BY_ID, empireTotals, newGame, newRecord, recordTurn, playerView, processTurn, score, stateHash,
   type GalaxySize, type GameState, type TurnOrders,
 } from "@starlord/sim";
 
@@ -15,6 +16,7 @@ const { values } = parseArgs({
     games: { type: "string", default: "1" },
     every: { type: "string", default: "25" },
     quiet: { type: "boolean", default: false },
+    record: { type: "string" },
     help: { type: "boolean", default: false },
   },
 });
@@ -29,18 +31,21 @@ if (values.help) {
   --turns <n>       turn limit (default 200)
   --games <n>       play several games and summarize race results
   --every <n>       print a status table every n turns (default 25)
-  --quiet           only print final results`);
+  --quiet           only print final results
+  --record <file>   save the game's record (options + every turn's orders) for pnpm replay`);
   process.exit(0);
 }
 
 function runGame(seed: string, verbose: boolean): GameState {
-  let state = newGame({
+  const options = {
     seed,
     galaxySize: values.galaxy as GalaxySize,
     playerCount: Number(values.players),
     races: values.races?.split(","),
     maxTurns: Number(values.turns),
-  });
+  };
+  let state = newGame(options);
+  const record = values.record ? newRecord(options) : null;
   const every = Number(values.every);
   const started = performance.now();
   while (!state.over) {
@@ -50,9 +55,14 @@ function runGame(seed: string, verbose: boolean): GameState {
       orders[p.id] = automationOrders(playerView(state, p.id));
     }
     state = processTurn(state, orders);
+    if (record) recordTurn(record, orders, state);
     if (verbose && (state.turn - 1) % every === 0) printTable(state);
   }
   const ms = performance.now() - started;
+  if (record) {
+    writeFileSync(values.record!, JSON.stringify(record));
+    if (verbose) console.log(`Recorded ${record.turns.length} turns to ${values.record}`);
+  }
   if (verbose) {
     if ((state.turn - 1) % every !== 0) printTable(state);
     const rejected = state.events.filter((e) => e.kind === "commandRejected").length;

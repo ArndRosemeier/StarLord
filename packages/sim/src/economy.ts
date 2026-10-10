@@ -9,7 +9,7 @@ import type { Colony, GameState, LeaderSkills, Planet, Player } from "./types.js
 export const TAX_PER_POP = 0.5;
 export const TRADE_GOODS_RATE = 0.5;
 /** Morale effect is capped in both directions. */
-export const MORALE_RANGE: [number, number] = [-50, 50];
+export const MORALE_RANGE: [number, number] = [-50, 30];
 export const UNREST_MORALE = -30;
 
 export function population(c: Colony): number {

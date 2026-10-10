@@ -27,6 +27,8 @@ pnpm sim --help
 pnpm sim --turns 200                  # one all-AI game with status tables
 pnpm sim --games 100 --turns 150      # batch run, race win rates
 pnpm sim:events --games 8             # what happens in a game: wars, invasions, spies, rejected commands
+pnpm balance --games 20               # balance report: empire growth over time, endings, race scores
+pnpm sim --turns 200 --record runs/g.json && pnpm replay runs/g.json   # record a game and verify its replay
 ```
 
 ## Design rules
@@ -40,6 +42,10 @@ pnpm sim:events --games 8             # what happens in a game: wars, invasions,
 - **The UI is just another player.** The browser holds the game, queues the human's
   commands for the turn and shows `playerView` with those commands already applied
   (`previewOrders`), so screens never touch the state directly.
+- **Games are records.** A game is its starting options plus every turn's orders
+  (`GameRecord`), with a state hash per turn. Replays rebuild it exactly, and the lockstep
+  host/peer in `packages/sim/src/lockstep.ts` sends only orders between players and compares
+  hashes to catch desyncs. That's the groundwork for multiplayer.
 - **Renderer behind an interface.** Screens hand the map a `MapScene`; `PixiMapRenderer`
   draws it in 2D and a three.js renderer can implement the same `MapRenderer` interface.
 - **Rules are data.** Races, planets, buildings, techs, ships and governments live in `packages/sim/src/data`.

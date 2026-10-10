@@ -30,6 +30,11 @@ export function GameMenu({ onQuit }: { onQuit: () => void }) {
         </div>
         <div className="row">
           <button onClick={() => downloadSave(session.toJSON(), `starlord-${view.seed}-t${view.turn}.json`)}>Download save file</button>
+          {session.record && (
+            <button title="Every turn's orders from the start. Load it from the title screen to watch the game again."
+              onClick={() => downloadSave(session.record!, `starlord-${view.seed}-replay.json`)}>Download replay</button>
+          )}
+          <button onClick={() => setMessage(session.verifyRecord().message)}>Verify replay</button>
           <button className="danger" onClick={() => confirm("Quit to the title screen? Unsaved progress is lost.") && onQuit()}>Quit to title</button>
         </div>
         {message && <div>{message}</div>}

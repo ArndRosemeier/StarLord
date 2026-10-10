@@ -30,8 +30,10 @@ export function jobOrders(view: PlayerView): Command[] {
     const c = candidates[0];
     if (!c) break;
     c.farmers++;
-    if (c.workers > 0) c.workers--;
-    else c.scientists--;
+    // Keep the industry/research split the empire wants among whoever is left.
+    const rest = c.workers + c.scientists;
+    if (c.scientists > 0 && (c.workers === 0 || c.scientists > Math.round((rest - 1) * share))) c.scientists--;
+    else c.workers--;
   }
 
   const out: Command[] = [];

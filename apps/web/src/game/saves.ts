@@ -1,3 +1,4 @@
+import type { GameRecord } from "@starlord/sim";
 import type { SavedGame } from "./session";
 
 /** Save slots in browser storage, plus file export/import. */
@@ -43,7 +44,7 @@ export function deleteSave(name: string): void {
   localStorage.setItem(INDEX_KEY, JSON.stringify(listSaves().filter((s) => s.name !== name)));
 }
 
-export function downloadSave(save: SavedGame, filename: string): void {
+export function downloadSave(save: SavedGame | GameRecord, filename: string): void {
   const blob = new Blob([JSON.stringify(save)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

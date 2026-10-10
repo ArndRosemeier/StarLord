@@ -59,27 +59,27 @@ export const RACES: RaceDef[] = [
   race(
     { id: "kyrrin", name: "Kyrrin", plural: "Kyrrin", archetype: "Avian pilots", color: "#d9b44a", assetKey: "kyrrin",
       description: "Hollow-boned flyers whose evasive instincts make their warships hard to hit. Their homeworld hides relics of an older age." },
-    { shipDefense: 3, government: "dictatorship", traits: ["artifactsHomeworld"] },
+    { growth: 0.5, shipDefense: 3, government: "dictatorship", traits: ["artifactsHomeworld"] },
   ),
   race(
     { id: "gorvath", name: "Gorvath", plural: "Gorvath", archetype: "Heavy-world brutes", color: "#8a5a3c", assetKey: "gorvath",
       description: "Massive omnivores from a crushing world, fearsome in boarding actions and ground assaults." },
-    { shipAttack: 1, groundCombat: 2, government: "dictatorship", traits: ["highG", "largeHomeworld"] },
+    { farming: 0.5, shipAttack: 1, groundCombat: 2, government: "dictatorship", traits: ["highG", "largeHomeworld"] },
   ),
   race(
     { id: "shadar", name: "Shadar", plural: "Shadar", archetype: "Shapeshifting spies", color: "#5a4a7a", assetKey: "shadar",
       description: "Mimics who wear other faces. Their agents are everywhere and their ships slip past sensors." },
-    { spying: 3, government: "dictatorship", traits: ["stealthy"] },
+    { industry: 1, spying: 3, government: "dictatorship", traits: ["stealthy"] },
   ),
   race(
     { id: "lysari", name: "Lysari", plural: "Lysari", archetype: "Telepathic matriarchy", color: "#4a7ad9", assetKey: "lysari",
       description: "A warrior sisterhood of mind-readers. They see the whole galaxy and bend minds to their will." },
-    { farming: -0.5, shipAttack: 1, shipDefense: 1, government: "feudal", traits: ["telepathic", "omniscient"] },
+    { science: 1, shipAttack: 1, shipDefense: 1, government: "feudal", traits: ["telepathic", "omniscient"] },
   ),
   race(
     { id: "quillan", name: "Quillan", plural: "Quillan", archetype: "Amphibian merchant clans", color: "#c97a2a", assetKey: "quillan",
       description: "Bejeweled amphibian traders with uncanny luck. Every deal in the galaxy passes through their webbed hands." },
-    { money: 1, government: "dictatorship", traits: ["lowG", "fantasticTraders", "lucky"] },
+    { growth: 0.5, money: 1, government: "dictatorship", traits: ["lowG", "fantasticTraders", "lucky"] },
   ),
   race(
     { id: "terran", name: "Terrans", plural: "Terrans", archetype: "Diplomatic generalists", color: "#3a9ad9", assetKey: "terran",
@@ -99,7 +99,7 @@ export const RACES: RaceDef[] = [
   race(
     { id: "felhari", name: "Felhari", plural: "Felhari", archetype: "Feline warrior caste", color: "#d94a2a", assetKey: "felhari",
       description: "Proud hunters with the sharpest gunners in known space. Their admirals are legends." },
-    { shipAttack: 3, government: "dictatorship", traits: ["warlord"] },
+    { industry: 1, shipAttack: 3, government: "dictatorship", traits: ["warlord"] },
   ),
   race(
     { id: "ythari", name: "Ythari", plural: "Ythari", archetype: "Scholar savants", color: "#9a4ad9", assetKey: "ythari",
