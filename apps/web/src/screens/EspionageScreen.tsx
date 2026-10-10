@@ -1,6 +1,6 @@
 import { securityLevel, spyingLevel, type SpyMission } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
-import { words } from "../ui/format";
+import { fmt, words } from "../ui/format";
 
 export function EspionageScreen() {
   const { session, view, me, readOnly } = useGame();
@@ -21,8 +21,8 @@ export function EspionageScreen() {
         <h2>Espionage</h2>
         <div className="row">
           <span className="chip">Spies at home: <b>{me.spies.home}</b> <span className="spy-chip">{Array.from({ length: Math.min(12, me.spies.home) }, (_, i) => <i key={i} />)}</span></span>
-          <span className="chip">Spying level {spyingLevel(me)}</span>
-          <span className="chip">Security level {securityLevel(view, me.id)}</span>
+          <span className="chip">Spying level {fmt(spyingLevel(me, view), 1)}</span>
+          <span className="chip">Security level {fmt(securityLevel(view, me.id), 1)}</span>
         </div>
         <div className="muted">
           Spies at home protect you from enemy agents. Train more with the "Train Spy" project in any colony's build queue.

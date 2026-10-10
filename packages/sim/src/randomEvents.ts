@@ -2,6 +2,8 @@ import type { TurnContext } from "./context.js";
 import { population } from "./economy.js";
 import { TECHS, TECH_TIERS } from "./data/techs.js";
 import { grantTech } from "./empire.js";
+import { TRAIT_EFFECTS } from "./data/racePicks.js";
+import { getRace, hasTrait } from "./data/races.js";
 
 /** Occasional galactic events, MoO2-style. About one every 25 turns. */
 export const EVENT_CHANCE = 0.04;
@@ -13,7 +15,11 @@ export function randomEventTick(ctx: TurnContext): void {
   if (empires.length === 0) return;
   const p = rng.pick(empires);
   const colonies = Object.values(state.colonies).filter((c) => c.ownerId === p.id && !c.outpost);
-  const kind = rng.weighted({ plague: 2, gold: 3, derelict: 2, comet: 1, boom: 2 });
+  // Lucky races are spared the bad events and see the good ones more often.
+  const lucky = hasTrait(getRace(p.raceId), "lucky");
+  const good = lucky ? TRAIT_EFFECTS.luckyGoodEvents : 1;
+  const bad = lucky ? 0 : 1;
+  const kind = rng.weighted({ plague: 2 * bad, gold: 3 * good, derelict: 2 * good, comet: 1 * bad, boom: 2 * good });
   switch (kind) {
     case "plague": {
       const c = colonies.length ? rng.pick(colonies) : undefined;

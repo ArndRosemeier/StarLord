@@ -1,3 +1,6 @@
+import { TRAIT_EFFECTS } from "./data/racePicks.js";
+import { leaderTradeBonus } from "./leaders.js";
+import { treatyIncomeMult } from "./raceEffects.js";
 import { getRace, hasTrait } from "./data/races.js";
 import { empires, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
@@ -51,6 +54,11 @@ export function attitude(state: GameState, a: PlayerId, b: PlayerId): number {
 }
 
 export function adjustAttitude(state: GameState, a: PlayerId, b: PlayerId, delta: number): void {
+  // Others take a charismatic race's good deeds twice as warmly and its slights half as hard.
+  const other = state.players[b];
+  if (other?.kind === "empire" && hasTrait(getRace(other.raceId), "charismatic")) {
+    delta *= delta > 0 ? TRAIT_EFFECTS.charismaticGood : TRAIT_EFFECTS.charismaticBad;
+  }
   const row = (state.attitude[a] ??= {});
   row[b] = Math.max(-100, Math.min(100, (row[b] ?? 0) + delta));
 }
@@ -117,7 +125,6 @@ export function attitudeBaseline(state: GameState, a: PlayerId, b: PlayerId): nu
   const raceB = getRace(state.players[b]!.raceId);
   const raceA = getRace(state.players[a]!.raceId);
   let base = 0;
-  if (hasTrait(raceB, "charismatic")) base += 20;
   if (hasTrait(raceB, "repulsive")) base -= 20;
   if (raceA.id === raceB.id) base += 5;
   if (r.status === "war") base -= 30;
@@ -200,7 +207,8 @@ export function treatyIncome(
   const out: TreatyIncome = { bc: 0, research: 0 };
   const me = totals.get(playerId);
   if (!me) return out;
-  const traders = hasTrait(getRace(state.players[playerId]!.raceId), "fantasticTraders") ? 2 : 1;
+  // Fantastic traders earn 25% more from trade treaties, Trader leaders their skill in % on top.
+  const traders = treatyIncomeMult(getRace(state.players[playerId]!.raceId)) + leaderTradeBonus(state, playerId) / 100;
   for (const other of empires(state)) {
     if (other.id === playerId || !other.alive) continue;
     const r = relation(state, playerId, other.id);

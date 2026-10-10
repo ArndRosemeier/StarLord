@@ -7,6 +7,10 @@ import { fleetRange, fleetSpeed } from "./empire.js";
 import { population } from "./economy.js";
 import { distance } from "./galaxy.js";
 import { MAX_LEADERS } from "./data/leaders.js";
+import { hullIndex } from "./data/components.js";
+import { TRAIT_EFFECTS } from "./data/racePicks.js";
+import { getRace, hasTrait } from "./data/races.js";
+import { hasRoomFor, hiredLeaders, hirePrice } from "./leaders.js";
 import {
   availableBuildings, canBuildShips, availableDesigns, availableProjects, availableTiers, itemCost, researchOptions, starOf,
 } from "./rules.js";
@@ -162,7 +166,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
         const d = findDesign(player, s.designId);
         return n + (d ? designStats(player, d).troops * s.count : 0);
       }, 0);
-      if (troops <= 0) return fail("fleet carries no troops");
+      if (troops <= 0 && !canMindControl(state, f, c)) return fail("fleet carries no troops");
       return OK;
     }
     case "splitFleet": {
@@ -237,15 +241,16 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       return OK;
     }
     case "hireLeader": {
-      const l = player.leaderOffers.find((x) => x.id === cmd.leaderId);
-      if (!l) return fail("no such offer");
-      if (player.bc < l.hireCost) return fail("not enough BC");
-      if (Object.values(state.leaders).filter((x) => x.ownerId === playerId).length >= MAX_LEADERS) return fail("too many leaders");
+      const l = state.leaders[cmd.leaderId];
+      if (!l || l.status !== "offered" || l.offeredTo !== playerId) return fail("no such offer");
+      if (player.bc < hirePrice(state, playerId, l)) return fail("not enough BC");
+      if (hiredLeaders(state, playerId).length >= MAX_LEADERS) return fail("too many leaders");
+      if (!hasRoomFor(state, playerId, l.kind)) return fail(`too many ${l.kind === "captain" ? "ship officers" : "colony leaders"}`);
       return OK;
     }
     case "assignLeader": {
       const l = state.leaders[cmd.leaderId];
-      if (!l || l.ownerId !== playerId) return fail("not your leader");
+      if (!l || l.ownerId !== playerId || l.status !== "hired") return fail("not your leader");
       if (cmd.targetId === null) return OK;
       if (l.kind === "captain") return ownFleet(state, playerId, cmd.targetId) ? OK : fail("captains command your fleets");
       const owns = Object.values(state.colonies).some(
@@ -255,7 +260,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
     }
     case "dismissLeader": {
       const l = state.leaders[cmd.leaderId];
-      return l && l.ownerId === playerId ? OK : fail("not your leader");
+      return l && l.ownerId === playerId && l.status === "hired" ? OK : fail("not your leader");
     }
     case "setCouncilVote":
       if (cmd.vote === "abstain" || cmd.vote === "auto") return OK;
@@ -263,6 +268,20 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
     case "setAutomation":
       return Array.isArray(cmd.domains) ? OK : fail("bad automation list");
   }
+}
+
+/**
+ * Whether a telepathic empire's fleet can take a colony by mind control: a
+ * cruiser or larger in orbit, and a colony of a race that is not telepathic
+ * itself. Defenses must be down, as for any invasion.
+ */
+export function canMindControl(state: GameState, f: Fleet, colony: Colony): boolean {
+  const owner = state.players[f.ownerId]!;
+  if (!hasTrait(getRace(owner.raceId), "telepathic") || hasTrait(getRace(colony.raceId), "telepathic")) return false;
+  return f.ships.some((s) => {
+    const d = findDesign(owner, s.designId);
+    return !!d && hullIndex(d.hull) >= TRAIT_EFFECTS.telepathicMindControlSize;
+  });
 }
 
 export function shipsBuilt(state: GameState, playerId: PlayerId, designId: string): boolean {
