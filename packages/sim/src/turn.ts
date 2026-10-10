@@ -4,7 +4,7 @@ import { GOVERNMENTS } from "./data/governments.js";
 import type { PlanetType } from "./data/planets.js";
 import { getRace, hasTrait, registerRaces } from "./data/races.js";
 import { RESEARCH, TECHS, TIERS_BY_ID, TIER_OF_TECH, emptyHyperLevels } from "./data/techs.js";
-import { bombardment, planetDefense, resolveCombat, type CombatSide } from "./combat.js";
+import { bombardment, colonyDefenseStrength, hasArmedDefenses, resolveCombat, type CombatSide } from "./combat.js";
 import { blocksInvasion, buyCost, validateCommand, type Command } from "./commands.js";
 import { newId, type TurnContext } from "./context.js";
 import { councilTick } from "./council.js";
@@ -338,12 +338,10 @@ function moveFleets(ctx: TurnContext): void {
       const speed = portal ? Infinity : interdictedSpeed(state, f, dest, fleetSpeed(owner));
       const d = distance(f, dest);
       if (d <= speed) {
-        const arriving = f.starId !== dest.id;
         f.x = dest.x;
         f.y = dest.y;
         f.starId = dest.id;
         f.destStarId = null;
-        if (arriving) mineField(ctx, f);
       } else {
         f.x += ((dest.x - f.x) / d) * speed;
         f.y += ((dest.y - f.y) / d) * speed;
@@ -396,40 +394,6 @@ function interdictedSpeed(state: GameState, f: Fleet, dest: { x: number; y: numb
   return Math.min(speed, moved);
 }
 
-/** Mines around a hostile colony's system may hit every ship arriving there. */
-function mineField(ctx: TurnContext, f: Fleet): void {
-  const { state, rng } = ctx;
-  const owner = state.players[f.ownerId]!;
-  for (const c of Object.values(state.colonies)) {
-    if (state.planets[c.planetId]!.starId !== f.starId || !isHostile(state, f.ownerId, c.ownerId)) continue;
-    for (const id of c.buildings) {
-      const mines = BUILDINGS_BY_ID[id]?.effects.mines;
-      if (!mines || !state.fleets[f.id]) continue;
-      let lost = 0;
-      for (const s of [...f.ships]) {
-        const d = findDesign(owner, s.designId);
-        if (!d) continue;
-        const stats = designStats(owner, d);
-        let killed = 0;
-        for (let i = 0; i < s.count; i++) {
-          if (!rng.chance(mines.chance[d.hull] ?? 1)) continue;
-          const damage = rng.int(mines.minDamage, mines.maxDamage) - stats.shield;
-          // Ships carry no damage between turns, so only a hit that destroys the ship counts.
-          if (damage >= stats.hits) killed++;
-        }
-        if (killed > 0) {
-          lost += killed;
-          removeShips(state, f, s.designId, killed);
-        }
-      }
-      if (lost > 0) {
-        ctx.emit({ kind: "random", playerId: c.ownerId, what: `Mines around ${c.name} destroyed ${lost} enemy ship${lost === 1 ? "" : "s"}.` });
-        if (owner.kind === "empire") ctx.emit({ kind: "random", playerId: f.ownerId, what: `Mines around ${c.name} destroyed ${lost} of our ships.` });
-      }
-    }
-  }
-}
-
 function explore(ctx: TurnContext, playerId: PlayerId, starId: Id): void {
   const p = ctx.state.players[playerId]!;
   if (p.explored.includes(starId)) return;
@@ -458,7 +422,7 @@ function combatPhase(ctx: TurnContext): Silenced {
 
   for (const starId of [...stars].sort()) {
     for (let guard = 0; guard < 6; guard++) {
-      const pair = nextBattle(state, starId);
+      const pair = nextBattle(state, starId, silenced);
       if (!pair) break;
       const [a, b] = pair;
       const outcome = resolveCombat(state, rng, starId, a, b, newId(state, "cb"));
@@ -470,19 +434,23 @@ function combatPhase(ctx: TurnContext): Silenced {
       }
     }
   }
-  // Colonies without any orbital defense are open to attack-stance fleets.
+  // Colonies without a station or armed ground defenses are open to attack-stance fleets.
   for (const c of Object.values(state.colonies)) {
-    if (planetDefense(c).hits <= 0 && planetDefense(c).beams <= 0 && planetDefense(c).missiles <= 0) silenced.add(c.id);
+    if (!hasArmedDefenses(c)) silenced.add(c.id);
   }
   return silenced;
 }
 
-function sideAt(state: GameState, starId: Id, ownerId: PlayerId): CombatSide {
+function sideAt(state: GameState, starId: Id, ownerId: PlayerId, silenced: Silenced): CombatSide {
   const fleets = Object.values(state.fleets).filter((f) => f.starId === starId && f.ownerId === ownerId);
   const colonies = Object.values(state.colonies).filter(
     (c) => c.ownerId === ownerId && state.planets[c.planetId]!.starId === starId,
   );
-  const colony = colonies.sort((x, y) => planetDefense(y).hits - planetDefense(x).hits)[0];
+  // A colony whose defenses were beaten this turn does not rise again until next turn.
+  const colony = colonies
+    .filter((c) => !silenced.has(c.id))
+    .map((c) => ({ c, s: colonyDefenseStrength(state, c) }))
+    .sort((x, y) => y.s - x.s || (x.c.id < y.c.id ? -1 : 1))[0]?.c;
   const owner = state.players[ownerId]!;
   return {
     ownerId,
@@ -493,7 +461,7 @@ function sideAt(state: GameState, starId: Id, ownerId: PlayerId): CombatSide {
 }
 
 /** Finds the next pair of hostile parties at a star that will fight, if any. */
-function nextBattle(state: GameState, starId: Id): [CombatSide, CombatSide] | null {
+function nextBattle(state: GameState, starId: Id, silenced: Silenced): [CombatSide, CombatSide] | null {
   const owners = new Set<PlayerId>();
   for (const f of Object.values(state.fleets)) if (f.starId === starId) owners.add(f.ownerId);
   for (const c of Object.values(state.colonies)) if (state.planets[c.planetId]!.starId === starId) owners.add(c.ownerId);
@@ -501,19 +469,15 @@ function nextBattle(state: GameState, starId: Id): [CombatSide, CombatSide] | nu
   for (let i = 0; i < list.length; i++) {
     for (let j = i + 1; j < list.length; j++) {
       if (!isHostile(state, list[i]!, list[j]!)) continue;
-      const a = sideAt(state, starId, list[i]!);
-      const b = sideAt(state, starId, list[j]!);
+      const a = sideAt(state, starId, list[i]!, silenced);
+      const b = sideAt(state, starId, list[j]!, silenced);
       if (wantsFight(state, a, b) || wantsFight(state, b, a)) return [a, b];
     }
   }
   return null;
 }
 
-function hasDefenses(c: Colony | undefined): boolean {
-  if (!c) return false;
-  const d = planetDefense(c);
-  return d.beams > 0 || d.missiles > 0;
-}
+const hasDefenses = hasArmedDefenses;
 
 function wantsFight(state: GameState, me: CombatSide, them: CombatSide): boolean {
   const armedFleets = me.fleets.some((f) => isArmed(state, f));
@@ -531,6 +495,24 @@ function applyCombat(
   outcome: ReturnType<typeof resolveCombat>,
 ): void {
   const { state } = ctx;
+  // A destroyed orbital station is gone for good.
+  for (const colonyId of outcome.stationsLost) {
+    const c = state.colonies[colonyId];
+    if (c) c.buildings = c.buildings.filter((b) => !BUILDINGS_BY_ID[b]?.effects.defense?.station);
+  }
+  // Boarded ships join the captor's fleet under a copy of their design.
+  for (const cap of outcome.captured) {
+    const from = state.players[cap.fromOwner]!;
+    const to = state.players[cap.ownerId]!;
+    const design = findDesign(from, cap.designId);
+    const fleetShips = outcome.survivors.get(cap.fleetId);
+    if (!design || !fleetShips || design.fixed) continue;
+    const id = `cap${cap.fromOwner}-${design.id}`;
+    if (!findDesign(to, id)) to.designs.push({ ...structuredClone(design), id, name: `${design.name} (captured)`, obsolete: true });
+    const stack = fleetShips.find((x) => x.designId === id);
+    if (stack) stack.count++;
+    else fleetShips.push({ designId: id, count: 1 });
+  }
   for (const [fleetId, ships] of outcome.survivors) {
     const f = state.fleets[fleetId];
     if (!f) continue;

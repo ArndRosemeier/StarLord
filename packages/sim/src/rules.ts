@@ -6,7 +6,8 @@ import { TECHS, TECH_TIERS, previousTier, type TechTier } from "./data/techs.js"
 import { designStats, validateDesign } from "./designs.js";
 import { knows } from "./empire.js";
 import { canFarm, capitalLost, maxPopulation, population, totalPopulation } from "./economy.js";
-import type { BuildItem, Colony, GameState, Id, Planet, Player, PlayerId } from "./types.js";
+import type { BuildItem, Colony, GameState, Id, Planet, Player, PlayerId, ShipDesign } from "./types.js";
+import { STATION_DOCK_HULLS } from "./data/components.js";
 
 /** Derived rules: what a player can currently build, research and reach. */
 
@@ -150,8 +151,20 @@ export function isContinuous(item: BuildItem): boolean {
   return item.kind === "tradeGoods" || (item.kind === "project" && item.id === "housing");
 }
 
-export function canBuildShips(colony: Colony): boolean {
-  return !colony.outpost && population(colony) >= 1;
+/** Whether a colony has an orbital station, whose star dock builds ships larger than destroyers. */
+export function hasStarDock(colony: Colony): boolean {
+  return colony.buildings.some((b) => !!BUILDINGS_BY_ID[b]?.effects.defense?.station);
+}
+
+/**
+ * Whether a colony can build ships at all, or a given design: cruisers and
+ * larger warships need an orbital station. Support ships (colony, outpost and
+ * troop ships) can be built anywhere.
+ */
+export function canBuildShips(colony: Colony, design?: ShipDesign): boolean {
+  if (colony.outpost || population(colony) < 1) return false;
+  if (!design || design.module) return true;
+  return !STATION_DOCK_HULLS.includes(design.hull) || hasStarDock(colony);
 }
 
 export function starOf(state: GameState, planetId: Id) {

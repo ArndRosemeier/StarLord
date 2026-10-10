@@ -53,14 +53,14 @@ describe("combat", () => {
     expect(run().report.winner).toBe(0);
   });
 
-  it("fights at war, bombs nothing without bombs, and planets shoot back", () => {
+  it("fights at war, bombs nothing without bombs, and the home star base shoots back", () => {
     let s = twoEmpires();
     s.relations["0-1"] = { status: "war", trade: false, research: false, since: 1 };
     const star = s.players[1]!.homeStarId;
     addFleet(s, 0, star, [{ designId: "frigate", count: 3 }], "attack");
     s = processTurn(s, {});
     expect(s.combats.length).toBeGreaterThan(0);
-    expect(s.combats[0]!.ships.some((x) => x.isPlanet)).toBe(true);
+    expect(s.combats[0]!.ships.some((x) => x.kind === "station" && x.hullId === "starBase")).toBe(true);
   });
 
   it("leaves empires at peace alone", () => {

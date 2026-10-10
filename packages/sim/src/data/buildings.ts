@@ -1,4 +1,3 @@
-import type { HullSize } from "./components.js";
 import type { Minerals } from "./planets.js";
 
 /** Colony buildings. Effects are declarative so the economy code stays generic. */
@@ -53,12 +52,12 @@ export interface BuildingEffects {
   crew?: { startLevels: number; xpPerTurn: number };
   /** Hostile fleets within this many parsecs of the star crawl at `INTERDICTED_SPEED`. */
   interdictRadius?: number;
-  /** Mines that may hit every hostile ship entering the system, see `MineField`. */
-  mines?: MineField;
   /** Ground troops and biological weapons can't get through. */
   blocksInvasion?: boolean;
   /** A radiated world under this shield becomes barren. */
   radiatedToBarren?: boolean;
+  /** Parsecs added to scanner range around this colony. */
+  scanRange?: number;
 }
 
 export interface TroopTraining {
@@ -69,25 +68,15 @@ export interface TroopTraining {
   capOfMaxPop: number;
 }
 
-export interface MineField {
-  /** Chance per ship to be hit, by hull size. */
-  chance: Record<HullSize, number>;
-  /** Damage range of a hit, before the ship's shield. */
-  minDamage: number;
-  maxDamage: number;
-}
-
 export interface PlanetDefense {
-  /** Hit points added to the planet's orbital defenses. */
-  hits?: number;
-  /** Damage blocked per hit. */
+  /** Orbital station that fights as its own unit, fitted with the owner's best weapons. */
+  station?: "starBase" | "battlestation" | "starFortress";
+  /** Ground installation on the planet unit: 300 space of the best beams or missiles. */
+  installation?: "groundBatteries" | "missileBase";
+  /** Space mines that strike attacking ships as a battle opens. */
+  mines?: boolean;
+  /** Damage taken off every hit on the planet. */
   shield?: number;
-  /** Number of beam batteries firing best-known beam weapon. */
-  beams?: number;
-  /** Missile launchers firing best-known missile. */
-  missiles?: number;
-  /** Bonus to hit. */
-  attack?: number;
   /**
    * Interceptors based on the planet. Once Bomber Bays or Heavy Fighter Bays
    * are known they are replaced by fewer, stronger craft: see
@@ -122,12 +111,6 @@ export const FIGHTER_GARRISON = {
 /** Fleet speed in parsecs per turn inside an enemy Warp Interdictor's field. */
 export const INTERDICTED_SPEED = 1;
 
-const ARTEMIS_MINES: MineField = {
-  chance: { frigate: 0.2, destroyer: 0.3, cruiser: 0.4, battleship: 0.5, titan: 0.8, doomStar: 1 },
-  minDamage: 100,
-  maxDamage: 500,
-};
-
 export const BUILDINGS: BuildingDef[] = [
   // Government
   { id: "capitol", name: "Capitol", cost: 200, maintenance: 0, requires: "capitol",
@@ -140,22 +123,21 @@ export const BUILDINGS: BuildingDef[] = [
   { id: "armorBarracks", name: "Armor Barracks", cost: 150, maintenance: 2, requires: "armorBarracks",
     effects: { troops: 2, training: { kind: "tanks", every: 10, capOfMaxPop: 0.5 }, garrison: true },
     description: "Starts with 2 tank battalions and adds one every 10 turns, up to half the maximum population. Lifts the feudal and dictatorial morale penalty." },
-  { id: "starBase", name: "Star Base", cost: 120, maintenance: 2, requires: "starBase",
-    effects: { commandPoints: 1, defense: { hits: 50, beams: 2, missiles: 1, attack: 10 } }, description: "Orbital station. +1 command point." },
-  { id: "battlestation", name: "Battlestation", cost: 250, maintenance: 3, requires: "battlestation", replaces: ["starBase"],
-    effects: { commandPoints: 2, defense: { hits: 150, beams: 4, missiles: 2, attack: 20 } }, description: "Upgraded orbital station. +2 command points." },
-  { id: "starFortress", name: "Star Fortress", cost: 500, maintenance: 4, requires: "starFortress", replaces: ["starBase", "battlestation"],
-    effects: { commandPoints: 3, defense: { hits: 400, beams: 8, missiles: 4, attack: 30 } }, description: "Massive orbital fortress. +3 command points." },
+  { id: "starBase", name: "Star Base", cost: 400, maintenance: 2, requires: "starBase",
+    effects: { commandPoints: 1, scanRange: 2, defense: { station: "starBase" } }, description: "Armed orbital station and star dock: ships larger than destroyers can be built here. +1 command point, +2 parsec scanner range." },
+  { id: "battlestation", name: "Battlestation", cost: 1000, maintenance: 3, requires: "battlestation", replaces: ["starBase"],
+    effects: { commandPoints: 2, scanRange: 4, defense: { station: "battlestation" } }, description: "Heavier orbital station and star dock. +2 command points, +4 parsec scanner range, +10 beam attack for your ships fighting here." },
+  { id: "starFortress", name: "Star Fortress", cost: 2500, maintenance: 4, requires: "starFortress", replaces: ["starBase", "battlestation"],
+    effects: { commandPoints: 3, scanRange: 6, defense: { station: "starFortress" } }, description: "Massive orbital fortress and star dock. +3 command points, +6 parsec scanner range, +20 beam attack and defense for your ships fighting here." },
   { id: "missileBase", name: "Planetary Missile Base", cost: 120, maintenance: 2, requires: "missileBase",
-    effects: { defense: { hits: 50, missiles: 3 } }, description: "Ground-based missile launchers." },
+    effects: { defense: { installation: "missileBase" } }, description: "300 space of your best missiles on the planet, never out of ammunition." },
   { id: "groundBatteries", name: "Ground Batteries", cost: 200, maintenance: 2, requires: "groundBatteries",
-    effects: { defense: { hits: 80, beams: 4 } }, description: "Heavy ground-based beam guns." },
+    effects: { defense: { installation: "groundBatteries" } }, description: "300 space of heavy-mount and point-defense versions of your best beam on the planet." },
   { id: "fighterGarrison", name: "Fighter Garrison", cost: 150, maintenance: 2, requires: "fighterGarrison",
     effects: { defense: { fighters: FIGHTER_GARRISON.interceptors } },
     description: "Planet-based squadrons: 10 interceptors, or 6 bombers or 4 heavy fighters once those are known. Losses are replaced during long battles." },
   { id: "artemisSystemNet", name: "Artemis System Net", cost: 1000, maintenance: 5, requires: "artemisSystemNet",
-    effects: { mines: ARTEMIS_MINES },
-    description: "A minefield around the system. Every hostile ship arriving may be hit, the bigger the likelier, for 100–500 damage less its shield." },
+    effects: { defense: { mines: true } }, description: "Space mines that strike attacking ships as a battle opens; bigger ships are hit more often and harder." },
   { id: "radiationShield", name: "Planetary Radiation Shield", cost: 80, maintenance: 1, requires: "planetaryRadiationShield",
     effects: { defense: { shield: 5 }, radiatedToBarren: true }, description: "Blocks 5 damage per hit against the planet. A radiated world under it becomes barren." },
   { id: "fluxShield", name: "Planetary Flux Shield", cost: 200, maintenance: 3, requires: "planetaryFluxShield", replaces: ["radiationShield"],

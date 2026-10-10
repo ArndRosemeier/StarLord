@@ -3,8 +3,8 @@ import { ALL_DOMAINS, DOMAIN_INFO } from "@starlord/ai";
 import {
   ADMIN_SKILLS, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, CAPTAIN_SKILLS, CAPTURE_THRESHOLD, COMMAND_OVERAGE_COST,
   COUNCIL_FIRST, COUNCIL_INTERVAL, COUNCIL_MAJORITY, EVENT_CHANCE, FIELD_HEIGHT, FIELD_WIDTH, GROUND_BASE, GROUND_PER_LEVEL,
-  LEADER_OFFER_INTERVAL, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MORALE_RANGE, POP_PER_BOMB_DAMAGE, PROPOSAL_LIFETIME, RESEARCH,
-  SKILL_PER_LEVEL, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_PER_POP, TAX_STEPS, TRADE_GOODS_RATE, UNREST_MORALE,
+  LEADER_OFFER_INTERVAL, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, POP_PER_BOMB_DAMAGE, PROPOSAL_LIFETIME, RESEARCH,
+  SKILL_PER_LEVEL, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_PER_POP, TAX_STEPS, TRADE_GOODS_RATE, FREIGHTERS, ANDROIDS, ASSIMILATION, TAX_BC_PER_INDUSTRY, PROJECT_COSTS,
 } from "@starlord/sim";
 import { fmt, pct, words } from "../ui/format";
 import type { GuideSlug } from "./entries";
@@ -90,7 +90,16 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Every unit of population works as a farmer, worker or scientist. Farmers grow food according to the planet's
         climate, workers make industry according to its minerals, and scientists make research (3 points each before
         bonuses). Race picks, techs, buildings, the government, morale, gravity and an administrator all modify the
-        result. See <HelpLink to="page:planets" /> and <HelpLink to="page:planetTraits" />.
+        result, but every unit makes at least 1, farmers only where farming is possible at all: barren, radiated, toxic
+        and inferno worlds grow nothing until Biomorphic Fungi. See <HelpLink to="page:planets" /> and{" "}
+        <HelpLink to="page:planetTraits" />.
+      </P>
+      <h3>Androids</h3>
+      <P>
+        Cybertechnics lets colonies build android farmers, workers and scientists ({PROJECT_COSTS.android} production each).
+        An android does its one job {ANDROIDS.bonus} points better than a normal unit would on that planet, but gets no
+        race bonuses. It eats no food, costs {ANDROIDS.industryUpkeep} industry a turn, ignores morale, pays no tax and
+        takes up room toward the colony's maximum population.
       </P>
       <h3>Production</h3>
       <P>
@@ -98,7 +107,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         finishes at most one item per turn; extra production carries into the next. With an empty queue, or with
         Trade Goods first, production becomes BC at {pct(TRADE_GOODS_RATE)}. Housing turns production into population
         growth instead. <b>Buy</b> completes the first item for BC: twice the remaining cost, or four times if nothing
-        has been spent on it yet.
+        has been spent on it yet. While an enemy fleet blockades the system, production there is halved.
       </P>
       <P>See <HelpLink to="page:buildings" /> and <HelpLink to="page:projects" />.</P>
       <h3>Growth</h3>
@@ -108,14 +117,29 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Morale</h3>
       <P>
-        Morale multiplies food, industry and research and ranges from {MORALE_RANGE[0]}% to +{MORALE_RANGE[1]}%. It comes
-        from the government, buildings, techs and administrators. Colonies of another race lose 10% unless they have an
-        Alien Management Center, and freshly conquered colonies suffer {UNREST_MORALE}% unrest for a while.
+        Every 10% of morale adds or removes 10% of a colony's food, industry, research and population taxes. It comes
+        from the government, buildings, techs and administrators. Feudal and dictatorial empires and their advanced forms
+        lose 20% on colonies without a Marine or Armor Barracks. A colony of a race other than its ruler's loses{" "}
+        {ASSIMILATION.multiRacePenalty}% unless it has an Alien Management Center. Losing the Capitol costs morale on every
+        colony until it is rebuilt: 50% under feudal rule and confederation, 35% under dictatorship, imperium and
+        federation, 20% under democracy. Unified governments have no morale at all, good or bad. Androids ignore morale.
+      </P>
+      <h3>Conquered people</h3>
+      <P>
+        People on a captured colony are aliens at first and work at half their normal rate. They join your empire one
+        unit at a time: every 8 turns under feudal rule or dictatorship, 4 under democracy, confederation or imperium,
+        2 under federation, 20 under unification and 15 under galactic unification. An Alien Management Center makes it
+        every 2 turns for anyone; charismatic rulers are twice as fast, repulsive ones half as fast, and telepaths
+        assimilate them at once, as does anyone taking a feudal colony. Until then aliens may revolt, more often the more
+        of them there are and half as often with an Alien Management Center; if they beat your garrison the colony goes
+        back to its old owner.
       </P>
       <h3>Pollution</h3>
       <P>
-        Industry above 4 × the planet's size factor pollutes: half of the excess is lost. Pollution buildings and techs
-        remove part of it; tolerant races never pollute.
+        Industry above 4 × the planet's size factor pollutes, and half of the excess is lost. A Pollution Processor
+        counts only half of the industry, an Atmospheric Renewer a quarter, both together an eighth. Nano Disassemblers
+        double every planet's tolerance, Core Waste Dumps end pollution on their colony, the Recyclotron's extra industry
+        never pollutes, and tolerant races never pollute at all.
       </P>
       <h3>Outposts</h3>
       <P>
@@ -130,24 +154,34 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
     <>
       <h3>BC income</h3>
       <P>
-        Each population pays {fmt(TAX_PER_POP, 1)} BC a turn before race, tech and building bonuses. The tax rate on the
-        Empire screen ({TAX_STEPS.map(pct).join(", ")}) turns that share of every colony's industry into BC. Gold and
-        gem deposits pay extra, and trade treaties add more (<HelpLink to="guide:diplomacy" />).
+        Each population pays {fmt(TAX_PER_POP, 1)} BC a turn before race and morale bonuses. The tax rate on the Empire
+        screen ({TAX_STEPS.map(pct).join(", ")}) takes that share of every colony's industry and pays{" "}
+        {fmt(TAX_BC_PER_INDUSTRY, 1)} BC for each point, just like Trade Goods. Gold and gem deposits pay extra, and trade
+        treaties add more (<HelpLink to="guide:diplomacy" />). Democracy, Federation, the Spaceport, Stock Exchange and
+        Galactic Currency Exchange raise all of a colony's income, including its trade goods.
       </P>
       <h3>Costs</h3>
       <Ul>
-        <li>Every building has BC upkeep each turn.</li>
+        <li>Every building has BC upkeep each turn: a quarter more on radiated and desert worlds, half more on toxic ones.</li>
+        <li>Freighters cost {fmt(FREIGHTERS.upkeepInUse, 1)} BC each for every turn they are carrying something; idle ones are free.</li>
         <li>Hired leaders draw a salary (<HelpLink to="guide:leaders" />).</li>
-        <li>Every command point your warships use over your limit costs {COMMAND_OVERAGE_COST} BC a turn (<HelpLink to="guide:fleets" />).</li>
+        <li>Every command point your ships use over your limit costs {COMMAND_OVERAGE_COST} BC a turn (<HelpLink to="guide:fleets" />).</li>
       </Ul>
       <P>
         If the treasury goes below zero, buildings are sold off, highest upkeep first, for a quarter of their cost until
         the books balance.
       </P>
-      <h3>Food</h3>
+      <h3>Food and freighters</h3>
       <P>
-        Each population eats 1 food (cybernetic races half, lithovores none). Food is pooled across your empire, so a
-        farming world can feed an industrial one. If the whole empire runs short, the hungriest colonies lose population.
+        Each population eats 1 food (cybernetic races half, lithovores and androids none). Food doesn't move by itself:
+        a Freighter Fleet ({PROJECT_COSTS.freighterFleet} production) adds {FREIGHTERS.perFleet} freighters, and each
+        carries {FREIGHTERS.foodPerShip} food a turn from colonies with a surplus to hungry ones. A colony whose need is not
+        met loses {FREIGHTERS.starvationPerTurn} population a turn. Food nobody needs is sold for {fmt(FREIGHTERS.foodPrice, 1)}{" "}
+        BC a unit ({fmt(FREIGHTERS.traderFoodPrice, 1)} for fantastic traders). A blockaded system can neither send nor receive.
+      </P>
+      <P>
+        Freighters also move colonists to another colony of the same race: each colonist needs {FREIGHTERS.perColonist} idle
+        freighters for the trip, produces nothing on the way, and dies if the destination is full on arrival.
       </P>
     </>
   ),
@@ -177,8 +211,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </Ul>
       <h3>Miniaturization</h3>
       <P>
-        Every tier you research in a field after the one that gave a ship component makes that component 10% smaller
-        and cheaper, down to half its size. Old weapons become cheap filler on big hulls.
+        Every later level you research in the field that gave a ship component counts as a refinement of it, and so does
+        each hyper-advanced level of that category. Refinements make the component smaller and cheaper, down to about a
+        quarter of its first size and cost, and open the stronger weapon modifications. Old weapons become cheap filler
+        on big hulls.
       </P>
     </>
   ),
@@ -187,13 +223,16 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
     <>
       <P>
         On the <b>Ship design</b> screen you pick a hull, armor, an optional shield and computer, weapons and special
-        systems. Everything must fit in the hull's space; shields, computers and specials take a share of it, so
-        they cost more space on bigger hulls. A module turns the hull into a colony ship, outpost ship or transport.
+        systems. Everything must fit in the hull's space. Armor and the computer take no space; shields and specials
+        need more space on bigger hulls. A module turns the hull into a colony ship, outpost ship or transport.
       </P>
       <Ul>
-        <li>Hit points come from the hull's structure plus its armor base times the armor grade (<HelpLink to="page:hulls" />, <HelpLink to="page:armor" />).</li>
-        <li>Beam defense comes from the hull size, specials, race picks and combat speed; attack from the computer, specials and race picks.</li>
+        <li>The armor grade multiplies the hull's armor and structure (<HelpLink to="page:hulls" />, <HelpLink to="page:armor" />).</li>
+        <li>Each weapon mount has a count, optional modifications (heavy, point defense, autofire and so on) and, for beams, a firing arc. Missile mounts also choose how many shots their rack holds (<HelpLink to="page:weapons" />).</li>
+        <li>A ship can carry at most eight weapon mounts.</li>
+        <li>Combat speed depends on how full the hull is: an empty hull is fast, a packed one slow. Speed gives beam defense; the computer, specials and race picks give attack.</li>
         <li>Ship cost is scaled by your government (<HelpLink to="page:governments" />).</li>
+        <li>Cruisers and larger hulls can only be built at colonies with a star base, battlestation or star fortress.</li>
         <li>Mark old designs obsolete to hide them from build lists.</li>
       </Ul>
       <P>
@@ -211,11 +250,15 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         your colonies and outposts. See <HelpLink to="page:drives" />.
       </P>
       <h3>Scanners</h3>
-      <P>Your colonies and ships see {BASE_SCAN_RANGE} parsecs around them, more with scanner techs. Empires meet when their scanners overlap.</P>
+      <P>
+        Your colonies and ships see {BASE_SCAN_RANGE} parsecs around them, more with scanner techs. Orbital stations add
+        to the range around their colony. Empires meet when their scanners overlap.
+      </P>
       <h3>Command points</h3>
       <P>
-        Armed ships use command points by hull size; scouts, colony ships, outposts and transports are free. You have{" "}
-        {BASE_COMMAND_POINTS} to start with, more from star bases, the space academy and communication techs. Each point
+        Every warship uses command points by hull size, from 1 for a frigate up to 6 for a doom star; colony ships,
+        outpost ships and transports use 1. You have {BASE_COMMAND_POINTS} to start with, more from star bases,
+        battlestations, star fortresses, the space academy and communication techs. Each point
         over the limit costs {COMMAND_OVERAGE_COST} BC a turn.
       </P>
       <h3>Stance</h3>
@@ -230,17 +273,25 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
   combat: () => (
     <>
       <P>
-        Battles happen when hostile armed fleets meet, or when an armed planet sees enemy ships. They are fought
+        Battles happen when hostile armed fleets meet, or when an armed colony sees enemy ships. They are fought
         automatically on a {FIELD_WIDTH}×{FIELD_HEIGHT} battlefield for up to {MAX_ROUNDS} rounds and can be replayed from
         the turn report.
       </P>
+      <h3>Moving and firing</h3>
       <Ul>
-        <li>Faster ships act first. Each ship closes to its preferred range and fires everything in range.</li>
-        <li>Beams hit with 50% + (attack − defense)%, between 5% and 95%. Beyond half range they do a quarter less damage.</li>
-        <li>Shields subtract from every beam hit and half as much from missiles and torpedoes. Some weapons pierce shields.</li>
-        <li>Missiles and torpedoes have limited volleys; point defense can shoot them down and ECM can dodge them (half as well against torpedoes).</li>
-        <li>Unarmed ships try to slip away each round.</li>
-        <li>Repair systems restore hit points every round.</li>
+        <li>The two sides take turns ship by ship; which side starts is rolled at the beginning and swaps every round.</li>
+        <li>Ships spend their combat speed to move and turn. Each beam fires only into its arc, so facing matters.</li>
+        <li>A beam's hit chance is its attack against the target's beam defense, minus a penalty that grows with range. Damage also drops with range unless the mount ignores it.</li>
+        <li>Better rolls do more damage: a shot that barely hits does its minimum, a near-certain one close to its maximum.</li>
+        <li>Missiles and torpedoes fly across the field at their own speed. On arrival they can be shot down by point-defense beams, anti-missile rockets or a lightning field, or misled by jammers.</li>
+        <li>Fighter and bomber bays launch craft that fly to their target, attack and return to rearm.</li>
+      </Ul>
+      <h3>Damage</h3>
+      <Ul>
+        <li>Shields take their class off every hit, then soak what is left from the pool on the side that was hit. Each side recovers part of its pool every round.</li>
+        <li>Damage that gets through wears down armor first, then structure. Hits on structure may knock out weapons, the shield generator, the computer or the drive; losing the drive destroys the ship.</li>
+        <li>Armor-piercing and shield-piercing weapons skip part of this, and some specials change it further.</li>
+        <li>Repair units fix armor, structure and systems every round.</li>
       </Ul>
       <h3>Combat doctrine</h3>
       <P>
@@ -248,11 +299,17 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         enemy's) and whom they target first: the nearest, weakest or strongest enemy. Retreating fleets head to your
         nearest colony.
       </P>
-      <h3>Planets</h3>
+      <h3>Stations and planets</h3>
       <P>
-        Star bases, missile bases, ground batteries and shields defend a colony (<HelpLink to="page:buildings" />). Planet
-        guns use your best known beam and missile. Ships only shoot at a planet when their fleet is set to attack, and
-        only after the planet's defending ships are gone.
+        A star base, battlestation or star fortress fights as an immobile ship that carries your best weapons and
+        systems, fires in every direction and never runs out of missiles. A battlestation also makes your ships in the
+        battle more accurate, and a star fortress makes them harder to hit as well. If the station is destroyed, the
+        building is lost.
+      </P>
+      <P>
+        The planet itself is a separate target with its own ground batteries and missile base, protected by planetary
+        shields (<HelpLink to="page:buildings" />). Ship beams do only half damage to it. Stations are fair game in any
+        battle, but only fleets set to attack fire on the planet, and only once no defending ships or station remain.
       </P>
     </>
   ),

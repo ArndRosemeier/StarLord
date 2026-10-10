@@ -1,13 +1,7 @@
 import {
-  canReach, distance, isHostile, planetDefense, relation, type Colony, type Command, type Fleet, type PlayerView,
+  canReach, colonyDefenseStrength, distance, isHostile, relation, type Command, type Fleet, type PlayerView,
 } from "@starlord/sim";
 import { colonyStar, fleetRoles, fleetStrength, hostileFleetsNear, me, myColonies, myFleets, personality, starById } from "./util.js";
-
-function colonyDefenseStrength(c: Colony): number {
-  const d = planetDefense(c);
-  if (d.hits <= 0 && d.beams <= 0 && d.missiles <= 0) return 0;
-  return Math.sqrt(Math.max(30, d.hits) * (d.beams * 6 + d.missiles * 8)) * (1 + d.shield / 5);
-}
 
 function rallyStar(view: PlayerView): string | null {
   const player = me(view);
@@ -95,7 +89,7 @@ export function militaryOrders(view: PlayerView): Command[] {
       .map((c) => {
         const star = colonyStar(view, c);
         const guard = hostileFleetsNear(view, star, 1).reduce((s, f) => s + fleetStrength(view, f), 0);
-        return { c, star, need: (colonyDefenseStrength(c) + guard) * 1.5 + 5 };
+        return { c, star, need: (colonyDefenseStrength(view, c) + guard) * 1.5 + 5 };
       })
       .filter((t) => t.need <= power && canReach(view, view.viewer, main, t.star.id))
       .sort((a, b) => distance(rallyPos, a.star) - distance(rallyPos, b.star));

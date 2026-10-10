@@ -1,6 +1,6 @@
 import {
   availableBuildings, availableDesigns, availableProjects, buyCost, colonyOutput, commandPointsAvailable,
-  commandPointsUsed, empireIncome, empireTotals, planetDefense, relation, type BuildItem, type Colony, type Command,
+  commandPointsUsed, empireIncome, empireTotals, hasArmedDefenses, hasStarDock, relation, type BuildItem, type Colony, type Command,
   type PlayerView,
 } from "@starlord/sim";
 import { colonizationTargets, outpostTargets } from "./colonization.js";
@@ -58,7 +58,9 @@ export function productionOrders(view: PlayerView): Command[] {
     transports: 0,
     spies: Math.ceil(colonies.length / 4) + (atWar(view) ? 1 : 0) - player.spies.home - Object.values(player.spies.abroad).reduce((n, s) => n + s.count, 0) - queued((q) => q.kind === "project" && q.id === "spy"),
   };
-  const cpFree = commandPointsAvailable(view, view.viewer) - commandPointsUsed(view, view.viewer);
+  // Support ships also use command points, but they are spent or retired soon; the warship budget ignores them.
+  const support = owned("scout") + owned("colony") + owned("outpost") + owned("transport");
+  const cpFree = commandPointsAvailable(view, view.viewer) - commandPointsUsed(view, view.viewer) + support;
   const war = atWar(view);
   const warship = currentWarship(view);
   const queuedWar = warship ? shipQueued(warship) : 0;
@@ -122,7 +124,7 @@ function chooseItem(
 
   if (threatened || (war && rank < 3)) {
     const d = DEFENSE_BUILDINGS.find((b) => buildable.has(b));
-    if (d && planetDefense(c).hits < 150) return { kind: "building", id: d };
+    if (d && (!hasArmedDefenses(c) || !hasStarDock(c))) return { kind: "building", id: d };
   }
   if (wants.scouts > 0 && designs.has("scout")) {
     wants.scouts--;
@@ -138,7 +140,7 @@ function chooseItem(
     return ship("outpostShip");
   }
   if (food < 0 && buildable.has("hydroponicFarm")) return { kind: "building", id: "hydroponicFarm" };
-  const warship = currentWarship(view);
+  const warship = currentWarship(view, c);
   if (war && warship && wants.warships > 0 && rank < 3 && industry >= 10) {
     wants.warships--;
     return ship(warship);
