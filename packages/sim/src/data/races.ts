@@ -125,8 +125,15 @@ export const RACES: RaceDef[] = [
 
 export const RACES_BY_ID: Record<string, RaceDef> = Object.fromEntries(RACES.map((r) => [r.id, r]));
 
+/** Custom races in play, keyed by their content-derived id (see customRace.ts). */
+const CUSTOM_RACES = new Map<string, RaceDef>();
+
+export function registerRaces(defs: readonly RaceDef[] | undefined): void {
+  for (const d of defs ?? []) if (!RACES_BY_ID[d.id]) CUSTOM_RACES.set(d.id, d);
+}
+
 export function getRace(id: string): RaceDef {
-  const r = RACES_BY_ID[id];
+  const r = RACES_BY_ID[id] ?? CUSTOM_RACES.get(id);
   if (!r) throw new Error(`unknown race ${id}`);
   return r;
 }

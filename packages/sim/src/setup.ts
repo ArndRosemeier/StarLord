@@ -4,6 +4,7 @@ import { STARTING_TECHS, STARTING_TIERS } from "./data/techs.js";
 import { startingDesigns } from "./designs.js";
 import { generateGalaxy, pickHomeStars } from "./galaxy.js";
 import { assignJobsForFood } from "./jobs.js";
+import { buildCustomRace, type CustomRaceSpec } from "./customRace.js";
 import { setupNpcs } from "./npc.js";
 import { COUNCIL_FIRST } from "./council.js";
 import { Rng, seedRng } from "./rng.js";
@@ -21,6 +22,8 @@ export interface NewGameOptions {
   monsters?: boolean;
   raiders?: boolean;
   council?: boolean;
+  /** Player-built races; their ids (from buildCustomRace) may appear in `races`. */
+  customRaces?: CustomRaceSpec[];
 }
 
 export const HOMEWORLD_POP = 8;
@@ -34,6 +37,7 @@ export function newGame(opts: NewGameOptions): GameState {
   let nextId = 1;
   const newId = (prefix: string): Id => `${prefix}${nextId++}`;
 
+  const customRaces = (opts.customRaces ?? []).map(buildCustomRace);
   const playerCount = opts.races?.length ?? opts.playerCount ?? 4;
   const races = opts.races ?? rng.shuffle(RACES.map((r) => r.id)).slice(0, playerCount);
   races.forEach(getRace);
@@ -47,6 +51,7 @@ export function newGame(opts: NewGameOptions): GameState {
     raiders: opts.raiders ?? true,
     council: opts.council ?? true,
   };
+  if (customRaces.length > 0) settings.customRaces = customRaces;
 
   const galaxy = generateGalaxy(rng, settings.galaxySize, newId);
   const homes = pickHomeStars(rng, galaxy.stars, playerCount);
