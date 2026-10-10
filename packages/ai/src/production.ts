@@ -1,5 +1,5 @@
 import {
-  availableBuildings, availableDesigns, availableProjects, buyCost, colonyOutput, commandPointsAvailable,
+  BUILDINGS_BY_ID, availableBuildings, availableDesigns, availableProjects, buyCost, colonyOutput, commandPointsAvailable,
   commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasStarDock, relation,
   type BuildItem, type Colony, type Command, type PlayerView,
 } from "@starlord/sim";
@@ -12,8 +12,10 @@ const ECONOMY_BUILDINGS = [
   "roboMinerPlant", "pollutionProcessor", "supercomputer", "planetaryStockExchange", "holoSimulator", "subterraneanFarms",
   "astroUniversity", "roboticFactory", "deepCoreMining", "atmosphericRenewer", "recyclotron", "autolab",
   "galacticCybernet", "galacticCurrencyExchange", "weatherController", "gravityGenerator", "pleasureDome",
-  "coreWasteDumps", "alienManagementCenter", "spaceAcademy", "securityStations",
+  "coreWasteDumps", "alienManagementCenter",
 ];
+/** Buildings that pay for themselves in industry, built even when upkeep is tight. */
+const INDUSTRY_BUILDINGS = new Set(["automatedFactory", "roboMinerPlant", "roboticFactory", "deepCoreMining", "recyclotron", "pollutionProcessor"]);
 /** Farm buildings only pay where people farm. */
 const FARM_BUILDINGS = new Set(["hydroponicFarm", "soilEnrichment", "subterraneanFarms", "weatherController"]);
 /** Worth building on small colonies too. */
@@ -35,6 +37,8 @@ interface Wants {
   transports: number;
   spies: number;
   portalQueued: boolean;
+  /** BC a turn the treasury can still spare for new building upkeep. */
+  upkeepRoom: number;
   freighterFleets: number;
   capitol: boolean;
   barracks: boolean;
@@ -72,6 +76,7 @@ export function productionOrders(view: PlayerView): Command[] {
   const wants: Wants = {
     portalQueued: false,
     colonyBases,
+    upkeepRoom: 0,
     freighterFleets: colonies.length > 1 && freighterShort > 0
       ? Math.ceil(freighterShort / FREIGHTERS.perFleet) - queued((q) => q.kind === "project" && q.id === "freighterFleet")
       : 0,
@@ -84,13 +89,15 @@ export function productionOrders(view: PlayerView): Command[] {
     transports: 0,
     spies: Math.ceil(colonies.length / 4) + (atWar(view) ? 1 : 0) - player.spies.home - Object.values(player.spies.abroad).reduce((n, s) => n + s.count, 0) - queued((q) => q.kind === "project" && q.id === "spy"),
   };
-  // Colony, outpost and troop ships also use command points, but they are spent soon; the warship budget ignores them.
-  // Scouts stay until they are scrapped, so they count.
-  const support = owned("colony") + owned("outpost") + owned("transport");
+  // Colony and outpost ships also use command points, but they are spent soon; the warship budget ignores them.
+  // Scouts and troop ships stay until used or scrapped, so they count.
+  const support = owned("colony") + owned("outpost");
   const cpFree = commandPointsAvailable(view, view.viewer) - commandPointsUsed(view, view.viewer) + support;
   const war = atWar(view);
   const warship = currentWarship(view);
   const income = empireIncome(view, view.viewer);
+  // New upkeep must fit in the income, with a margin; a large treasury can carry a little more.
+  wants.upkeepRoom = income.net - 5 + Math.max(0, player.bc - 300) / 100;
   // Command points over the limit cost BC every turn; go over only while untaxed income can carry it.
   const taxBc = colonies.reduce((n, c) => {
     const o = colonyOutput(view, c);
@@ -104,14 +111,15 @@ export function productionOrders(view: PlayerView): Command[] {
   // Every warship already queued, of any design, counts against the budget.
   const hullCp = (id: string) => {
     const d = player.designs.find((x) => x.id === id);
-    return d && !d.module ? HULLS_BY_ID[d.hull].commandPoints : 0;
+    return d && !d.module && d.weapons.length > 0 ? HULLS_BY_ID[d.hull].commandPoints : 0;
   };
   const queuedCp = colonies.reduce((n, c) => n + c.queue.reduce((m, q) => m + (q.kind === "ship" ? hullCp(q.designId) : 0), 0), 0);
   // Peacetime: a modest fleet that grows with the economy so late-game industry isn't all turned into BC.
   // Wartime: fill command points, and go over only while income can carry it.
   const peaceTarget = Math.min(cpFree + Math.floor(overBudget / 2), Math.ceil(colonies.length / 2) + Math.floor(totals.industry / 40) * perShip);
   wants.warships = Math.max(0, Math.floor(((war ? cpFree + overBudget : peaceTarget) - queuedCp) / perShip));
-  wants.transports = war ? Math.max(0, 4 - owned("transport") - shipQueued("transport")) : 0;
+  const transportsOwned = fleets.reduce((n, f) => n + f.ships.filter((s) => s.designId === "transport").reduce((m, s) => m + s.count, 0), 0);
+  wants.transports = war ? Math.max(0, 4 - transportsOwned - shipQueued("transport")) : 0;
 
   const out: Command[] = [];
   // Scouts with nothing left to explore only cost command points.
@@ -120,11 +128,20 @@ export function productionOrders(view: PlayerView): Command[] {
       for (const sh of f.ships) out.push({ type: "scrapShips", fleetId: f.id, designId: sh.designId, count: sh.count });
     }
   }
-  // Over the command limit and losing money: retire ships of outdated designs first.
-  if (income.commandOverage > 0 && income.net < 0) {
+  // Colony ships with nowhere left to go only cost command points.
+  if (targets.length === 0 && !unexploredInReach(view)) {
+    for (const f of fleets.filter((x) => isOnly(view, x, "colony") && !x.destStarId)) {
+      for (const sh of f.ships) out.push({ type: "scrapShips", fleetId: f.id, designId: sh.designId, count: sh.count });
+    }
+  }
+  // Over the command limit and losing money: retire a ship a turn, outdated designs first, then the smallest hull,
+  // rather than let the treasury run dry and sell buildings.
+  if (income.commandOverage > 0 && income.net < 0 && view.turn > 10) {
     const obsolete = new Set(player.designs.filter((d) => d.obsolete && !d.module).map((d) => d.id));
-    const old = fleets.flatMap((f) => f.ships.filter((s) => obsolete.has(s.designId)).map((s) => ({ f, s })))[0];
-    if (old) out.push({ type: "scrapShips", fleetId: old.f.id, designId: old.s.designId, count: 1 });
+    const warships = fleets.flatMap((f) => f.ships.filter((s) => hullCp(s.designId) > 0).map((s) => ({ f, s })));
+    const pick = warships.find((x) => obsolete.has(x.s.designId)) ??
+      (war && player.bc > -income.net * 5 ? undefined : [...warships].sort((x, y) => hullCp(x.s.designId) - hullCp(y.s.designId))[0]);
+    if (pick) out.push({ type: "scrapShips", fleetId: pick.f.id, designId: pick.s.designId, count: 1 });
   }
   // Taxes: raise them while the books are red, lower them once the treasury is healthy.
   const tax = income.net < 0 || player.bc < 30 ? Math.min(0.5, player.taxRate + 0.1) : player.bc > 300 && player.taxRate > 0 ? player.taxRate - 0.1 : player.taxRate;
@@ -220,12 +237,17 @@ function chooseItem(
     return ship("transport");
   }
   // Small colonies only build what pays off quickly.
+  // Upkeep has to be paid every turn; past what the income spares, only buildings that add industry go up.
   const economy = ECONOMY_BUILDINGS.filter((b) => buildable.has(b))
+    .filter((b) => (BUILDINGS_BY_ID[b]?.maintenance ?? 0) <= wants.upkeepRoom || INDUSTRY_BUILDINGS.has(b))
     .filter((b) => pop >= 4 || CHEAP_BUILDINGS.includes(b))
     .filter((b) => !FARM_BUILDINGS.has(b) || c.farmers >= 2)
     .filter((b) => b !== "alienManagementCenter" || (c.aliens ?? 0) > 0 || c.raceId !== me(view).raceId)
     .filter((b) => b !== "pleasureDome" || pop >= 8);
-  if (economy.length > 0) return { kind: "building", id: economy[0]! };
+  if (economy.length > 0) {
+    wants.upkeepRoom -= BUILDINGS_BY_ID[economy[0]!]?.maintenance ?? 0;
+    return { kind: "building", id: economy[0]! };
+  }
   if (wants.spies > 0) {
     wants.spies--;
     return { kind: "project", id: "spy" };
