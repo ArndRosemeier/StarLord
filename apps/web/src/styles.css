@@ -124,7 +124,7 @@ img.planet-img { display: block; justify-self: center; object-fit: contain; flex
 /* ---- title screen */
 .title-hero { position: relative; height: 100%; overflow: hidden; background: #000; }
 .title-art {
-  position: absolute; inset: -3%; background: url(art/title.webp) center / cover no-repeat;
+  position: absolute; inset: -3%; background: url(/art/title.webp) center / cover no-repeat;
   animation: title-drift 40s ease-in-out infinite alternate;
 }
 @keyframes title-drift {
@@ -161,7 +161,7 @@ img.planet-img { display: block; justify-self: center; object-fit: contain; flex
 .title-button.primary { background: rgba(47,111,224,0.75); border-color: var(--accent); }
 .title-settings { background: rgba(14,18,32,0.85); }
 .title-screen.setup { max-width: none; margin: 0; padding: 24px max(24px, calc((100% - 1280px) / 2));
-  background: linear-gradient(rgba(7,9,18,0.82), rgba(7,9,18,0.94)), url(art/galaxy.webp) center / cover fixed; }
+  background: linear-gradient(rgba(7,9,18,0.82), rgba(7,9,18,0.94)), url(/art/galaxy.webp) center / cover fixed; }
 .title-screen .logo { font-family: Orbitron, Inter, system-ui, sans-serif; }
 
 /* ---- game over */
