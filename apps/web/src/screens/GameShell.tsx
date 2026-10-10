@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   commandPointsAvailable, commandPointsUsed, empireIncome, empireTotals, empires, treatyIncome,
   TIERS_BY_ID, type PlayerView,
@@ -16,6 +16,12 @@ import { LeadersScreen } from "./LeadersScreen";
 import { EmpireScreen } from "./EmpireScreen";
 import { EventsScreen } from "./EventsScreen";
 import { GameMenu } from "./GameMenu";
+import { GameOver } from "./GameOver";
+import { audio } from "../audio/sound";
+import { MuteButton } from "../ui/AudioControls";
+
+/** Turn report events loud enough to deserve an alert sound. */
+const ALERT_EVENTS = new Set(["combat", "colonyLost", "invasionFailed", "bombarded", "eliminated", "raid", "starvation"]);
 
 export type Tab =
   | "map" | "colonies" | "research" | "designs" | "fleets" | "diplomacy" | "espionage" | "leaders" | "empire" | "events" | "game";
@@ -46,6 +52,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [focusStar, setFocusStar] = useState<string | null>(null);
   const [autoplay, setAutoplay] = useState(false);
   const [seenTurn, setSeenTurn] = useState(view.turn);
+  const [overSeen, setOverSeen] = useState(view.over);
+  const lastTurn = useRef(view.turn);
 
   const totals = empireTotals(view, me.id);
   const income = empireIncome(view, me.id);
@@ -56,6 +64,21 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const reportBadge = view.turn !== seenTurn ? view.events.filter((e) => e.kind !== "explored" && e.kind !== "built").length : 0;
 
   const endTurn = () => session.endTurn();
+  const won = view.over && view.winner === me.id && !readOnly;
+
+  useEffect(() => {
+    audio.setMood(!view.over ? "galaxy" : readOnly || won ? "victory" : "defeat");
+  }, [view.over, won, readOnly]);
+  useEffect(() => () => audio.setMood("none"), []);
+
+  // Sound for a new turn, plus an alert when something bad or big happened to us.
+  useEffect(() => {
+    if (view.turn === lastTurn.current) return;
+    lastTurn.current = view.turn;
+    if (autoplay) return;
+    audio.play("turn");
+    if (view.events.some((e) => e.playerId === me.id && ALERT_EVENTS.has(e.kind))) setTimeout(() => audio.play("alert"), 700);
+  }, [view.turn]);
 
   useEffect(() => {
     if (!autoplay || view.over) return;
@@ -105,6 +128,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         <div className="stat"><small>Command</small><span className={cpUsed > cpMax ? "bad" : ""}>{cpUsed}/{cpMax}</span></div>
         <div className="stat"><small>Population</small><span>{fmt(totals.population)}</span></div>
         <div className="spacer" />
+        <MuteButton />
         {view.over && <span className="chip warn">Game over: {view.players[view.winner!]?.name} wins ({view.victory})</span>}
         {readOnly ? (
           <>
@@ -150,6 +174,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
           {tab === "events" && <EventsScreen onShowStar={showStar} />}
           {tab === "game" && <GameMenu onQuit={onQuit} />}
         </main>
+        {view.over && !overSeen && <GameOver won={won} spectating={readOnly} onClose={() => setOverSeen(true)} onQuit={onQuit} />}
       </div>
     </div>
   );

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FIELD_HEIGHT, FIELD_WIDTH, WEAPONS_BY_ID, type CombatReport, type CombatRoundEvent } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
+import { audio } from "../audio/sound";
+
+const backdrop = typeof Image === "undefined" ? null : Object.assign(new Image(), { src: "art/combat.webp" });
 
 const CELL = 26;
 const STEP_MS = 160;
@@ -28,6 +31,13 @@ export function CombatReplay({ report }: { report: CombatReport }) {
     return ships;
   }, [report, steps, step]);
 
+  const [backdropReady, setBackdropReady] = useState(backdrop?.complete ?? true);
+  useEffect(() => {
+    if (backdrop && !backdrop.complete) backdrop.onload = () => setBackdropReady(true);
+    audio.setMood("combat");
+    return () => audio.setMood("galaxy");
+  }, []);
+
   useEffect(() => {
     if (!playing || step >= steps.length) return;
     const t = setTimeout(() => setStep(step + 1), STEP_MS);
@@ -40,6 +50,15 @@ export function CombatReplay({ report }: { report: CombatReport }) {
     ctx.clearRect(0, 0, FIELD_WIDTH * CELL, FIELD_HEIGHT * CELL);
     ctx.fillStyle = "#04050b";
     ctx.fillRect(0, 0, FIELD_WIDTH * CELL, FIELD_HEIGHT * CELL);
+    if (backdrop?.complete && backdrop.naturalWidth) {
+      // Cover the field with the battle backdrop, dimmed so ships stay readable.
+      const w = FIELD_WIDTH * CELL;
+      const h = FIELD_HEIGHT * CELL;
+      const k = Math.max(w / backdrop.naturalWidth, h / backdrop.naturalHeight);
+      ctx.globalAlpha = 0.35;
+      ctx.drawImage(backdrop, (w - backdrop.naturalWidth * k) / 2, (h - backdrop.naturalHeight * k) / 2, backdrop.naturalWidth * k, backdrop.naturalHeight * k);
+      ctx.globalAlpha = 1;
+    }
     ctx.strokeStyle = "rgba(90,110,160,0.08)";
     for (let x = 0; x <= FIELD_WIDTH; x++) { ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, FIELD_HEIGHT * CELL); ctx.stroke(); }
     for (let y = 0; y <= FIELD_HEIGHT; y++) { ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(FIELD_WIDTH * CELL, y * CELL); ctx.stroke(); }
@@ -91,7 +110,7 @@ export function CombatReplay({ report }: { report: CombatReport }) {
       }
       ctx.globalAlpha = 1;
     }
-  }, [frame, report, step, steps, view]);
+  }, [frame, report, step, steps, view, backdropReady]);
 
   const round = steps[Math.max(0, step - 1)]?.round ?? 0;
   const [a, b] = report.sides;

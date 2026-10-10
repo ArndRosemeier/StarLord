@@ -6,17 +6,10 @@ import {
 import { useGame } from "./hooks";
 import { climateName, fmt, words } from "./format";
 
-export const PLANET_COLORS: Record<string, string> = {
-  gaia: "#38d39f", terran: "#3fa34d", ocean: "#2f7fd8", swamp: "#5b7f3a", arid: "#c99a54", tundra: "#b9c7cf",
-  desert: "#e0b46c", barren: "#8a8a8a", radiated: "#b3c43f", toxic: "#7fbf3f", inferno: "#e2553a",
-  asteroids: "#6d6157", gasGiant: "#c98f62",
-};
-
-export function PlanetIcon({ planet }: { planet: Planet }) {
-  const size = { tiny: 12, small: 15, medium: 18, large: 21, huge: 24 }[planet.size];
-  const bg = PLANET_COLORS[planet.type] ?? "#888";
-  if (planet.type === "asteroids") return <span className="planet-icon" style={{ background: `radial-gradient(circle, ${bg} 20%, transparent 22%) 0 0/8px 8px` }} />;
-  return <span className="planet-icon" style={{ width: size, height: size, justifySelf: "center", background: `radial-gradient(circle at 35% 35%, ${bg}, #111 90%)` }} />;
+/** Painted planet art in public/planets, scaled by planet size. */
+export function PlanetIcon({ planet, size }: { planet: Planet; size?: number }) {
+  const px = size ?? { tiny: 22, small: 27, medium: 32, large: 37, huge: 42 }[planet.size];
+  return <img className="planet-img" src={`planets/${planet.type}.webp`} alt={climateName(planet.type)} width={px} height={px} loading="lazy" />;
 }
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -216,4 +209,14 @@ export function ShipSprite({ hull, variantKey, size = 48 }: { hull: string; vari
       backgroundPosition: `${-(col * cell + offset)}px ${-(row * cell + offset)}px`,
     }} />
   );
+}
+
+const LEADER_PORTRAITS = 24;
+
+/** One of the painted leader portraits, picked by name so a leader always keeps the same face. */
+export function LeaderPortrait({ name, size = 84 }: { name: string; size?: number }) {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const n = String((h % LEADER_PORTRAITS) + 1).padStart(2, "0");
+  return <img src={`leaders/${n}.webp`} alt={name} width={size} height={size} loading="lazy" style={{ borderRadius: 6, objectFit: "cover", background: "#000", display: "block", flex: "none" }} />;
 }
