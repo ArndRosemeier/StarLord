@@ -12,7 +12,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: () => void; onS
   const openHelp = useHelp();
   const latest = listSaves().sort((a, b) => b.savedAt.localeCompare(a.savedAt))[0];
 
-  useEffect(() => audio.setMood("menu"), []);
+  useEffect(() => { audio.setMood("menu"); }, []);
 
   const load = (data: unknown) => {
     try {

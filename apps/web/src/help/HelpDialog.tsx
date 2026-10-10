@@ -67,8 +67,9 @@ function HelpDialog({ start, me, onClose }: { start: string; me: Player | null; 
   const back = () => setHistory((h) => ({ ...h, at: Math.max(0, h.at - 1) }));
   const forward = () => setHistory((h) => ({ ...h, at: Math.min(h.list.length - 1, h.at + 1) }));
 
-  useEffect(() => articleRef.current?.scrollTo(0, 0), [current]);
-  useEffect(() => searchRef.current?.focus(), []);
+  // Effects must not return a value: scrollTo returns a Promise in newer browsers and React would call it on cleanup.
+  useEffect(() => { articleRef.current?.scrollTo(0, 0); }, [current]);
+  useEffect(() => { searchRef.current?.focus(); }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
