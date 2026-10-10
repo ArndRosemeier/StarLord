@@ -97,6 +97,9 @@ tr.selected td { background: #17213a; }
 .map-layout { display: grid; grid-template-columns: 1fr 340px; height: 100%; }
 .map-host { position: relative; min-height: 0; overflow: hidden; }
 .map-host canvas { display: block; }
+.map-banner { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); max-width: calc(100% - 32px); background: rgba(16, 24, 44, 0.88); border: 1px solid #3b82f6; border-radius: 8px; padding: 8px 14px; font-size: 13px; pointer-events: none; z-index: 2; }
+.map-notice { position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-size: 13px; pointer-events: none; z-index: 2; }
+.map-notice.bad { border-color: #ff6b6b; color: #ffc9c9; }
 .map-hint { position: absolute; left: 10px; bottom: 8px; font-size: 12px; color: var(--muted); pointer-events: none; }
 .side { border-left: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
 

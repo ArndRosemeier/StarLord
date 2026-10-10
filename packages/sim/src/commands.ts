@@ -3,7 +3,7 @@ import { CLIMATES } from "./data/planets.js";
 import { TIERS_BY_ID } from "./data/techs.js";
 import { canSign, isHostile, relation } from "./diplomacy.js";
 import { designStats, findDesign, validateDesign } from "./designs.js";
-import { fleetRange } from "./empire.js";
+import { fleetRange, fleetSpeed } from "./empire.js";
 import { population } from "./economy.js";
 import { distance } from "./galaxy.js";
 import { MAX_LEADERS } from "./data/leaders.js";
@@ -296,6 +296,16 @@ export function canReach(state: GameState, playerId: PlayerId, fleet: Fleet, des
   if (!fleet.starId && !fleet.destStarId) return false;
   if (ownsColonyAt(state, playerId, dest.id)) return true;
   return distanceToNearestColony(state, playerId, dest) <= fleetRange(player);
+}
+
+/** Whole turns a fleet needs to reach a star, matching movement in processTurn; the portal is instant. */
+export function travelTurns(state: GameState, fleet: Fleet, destStarId: Id): number {
+  const dest = state.galaxy.stars.find((s) => s.id === destStarId)!;
+  const here = fleet.starId ? state.galaxy.stars.find((s) => s.id === fleet.starId) : undefined;
+  const d = distance(fleet, dest);
+  if (d === 0) return 0;
+  if (dest.special === "raiderHome" || here?.special === "raiderHome") return 1;
+  return Math.ceil(d / fleetSpeed(state.players[fleet.ownerId]!));
 }
 
 /** MoO2 buy price: double the remaining cost, quadruple if nothing has been spent yet. */
