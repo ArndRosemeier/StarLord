@@ -9,7 +9,7 @@ import { HelpProvider } from "./help/HelpDialog";
 
 export function App() {
   const [session, setSession] = useState<GameSession | null>(null);
-  const [setup, setSetup] = useState(false);
+  const [setup, setSetup] = useState<{ raceId?: string } | null>(null);
 
   // A soft tick for every button press anywhere in the game.
   useEffect(() => {
@@ -24,10 +24,10 @@ export function App() {
   return (
     <HelpProvider session={session}>
       {!session ? (
-        !setup ? <TitleScreen onNewGame={() => setSetup(true)} onStart={setSession} /> : <NewGame onStart={setSession} onBack={() => setSetup(false)} />
+        !setup ? <TitleScreen onNewGame={(raceId) => setSetup({ raceId })} onStart={setSession} /> : <NewGame initialRace={setup.raceId} onStart={setSession} onBack={() => setSetup(null)} />
       ) : (
         <SessionContext.Provider value={session}>
-          <GameShell onQuit={() => { setSession(null); setSetup(false); }} />
+          <GameShell onQuit={() => { setSession(null); setSetup(null); }} />
         </SessionContext.Provider>
       )}
     </HelpProvider>

@@ -2,6 +2,7 @@
   "styles": {
     "art": "Painted sci-fi video game art, cinematic lighting, rich color, high detail, retro-futurist 1990s space opera mood. No text, no letters, no logos, no watermark.",
     "planet": "A single planet seen from space, perfectly centered, the entire sphere visible with a clear margin around it, dramatic light from the upper left with a dark night side on the lower right, thin glowing atmosphere rim where it has air. Painted sci-fi video game art, high detail. Pure black background, no stars, no moons, no text.",
+    "sprite": "Game sprite of a single spaceship seen exactly from the side in flat profile, nose pointing to the LEFT, engines on the right, the whole ship visible with a wide margin. Painted sci-fi video game art, crisp clean edges, high detail, lit from above. The background must be one flat, uniform pure chroma-key green (#00FF00) with no stars, no gradient, no shadow and no glow spilling onto it. No text, no logos.",
     "portrait": "Head and shoulders character portrait for a space strategy game, facing the viewer, inside a dim starship or palace interior with a softly blurred background, dramatic rim lighting. Highly detailed digital painting, cinematic, realistic. No text, no logos, no watermark."
   },
   "images": [
@@ -53,7 +54,13 @@
     { "id": "leader-21", "out": "leaders/21.webp", "width": 384, "style": "portrait", "prompt": "A young human woman agronomist governor with dark skin, close-cropped hair and a bright smile, a practical green field jacket." },
     { "id": "leader-22", "out": "leaders/22.webp", "width": 384, "style": "portrait", "prompt": "A sly fox-like furry alien treasurer with russet fur, narrow clever eyes and an ornate high-collared coat of black and gold." },
     { "id": "leader-23", "out": "leaders/23.webp", "width": 384, "style": "portrait", "prompt": "An ancient insect-like alien archivist with a pale chitin face, delicate antennae and many thin arms, wrapped in grey robes." },
-    { "id": "leader-24", "out": "leaders/24.webp", "width": 384, "style": "portrait", "prompt": "A charismatic human man populist governor in his fifties with a neat beard and a crimson sash over a white suit, raising a hand to a crowd." }
+    { "id": "leader-24", "out": "leaders/24.webp", "width": 384, "style": "portrait", "prompt": "A charismatic human man populist governor in his fifties with a neat beard and a crimson sash over a white suit, raising a hand to a crowd." },
+
+    { "id": "ship-fighter", "out": "art/ships/fighter.webp", "width": 512, "aspect": "16:9", "style": "sprite", "prompt": "A small, fast interceptor fighter: sleek steel-blue arrowhead hull, swept wings, a glowing cyan cockpit canopy." },
+    { "id": "ship-cruiser", "out": "art/ships/cruiser.webp", "width": 640, "aspect": "16:9", "style": "sprite", "prompt": "A long heavy battle cruiser: layered gunmetal grey armor plates, turret batteries along the spine, a domed bridge tower, a row of large engine nozzles." },
+    { "id": "ship-organic", "out": "art/ships/organic.webp", "width": 512, "aspect": "16:9", "style": "sprite", "prompt": "A strange organic alien bio-ship: a glossy purple and teal shell like a squid or nautilus, trailing tendrils, softly glowing bioluminescent spots." },
+    { "id": "ship-raider", "out": "art/ships/raider.webp", "width": 512, "aspect": "16:9", "style": "sprite", "prompt": "A rough, patched-together pirate raider: rust-red and black hull welded from scrap, jagged ram prow, mismatched guns, a crude skull painted on the side." },
+    { "id": "ship-freighter", "out": "art/ships/freighter.webp", "width": 640, "aspect": "16:9", "style": "sprite", "prompt": "A bulky civilian space freighter: a small cockpit pulling a long chain of boxy cargo containers in orange, white and teal, small blinking lights." }
   ],
   "music": [
     { "id": "music-menu", "out": "audio/menu.mp3", "model": "google/lyria-3-pro-preview",
