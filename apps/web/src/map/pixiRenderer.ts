@@ -414,22 +414,26 @@ export class PixiMapRenderer implements MapRenderer {
       this.world.addChild(node);
     }
 
-    // Fleets orbiting a star are stacked beside it; fleets in transit sit on their path, nose toward the destination.
+    // Idle fleets orbiting a star are stacked to its right; fleets with orders to leave are stacked
+    // on the left, nose toward their destination; fleets in transit sit on their path.
     const orbitIndex = new Map<string, number>();
     for (const f of scene.fleets) {
       let x = f.x * UNIT;
       let y = f.y * UNIT;
       if (f.starId) {
-        const i = orbitIndex.get(f.starId) ?? 0;
-        orbitIndex.set(f.starId, i + 1);
-        x += 16 + (i % 3) * 11;
+        const leaving = !!f.dest;
+        const key = `${f.starId}:${leaving}`;
+        const i = orbitIndex.get(key) ?? 0;
+        orbitIndex.set(key, i + 1);
+        const dx = 16 + (i % 3) * 11;
+        x += leaving ? -dx : dx;
         y += -10 + Math.floor(i / 3) * 11;
       }
       const node = new Container();
       node.position.set(x, y);
       const color = hex(f.color);
       const body = new Container();
-      if (f.dest && !f.starId) body.rotation = Math.atan2(f.dest.y * UNIT - y, f.dest.x * UNIT - x);
+      if (f.dest) body.rotation = Math.atan2(f.dest.y * UNIT - y, f.dest.x * UNIT - x);
       if (f.kind === "empire") {
         const engine = glowSprite(color, f.dest ? 18 : 12, 0.9);
         engine.x = -5;
