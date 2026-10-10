@@ -73,8 +73,35 @@ export interface Colony {
   progress: number;
   founded: number;
   terraformed: number;
-  /** Turn until which recently conquered people resent their rulers. */
+  /** No longer used: conquered people now assimilate instead (see `aliens`). Kept for old saves. */
   unrestUntil: number;
+  /** Population units not yet assimilated after a conquest; they produce half and may revolt. */
+  aliens?: number;
+  /** Turns spent assimilating the next alien unit. */
+  assimilation?: number;
+  /** Empire the colony was taken from, which revolting aliens return it to. */
+  formerOwnerId?: PlayerId;
+  /** Android population units by job; they count toward max population but eat no food. */
+  androids?: AndroidCounts;
+  /** Marines and tank battalions trained by the barracks beyond the ones present when built. */
+  marinesTrained?: number;
+  tanksTrained?: number;
+}
+
+export interface AndroidCounts {
+  farmers: number;
+  workers: number;
+  scientists: number;
+}
+
+/** Colonists carried by freighters to another colony of the same race. */
+export interface ColonistTransfer {
+  fromColonyId: Id;
+  toColonyId: Id;
+  raceId: string;
+  count: number;
+  /** Turn on whose economy phase they arrive. */
+  arrives: number;
 }
 
 export interface ShipStack {
@@ -180,6 +207,12 @@ export interface Player {
   automation: string[];
   hasPortal: boolean;
   eliminatedTurn: number | null;
+  /** Freighter ships owned; they carry food and colonists. */
+  freighters?: number;
+  /** Colonists in transit. */
+  transfers?: ColonistTransfer[];
+  /** Whether the empire still holds its Capitol. Unset for empires that never had one. */
+  capitol?: "held" | "lost";
 }
 
 export type AdvancedGovernment = "confederation" | "imperium" | "federation" | "galacticUnification";
@@ -295,7 +328,7 @@ export type GameEvent =
   | { turn: number; kind: "explored"; playerId: PlayerId; starId: Id }
   | { turn: number; kind: "commandRejected"; playerId: PlayerId; reason: string }
   | { turn: number; kind: "combat"; playerId: PlayerId; reportId: Id; starId: Id; won: boolean }
-  | { turn: number; kind: "colonyLost"; playerId: PlayerId; colonyId: Id; to: PlayerId | null; how: "invaded" | "destroyed" }
+  | { turn: number; kind: "colonyLost"; playerId: PlayerId; colonyId: Id; to: PlayerId | null; how: "invaded" | "destroyed" | "revolted" }
   | { turn: number; kind: "colonyCaptured"; playerId: PlayerId; colonyId: Id; from: PlayerId }
   | { turn: number; kind: "invasionFailed"; playerId: PlayerId; colonyId: Id }
   | { turn: number; kind: "bombarded"; playerId: PlayerId; colonyId: Id; popLost: number }

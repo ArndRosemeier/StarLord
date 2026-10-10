@@ -19,23 +19,29 @@ export interface ClimateInfo {
   /** Asteroids and gas giants can't be settled, not even by outposts, until an Artificial Planet turns them into barren planets. */
   habitable: boolean;
   hostile: boolean;
+  /** Extra building upkeep on this climate, as a fraction of the normal upkeep. */
+  maintenancePenalty: number;
 }
 
+/** Farming is impossible where the base food per farmer is 0, unless Biomorphic Fungi are known. */
 export const CLIMATES: Record<PlanetType, ClimateInfo> = {
-  gaia: { popPerSize: 5, foodPerFarmer: 3, habitable: true, hostile: false },
-  terran: { popPerSize: 4, foodPerFarmer: 2, habitable: true, hostile: false },
-  ocean: { popPerSize: 4, foodPerFarmer: 2, habitable: true, hostile: false },
-  swamp: { popPerSize: 3, foodPerFarmer: 2, habitable: true, hostile: false },
-  arid: { popPerSize: 3, foodPerFarmer: 1, habitable: true, hostile: false },
-  tundra: { popPerSize: 2, foodPerFarmer: 1, habitable: true, hostile: false },
-  desert: { popPerSize: 2, foodPerFarmer: 1, habitable: true, hostile: false },
-  barren: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true },
-  radiated: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true },
-  toxic: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true },
-  inferno: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true },
-  asteroids: { popPerSize: 0, foodPerFarmer: 0, habitable: false, hostile: true },
-  gasGiant: { popPerSize: 0, foodPerFarmer: 0, habitable: false, hostile: true },
+  gaia: { popPerSize: 5, foodPerFarmer: 3, habitable: true, hostile: false, maintenancePenalty: 0 },
+  terran: { popPerSize: 4, foodPerFarmer: 2, habitable: true, hostile: false, maintenancePenalty: 0 },
+  ocean: { popPerSize: 4, foodPerFarmer: 2, habitable: true, hostile: false, maintenancePenalty: 0 },
+  swamp: { popPerSize: 3, foodPerFarmer: 2, habitable: true, hostile: false, maintenancePenalty: 0 },
+  arid: { popPerSize: 3, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0 },
+  tundra: { popPerSize: 2, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0 },
+  desert: { popPerSize: 2, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0.25 },
+  barren: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
+  radiated: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.25 },
+  toxic: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.5 },
+  inferno: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
+  asteroids: { popPerSize: 0, foodPerFarmer: 0, habitable: false, hostile: true, maintenancePenalty: 0 },
+  gasGiant: { popPerSize: 0, foodPerFarmer: 0, habitable: false, hostile: true, maintenancePenalty: 0 },
 };
+
+/** Climates without soil: farming is impossible and soil buildings do nothing. */
+export const SOILLESS: PlanetType[] = ["barren", "radiated", "toxic", "inferno", "asteroids", "gasGiant"];
 
 export const SIZE_FACTOR: Record<PlanetSize, number> = {
   tiny: 1, small: 2, medium: 3, large: 4, huge: 5,
@@ -44,6 +50,14 @@ export const SIZE_FACTOR: Record<PlanetSize, number> = {
 export const INDUSTRY_PER_WORKER: Record<Minerals, number> = {
   ultraPoor: 1, poor: 2, abundant: 3, rich: 5, ultraRich: 8,
 };
+
+/**
+ * Industry a planet absorbs without pollution, per size factor. The original
+ * scales tolerance with size but its numbers are not in our references.
+ */
+export const POLLUTION_TOLERANCE_PER_SIZE = 4;
+/** Each point of industry above the tolerance makes this much pollution, and each pollution point costs 1 industry. */
+export const POLLUTION_PER_EXCESS = 0.5;
 
 export function gravityOf(size: PlanetSize, minerals: Minerals): Gravity {
   const heavyMinerals = minerals === "rich" || minerals === "ultraRich";

@@ -1,8 +1,8 @@
-import { BUILDINGS_BY_ID } from "./data/buildings.js";
+import { BUILDINGS_BY_ID, PROJECT_UPKEEP } from "./data/buildings.js";
 import { DRIVES, FUEL_RANGES, HULLS_BY_ID } from "./data/components.js";
 import { GOVERNMENTS, type GovernmentDef } from "./data/governments.js";
 import { getRace } from "./data/races.js";
-import { colonyOutput, type EmpireIncome } from "./economy.js";
+import { colonyOutput, foodPlan, type EmpireIncome } from "./economy.js";
 import { ORBITAL_BASES, RESEARCH, TECHS, type EmpireBonus, type TechField } from "./data/techs.js";
 import type { GameState, Player, PlayerId } from "./types.js";
 
@@ -33,7 +33,7 @@ const bonusCache = new Map<string, Required<EmpireBonus>>();
 const ZERO_BONUS: Required<EmpireBonus> = {
   foodPerFarmer: 0, industryPerWorker: 0, researchPerScientist: 0, maxPopPerSize: 0, growth: 0,
   groundCombat: 0, spying: 0, scanRange: 0, bcPerPop: 0, morale: 0, shipAttack: 0, shipDefense: 0,
-  commandPoints: 0, commandPointsPerBase: 0, pollutionCleanup: 0, maxPopFlat: 0, freeFood: 0, security: 0, diplomacy: 0,
+  commandPoints: 0, commandPointsPerBase: 0, pollutionTolerance: 0, maxPopFlat: 0, hostileFarming: 0, security: 0, diplomacy: 0,
 };
 
 /**
@@ -60,7 +60,6 @@ export function empireBonus(player: Player): Required<EmpireBonus> {
     if (def.governmentBonus?.governments.includes(player.government)) add(def.governmentBonus.bonus, def.group);
   }
   for (const [k, v] of best) total[k.slice(k.indexOf(".") + 1) as keyof EmpireBonus] += v;
-  total.pollutionCleanup = Math.min(1, total.pollutionCleanup);
   bonusCache.set(key, total);
   return total;
 }
@@ -107,7 +106,8 @@ export function commandPointsAvailable(state: GameState, playerId: PlayerId): nu
       if (ORBITAL_BASES.includes(b)) cp += perBase;
     }
   }
-  return cp;
+  // The Imperium raises the whole rating.
+  return Math.floor(cp * government(player).commandPointsMult);
 }
 
 export function commandPointsUsed(state: GameState, playerId: PlayerId): number {
@@ -151,14 +151,21 @@ export function empires(state: GameState): Player[] {
 export function empireIncome(state: GameState, playerId: PlayerId): EmpireIncome {
   let colonies = 0;
   let maintenance = 0;
+  const outputs = [];
   for (const c of Object.values(state.colonies)) {
     if (c.ownerId !== playerId || c.outpost) continue;
     const o = colonyOutput(state, c);
+    outputs.push({ colony: c, out: o });
     colonies += o.bc;
     maintenance += o.maintenance;
   }
+  const food = foodPlan(state, playerId, outputs);
+  const projects = state.players[playerId]!.hasPortal ? PROJECT_UPKEEP.dimensionalPortal : 0;
   const salaries = Object.values(state.leaders).filter((l) => l.ownerId === playerId).reduce((s, l) => s + l.salary, 0);
   const over = Math.max(0, commandPointsUsed(state, playerId) - commandPointsAvailable(state, playerId));
   const commandOverage = over * COMMAND_OVERAGE_COST;
-  return { colonies, maintenance, salaries, commandOverage, net: colonies - maintenance - salaries - commandOverage };
+  return {
+    colonies, foodSales: food.saleBC, maintenance, freighters: food.upkeep, projects, salaries, commandOverage,
+    net: colonies + food.saleBC - maintenance - food.upkeep - projects - salaries - commandOverage,
+  };
 }

@@ -1,11 +1,11 @@
-import { BUILDINGS, BUILDINGS_BY_ID, PROJECTS, PROJECT_COSTS, TERRAFORM_STEP } from "./data/buildings.js";
-import { CLIMATES } from "./data/planets.js";
+import { ANDROID_PROJECTS, BUILDINGS, BUILDINGS_BY_ID, PROJECTS, PROJECT_COSTS, TERRAFORM_STEP } from "./data/buildings.js";
+import { CLIMATES, SOILLESS } from "./data/planets.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import { getRace, hasTrait } from "./data/races.js";
 import { TECHS, TECH_TIERS, previousTier, type TechTier } from "./data/techs.js";
 import { designStats, validateDesign } from "./designs.js";
 import { knows } from "./empire.js";
-import { population } from "./economy.js";
+import { canFarm, capitalLost, maxPopulation, population, totalPopulation } from "./economy.js";
 import type { BuildItem, Colony, GameState, Id, Planet, Player, PlayerId } from "./types.js";
 
 /** Derived rules: what a player can currently build, research and reach. */
@@ -13,8 +13,15 @@ import type { BuildItem, Colony, GameState, Id, Planet, Player, PlayerId } from 
 export function availableBuildings(state: GameState, playerId: PlayerId, colony: Colony): string[] {
   const player = state.players[playerId]!;
   if (colony.outpost) return [];
+  const planet = state.planets[colony.planetId]!;
   return BUILDINGS.filter((b) => {
     if (!knows(player, b.requires) || colony.buildings.includes(b.id)) return false;
+    const e = b.effects;
+    // The Capitol can only be rebuilt after it is lost, and only once.
+    if (e.capitol && (!capitalLost(player) || queuedBuildingAnywhere(state, playerId, b.id))) return false;
+    // Buildings that would do nothing here are not offered.
+    if (e.needsSoil && SOILLESS.includes(planet.type)) return false;
+    if (e.foodPerFarmer && !e.researchPerScientist && !canFarm(planet, player)) return false;
     // Superseded buildings disappear once their replacement stands.
     const superseded = BUILDINGS.some((o) => o.replaces?.includes(b.id) && colony.buildings.includes(o.id));
     return !superseded;
@@ -35,12 +42,26 @@ export function queuedAnywhere(state: GameState, playerId: PlayerId, projectId: 
   );
 }
 
+export function queuedBuildingAnywhere(state: GameState, playerId: PlayerId, buildingId: string): boolean {
+  return Object.values(state.colonies).some(
+    (c) => c.ownerId === playerId && c.queue.some((q) => q.kind === "building" && q.id === buildingId),
+  );
+}
+
+/** Room left on a colony for people or androids. */
+export function colonyRoom(state: GameState, colony: Colony): number {
+  const planet = state.planets[colony.planetId]!;
+  const player = state.players[colony.ownerId]!;
+  return maxPopulation(planet, getRace(colony.raceId), colony.buildings, player) - totalPopulation(colony);
+}
+
 export function availableProjects(state: GameState, playerId: PlayerId, colony: Colony): string[] {
   const player = state.players[playerId]!;
   if (colony.outpost) return [];
   const planet = state.planets[colony.planetId]!;
   return PROJECTS.filter((p) => {
     if (!knows(player, p.requires)) return false;
+    if (p.id in ANDROID_PROJECTS) return colonyRoom(state, colony) > 0;
     switch (p.id) {
       case "colonyBase":
       case "outpostBase":
@@ -114,9 +135,10 @@ export function itemCost(state: GameState, playerId: PlayerId, item: BuildItem, 
         case "artificialPlanet":
         case "dimensionalPortal":
         case "spy":
+        case "freighterFleet":
           return PROJECT_COSTS[item.id];
         default:
-          return Infinity;
+          return item.id in ANDROID_PROJECTS ? PROJECT_COSTS.android : Infinity;
       }
     case "tradeGoods":
       return Infinity;

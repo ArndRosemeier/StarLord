@@ -67,12 +67,12 @@ export interface EmpireBonus {
   commandPoints?: number;
   /** Extra command points for every orbital base (star base, battlestation, star fortress). */
   commandPointsPerBase?: number;
-  /** Fraction of pollution removed, cumulative. */
-  pollutionCleanup?: number;
+  /** Raises every planet's pollution tolerance by this fraction (1 doubles it). */
+  pollutionTolerance?: number;
   /** Extra max pop for every colony, flat. */
   maxPopFlat?: number;
-  /** Food no longer needed per pop (e.g. replicators make industry into food). */
-  freeFood?: number;
+  /** Farming becomes possible on worlds without soil (any value above 0). */
+  hostileFarming?: number;
   /** Spy defense bonus. */
   security?: number;
   /** Diplomatic points added to every deal this empire offers. */
@@ -243,14 +243,14 @@ export const XENON_TECHS = [
  */
 const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> = {
   // Starting tech
-  capitol: { description: "Seat of your government on the homeworld." },
+  capitol: { description: "Seat of your government on the homeworld; it can be rebuilt if lost." },
   pulseRifle: { description: "Basic troop weapon every army starts with." },
   spyNetwork: { name: "Spy Network", description: "Lets colonies train spies." },
   // Construction
   colonyBase: { description: "Settles another planet in the same system." },
   starBase: { description: "Orbital base: defends the colony and adds command points." },
   marineBarracks: { description: "Trains marines to defend the colony." },
-  fighterGarrison: { description: "Planetary base housing interceptor squadrons." },
+  fighterGarrison: { description: "Colonies can build a Fighter Garrison housing planet-based fighter squadrons." },
   survivalPods: { description: "Lets leaders escape when their ship is destroyed." },
   fastMissileRacks: { description: "Ships can fire two missile volleys in one turn." },
   heavyFighterBays: { description: "Carriers launch heavy fighters armed with beams and bombs." },
@@ -258,12 +258,12 @@ const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> 
   doomStarHull: { name: "Doom Star Construction", description: "Allows Doom Star hulls, the largest ships." },
   artificialPlanet: { name: "Planet Construction", description: "Asteroid belts and gas giants can be turned into planets." },
   advancedCityPlanning: { description: "+5 max pop on every colony.", bonus: { maxPopFlat: 5 } },
-  deepCoreMining: { description: "+1 industry per worker.", bonus: { industryPerWorker: 1 } },
-  coreWasteDump: { name: "Core Waste Dumps", description: "Pollution eliminated.", bonus: { pollutionCleanup: 1 } },
+  deepCoreMining: { description: "Colonies can build Deep Core Mining: +15 industry and +3 per worker." },
+  coreWasteDump: { name: "Core Waste Dumps", description: "Colonies can build Core Waste Dumps, which end their pollution." },
   poweredArmor: { description: "Battle suits: +10 troop rating (best suit only).", group: "suit", bonus: { groundCombat: 1 } },
   battleoids: { description: "Robot fighting vehicles: +10 troop rating.", bonus: { groundCombat: 1 } },
   // Power
-  freighters: { description: "Food is shipped between your colonies." },
+  freighters: { description: "Colonies can build Freighter Fleets to carry food and colonists between your colonies." },
   colonyShip: { description: "Ships that settle planets in other systems." },
   outpostShip: { description: "Ships that place outposts on any free planet." },
   transport: { description: "Troop ships for invading planets." },
@@ -275,7 +275,7 @@ const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> 
   interphasedDrive: { description: "Ships move 7 parsecs per turn." },
   shieldCapacitors: { description: "Ship shields recharge faster." },
   transporters: { description: "Ships beam marines and bombs over a distance." },
-  foodReplicators: { description: "Each pop needs half a food less.", bonus: { freeFood: 0.5 } },
+  foodReplicators: { description: "Colonies can build Food Replicators, turning 2 industry into 1 food when short." },
   hyperXCapacitors: { name: "Hyper-X Capacitors", description: "Ship beam weapons can fire twice in a turn." },
   // Chemistry
   extendedFuelTanks: { description: "Ships equipped with them get +50% range." },
@@ -291,37 +291,38 @@ const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> 
   adamantiumArmor: { description: "Ship armor; +25 troop rating (best armor only).", group: "armor", bonus: { groundCombat: 2.5 } },
   xentroniumArmor: { description: "Xenon ship armor; +30 troop rating (best armor only).", group: "armor", bonus: { groundCombat: 3 } },
   microliteConstruction: { description: "+1 industry per worker.", bonus: { industryPerWorker: 1 } },
-  nanoDisassemblers: { description: "Pollution halved.", bonus: { pollutionCleanup: 0.5 } },
+  nanoDisassemblers: { description: "Every planet's pollution tolerance is doubled.", bonus: { pollutionTolerance: 1 } },
   // Sociology
   xenoPsychology: { description: "+30 diplomatic points on every deal you offer.", bonus: { diplomacy: 30 } },
   confederation: { description: "Turns a feudal government into a Confederation.", government: "confederation" },
   federation: { description: "Turns a democracy into a Federation.", government: "federation" },
   galacticUnification: { description: "Turns a unification into Galactic Unification.", government: "galacticUnification" },
   imperium: { description: "Turns a dictatorship into an Imperium.", government: "imperium" },
-  galacticCurrencyExchange: { description: "+0.5 BC per pop.", bonus: { bcPerPop: 0.5 } },
+  galacticCurrencyExchange: { description: "Colonies can build a Galactic Currency Exchange: +50% BC from every source." },
   // Computers
   neuralScanner: { description: "+10 on all spy rolls.", bonus: { spying: 1 } },
   cyberSecurityLink: { name: "Cyber-Security Link", description: "+10 on all spy rolls.", bonus: { spying: 1 } },
   scoutLab: { description: "Ships produce research; bonus against monsters." },
   dauntlessGuidance: { name: "Dauntless Guidance System", description: "Missiles find a new target when theirs is destroyed." },
   cyberneticComputer: { name: "Cybertronic Computer", description: "" },
-  androidFarmers: { description: "Robot farmers: +3 food each, upkeep in industry." },
-  androidScientists: { description: "Robot scientists: 3 research each, upkeep in industry." },
-  androidWorkers: { description: "Robot workers: +3 industry each, upkeep in industry." },
+  androidFarmers: { description: "Colonies can build robot farmers: +3 food over a normal farmer, 1 industry upkeep, no food." },
+  androidScientists: { description: "Colonies can build robot scientists: +3 research over a normal scientist, 1 industry upkeep, no food." },
+  androidWorkers: { description: "Colonies can build robot workers: +3 industry over a normal worker, 1 industry upkeep, no food." },
   galacticNetwork: { name: "Galactic Cybernet", description: "" },
   virtualRealityNetwork: { description: "+20% morale.", bonus: { morale: 20 } },
-  pleasureDome: { description: "+30% morale.", bonus: { morale: 30 } },
+  pleasureDome: { description: "Colonies can build a Pleasure Dome: +30% morale." },
   // Biology
   microbiotics: { description: "+25% population growth (not cumulative with Universal Antidote).", group: "antidote", bonus: { growth: 0.25 } },
   telepathicTraining: { description: "+5 on all spy rolls.", bonus: { spying: 0.5 } },
   heightenedIntelligence: { description: "+1 research per scientist.", bonus: { researchPerScientist: 1 } },
   psionicsTraining: {
-    name: "Psionics", description: "+10 on all spy rolls; +10% morale under dictatorship and imperium.",
-    bonus: { spying: 1 }, governmentBonus: { governments: ["dictatorship", "imperium"], bonus: { morale: 10 } },
+    name: "Psionics", description: "+10 on all spy rolls; +10% morale under feudal, confederation, dictatorship and imperium.",
+    bonus: { spying: 1 },
+    governmentBonus: { governments: ["feudal", "confederation", "dictatorship", "imperium"], bonus: { morale: 10 } },
   },
   bioTerminator: { name: "Bio-Terminator", description: "Biological weapon that kills colonists." },
   universalAntidote: { description: "+50% population growth (not cumulative with Microbiotics).", group: "antidote", bonus: { growth: 0.5 } },
-  biomorphicFungi: { description: "+1 food per farmer.", bonus: { foodPerFarmer: 1 } },
+  biomorphicFungi: { description: "+1 food per farmer, and farming becomes possible on worlds without soil.", bonus: { foodPerFarmer: 1, hostileFarming: 1 } },
   evolutionaryMutation: { description: "Gives 4 race pick points to improve your race." },
   terraforming: { description: "Colonies can terraform their planet one climate step at a time." },
   gaiaTransformation: { description: "Terran planets can be turned into Gaia worlds." },
@@ -350,7 +351,7 @@ const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> 
   antiGravHarness: { name: "Anti-Grav Harness", description: "+10 troop rating.", bonus: { groundCombat: 1 } },
   personalShield: { description: "Battle suits: +20 troop rating (best suit only).", group: "suit", bonus: { groundCombat: 2 } },
   stealthSuit: { description: "+10 on all spy rolls.", bonus: { spying: 1 } },
-  warpInterdictor: { description: "Slows enemy fleets near the system." },
+  warpInterdictor: { description: "Colonies can build a Warp Interdictor, slowing hostile fleets near the system." },
   hardShields: { description: "Shields stop 3 more damage and work in nebulae." },
   stasisField: { description: "Freezes an enemy ship in combat." },
   wideAreaJammer: { description: "Missile evasion for the ship and its fleet." },

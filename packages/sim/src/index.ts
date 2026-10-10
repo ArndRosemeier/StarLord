@@ -26,6 +26,7 @@ export * from "./data/components.js";
 export * from "./data/monsters.js";
 export * from "./data/techs.js";
 export * from "./data/governments.js";
+export * from "./data/economy.js";
 export * from "./data/leaders.js";
 export * from "./record.js";
 export * from "./lockstep.js";
