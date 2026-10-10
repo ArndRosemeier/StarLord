@@ -19,6 +19,9 @@ describe("custom races", () => {
     expect(validateCustomRace(spec({ traits: ["creative", "tolerant"] }))).toMatch(/points/);
     expect(validateCustomRace(spec({ traits: ["lowG", "highG"] }))).toMatch(/exclude/);
     expect(validateCustomRace(spec({ industry: 3 }))).toMatch(/invalid/);
+    // Custom-only art is a valid look; unknown art is not.
+    expect(validateCustomRace({ ...spec(), assetKey: "tramps" })).toBeNull();
+    expect(validateCustomRace({ ...spec(), assetKey: "nobody" })).toMatch(/appearance/);
     // Drawbacks pay for strengths, up to the limit.
     expect(validateCustomRace(spec({ government: "feudal", traits: ["creative"], industry: 0, science: 0, growth: -0.5 }))).toBeNull();
   });

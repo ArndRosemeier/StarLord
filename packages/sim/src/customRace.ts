@@ -1,5 +1,5 @@
 import { CUSTOM_RACE_POINTS, EXCLUSIVE_TRAITS, GOVERNMENT_COSTS, MAX_NEGATIVE_POINTS, PICK_OPTIONS, TRAIT_COSTS, type NumericPick } from "./data/racePicks.js";
-import { RACES, registerRaces, type RaceDef, type RacePicks } from "./data/races.js";
+import { RACE_LOOKS, registerRaces, type RaceDef, type RacePicks } from "./data/races.js";
 
 /**
  * Player-built races, MoO2-style: pick strengths and drawbacks within a point
@@ -41,7 +41,7 @@ export function validateCustomRace(spec: CustomRaceSpec): string | null {
   if (!spec.name.trim() || spec.name.length > 24) return "name must be 1-24 characters";
   if (!spec.plural.trim() || spec.plural.length > 24) return "plural must be 1-24 characters";
   if (!/^#[0-9a-fA-F]{6}$/.test(spec.color)) return "color must be #rrggbb";
-  if (!RACES.some((r) => r.assetKey === spec.assetKey)) return "unknown appearance";
+  if (!RACE_LOOKS.some((l) => l.assetKey === spec.assetKey)) return "unknown appearance";
   if (!(spec.picks.government in GOVERNMENT_COSTS)) return "unknown government";
   for (const key of Object.keys(PICK_OPTIONS) as NumericPick[]) {
     const v = spec.picks[key];

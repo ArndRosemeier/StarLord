@@ -1,13 +1,13 @@
 import { useState } from "react";
 import {
-  CUSTOM_RACE_POINTS, EXCLUSIVE_TRAITS, GOVERNMENT_COSTS, MAX_NEGATIVE_POINTS, PICK_OPTIONS, RACES, TRAIT_COSTS,
+  CUSTOM_RACE_POINTS, EXCLUSIVE_TRAITS, GOVERNMENT_COSTS, MAX_NEGATIVE_POINTS, PICK_OPTIONS, RACE_LOOKS, TRAIT_COSTS,
   raceCost, validateCustomRace,
   type CustomRaceSpec, type Government, type NumericPick, type RaceTrait,
 } from "@starlord/sim";
 import { words } from "../ui/format";
 
 export const blankRace = (): CustomRaceSpec => ({
-  name: "", plural: "", description: "", color: "#4fb3ff", assetKey: RACES[0]!.assetKey,
+  name: "", plural: "", description: "", color: "#4fb3ff", assetKey: RACE_LOOKS[0]!.assetKey,
   picks: {
     growth: 0, farming: 0, industry: 0, science: 0, money: 0, shipAttack: 0, shipDefense: 0, groundCombat: 0, spying: 0,
     government: "dictatorship", traits: [],
@@ -59,10 +59,10 @@ export function RaceBuilder({ initial, isNew = true, onSave, onCancel, onDelete 
 
       <h4>Appearance</h4>
       <div className="row" style={{ gap: 6 }}>
-        {RACES.map((r) => (
-          <button key={r.assetKey} title={`Looks like the ${r.plural}`} onClick={() => setSpec({ ...spec, assetKey: r.assetKey })}
-            style={{ padding: 0, borderRadius: 8, border: `2px solid ${spec.assetKey === r.assetKey ? "var(--accent)" : "transparent"}` }}>
-            <img src={`races/${r.assetKey}.webp`} alt={r.name} width={52} height={52} style={{ display: "block", borderRadius: 6, objectFit: "cover" }} />
+        {RACE_LOOKS.map((l) => (
+          <button key={l.assetKey} title={`Looks like the ${l.name}`} onClick={() => setSpec({ ...spec, assetKey: l.assetKey })}
+            style={{ padding: 0, borderRadius: 8, border: `2px solid ${spec.assetKey === l.assetKey ? "var(--accent)" : "transparent"}` }}>
+            <img src={`races/${l.assetKey}.webp`} alt={l.name} width={52} height={52} style={{ display: "block", borderRadius: 6, objectFit: "cover" }} />
           </button>
         ))}
       </div>
