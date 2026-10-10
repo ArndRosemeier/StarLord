@@ -1,9 +1,9 @@
-import { LAIR_MONSTERS, MONSTER_DESIGNS, RAID_INTERVAL, RAID_START, RAIDER_DESIGNS, raidFleet } from "./data/monsters.js";
+import { LAIR_MONSTERS, LUCKY_RAID_CHANCE, MONSTER_DESIGNS, RAID_INTERVAL, RAID_START, RAIDER_DESIGNS, raidFleet } from "./data/monsters.js";
 import { TIER_OF_TECH, emptyHyperLevels } from "./data/techs.js";
 import { newId, type TurnContext } from "./context.js";
 import { distance } from "./galaxy.js";
 import { maxPopulation } from "./economy.js";
-import { getRace } from "./data/races.js";
+import { getRace, hasTrait } from "./data/races.js";
 import type { Rng } from "./rng.js";
 import type { Fleet, GameState, Player, Star } from "./types.js";
 
@@ -42,7 +42,7 @@ function npcPlayer(id: number, kind: "monsters" | "raiders"): Player {
   };
 }
 
-function spawn(state: GameState, ownerId: number, star: Star, ships: Fleet["ships"], name: string): Fleet {
+export function spawn(state: GameState, ownerId: number, star: Star, ships: Fleet["ships"], name: string): Fleet {
   const f: Fleet = {
     id: newId(state, "f"), ownerId, x: star.x, y: star.y, starId: star.id, destStarId: null,
     ships, stance: "attack", name,
@@ -77,6 +77,7 @@ export function setupNpcs(state: GameState, rng: Rng): void {
       orion.special = "orion";
       orion.name = "Orion";
       orion.color = "white";
+      orion.nebula = false;
       for (const pid of orion.planetIds) delete state.planets[pid];
       const p = {
         id: newId(state, "p"), starId: orion.id, orbit: 3, type: "gaia" as const, size: "huge" as const,
@@ -90,7 +91,7 @@ export function setupNpcs(state: GameState, rng: Rng): void {
     const terran = getRace("terran");
     const maxHome = Math.max(...state.galaxy.stars.map((s) => Math.min(...homes.map((h) => distance(h, s)))));
     for (const star of state.galaxy.stars) {
-      if (star.special || homes.includes(star) || nearHome(star, 5)) continue;
+      if (star.special || star.color === "blackHole" || homes.includes(star) || nearHome(star, 5)) continue;
       const value = star.planetIds.reduce((sum, id) => sum + maxPopulation(state.planets[id]!, terran), 0);
       if (value < 8 || !rng.chance(0.25)) continue;
       const depth = Math.min(...homes.map((h) => distance(h, star))) / maxHome;
@@ -98,9 +99,10 @@ export function setupNpcs(state: GameState, rng: Rng): void {
       const designId = LAIR_MONSTERS[Math.max(0, idx)]!;
       const design = MONSTER_DESIGNS.find((d) => d.id === designId)!;
       spawn(state, monsters.id, star, [{ designId, count: 1 }], design.name);
-      // Lairs guard treasure.
-      const best = star.planetIds.map((id) => state.planets[id]!).find((p) => p.special === "none");
+      // Lairs guard treasure: a monster system always has a second special.
+      const best = star.planetIds.map((id) => state.planets[id]!).find((p) => p.special === "none" && !p.colonyId);
       if (best) best.special = rng.pick(["gold", "gems", "artifacts"] as const);
+
     }
   }
 
@@ -133,7 +135,10 @@ export function raidTick(ctx: TurnContext): void {
   }
   if (state.turn < state.raiders.nextRaid) return;
   state.raiders.nextRaid = state.turn + rng.int(RAID_INTERVAL[0], RAID_INTERVAL[1]);
-  const targets = Object.values(state.colonies).filter((c) => state.players[c.ownerId]!.kind === "empire" && !c.outpost);
+  // Lucky empires tend to be overlooked.
+  let targets = Object.values(state.colonies).filter((c) => state.players[c.ownerId]!.kind === "empire" && !c.outpost);
+  const lucky = (c: (typeof targets)[number]) => hasTrait(getRace(state.players[c.ownerId]!.raceId), "lucky");
+  if (targets.some((c) => !lucky(c))) targets = targets.filter((c) => !lucky(c) || rng.chance(LUCKY_RAID_CHANCE));
   if (targets.length === 0) return;
   // Raiders prefer the most populous colonies.
   targets.sort((a, b) => b.farmers + b.workers + b.scientists - (a.farmers + a.workers + a.scientists));

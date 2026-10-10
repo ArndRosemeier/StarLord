@@ -1,14 +1,17 @@
 import { BUILDINGS_BY_ID } from "./data/buildings.js";
 import { CLIMATES } from "./data/planets.js";
 import { TIERS_BY_ID } from "./data/techs.js";
-import { canSign, isHostile, relation } from "./diplomacy.js";
-import { designStats, findDesign, validateDesign } from "./designs.js";
-import { fleetRange, fleetSpeed } from "./empire.js";
-import { population } from "./economy.js";
-import { distance } from "./galaxy.js";
-import { MAX_LEADERS } from "./data/leaders.js";
 import {
-  availableBuildings, canBuildShips, availableDesigns, availableProjects, availableTiers, itemCost, researchOptions, starOf,
+  audienceTired, canSign, giftProblem, hasTreaty, isHostile, relation, type Gift, type ProposalTerms, type TreatyName,
+} from "./diplomacy.js";
+import { designStats, findDesign, validateDesign } from "./designs.js";
+import { population } from "./economy.js";
+import { MAX_LEADERS } from "./data/leaders.js";
+import { canMindControl, exterminateProblem } from "./ground.js";
+import { moveProblem } from "./movement.js";
+import { bribeProblem } from "./randomEvents.js";
+import {
+  availableBuildings, canBuildShips, availableDesigns, availableProjects, availableTiers, itemCost, researchOptions,
 } from "./rules.js";
 import { validateMutation } from "./mutation.js";
 import type { RacePicks } from "./data/races.js";
@@ -41,7 +44,20 @@ export type Command =
   | { type: "saveDesign"; design: ShipDesign }
   | { type: "obsoleteDesign"; designId: string; obsolete: boolean }
   | { type: "setDoctrine"; doctrine: CombatDoctrine }
-  | { type: "propose"; to: PlayerId; kind: ProposalKind }
+  /** Terms name the technologies, system, third empire or tribute share the proposal is about. */
+  | ({ type: "propose"; to: PlayerId; kind: ProposalKind } & ProposalTerms)
+  | { type: "breakTreaty"; target: PlayerId; treaty: TreatyName }
+  | ({ type: "gift"; to: PlayerId } & Gift)
+  /** Hands the whole empire to another; takes effect at the end of the turn. */
+  | { type: "surrender"; to: PlayerId }
+  /** Accept or refuse the council's verdict; refusing means war with everyone who accepts it. */
+  | { type: "councilResponse"; accept: boolean }
+  /** Kills a conquered colony's whole population (not under Democracy or Federation). */
+  | { type: "exterminate"; colonyId: Id }
+  /** Telepathic takeover of an enemy colony whose defenses are down. */
+  | { type: "mindControl"; fleetId: Id; colonyId: Id }
+  /** Pays a monster's demand so it leaves the system. */
+  | { type: "bribeMonster"; eventId: Id }
   | { type: "respond"; proposalId: Id; accept: boolean }
   | { type: "declareWar"; target: PlayerId }
   | { type: "setSpies"; target: PlayerId; count: number; mission: SpyMission }
@@ -83,6 +99,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const values = [cmd.farmers, cmd.workers, cmd.scientists];
       if (values.some((v) => !Number.isInteger(v) || v < 0)) return fail("jobs must be whole numbers");
       if (cmd.farmers + cmd.workers + cmd.scientists !== population(c)) return fail("jobs must add up to population");
+      if (cmd.farmers < (c.natives ?? 0)) return fail("natives only farm");
       return OK;
     }
     case "setQueue": {
@@ -133,9 +150,9 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
     case "moveFleet": {
       const f = ownFleet(state, playerId, cmd.fleetId);
       if (!f) return fail("not your fleet");
-      const dest = state.galaxy.stars.find((s) => s.id === cmd.destStarId);
-      if (!dest) return fail("no such star");
-      return canReach(state, playerId, f, dest.id) ? OK : fail("out of range");
+      if (cmd.destStarId === f.starId) return OK;
+      const why = moveProblem(state, playerId, f, cmd.destStarId);
+      return why ? fail(why) : OK;
     }
     case "colonize": {
       const f = ownFleet(state, playerId, cmd.fleetId);
@@ -212,14 +229,52 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const target = state.players[cmd.to];
       if (!target || target.kind !== "empire" || !target.alive || cmd.to === playerId) return fail("no such empire");
       if (state.proposals.some((p) => p.from === playerId && p.to === cmd.to && p.kind === cmd.kind)) return fail("already proposed");
-      const why = canSign(state, playerId, cmd.to, cmd.kind);
+      if (audienceTired(state, playerId, cmd.to)) return fail("they will hear no more this turn");
+      const why = canSign(state, playerId, cmd.to, cmd.kind, termsOf(cmd));
       return why ? fail(why) : OK;
     }
     case "respond": {
       const p = state.proposals.find((x) => x.id === cmd.proposalId);
       if (!p || p.to !== playerId) return fail("no such proposal");
-      if (cmd.accept && canSign(state, p.from, p.to, p.kind)) return fail("no longer possible");
+      if (cmd.accept && canSign(state, p.from, p.to, p.kind, termsOf(p))) return fail("no longer possible");
       return OK;
+    }
+    case "breakTreaty": {
+      const target = state.players[cmd.target];
+      if (!target || target.kind !== "empire" || cmd.target === playerId) return fail("no such empire");
+      return hasTreaty(state, playerId, cmd.target, cmd.treaty) ? OK : fail("no such treaty");
+    }
+    case "gift": {
+      const why = giftProblem(state, playerId, cmd.to, { bc: cmd.bc, techId: cmd.techId, starId: cmd.starId, tribute: cmd.tribute });
+      return why ? fail(why) : OK;
+    }
+    case "surrender": {
+      const target = state.players[cmd.to];
+      if (!target || target.kind !== "empire" || !target.alive || cmd.to === playerId) return fail("no such empire");
+      if (!player.contacts.includes(cmd.to)) return fail("no contact");
+      return OK;
+    }
+    case "councilResponse": {
+      const pending = state.council.pending;
+      if (!pending) return fail("no verdict to answer");
+      if (pending.winner === playerId) return fail("you won the vote");
+      return OK;
+    }
+    case "exterminate": {
+      const why = exterminateProblem(state, playerId, cmd.colonyId);
+      return why ? fail(why) : OK;
+    }
+    case "mindControl": {
+      const f = ownFleet(state, playerId, cmd.fleetId);
+      if (!f) return fail("not your fleet");
+      const c = state.colonies[cmd.colonyId];
+      if (!c || state.planets[c.planetId]!.starId !== f.starId) return fail("no such colony here");
+      if (!isHostile(state, playerId, c.ownerId)) return fail("not at war with that colony's owner");
+      return canMindControl(state, f, c) ? OK : fail("needs a telepathic race and a big enough ship in orbit");
+    }
+    case "bribeMonster": {
+      const why = bribeProblem(state, playerId, cmd.eventId);
+      return why ? fail(why) : OK;
     }
     case "declareWar": {
       const target = state.players[cmd.target];
@@ -282,40 +337,17 @@ export function guarded(state: GameState, playerId: PlayerId, starId: Id): boole
   });
 }
 
-export function distanceToNearestColony(state: GameState, playerId: PlayerId, point: { x: number; y: number }): number {
-  let best = Infinity;
-  for (const c of Object.values(state.colonies)) {
-    if (c.ownerId !== playerId) continue;
-    best = Math.min(best, distance(starOf(state, c.planetId), point));
-  }
-  return best;
+/** The negotiable terms carried by a proposal or a propose command. */
+export function termsOf(x: ProposalTerms): ProposalTerms {
+  const out: ProposalTerms = {};
+  if (x.techId !== undefined) out.techId = x.techId;
+  if (x.wantTechId !== undefined) out.wantTechId = x.wantTechId;
+  if (x.starId !== undefined) out.starId = x.starId;
+  if (x.third !== undefined) out.third = x.third;
+  if (x.percent !== undefined) out.percent = x.percent;
+  return out;
 }
 
-export function ownsColonyAt(state: GameState, playerId: PlayerId, starId: Id): boolean {
-  return Object.values(state.colonies).some((c) => c.ownerId === playerId && state.planets[c.planetId]!.starId === starId);
-}
-
-/** Fuel range, plus the dimensional portal to and from the raiders' home. */
-export function canReach(state: GameState, playerId: PlayerId, fleet: Fleet, destStarId: Id): boolean {
-  const player = state.players[playerId]!;
-  const dest = state.galaxy.stars.find((s) => s.id === destStarId)!;
-  const here = fleet.starId ? state.galaxy.stars.find((s) => s.id === fleet.starId) : undefined;
-  if (dest.special === "raiderHome") return player.hasPortal && !!here && ownsColonyAt(state, playerId, here.id);
-  if (here?.special === "raiderHome") return ownsColonyAt(state, playerId, dest.id);
-  if (!fleet.starId && !fleet.destStarId) return false;
-  if (ownsColonyAt(state, playerId, dest.id)) return true;
-  return distanceToNearestColony(state, playerId, dest) <= fleetRange(player);
-}
-
-/** Whole turns a fleet needs to reach a star, matching movement in processTurn; the portal is instant. */
-export function travelTurns(state: GameState, fleet: Fleet, destStarId: Id): number {
-  const dest = state.galaxy.stars.find((s) => s.id === destStarId)!;
-  const here = fleet.starId ? state.galaxy.stars.find((s) => s.id === fleet.starId) : undefined;
-  const d = distance(fleet, dest);
-  if (d === 0) return 0;
-  if (dest.special === "raiderHome" || here?.special === "raiderHome") return 1;
-  return Math.ceil(d / fleetSpeed(state.players[fleet.ownerId]!));
-}
 
 /** MoO2 buy price: double the remaining cost, quadruple if nothing has been spent yet. */
 export function buyCost(state: GameState, colony: Colony): number {

@@ -21,6 +21,12 @@ export interface ClimateInfo {
   hostile: boolean;
 }
 
+/**
+ * Hostile worlds hold a quarter of a Gaia world. With max population rounded
+ * down this gives the original's 1 / 2 / 4 / 5 / 6 for tiny to huge.
+ */
+export const HOSTILE_POP = 4 / 3 + 0.001;
+
 export const CLIMATES: Record<PlanetType, ClimateInfo> = {
   gaia: { popPerSize: 5, foodPerFarmer: 3, habitable: true, hostile: false },
   terran: { popPerSize: 4, foodPerFarmer: 2, habitable: true, hostile: false },
@@ -29,10 +35,10 @@ export const CLIMATES: Record<PlanetType, ClimateInfo> = {
   arid: { popPerSize: 3, foodPerFarmer: 1, habitable: true, hostile: false },
   tundra: { popPerSize: 2, foodPerFarmer: 1, habitable: true, hostile: false },
   desert: { popPerSize: 2, foodPerFarmer: 1, habitable: true, hostile: false },
-  barren: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true },
-  radiated: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true },
-  toxic: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true },
-  inferno: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true },
+  barren: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true },
+  radiated: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true },
+  toxic: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true },
+  inferno: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true },
   asteroids: { popPerSize: 0, foodPerFarmer: 0, habitable: false, hostile: true },
   gasGiant: { popPerSize: 0, foodPerFarmer: 0, habitable: false, hostile: true },
 };
@@ -54,7 +60,7 @@ export function gravityOf(size: PlanetSize, minerals: Minerals): Gravity {
 
 /** Relative frequency of star colors. */
 export const STAR_COLOR_WEIGHTS: Record<StarColor, number> = {
-  blue: 6, white: 10, yellow: 18, orange: 20, red: 32, brown: 10, blackHole: 4,
+  blue: 6, white: 10, yellow: 20, orange: 22, red: 34, brown: 3, blackHole: 5,
 };
 
 /** Planet type weights by star color: hotter stars skew hostile, yellow skews temperate. */
@@ -83,5 +89,5 @@ export const MINERAL_WEIGHTS_BY_STAR: Record<StarColor, Partial<Record<Minerals,
 };
 
 export const PLANETS_PER_STAR: Record<StarColor, [number, number]> = {
-  blue: [1, 4], white: [1, 5], yellow: [1, 5], orange: [1, 5], red: [0, 4], brown: [0, 3], blackHole: [0, 0],
+  blue: [1, 4], white: [1, 5], yellow: [1, 5], orange: [1, 5], red: [0, 4], brown: [0, 0], blackHole: [0, 0],
 };

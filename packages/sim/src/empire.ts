@@ -1,7 +1,9 @@
 import { BUILDINGS_BY_ID } from "./data/buildings.js";
 import { DRIVES, FUEL_RANGES, HULLS_BY_ID, SUPPORT_SHIP_COMMAND_POINTS } from "./data/components.js";
 import { GOVERNMENTS, type GovernmentDef } from "./data/governments.js";
-import { getRace } from "./data/races.js";
+import { getRace, hasTrait } from "./data/races.js";
+import { TRANS_DIMENSIONAL_BONUS } from "./data/movement.js";
+
 import { colonyOutput, type EmpireIncome } from "./economy.js";
 import { ORBITAL_BASES, RESEARCH, TECHS, type EmpireBonus, type TechField } from "./data/techs.js";
 import type { Colony, GameState, Player, PlayerId } from "./types.js";
@@ -69,10 +71,20 @@ export function government(player: Player): GovernmentDef {
   return GOVERNMENTS[player.government];
 }
 
+/**
+ * Base galaxy-map speed in parsecs per turn: the best drive known, plus 2 for
+ * trans-dimensional races. Jump gates, nebulae and interdictors adjust single
+ * moves (see movement.ts).
+ */
 export function fleetSpeed(player: Player): number {
   const known = DRIVES.filter((d) => knows(player, d.tech));
   const base = known.length ? known[known.length - 1]!.speed : 1;
-  return base + (knows(player, "jumpGate") ? 1 : 0);
+  return base + (hasTrait(getRace(player.raceId), "transDimensional") ? TRANS_DIMENSIONAL_BONUS : 0);
+}
+
+/** Whether a player has any faster-than-light drive; pre-warp empires cannot leave their home system. */
+export function hasFtl(player: Player): boolean {
+  return DRIVES.some((d) => knows(player, d.tech));
 }
 
 export function fleetRange(player: Player): number {
@@ -80,7 +92,8 @@ export function fleetRange(player: Player): number {
   return known.length ? known[known.length - 1]!.range : 3;
 }
 
-export const BASE_SCAN_RANGE = 2;
+/** Space Scanner range; Tachyon, Neutron and Sensors raise it to 3, 5 and 8. */
+export const BASE_SCAN_RANGE = 1;
 
 export function scanRange(player: Player): number {
   return BASE_SCAN_RANGE + empireBonus(player).scanRange;
@@ -92,6 +105,8 @@ export function colonyScanBonus(colony: Colony): number {
 }
 
 export const BASE_COMMAND_POINTS = 3;
+/** Warlord races get this many command points from every colony. */
+export const WARLORD_CP_PER_COLONY = 2;
 /** BC per turn for each command point over the limit. */
 export const COMMAND_OVERAGE_COST = 10;
 
@@ -99,8 +114,10 @@ export function commandPointsAvailable(state: GameState, playerId: PlayerId): nu
   const player = state.players[playerId]!;
   let cp = BASE_COMMAND_POINTS + empireBonus(player).commandPoints;
   const perBase = empireBonus(player).commandPointsPerBase;
+  const warlord = hasTrait(getRace(player.raceId), "warlord");
   for (const c of Object.values(state.colonies)) {
     if (c.ownerId !== playerId) continue;
+    if (warlord && !c.outpost) cp += WARLORD_CP_PER_COLONY;
     for (const b of c.buildings) {
       cp += BUILDINGS_BY_ID[b]?.effects.commandPoints ?? 0;
       // Communication techs add to every orbital base.
@@ -125,13 +142,29 @@ export function commandPointsUsed(state: GameState, playerId: PlayerId): number 
   return used;
 }
 
+/** Telepathic spies get +10 on every spy roll (one level). */
+export const TELEPATHIC_SPY_LEVELS = 1;
+
+/**
+ * Offensive spy level (x10 on the roll): the full race pick, spy techs
+ * (Neural Scanner, Stealth Suit, Cyber-Security Link, Telepathic Training,
+ * Psionics) and telepathy.
+ */
 export function spyingLevel(player: Player): number {
-  return getRace(player.raceId).picks.spying + empireBonus(player).spying;
+  const race = getRace(player.raceId);
+  return race.picks.spying + empireBonus(player).spying + (hasTrait(race, "telepathic") ? TELEPATHIC_SPY_LEVELS : 0);
 }
 
+/**
+ * Defensive spy level: counter-agents get only half the race pick, plus the
+ * spy techs, telepathy, government security and security buildings.
+ */
 export function securityLevel(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId]!;
-  let sec = getRace(player.raceId).picks.spying + empireBonus(player).security + government(player).security;
+  const race = getRace(player.raceId);
+  let sec = race.picks.spying / 2 + empireBonus(player).spying + empireBonus(player).security + government(player).security +
+    (hasTrait(race, "telepathic") ? TELEPATHIC_SPY_LEVELS : 0);
+
   for (const c of Object.values(state.colonies)) {
     if (c.ownerId !== playerId) continue;
     for (const b of c.buildings) sec += BUILDINGS_BY_ID[b]?.effects.security ?? 0;

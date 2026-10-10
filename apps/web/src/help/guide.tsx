@@ -2,8 +2,11 @@ import type { ReactNode } from "react";
 import { ALL_DOMAINS, DOMAIN_INFO } from "@starlord/ai";
 import {
   ADMIN_SKILLS, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, CAPTAIN_SKILLS, CAPTURE_THRESHOLD, COMMAND_OVERAGE_COST,
-  COUNCIL_FIRST, COUNCIL_INTERVAL, COUNCIL_MAJORITY, EVENT_CHANCE, FIELD_HEIGHT, FIELD_WIDTH, GROUND_BASE, GROUND_PER_LEVEL,
-  LEADER_OFFER_INTERVAL, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MORALE_RANGE, POP_PER_BOMB_DAMAGE, PROPOSAL_LIFETIME, RESEARCH,
+  COUNCIL, COUNCIL_FIRST, COUNCIL_INTERVAL, COUNCIL_MAJORITY, EVENT_CHANCE, EVENT_START, FIELD_HEIGHT, FIELD_WIDTH,
+  BARRACKS, BLOCKADE_PRODUCTION, BOMB_DAMAGE_PER_POP, BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE, JUMP_GATE_BONUS,
+  MILITIA_PER_POP, NEBULA_SPEED, PEACE_TREATY_TURNS, RATING_PER_LEVEL, TREATY_YIELD, TROOPS, WARLORD_CP_PER_COLONY,
+  AUDIENCE_ITEMS, SPORE_KILL_CHANCE_PER_POINT,
+  LEADER_OFFER_INTERVAL, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MORALE_RANGE, PROPOSAL_LIFETIME, RESEARCH,
   SKILL_PER_LEVEL, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_PER_POP, TAX_STEPS, TRADE_GOODS_RATE, UNREST_MORALE,
 } from "@starlord/sim";
 import { fmt, pct, words } from "../ui/format";
@@ -213,19 +216,34 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Movement</h3>
       <P>
         All your ships move at the speed of your best drive, in parsecs per turn, and can only fly within fuel range of
-        your colonies and outposts. See <HelpLink to="page:drives" />.
+        your colonies and outposts, or those of your allies. See <HelpLink to="page:drives" />.
       </P>
+      <Ul>
+        <li><b>Nebulae</b> slow every ship inside them to {NEBULA_SPEED} parsec a turn, and no shields work in a battle there.</li>
+        <li><b>Black holes</b> cannot be entered, and ships cannot fly close past them.</li>
+        <li><b>Wormholes</b> link two distant stars; the trip takes one turn and needs no fuel.</li>
+        <li>A <b>Star Gate</b> sends ships between any two of your colonies in one turn; a <b>Jump Gate</b> adds {JUMP_GATE_BONUS} to your speed between your colonies.</li>
+        <li>An enemy <b>Warp Interdictor</b> slows your ships near its system to a crawl.</li>
+        <li>Ships already in flight can only change course with communication techs: Tachyon within 3 parsecs of an orbital base, Subspace within 6, Hyperspace anywhere.</li>
+      </Ul>
       <h3>Scanners</h3>
       <P>
-        Your colonies and ships see {BASE_SCAN_RANGE} parsecs around them, more with scanner techs. Orbital stations add
-        to the range around their colony. Empires meet when their scanners overlap.
+        Your colonies and ships see {BASE_SCAN_RANGE} parsec around them, more with scanner techs. Orbital stations add
+        to the range around their colony. Big ships are easier to spot. Ships with a stealth field or a cloak, and the
+        ships of stealthy races, stay hidden unless they share a system with you. Empires meet when their scanners or
+        fleets reach each other.
+      </P>
+      <h3>Blockades</h3>
+      <P>
+        An enemy warship over one of your colonies, with none of yours or your allies' to oppose it, blockades it: the
+        colony works at {pct(BLOCKADE_PRODUCTION)} industry.
       </P>
       <h3>Command points</h3>
       <P>
-        Every warship uses command points by hull size, from 1 for a frigate up to 6 for a doom star; colony ships,
-        outpost ships and transports use 1. You have {BASE_COMMAND_POINTS} to start with, more from star bases,
-        battlestations, star fortresses, the space academy and communication techs. Each point
-        over the limit costs {COMMAND_OVERAGE_COST} BC a turn.
+        Every ship uses command points by hull size, from 1 for a frigate up to 6 for a doom star. You have{" "}
+        {BASE_COMMAND_POINTS} to start with, more from star bases, battlestations, star fortresses, the space academy
+        and communication techs; <HelpLink to="trait:warlord" /> races get {WARLORD_CP_PER_COLONY} more per colony.
+        Each point over the limit costs {COMMAND_OVERAGE_COST} BC a turn.
       </P>
       <h3>Stance</h3>
       <Ul>
@@ -288,35 +306,56 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Bombing</h3>
       <P>
-        Fleets on <b>Attack</b> stance bomb open colonies every turn. Each {fmt(1 / POP_PER_BOMB_DAMAGE)} points of bomb
-        damage kill about one population and may destroy a building. Spores kill population directly. A colony bombed to
-        zero is destroyed.
+        Fleets on <b>Attack</b> stance bomb open colonies every turn. Each {BOMB_DAMAGE_PER_TROOP} points of bomb damage
+        kill a defending troop, each {BOMB_DAMAGE_PER_POP} kill about one population, and bombs may destroy buildings.
+        Death spores and the bio-terminator kill population with a {pct(SPORE_KILL_CHANCE_PER_POINT)} chance per point
+        of damage, which every other empire resents. A colony bombed to zero is destroyed.
+      </P>
+      <h3>Defenders</h3>
+      <P>
+        Every colony has {MILITIA_PER_POP === 2 ? "one militia per two" : `one militia per ${MILITIA_PER_POP}`} population.
+        A Marine Barracks starts with {BARRACKS.marineBarracks.initial} marines and trains one more every{" "}
+        {BARRACKS.marineBarracks.every} turns; an Armor Barracks fields {BARRACKS.armorBarracks.initial} tanks and adds one
+        every {BARRACKS.armorBarracks.every} turns, up to a cap that grows with the planet.
       </P>
       <h3>Invasion</h3>
       <P>
         Select a fleet carrying troops (transports, troop pods or assault shuttles) at the star and press <b>Invade</b>.
-        The troops land when the defenses are down and fight the defenders one by one. Defenders are the colony's
-        barracks troops plus one per two population, and fight from prepared positions.
+        The troops land when the defenses are down and fight the defenders one duel at a time until one side is gone.
       </P>
       <P>
-        Ground strength is {GROUND_BASE} + {GROUND_PER_LEVEL} per ground combat level, from race picks and techs such as
-        powered armor and personal shields. A captured colony keeps its people and buildings, suffers unrest, and may
-        yield one of the loser's techs.
+        Militia fight at {TROOPS.militia.rating}, marines at {TROOPS.marines.rating}, armor at {TROOPS.armor.rating} with{" "}
+        {TROOPS.armor.hits} hits. Every ground combat level from race picks and every equipment tech (powered armor,
+        personal shields and so on) adds {RATING_PER_LEVEL}. A captured colony keeps its people and buildings, suffers
+        unrest, and has a {pct(CAPTURE_TECH_CHANCE)} chance to yield one of the loser's techs. Telepathic races can take
+        a colony by mind control with a big ship in orbit; conquerors outside democracies may also exterminate a
+        conquered population.
       </P>
     </>
   ),
 
   diplomacy: () => (
     <>
-      <P>Once you meet an empire you can trade proposals on the <b>Diplomacy</b> screen. Proposals expire after {PROPOSAL_LIFETIME} turns.</P>
+      <P>
+        Once you meet an empire you can trade proposals on the <b>Diplomacy</b> screen. Proposals expire after{" "}
+        {PROPOSAL_LIFETIME} turns, and a ruler hears at most {AUDIENCE_ITEMS} of yours a turn.
+      </P>
       <Ul>
-        <li><b>War</b>: your ships and theirs fight on sight. Declaring war on someone you had a treaty with angers everyone, and their allies join in.</li>
-        <li><b>Ceasefire / peace</b>: ends a war.</li>
-        <li><b>Alliance</b>: needs peace first.</li>
-        <li><b>Trade treaty</b>: both sides earn BC that grows with the smaller partner's population.</li>
-        <li><b>Research treaty</b>: both sides gain research that grows with the smaller partner's research.</li>
+        <li><b>War</b>: your ships and theirs fight on sight. Declaring war on someone you had a treaty with angers everyone, and their allies join in. Breaking a peace treaty within {PEACE_TREATY_TURNS} turns is an outrage.</li>
+        <li><b>Peace</b>: ends a war.</li>
+        <li><b>Non-aggression pact</b>: a promise not to attack; relations warm over time.</li>
+        <li><b>Alliance</b>: allies share fuel range and warm faster.</li>
+        <li><b>Trade treaty</b>: both sides earn {TREATY_YIELD.trade.perPop} BC per population of the smaller partner.</li>
+        <li><b>Research treaty</b>: both sides gain {TREATY_YIELD.research.perPop} research per population of the smaller partner.</li>
+        <li><b>Technology exchange</b>, <b>gifts</b> of BC, techs or systems, and a standing <b>tribute</b> of 5% or 10% of your income.</li>
+        <li><b>Demands</b>: tribute, a tech, a system, war on or peace with a third empire, breaking an alliance, recalling spies or fleets. Refusing angers the demander; giving in sours them less than you might fear.</li>
+        <li><b>Surrender</b>: hand your whole empire to another ruler.</li>
       </Ul>
-      <P>Treaty income starts small and ramps up over ten turns. <HelpLink to="trait:fantasticTraders" /> double trade income; <HelpLink to="trait:repulsive" /> races can't sign alliances or treaties.</P>
+      <P>
+        Treaty income runs at a loss for the first {TREATY_YIELD.trade.breakEven} turns and only reaches full value after{" "}
+        {TREATY_YIELD.trade.full}. <HelpLink to="trait:fantasticTraders" /> double trade income; <HelpLink to="trait:repulsive" /> races
+        can only make peace or war.
+      </P>
       <h3>Attitude</h3>
       <P>
         Every empire has an attitude toward every other, drifting toward a baseline: treaties, alliances, common enemies
@@ -365,23 +404,34 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
   council: () => (
     <>
       <P>
-        If the council is enabled, it first meets on turn {COUNCIL_FIRST} and then every {COUNCIL_INTERVAL} turns, as
-        long as at least three empires remain. The two most populous empires stand as candidates and every empire votes
-        with a weight based on its population.
+        If the council is enabled, it first convenes once {pct(COUNCIL.settledShare)} of the galaxy's systems are
+        settled (not before turn {COUNCIL_FIRST}, and by turn {COUNCIL.latestFirstTurn} at the latest), then every{" "}
+        {COUNCIL_INTERVAL} turns while at least {COUNCIL.minEmpires} empires remain. The two most populous empires stand
+        as candidates and every empire gets one vote per {COUNCIL.popPerVote} population.
       </P>
       <P>
-        A candidate with {pct(COUNCIL_MAJORITY)} of all votes wins the game. Candidates vote for themselves; you can set
-        your vote on the Diplomacy screen. Computer empires only back a candidate they clearly like, so good relations
-        matter.
+        A candidate with {pct(COUNCIL_MAJORITY)} of all votes is elected. Candidates vote for themselves; you can set
+        your vote on the Diplomacy screen. Computer empires only back a candidate they clearly like. You may refuse
+        another ruler's election on the next turn, but then you are at war with every empire that accepted it.
       </P>
     </>
   ),
 
   events: () => (
-    <P>
-      From turn 20 on, each turn has a {pct(EVENT_CHANCE)} chance of a random event striking one empire: a plague, a
-      prospectors' gold strike, a derelict ship that teaches a tech, a comet that wrecks a building, or a baby boom.
-    </P>
+    <>
+      <P>
+        From turn {EVENT_START} on, each turn has a {pct(EVENT_CHANCE)} chance of a random event. They can be switched
+        off when starting a game. <HelpLink to="trait:lucky" /> races are spared the disasters and see good fortune twice
+        as often.
+      </P>
+      <Ul>
+        <li><b>Windfalls</b>: donations, derelict ships and research breakthroughs, new mineral deposits, a planet's axis shifting to a terran climate, population booms, diplomatic marriages.</li>
+        <li><b>Disasters</b>: earthquakes, industrial accidents that irradiate a planet, depleted mines, computer viruses, ship explosions, mutinies, assassinations.</li>
+        <li><b>Threats you can fight</b>: a comet bound for a colony (warships in orbit break it up), pirates (send warships to their system), a plague (the colony's research finds a cure) and a supernova (the system's research must stop it).</li>
+        <li><b>Hyperspace trouble</b>: flux that stops all ships, a warp beast that eats ships in flight, warp funnels that trap a fleet, unstable wormholes that fling one across the galaxy, and time-space anomalies where nothing can be built or fought.</li>
+        <li><b>Monsters</b> from beyond the rim: one turns a system toxic, one kills every colonist, one blockades, one ravages the population, and one demands BC or pillages the system.</li>
+      </Ul>
+    </>
   ),
 
   victory: () => (
@@ -393,8 +443,11 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><b>Score</b>: when the turn limit is reached, the highest score wins. Score counts population, colonies, outposts, techs, industry, research and ships.</li>
       </Ul>
       <P>
-        Galaxy sizes: {Object.entries(STAR_COUNTS).map(([k, v]) => `${k} ${v} stars`).join(", ")}. Monsters, raiders and
-        the council can each be switched off when starting a game.
+        Galaxy sizes: {Object.entries(STAR_COUNTS).map(([k, v]) => `${k} ${v} stars`).join(", ")}. Monsters, raiders,
+        random events and the council can each be switched off when starting a game. Difficulty sets how fast computer
+        empires produce and research and how warmly they treat you; galaxy age changes the mix of stars and minerals;
+        the tech level starts everyone pre-warp, average or advanced.
+
       </P>
     </>
   ),

@@ -1,22 +1,30 @@
 import { BUILDINGS_BY_ID, TERRAFORM_STEP } from "./data/buildings.js";
+import { DIFFICULTIES } from "./data/galaxy.js";
+import { BLOCKADE_PRODUCTION } from "./data/movement.js";
 import { GOVERNMENTS } from "./data/governments.js";
-import { CLIMATES, gravityOf, type PlanetType } from "./data/planets.js";
+import { gravityOf, type PlanetType } from "./data/planets.js";
 import { getRace, hasTrait, registerRaces } from "./data/races.js";
-import { RESEARCH, TECHS, TIERS_BY_ID, TIER_OF_TECH, emptyHyperLevels } from "./data/techs.js";
-import { bombardment, colonyDefenseStrength, hasArmedDefenses, resolveCombat, type CombatSide } from "./combat.js";
-import { buyCost, validateCommand, type Command } from "./commands.js";
+import { RESEARCH, TECHS, TIERS_BY_ID, emptyHyperLevels } from "./data/techs.js";
+import { colonyDefenseStrength, hasArmedDefenses, resolveCombat, type CombatSide } from "./combat.js";
+import { buyCost, termsOf, validateCommand, type Command } from "./commands.js";
 import { newId, type TurnContext } from "./context.js";
 import { councilTick } from "./council.js";
 import { designStats, findDesign } from "./designs.js";
-import { acceptProposal, adjustAttitude, declareWar, diplomacyTick, isHostile, treatyIncome } from "./diplomacy.js";
-import { COMMAND_OVERAGE_COST, commandPointsAvailable, commandPointsUsed, empireBonus, fleetSpeed, grantTech } from "./empire.js";
+import {
+  acceptProposal, breakTreaty, declareWar, diplomacyTick, giveGift, isHostile, rejectProposal, surrenderEmpire, treatyIncome,
+} from "./diplomacy.js";
+import { COMMAND_OVERAGE_COST, commandPointsAvailable, commandPointsUsed, grantTech } from "./empire.js";
 import { TRADE_GOODS_RATE, colonyOutput, population, type ColonyOutput } from "./economy.js";
 import { espionageTick } from "./espionage.js";
 import { distance } from "./galaxy.js";
+import { addShips, deleteFleet, removeShips } from "./fleetOps.js";
+import { destroyColony, exterminate, garrisonTick, groundPhase, type Silenced } from "./ground.js";
 import { assignJobsForFood } from "./jobs.js";
 import { leaderTick, salaries } from "./leaders.js";
+import { isBlockaded, moveFleet } from "./movement.js";
 import { guardianSlain, raidTick } from "./npc.js";
-import { randomEventTick } from "./randomEvents.js";
+import { absorbResearch, growthMultiplier, payBribe, randomEventTick, systemFrozen } from "./randomEvents.js";
+import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
 import { freePlanetsInSystem, isContinuous, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
 import { applyMutation } from "./mutation.js";
@@ -50,11 +58,14 @@ export function processTurn(prev: GameState, orders: TurnOrders): GameState {
   const silenced = combatPhase(ctx);
   groundPhase(ctx, silenced);
   runEconomy(ctx);
+  garrisonTick(state);
   espionageTick(state, rng, ctx.emit);
-  diplomacyTick(state);
+  diplomacyTick(state, ctx.emit);
   leaderTick(state, rng);
-  councilTick(state, ctx.emit);
+  const elected = councilTick(state, ctx.emit);
+  if (elected) endGame(ctx, elected.winner, "council");
   randomEventTick(ctx);
+  surrenders(ctx);
   checkElimination(ctx);
 
   state.turn += 1;
@@ -152,6 +163,7 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "moveFleet": {
       const f = state.fleets[cmd.fleetId]!;
       f.destStarId = cmd.destStarId === f.starId ? null : cmd.destStarId;
+      if (f.starId) f.fromStarId = f.starId;
       break;
     }
     case "colonize": {
@@ -167,6 +179,11 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     }
     case "invade":
       state.fleets[cmd.fleetId]!.invadeTarget = cmd.colonyId;
+      delete state.fleets[cmd.fleetId]!.mindControl;
+      break;
+    case "mindControl":
+      state.fleets[cmd.fleetId]!.invadeTarget = cmd.colonyId;
+      state.fleets[cmd.fleetId]!.mindControl = true;
       break;
     case "splitFleet": {
       const f = state.fleets[cmd.fleetId]!;
@@ -213,20 +230,42 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       player.doctrine = { ...cmd.doctrine };
       break;
     case "propose":
-      state.proposals.push({ id: newId(state, "d"), from: playerId, to: cmd.to, kind: cmd.kind, turn: state.turn });
+      state.proposals.push({ id: newId(state, "d"), from: playerId, to: cmd.to, kind: cmd.kind, turn: state.turn, ...termsOf(cmd) });
       break;
     case "respond": {
       const p = state.proposals.find((x) => x.id === cmd.proposalId)!;
       state.proposals = state.proposals.filter((x) => x.id !== p.id);
       if (cmd.accept) {
-        acceptProposal(state, p);
+        acceptProposal(state, p, ctx.emit);
         ctx.emit({ kind: "diplomacy", playerId: p.from, other: p.to, what: `accepted ${p.kind}` });
       } else {
-        adjustAttitude(state, p.from, p.to, -2);
+        rejectProposal(state, p);
         ctx.emit({ kind: "diplomacy", playerId: p.from, other: p.to, what: `rejected ${p.kind}` });
       }
       break;
     }
+    case "breakTreaty":
+      breakTreaty(state, playerId, cmd.target, cmd.treaty);
+      ctx.emit({ kind: "diplomacy", playerId: cmd.target, other: playerId, what: `ended the ${cmd.treaty} treaty` });
+      break;
+    case "gift":
+      giveGift(state, playerId, cmd.to, { bc: cmd.bc, techId: cmd.techId, starId: cmd.starId, tribute: cmd.tribute }, ctx.emit);
+      break;
+    case "surrender":
+      state.surrenders = { ...(state.surrenders ?? {}), [playerId]: cmd.to };
+      break;
+    case "councilResponse": {
+      const pending = state.council.pending!;
+      pending.refused = pending.refused.filter((x) => x !== playerId);
+      if (!cmd.accept) pending.refused.push(playerId);
+      break;
+    }
+    case "exterminate":
+      exterminate(ctx, playerId, cmd.colonyId);
+      break;
+    case "bribeMonster":
+      payBribe(ctx, playerId, cmd.eventId);
+      break;
     case "declareWar":
       declareWar(state, playerId, cmd.target);
       ctx.emit({ kind: "diplomacy", playerId: cmd.target, other: playerId, what: "declared war on you" });
@@ -266,23 +305,6 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
   }
 }
 
-function addShips(f: Fleet, designId: string, count: number): void {
-  const s = f.ships.find((x) => x.designId === designId);
-  if (s) s.count += count;
-  else f.ships.push({ designId, count });
-}
-
-function removeShips(state: GameState, f: Fleet, designId: string, count: number): void {
-  const s = f.ships.find((x) => x.designId === designId);
-  if (s) s.count -= count;
-  f.ships = f.ships.filter((x) => x.count > 0);
-  if (f.ships.length === 0) deleteFleet(state, f.id);
-}
-
-function deleteFleet(state: GameState, id: Id): void {
-  delete state.fleets[id];
-  for (const l of Object.values(state.leaders)) if (l.assignedTo === id) l.assignedTo = null;
-}
 
 function foundColony(ctx: TurnContext, playerId: PlayerId, planetId: Id, pop: number, raceId: string): Colony {
   const { state } = ctx;
@@ -299,49 +321,25 @@ function foundColony(ctx: TurnContext, playerId: PlayerId, planetId: Id, pop: nu
   state.colonies[colony.id] = colony;
   if (pop > 0) assignJobsForFood(state, colony);
   ctx.emit({ kind: "colonyFounded", playerId, colonyId: colony.id, planetId });
+  onColonize(ctx, colony);
   return colony;
-}
-
-function destroyColony(state: GameState, colony: Colony): void {
-  state.planets[colony.planetId]!.colonyId = null;
-  delete state.colonies[colony.id];
 }
 
 // ---------------------------------------------------------------- movement
 
 function moveFleets(ctx: TurnContext): void {
   const { state } = ctx;
-  const starsById = new Map(state.galaxy.stars.map((s) => [s.id, s]));
-  for (const f of Object.values(state.fleets)) {
+  for (const f of Object.values(state.fleets).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const owner = state.players[f.ownerId]!;
     if (f.destStarId) {
-      const dest = starsById.get(f.destStarId)!;
-      const here = f.starId ? starsById.get(f.starId) : undefined;
-      // The dimensional portal is instant in both directions.
-      const portal = dest.special === "raiderHome" || here?.special === "raiderHome";
-      const speed = portal ? Infinity : fleetSpeed(owner);
-      const d = distance(f, dest);
-      if (d <= speed) {
-        f.x = dest.x;
-        f.y = dest.y;
-        f.starId = dest.id;
-        f.destStarId = null;
-      } else {
-        f.x += ((dest.x - f.x) / d) * speed;
-        f.y += ((dest.y - f.y) / d) * speed;
-        f.starId = null;
+      moveFleet(state, f);
+      if (f.invadeTarget && f.starId !== state.planets[state.colonies[f.invadeTarget]?.planetId ?? ""]?.starId) {
+        delete f.invadeTarget;
+        delete f.mindControl;
       }
-      if (f.invadeTarget && f.starId !== state.planets[state.colonies[f.invadeTarget]?.planetId ?? ""]?.starId) delete f.invadeTarget;
     }
     if (f.starId && owner.kind === "empire") explore(ctx, f.ownerId, f.starId);
   }
-}
-
-function explore(ctx: TurnContext, playerId: PlayerId, starId: Id): void {
-  const p = ctx.state.players[playerId]!;
-  if (p.explored.includes(starId)) return;
-  p.explored.push(starId);
-  ctx.emit({ kind: "explored", playerId, starId });
 }
 
 // ---------------------------------------------------------------- combat
@@ -354,8 +352,6 @@ function isArmed(state: GameState, f: Fleet): boolean {
   });
 }
 
-/** Colonies whose orbital defenses are down this turn, so they can be bombed or invaded. */
-type Silenced = Set<Id>;
 
 function combatPhase(ctx: TurnContext): Silenced {
   const { state, rng } = ctx;
@@ -364,7 +360,10 @@ function combatPhase(ctx: TurnContext): Silenced {
   for (const f of Object.values(state.fleets)) if (f.starId) stars.add(f.starId);
 
   for (const starId of [...stars].sort()) {
+    // Nobody can fight inside a time-space anomaly.
+    if (systemFrozen(state, starId)) continue;
     for (let guard = 0; guard < 6; guard++) {
+
       const pair = nextBattle(state, starId, silenced);
       if (!pair) break;
       const [a, b] = pair;
@@ -507,118 +506,6 @@ function nearestOwnStar(state: GameState, playerId: PlayerId, fromStarId: Id): I
   return best;
 }
 
-// ---------------------------------------------------------------- bombing and invasion
-
-export const POP_PER_BOMB_DAMAGE = 1 / 15;
-export const GROUND_BASE = 10;
-export const GROUND_PER_LEVEL = 5;
-
-function enemyArmedAt(state: GameState, starId: Id, playerId: PlayerId): boolean {
-  return Object.values(state.fleets).some(
-    (f) => f.starId === starId && isHostile(state, playerId, f.ownerId) && isArmed(state, f),
-  );
-}
-
-function groundPhase(ctx: TurnContext, silenced: Silenced): void {
-  const { state, rng } = ctx;
-  for (const f of Object.values(state.fleets)) {
-    if (!f.starId || !state.fleets[f.id]) continue;
-    const owner = state.players[f.ownerId]!;
-    if (owner.kind === "monsters") continue;
-    const targets = Object.values(state.colonies).filter(
-      (c) => state.planets[c.planetId]!.starId === f.starId && isHostile(state, f.ownerId, c.ownerId) && silenced.has(c.id),
-    );
-    if (targets.length === 0 || enemyArmedAt(state, f.starId, f.ownerId)) continue;
-
-    if (f.invadeTarget && targets.some((c) => c.id === f.invadeTarget)) {
-      invade(ctx, f, state.colonies[f.invadeTarget]!);
-      continue;
-    }
-    if (f.stance !== "attack" && owner.kind !== "raiders") continue;
-    for (const c of targets) {
-      if (owner.kind === "raiders") {
-        raze(ctx, c, rng.int(1, 3));
-        continue;
-      }
-      const { bombs, spores } = bombardment(state, f);
-      if (bombs <= 0 && spores <= 0) continue;
-      const kills = Math.floor(bombs * POP_PER_BOMB_DAMAGE + rng.next()) + spores;
-      raze(ctx, c, kills);
-      if (bombs > 0 && c.buildings.length > 0 && rng.chance(Math.min(0.5, bombs / 200))) {
-        c.buildings.splice(rng.int(0, c.buildings.length - 1), 1);
-      }
-    }
-  }
-}
-
-function raze(ctx: TurnContext, c: Colony, kills: number): void {
-  const { state } = ctx;
-  if (!state.colonies[c.id]) return;
-  let lost = 0;
-  for (let i = 0; i < kills && population(c) > 0; i++) {
-    if (c.workers > 0) c.workers--;
-    else if (c.farmers > 0) c.farmers--;
-    else c.scientists--;
-    lost++;
-  }
-  if (lost > 0) ctx.emit({ kind: "bombarded", playerId: c.ownerId, colonyId: c.id, popLost: lost });
-  if (!c.outpost && population(c) === 0) {
-    ctx.emit({ kind: "colonyLost", playerId: c.ownerId, colonyId: c.id, to: null, how: "destroyed" });
-    destroyColony(state, c);
-  }
-}
-
-function groundStrength(state: GameState, playerId: PlayerId, raceId: string): number {
-  const p = state.players[playerId]!;
-  const levels = getRace(raceId).picks.groundCombat + empireBonus(p).groundCombat;
-  return GROUND_BASE + GROUND_PER_LEVEL * levels;
-}
-
-function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
-  const { state, rng } = ctx;
-  const attacker = state.players[f.ownerId]!;
-  let troops = 0;
-  for (const s of [...f.ships]) {
-    const d = findDesign(attacker, s.designId);
-    const t = d ? designStats(attacker, d).troops : 0;
-    if (t > 0) {
-      troops += t * s.count;
-      removeShips(state, f, s.designId, s.count);
-    }
-  }
-  delete f.invadeTarget;
-  const out = colonyOutput(state, colony);
-  let defenders = colony.outpost ? 0 : out.troops;
-  const atk = groundStrength(state, attacker.id, attacker.raceId);
-  // Defenders fight from prepared positions.
-  const def = groundStrength(state, colony.ownerId, colony.raceId) + 5;
-  while (troops > 0 && defenders > 0) {
-    if (rng.int(1, 100) + atk > rng.int(1, 100) + def) defenders--;
-    else troops--;
-  }
-  if (troops <= 0) {
-    ctx.emit({ kind: "invasionFailed", playerId: attacker.id, colonyId: colony.id });
-    return;
-  }
-  const loser = colony.ownerId;
-  ctx.emit({ kind: "colonyLost", playerId: loser, colonyId: colony.id, to: attacker.id, how: "invaded" });
-  colony.ownerId = attacker.id;
-  colony.queue = [];
-  colony.progress = 0;
-  colony.unrestUntil = state.turn + 20;
-  if (colony.outpost) colony.raceId = attacker.raceId;
-  ctx.emit({ kind: "colonyCaptured", playerId: attacker.id, colonyId: colony.id, from: loser });
-  // Captured scientists sometimes yield a technology.
-  const loserTechs = state.players[loser]!.techs.filter((t) => !attacker.techs.includes(t) && TIER_OF_TECH[t]);
-  if (loserTechs.length > 0 && rng.chance(0.5)) {
-    const tech = rng.pick(loserTechs);
-    learnTech(ctx, attacker.id, tech, TIER_OF_TECH[tech]!.id, "salvage");
-  }
-  for (const l of Object.values(state.leaders)) {
-    if (l.ownerId === loser && l.assignedTo === state.planets[colony.planetId]!.starId) l.assignedTo = null;
-  }
-}
-
 // ---------------------------------------------------------------- economy
 
 function runEconomy(ctx: TurnContext): void {
@@ -645,13 +532,23 @@ function runEconomy(ctx: TurnContext): void {
     const foodBalance = list.reduce((sum, x) => sum + x.out.foodNet, 0);
     if (foodBalance < 0) starve(ctx, player.id, list, Math.ceil(-foodBalance));
 
+    // Computer players get the difficulty level's production and research handicap.
+    const level = DIFFICULTIES[state.settings.difficulty ?? "average"];
+    const aiProd = player.isHuman ? 1 : level.aiProduction;
+    const aiResearch = player.isHuman ? 1 : level.aiResearch;
     let research = 0;
     let bc = 0;
     for (const { colony, out } of list) {
-      research += out.research;
+      // A plague or a threatened supernova claims the colony's research.
+      research += absorbResearch(state, colony, out.research * aiResearch);
       bc += out.bc - out.maintenance + specialIncome(state, colony);
-      bc += produce(ctx, colony, out.industry, traders);
-      grow(colony, out);
+      const starId = state.planets[colony.planetId]!.starId;
+      // A time-space anomaly stops all building; a blockade halves industry.
+      if (!systemFrozen(state, starId)) {
+        const industry = out.industry * aiProd * (isBlockaded(state, colony.id) ? BLOCKADE_PRODUCTION : 1);
+        bc += produce(ctx, colony, industry, traders);
+      }
+      grow(colony, { ...out, growthK: out.growthK * growthMultiplier(state, colony.id) });
     }
     const treaties = treatyIncome(state, player.id, totals);
     research += treaties.research;
@@ -893,6 +790,20 @@ export function learnTech(ctx: TurnContext, playerId: PlayerId, tech: string, ti
 }
 
 // ---------------------------------------------------------------- end of turn
+
+/** Surrenders ordered this turn: the whole empire passes to the chosen ruler. */
+function surrenders(ctx: TurnContext): void {
+  const { state } = ctx;
+  const orders = state.surrenders ?? {};
+  for (const [from, to] of Object.entries(orders).sort(([a], [b]) => Number(a) - Number(b))) {
+    const giver = state.players[Number(from)];
+    const taker = state.players[to];
+    if (!giver?.alive || !taker?.alive) continue;
+    surrenderEmpire(state, giver.id, taker.id, ctx.emit);
+  }
+  delete state.surrenders;
+}
+
 
 function checkElimination(ctx: TurnContext): void {
   const { state } = ctx;

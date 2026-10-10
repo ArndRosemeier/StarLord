@@ -46,6 +46,36 @@ export const LAIR_MONSTERS = ["voidAmoeba", "latticeCrystal", "ionEel", "starHyd
 export const RAID_START = 120;
 export const RAID_INTERVAL: [number, number] = [15, 25];
 
+/** Chance a lucky empire's colony is even considered as a raid target ("raiders tend to overlook them"). */
+export const LUCKY_RAID_CHANCE = 0.25;
+
+/**
+ * Monsters that invade the galaxy from outside (random events). Each picks an
+ * empire system, travels there, does its damage if it survives the fight, and
+ * leaves the galaxy after `stay` turns. Fleets can hunt it down meanwhile.
+ * - engulf: every planet in the system turns toxic and its colonies die.
+ * - killAll: kills every colonist, leaving the buildings standing empty.
+ * - pillage: demands a bribe; unpaid, it kills colonists and wrecks buildings.
+ * - blockade: sits in the system, cutting its production in half.
+ * - kill: kills a share of the colonists.
+ */
+export type RoamingEffect = "engulf" | "killAll" | "pillage" | "blockade" | "kill";
+
+export const ROAMING_MONSTERS: Record<string, { designId: string; name: string; effect: RoamingEffect; speed: number; stay: number }> = {
+  amoeba: { designId: "voidAmoeba", name: "Void Amoeba", effect: "engulf", speed: 3, stay: 25 },
+  crystal: { designId: "latticeCrystal", name: "Lattice Crystal", effect: "killAll", speed: 2, stay: 25 },
+  dragon: { designId: "starWyrm", name: "Star Wyrm", effect: "pillage", speed: 4, stay: 30 },
+  eel: { designId: "ionEel", name: "Ion Eel", effect: "blockade", speed: 5, stay: 20 },
+  hydra: { designId: "starHydra", name: "Star Hydra", effect: "kill", speed: 3, stay: 25 },
+};
+
+/** Share of colonists a hydra kills on arrival. */
+export const HYDRA_KILL_SHARE = 0.5;
+/** The wyrm asks this many BC per population unit of the system it threatens. */
+export const DRAGON_BRIBE_PER_POP = 15;
+/** Buildings a pillaging wyrm wrecks, and the share of colonists it kills. */
+export const DRAGON_PILLAGE = { buildings: 3, popShare: 0.5 };
+
 /** Raid fleet composition by turn. */
 export function raidFleet(turn: number): { designId: string; count: number }[] {
   const t = Math.max(0, turn - RAID_START);

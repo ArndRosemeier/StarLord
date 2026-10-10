@@ -63,12 +63,14 @@ function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar: (sta
   const move = (to: keyof typeof jobs, delta: 1 | -1) => {
     const next = { ...jobs };
     if (delta === 1) {
-      const from = (["workers", "scientists", "farmers"] as const).find((k) => k !== to && next[k] > 0);
+      // Natives only ever farm.
+      const natives = colony.natives ?? 0;
+      const from = (["workers", "scientists", "farmers"] as const).find((k) => k !== to && next[k] > (k === "farmers" ? natives : 0));
       if (!from) return;
       next[from]--;
       next[to]++;
     } else {
-      if (next[to] === 0) return;
+      if (next[to] === 0 || (to === "farmers" && next.farmers <= (colony.natives ?? 0))) return;
       next[to]--;
       next[to === "workers" ? "scientists" : "workers"]++;
     }
