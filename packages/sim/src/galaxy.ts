@@ -12,6 +12,10 @@ export const STAR_COUNTS: Record<GalaxySize, number> = { small: 20, medium: 36, 
 const MIN_STAR_GAP = 2.2;
 /** Square parsecs of space per star. */
 const AREA_PER_STAR = 14;
+/** Every home star gets at least this many other stars within HOME_NEIGHBOR_RANGE... */
+const HOME_NEIGHBORS = 2;
+/** ...which is inside the starting fuel range (4 parsecs), so the first ships always have somewhere to go. */
+const HOME_NEIGHBOR_RANGE = 3.5;
 
 export interface GeneratedGalaxy {
   width: number;
@@ -68,11 +72,15 @@ function rollPlanet(rng: Rng, star: Star, orbit: number, id: Id): Planet {
 
 /**
  * Picks spread-out home stars: start from a random star, then repeatedly take
- * the star farthest from all chosen ones.
+ * the star farthest from all chosen ones. Farthest-first favours lonely stars,
+ * so only stars with neighbours in reach qualify, and any home still short of
+ * neighbours has the nearest stars drawn in.
  */
 export function pickHomeStars(rng: Rng, stars: Star[], count: number): Star[] {
-  const candidates = stars.filter((s) => s.color !== "blackHole");
-  if (candidates.length < count) throw new Error("galaxy too small for player count");
+  const all = stars.filter((s) => s.color !== "blackHole");
+  if (all.length < count) throw new Error("galaxy too small for player count");
+  const roomy = all.filter((s) => neighbours(stars, s).length >= HOME_NEIGHBORS);
+  const candidates = roomy.length >= count ? roomy : all;
   const chosen: Star[] = [rng.pick(candidates)];
   while (chosen.length < count) {
     let best: Star | null = null;
@@ -87,7 +95,31 @@ export function pickHomeStars(rng: Rng, stars: Star[], count: number): Star[] {
     }
     chosen.push(best!);
   }
+  for (const home of chosen) drawInNeighbours(stars, home, chosen);
   return chosen;
+}
+
+function neighbours(stars: Star[], home: Star): Star[] {
+  return stars.filter((s) => s !== home && distance(s, home) <= HOME_NEIGHBOR_RANGE);
+}
+
+/** Moves the nearest stars toward a home until it has enough within reach, keeping the minimum gap. */
+function drawInNeighbours(stars: Star[], home: Star, homes: Star[]): void {
+  let missing = HOME_NEIGHBORS - neighbours(stars, home).length;
+  const outside = stars
+    .filter((s) => !homes.includes(s) && distance(s, home) > HOME_NEIGHBOR_RANGE)
+    .sort((a, b) => distance(a, home) - distance(b, home));
+  for (const star of outside) {
+    if (missing <= 0) return;
+    const d = distance(star, home);
+    const target = HOME_NEIGHBOR_RANGE - 0.2;
+    const x = round1(home.x + ((star.x - home.x) / d) * target);
+    const y = round1(home.y + ((star.y - home.y) / d) * target);
+    if (stars.some((o) => o !== star && Math.hypot(o.x - x, o.y - y) < MIN_STAR_GAP)) continue;
+    star.x = x;
+    star.y = y;
+    missing--;
+  }
 }
 
 export function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {

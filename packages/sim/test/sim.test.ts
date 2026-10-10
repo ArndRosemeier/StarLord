@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  RACES, STAR_COUNTS, colonyOutput, getRace, maxPopulation, newGame, playerView, processTurn, stateHash,
+  RACES, STAR_COUNTS, canReach, colonyOutput, empires, getRace, maxPopulation, newGame, playerView, processTurn, stateHash,
   type GameState,
 } from "@starlord/sim";
 
@@ -29,6 +29,19 @@ describe("new game", () => {
     expect(s.galaxy.stars.filter((x) => x.special === "raiderHome")).toHaveLength(1);
     const guardian = Object.values(s.fleets).find((f) => f.ships[0]!.designId === "guardian");
     expect(guardian).toBeDefined();
+  });
+
+  it("always gives every empire's first ships at least two systems in reach", () => {
+    for (const galaxySize of ["small", "medium", "large", "huge"] as const) {
+      for (let i = 0; i < 40; i++) {
+        const s = newGame({ seed: `reach${i}`, galaxySize, playerCount: 6 });
+        for (const p of empires(s)) {
+          const fleet = Object.values(s.fleets).find((f) => f.ownerId === p.id)!;
+          const reachable = s.galaxy.stars.filter((st) => st.id !== fleet.starId && canReach(s, p.id, fleet, st.id));
+          expect(reachable.length, `${galaxySize} seed reach${i} player ${p.id}`).toBeGreaterThanOrEqual(2);
+        }
+      }
+    }
   });
 
   it("can seat every race", () => {
