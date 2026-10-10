@@ -10,7 +10,10 @@
    victory conditions. AI covering all of it, and automation for each area.
 3. **Modern UI.** React screens with a PixiJS galaxy map behind a renderer
    interface (so a three.js view can replace it later), automation switches
-   everywhere, race videos on race selection.
+   everywhere, race videos on race selection. Done: race selection, galaxy map,
+   colonies, research, ship designer, fleets, diplomacy and council, espionage,
+   leaders, empire and automation, turn reports with battle replays, an AI
+   spectator mode, and browser save slots.
 4. **Alpha polish.** Balance with batch runs (`pnpm sim --games N`),
    save/load, and multiplayer groundwork.
 

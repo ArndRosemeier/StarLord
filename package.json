@@ -5,9 +5,11 @@
   "packageManager": "pnpm@10.28.0",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
     "sim": "tsx apps/cli/src/main.ts",
-    "sim:events": "tsx apps/cli/src/stats.ts"
+    "sim:events": "tsx apps/cli/src/stats.ts",
+    "dev": "pnpm --filter @starlord/web dev",
+    "build": "pnpm --filter @starlord/web build"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

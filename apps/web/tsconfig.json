@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "node"],
+    "jsx": "react-jsx",
+    "baseUrl": "../..",
+    "paths": {
+      "@starlord/sim": ["packages/sim/src/index.ts"],
+      "@starlord/ai": ["packages/ai/src/index.ts"]
+    }
+  },
+  "include": ["src", "test", "vite.config.ts"],
+  "exclude": []
+}

@@ -1,0 +1,154 @@
+import { useMemo, useState } from "react";
+import { RACES, getRace, type GalaxySize } from "@starlord/sim";
+import { GameSession } from "../game/session";
+import { deleteSave, listSaves, readSave, readSaveFile } from "../game/saves";
+import { words } from "../ui/format";
+
+const PICKS: [keyof ReturnType<typeof getRace>["picks"], string][] = [
+  ["growth", "Population growth"], ["farming", "Farming"], ["industry", "Industry"], ["science", "Research"],
+  ["money", "Money"], ["shipAttack", "Ship attack"], ["shipDefense", "Ship defense"],
+  ["groundCombat", "Ground combat"], ["spying", "Spying"],
+];
+
+function shuffled<T>(list: T[]): T[] {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+}
+
+export function NewGame({ onStart }: { onStart: (s: GameSession) => void }) {
+  const [raceId, setRaceId] = useState(RACES[0]!.id);
+  const [opponents, setOpponents] = useState(3);
+  const [galaxy, setGalaxy] = useState<GalaxySize>("medium");
+  const [seed, setSeed] = useState(() => String(Math.floor(Math.random() * 1e6)));
+  const [maxTurns, setMaxTurns] = useState(300);
+  const [monsters, setMonsters] = useState(true);
+  const [raiders, setRaiders] = useState(true);
+  const [council, setCouncil] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [saves, setSaves] = useState(listSaves);
+  const race = getRace(raceId);
+
+  const start = (spectate: boolean) => {
+    const others = shuffled(RACES.map((r) => r.id).filter((id) => id !== raceId)).slice(0, opponents);
+    const races = spectate ? shuffled(RACES.map((r) => r.id)).slice(0, opponents + 1) : [raceId, ...others];
+    onStart(GameSession.create({ seed, galaxySize: galaxy, races, maxTurns, monsters, raiders, council }, spectate ? null : 0));
+  };
+
+  const load = (data: unknown) => {
+    try {
+      onStart(GameSession.fromJSON(data));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const traits = useMemo(() => race.picks.traits.map(words), [race]);
+
+  return (
+    <div className="title-screen">
+      <div className="row">
+        <div className="logo">STARLORD</div>
+        <div className="spacer" />
+        <span className="muted">Choose your people</span>
+      </div>
+
+      <div className="race-detail">
+        <video key={race.assetKey} src={`races/${race.assetKey}.mp4`} poster={`races/${race.assetKey}.webp`} autoPlay muted loop playsInline />
+        <div className="col">
+          <div className="row">
+            <span className="dot" style={{ background: race.color, width: 14, height: 14 }} />
+            <h2 style={{ margin: 0 }}>{race.name}</h2>
+            <span className="muted">{race.archetype}</span>
+          </div>
+          <p style={{ margin: 0 }}>{race.description}</p>
+          <div className="row">
+            <span className="chip">{words(race.picks.government)}</span>
+            {traits.map((t) => <span key={t} className="chip">{t}</span>)}
+          </div>
+          <table style={{ maxWidth: 360 }}>
+            <tbody>
+              {PICKS.filter(([k]) => race.picks[k] !== 0).map(([k, label]) => {
+                const v = race.picks[k] as number;
+                return (
+                  <tr key={k}>
+                    <td>{label}</td>
+                    <td className={v > 0 ? "good" : "bad"}>{k === "growth" ? `${v > 0 ? "+" : ""}${Math.round(v * 100)}%` : `${v > 0 ? "+" : ""}${v}`}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          <div className="panel col" style={{ marginTop: 8 }}>
+            <div className="row">
+              <label>Galaxy <select value={galaxy} onChange={(e) => setGalaxy(e.target.value as GalaxySize)}>
+                {(["small", "medium", "large", "huge"] as const).map((g) => <option key={g} value={g}>{words(g)}</option>)}
+              </select></label>
+              <label>Opponents <select value={opponents} onChange={(e) => setOpponents(Number(e.target.value))}>
+                {[1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}
+              </select></label>
+              <label>Turn limit <input type="number" min={50} max={1000} step={50} value={maxTurns} onChange={(e) => setMaxTurns(Number(e.target.value))} /></label>
+              <label>Seed <input type="text" size={8} value={seed} onChange={(e) => setSeed(e.target.value)} /></label>
+            </div>
+            <div className="row">
+              <label><input type="checkbox" checked={monsters} onChange={(e) => setMonsters(e.target.checked)} /> Monsters</label>
+              <label><input type="checkbox" checked={raiders} onChange={(e) => setRaiders(e.target.checked)} /> Raiders</label>
+              <label><input type="checkbox" checked={council} onChange={(e) => setCouncil(e.target.checked)} /> Galactic council</label>
+            </div>
+            <div className="row">
+              <button className="primary" onClick={() => start(false)}>Play as the {race.plural}</button>
+              <button onClick={() => start(true)} title="All empires are run by the computer; you watch.">Watch an AI game</button>
+              <label className="row" style={{ gap: 6 }}>
+                <span className="muted">or load a file</span>
+                <input type="file" accept="application/json,.json" onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (f) load(await readSaveFile(f).catch((err: Error) => setError(err.message)));
+                }} />
+              </label>
+            </div>
+            {error && <div className="bad">{error}</div>}
+          </div>
+
+          {saves.length > 0 && (
+            <div className="panel">
+              <h4>Saved games</h4>
+              <table>
+                <tbody>
+                  {saves.map((s) => (
+                    <tr key={s.name}>
+                      <td>{s.name}</td>
+                      <td className="muted">{s.empire}, turn {s.turn}</td>
+                      <td className="muted">{new Date(s.savedAt).toLocaleString()}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <button className="small" onClick={() => load(readSave(s.name))}>Load</button>{" "}
+                        <button className="small danger" onClick={() => { deleteSave(s.name); setSaves(listSaves()); }}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="race-grid">
+        {RACES.map((r) => (
+          <button key={r.id} className={`race-card${r.id === raceId ? " selected" : ""}`} onClick={() => setRaceId(r.id)}>
+            <img src={`races/${r.assetKey}.webp`} alt={r.name} loading="lazy" />
+            <span className="name">
+              <span className="dot" style={{ background: r.color, marginRight: 6 }} />
+              {r.name}
+              <br />
+              <small className="muted">{r.archetype}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}

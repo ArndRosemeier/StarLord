@@ -1,0 +1,156 @@
+import { useEffect, useState } from "react";
+import {
+  commandPointsAvailable, commandPointsUsed, empireIncome, empireTotals, empires, treatyIncome,
+  TIERS_BY_ID, type PlayerView,
+} from "@starlord/sim";
+import { useGame } from "../ui/hooks";
+import { fmt, signed } from "../ui/format";
+import { MapScreen } from "./MapScreen";
+import { ColoniesScreen } from "./ColoniesScreen";
+import { ResearchScreen } from "./ResearchScreen";
+import { DesignScreen } from "./DesignScreen";
+import { FleetsScreen } from "./FleetsScreen";
+import { DiplomacyScreen } from "./DiplomacyScreen";
+import { EspionageScreen } from "./EspionageScreen";
+import { LeadersScreen } from "./LeadersScreen";
+import { EmpireScreen } from "./EmpireScreen";
+import { EventsScreen } from "./EventsScreen";
+import { GameMenu } from "./GameMenu";
+
+export type Tab =
+  | "map" | "colonies" | "research" | "designs" | "fleets" | "diplomacy" | "espionage" | "leaders" | "empire" | "events" | "game";
+
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: "map", label: "Galaxy", icon: "✦" },
+  { id: "colonies", label: "Colonies", icon: "◉" },
+  { id: "research", label: "Research", icon: "⚗" },
+  { id: "designs", label: "Ship design", icon: "⛭" },
+  { id: "fleets", label: "Fleets", icon: "➤" },
+  { id: "diplomacy", label: "Diplomacy", icon: "☍" },
+  { id: "espionage", label: "Espionage", icon: "◐" },
+  { id: "leaders", label: "Leaders", icon: "♛" },
+  { id: "empire", label: "Empire & automation", icon: "⚙" },
+  { id: "events", label: "Turn report", icon: "☰" },
+  { id: "game", label: "Game", icon: "💾" },
+];
+
+/** Research points per turn including treaty bonuses. */
+export function researchPerTurn(view: PlayerView): number {
+  const totals = new Map(empires(view).map((p) => [p.id, empireTotals(view, p.id)]));
+  return (totals.get(view.viewer)?.research ?? 0) + treatyIncome(view, view.viewer, totals).research;
+}
+
+export function GameShell({ onQuit }: { onQuit: () => void }) {
+  const { session, view, me, readOnly } = useGame();
+  const [tab, setTab] = useState<Tab>("map");
+  const [focusStar, setFocusStar] = useState<string | null>(null);
+  const [autoplay, setAutoplay] = useState(false);
+  const [seenTurn, setSeenTurn] = useState(view.turn);
+
+  const totals = empireTotals(view, me.id);
+  const income = empireIncome(view, me.id);
+  const research = researchPerTurn(view);
+  const tier = me.research.tierId ? TIERS_BY_ID[me.research.tierId] : undefined;
+  const cpUsed = commandPointsUsed(view, me.id);
+  const cpMax = commandPointsAvailable(view, me.id);
+  const reportBadge = view.turn !== seenTurn ? view.events.filter((e) => e.kind !== "explored" && e.kind !== "built").length : 0;
+
+  const endTurn = () => session.endTurn();
+
+  useEffect(() => {
+    if (!autoplay || view.over) return;
+    const t = setTimeout(endTurn, 120);
+    return () => clearTimeout(t);
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      endTurn();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const go = (t: Tab) => {
+    if (t === "events") setSeenTurn(view.turn);
+    setTab(t);
+  };
+  const showStar = (starId: string) => {
+    setFocusStar(starId);
+    setTab("map");
+  };
+
+  return (
+    <div className="shell">
+      <div className="topbar">
+        <span className="brand">STARLORD</span>
+        <div className="stat"><small>Turn</small><b>{view.turn}</b></div>
+        <div className="row" style={{ gap: 6 }}>
+          <span className="dot" style={{ background: me.color }} />
+          {readOnly ? (
+            <select value={me.id} onChange={(e) => session.watch(Number(e.target.value))}>
+              {empires(view).map((p) => <option key={p.id} value={p.id}>{p.name}{p.alive ? "" : " (gone)"}</option>)}
+            </select>
+          ) : <b>{me.name}</b>}
+        </div>
+        <div className="stat"><small>Treasury</small><span className="bc">{fmt(me.bc)} BC <small className="muted">({signed(income.net)})</small></span></div>
+        <div className="stat"><small>Food</small><span className={totals.food < 0 ? "bad" : "food"}>{signed(totals.food)}</span></div>
+        <div className="stat"><small>Industry</small><span className="industry">{fmt(totals.industry)}</span></div>
+        <div className="stat">
+          <small>Research</small>
+          <span className="research">{fmt(research)} {tier && <small className="muted">→ {tier.name} {fmt(me.research.progress)}/{fmt(tier.cost)}</small>}</span>
+        </div>
+        <div className="stat"><small>Command</small><span className={cpUsed > cpMax ? "bad" : ""}>{cpUsed}/{cpMax}</span></div>
+        <div className="stat"><small>Population</small><span>{fmt(totals.population)}</span></div>
+        <div className="spacer" />
+        {view.over && <span className="chip warn">Game over: {view.players[view.winner!]?.name} wins ({view.victory})</span>}
+        {readOnly ? (
+          <>
+            <button onClick={() => setAutoplay(!autoplay)} disabled={view.over}>{autoplay ? "Pause" : "Play"}</button>
+            <button className="primary" onClick={endTurn} disabled={view.over || autoplay}>Next turn</button>
+          </>
+        ) : (
+          <>
+            {session.pending.length > 0 && (
+              <span className="muted" title="Orders given this turn">
+                {session.pending.length} order{session.pending.length === 1 ? "" : "s"}{" "}
+                <button className="small" onClick={() => session.undo()}>Undo</button>
+              </span>
+            )}
+            <button className="primary" onClick={endTurn} disabled={view.over} title="Ctrl+Enter">End turn</button>
+          </>
+        )}
+      </div>
+      <div className="body">
+        <nav className="nav">
+          {TABS.map((t) => (
+            <button key={t.id} className={tab === t.id ? "active" : ""} onClick={() => go(t.id)}>
+              <span style={{ width: 16, textAlign: "center" }}>{t.icon}</span>
+              {t.label}
+              {t.id === "events" && reportBadge > 0 && <span className="badge">{reportBadge}</span>}
+              {t.id === "diplomacy" && view.proposals.some((p) => p.to === me.id) && <span className="badge">!</span>}
+            </button>
+          ))}
+        </nav>
+        <main className={`content${tab === "map" ? " full" : ""}`}>
+          {session.rejected.length > 0 && tab !== "map" && (
+            <div className="panel bad" style={{ marginBottom: 12 }}>Some orders are invalid: {session.rejected.join("; ")}</div>
+          )}
+          {tab === "map" && <MapScreen focusStar={focusStar} onFocused={() => setFocusStar(null)} />}
+          {tab === "colonies" && <ColoniesScreen onShowStar={showStar} />}
+          {tab === "research" && <ResearchScreen />}
+          {tab === "designs" && <DesignScreen />}
+          {tab === "fleets" && <FleetsScreen onShowStar={showStar} />}
+          {tab === "diplomacy" && <DiplomacyScreen />}
+          {tab === "espionage" && <EspionageScreen />}
+          {tab === "leaders" && <LeadersScreen />}
+          {tab === "empire" && <EmpireScreen />}
+          {tab === "events" && <EventsScreen onShowStar={showStar} />}
+          {tab === "game" && <GameMenu onQuit={onQuit} />}
+        </main>
+      </div>
+    </div>
+  );
+}

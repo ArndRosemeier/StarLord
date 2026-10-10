@@ -74,6 +74,38 @@ function endGame(ctx: TurnContext, winner: PlayerId, how: GameState["victory"] &
 
 // ---------------------------------------------------------------- commands
 
+/**
+ * A fleet split off another gets an id derived from its parent, so a player
+ * can split and then order the new fleet in the same turn: the id doesn't
+ * depend on what other players did first.
+ */
+export function splitFleetId(state: GameState, parentId: Id): Id {
+  let n = 1;
+  while (state.fleets[`${parentId}.${n}`]) n++;
+  return `${parentId}.${n}`;
+}
+
+/**
+ * Applies one player's orders without running the turn, so a UI can show
+ * their effect right away. Returns the resulting state and the reasons for
+ * any rejected commands.
+ */
+export function previewOrders(prev: GameState, playerId: PlayerId, cmds: Command[]): { state: GameState; rejected: string[] } {
+  const state = structuredClone(prev);
+  state.events = [];
+  const rng = new Rng(state.rng);
+  const rejected: string[] = [];
+  const ctx: TurnContext = {
+    state,
+    rng,
+    emit: (e) => {
+      if (e.kind === "commandRejected") rejected.push(e.reason);
+    },
+  };
+  for (const cmd of cmds) applyCommand(ctx, playerId, cmd);
+  return { state, rejected };
+}
+
 /** Validates and applies a single command. Invalid commands are reported, not thrown. */
 export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command): void {
   const { state } = ctx;
@@ -135,7 +167,7 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       const f = state.fleets[cmd.fleetId]!;
       for (const s of cmd.ships) f.ships.find((x) => x.designId === s.designId)!.count -= s.count;
       f.ships = f.ships.filter((s) => s.count > 0);
-      const nf: Fleet = { ...f, id: newId(state, "f"), ships: cmd.ships.map((s) => ({ ...s })), name: `${f.name} II` };
+      const nf: Fleet = { ...f, id: splitFleetId(state, f.id), ships: cmd.ships.map((s) => ({ ...s })), name: `${f.name} II` };
       delete nf.invadeTarget;
       state.fleets[nf.id] = nf;
       break;

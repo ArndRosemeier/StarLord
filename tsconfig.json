@@ -3,8 +3,12 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2022"],
-    "types": ["node"],
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "node"
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -15,9 +19,20 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@starlord/sim": ["packages/sim/src/index.ts"],
-      "@starlord/ai": ["packages/ai/src/index.ts"]
+      "@starlord/sim": [
+        "packages/sim/src/index.ts"
+      ],
+      "@starlord/ai": [
+        "packages/ai/src/index.ts"
+      ]
     }
   },
-  "include": ["packages/*/src", "packages/*/test", "apps/*/src"]
+  "include": [
+    "packages/*/src",
+    "packages/*/test",
+    "apps/*/src"
+  ],
+  "exclude": [
+    "apps/web"
+  ]
 }
