@@ -1,5 +1,5 @@
 import {
-  HULLS, SPECIALS, WEAPONS, WEAPON_MODS_BY_ID, bestArmor, bestComputer, bestShield, designStats, empireTotals, hasStarDock,
+  HULLS, SPECIALS, WEAPONS, WEAPON_MODS_BY_ID, bestArmor, bestComputer, bestShield, colonyOutput, designStats, empireTotals, hasStarDock,
   knows, mountFirepower, refinement, validateDesign, weaponUnitCost,
   type Colony, type Command, type HullSize, type PlayerView, type ShipDesign, type WeaponDef, type WeaponModId,
   type WeaponMount,
@@ -20,12 +20,12 @@ const MOD_SETS: WeaponModId[][] = [
   ["mirv"], ["fast"], ["eccm"], ["overloaded"], ["enveloping"],
 ];
 
-/** Largest hull whose cost a decent colony can turn out in about ten turns. */
+/** Largest hull whose cost a colony with this industry can turn out in about twelve turns. */
 function pickHull(view: PlayerView, industry: number, maxHull: HullSize = "titan"): HullSize {
   const player = me(view);
   const limit = HULLS.findIndex((h) => h.id === maxHull);
   const known = HULLS.filter((h, i) => knows(player, h.requires) && i <= limit);
-  const affordable = known.filter((h) => h.cost * 2 <= industry * 10);
+  const affordable = known.filter((h) => h.cost <= industry * 12);
   return (affordable.at(-1) ?? known[0]!).id;
 }
 
@@ -133,11 +133,14 @@ const HULL_NAMES: Record<HullSize, string> = {
  */
 export function designOrders(view: PlayerView): Command[] {
   const player = me(view);
-  const colonies = Object.values(view.colonies).filter((c) => c.ownerId === view.viewer && !c.outpost).length;
-  const industry = Math.max(10, (empireTotals(view, view.viewer).industry / Math.max(1, colonies)) * 2);
+  const mine = Object.values(view.colonies).filter((c) => c.ownerId === view.viewer && !c.outpost);
+  const output = (c: Colony) => colonyOutput(view, c).industry;
+  // Big ships come from the best star-dock colony; small ones from an average colony.
+  const docked = Math.max(0, ...mine.filter(hasStarDock).map(output));
+  const average = empireTotals(view, view.viewer).industry / Math.max(1, mine.length);
   const out: Command[] = [];
   for (const tag of ["W", "S"] as const) {
-    const hull = pickHull(view, industry, tag === "W" ? "titan" : "destroyer");
+    const hull = tag === "W" ? pickHull(view, Math.max(10, docked), "titan") : pickHull(view, Math.max(10, average * 2), "destroyer");
     const current = player.designs.filter((d) => !d.obsolete && !d.module && d.id.startsWith(`ai${tag}`));
     // Missile boats when missiles out-hit beams; otherwise beam ships.
     const beam = bestWarship(view, hull, "beam", `ai${tag}${view.turn}`);

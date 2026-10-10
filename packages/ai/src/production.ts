@@ -58,7 +58,9 @@ export function productionOrders(view: PlayerView): Command[] {
     transports: 0,
     spies: Math.ceil(colonies.length / 4) + (atWar(view) ? 1 : 0) - player.spies.home - Object.values(player.spies.abroad).reduce((n, s) => n + s.count, 0) - queued((q) => q.kind === "project" && q.id === "spy"),
   };
-  const cpFree = commandPointsAvailable(view, view.viewer) - commandPointsUsed(view, view.viewer);
+  // Support ships also use command points, but they are spent or retired soon; the warship budget ignores them.
+  const support = owned("scout") + owned("colony") + owned("outpost") + owned("transport");
+  const cpFree = commandPointsAvailable(view, view.viewer) - commandPointsUsed(view, view.viewer) + support;
   const war = atWar(view);
   const warship = currentWarship(view);
   const queuedWar = warship ? shipQueued(warship) : 0;
