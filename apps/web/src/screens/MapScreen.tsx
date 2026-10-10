@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { canReach } from "@starlord/sim";
 import { PixiMapRenderer } from "../map/pixiRenderer";
 import type { MapRenderer } from "../map/renderer";
-import { buildScene } from "../map/scene";
+import { buildScene, routeTo } from "../map/scene";
 import { useGame } from "../ui/hooks";
 import { FleetPanel, StarPanel, fleetShips, plural } from "../ui/panels";
 
@@ -12,18 +11,47 @@ export function MapScreen({ focusStar, onFocused }: { focusStar: string | null; 
   const renderer = useRef<MapRenderer | null>(null);
   const [starId, setStarId] = useState<string | null>(focusStar ?? me.homeStarId);
   const [fleetId, setFleetId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; bad: boolean; at: number } | null>(null);
   // The renderer calls back with the latest selection, so keep it in a ref.
-  const sel = useRef({ fleetId });
-  sel.current = { fleetId };
+  const sel = useRef({ fleetId, readOnly });
+  sel.current = { fleetId, readOnly };
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), notice.bad ? 5000 : 3000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFleetId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     const r = new PixiMapRenderer();
     renderer.current = r;
     void r.mount(host.current!, {
       onStar(id, action) {
-        const f = sel.current.fleetId ? session.view.fleets[sel.current.fleetId] : undefined;
-        if (action === "order" && f && f.ownerId === session.viewer && !session.spectator) {
+        const view = session.view;
+        const f = sel.current.fleetId ? view.fleets[sel.current.fleetId] : undefined;
+        const canOrder = f && f.ownerId === session.viewer && !session.spectator && !sel.current.readOnly;
+        // With one of your fleets selected, any click on another star sends it there. Clicking
+        // the star an idle fleet sits at selects that star instead; for a moving fleet it cancels the move.
+        if (canOrder && (action === "order" || id !== f.starId || f.destStarId)) {
+          const star = view.galaxy.stars.find((s) => s.id === id)!;
+          const route = routeTo(view, f, id);
+          if (!route.ok) {
+            setNotice({ text: route.reason, bad: true, at: Date.now() });
+            return;
+          }
           session.issue({ type: "moveFleet", fleetId: f.id, destStarId: id });
+          const text = id === f.starId
+            ? `${f.name} will stay at ${star.name}.`
+            : `${f.name} heading to ${star.name}, arriving in ${route.turns} turn${route.turns === 1 ? "" : "s"}. Orders take effect when you end the turn.`;
+          setNotice({ text, bad: false, at: Date.now() });
           return;
         }
         setStarId(id);
@@ -42,8 +70,8 @@ export function MapScreen({ focusStar, onFocused }: { focusStar: string | null; 
   }, [session]);
 
   const scene = useMemo(
-    () => buildScene(view, starId, fleetId, readOnly ? undefined : (f, s) => canReach(view, me.id, f, s)),
-    [view, starId, fleetId, readOnly, me.id],
+    () => buildScene(view, starId, fleetId, !readOnly),
+    [view, starId, fleetId, readOnly],
   );
 
   useEffect(() => {
@@ -66,10 +94,20 @@ export function MapScreen({ focusStar, onFocused }: { focusStar: string | null; 
     if (fleetId && !view.fleets[fleetId]) setFleetId(null);
   }, [view, fleetId]);
 
+  const selectedFleet = fleetId ? view.fleets[fleetId] : undefined;
+  const orderingFleet = selectedFleet && selectedFleet.ownerId === me.id && !readOnly ? selectedFleet : undefined;
+
   return (
     <div className="map-layout">
       <div className="map-host" ref={host}>
-        <div className="map-hint">Drag to pan · wheel to zoom · click to select · right-click a star to move the selected fleet</div>
+        {orderingFleet ? (
+          <div className="map-banner">
+            Click a star to send <b>{orderingFleet.name}</b> there. Highlighted stars are in range. Esc or click empty space to deselect.
+          </div>
+        ) : (
+          <div className="map-hint">Drag to pan · wheel to zoom · click a fleet, then click a star to send it there</div>
+        )}
+        {notice && <div key={notice.at} className={`map-notice${notice.bad ? " bad" : ""}`}>{notice.text}</div>}
       </div>
       <aside className="side">
         {fleetId && <div className="panel"><FleetPanel fleetId={fleetId} onSelectFleet={setFleetId} /></div>}

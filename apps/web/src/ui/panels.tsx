@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  CLIMATES, designStats, distance, findDesign, fleetSpeed, getRace, isHostile, maxPopulation, population, relation,
+  CLIMATES, designStats, findDesign, getRace, isHostile, maxPopulation, population, relation, travelTurns,
   type Fleet, type Planet, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "./hooks";
@@ -102,7 +102,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
   const owner = view.players[fleet.ownerId]!;
   const mine = owner.id === me.id && !readOnly;
   const dest = fleet.destStarId ? view.galaxy.stars.find((s) => s.id === fleet.destStarId) : undefined;
-  const eta = dest ? Math.ceil(distance(fleet, dest) / fleetSpeed(owner)) : 0;
+  const eta = dest ? travelTurns(view, fleet, dest.id) : 0;
   const others = Object.values(view.fleets).filter((f) => f.id !== fleet.id && f.ownerId === fleet.ownerId && f.starId && f.starId === fleet.starId);
   const captain = Object.values(view.leaders).find((l) => l.assignedTo === fleet.id);
   const status = owner.id === me.id ? null : owner.kind !== "empire" ? "hostile" : relation(view, me.id, owner.id).status;
@@ -167,7 +167,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
               Scrap selected
             </button>
           </div>
-          <small className="muted">Right-click a star to send this fleet there. Highlighted stars are within fuel range.</small>
+          <small className="muted">Click a star on the map to send this fleet there. Highlighted stars are within fuel range.</small>
         </>
       )}
       {others.length > 0 && (

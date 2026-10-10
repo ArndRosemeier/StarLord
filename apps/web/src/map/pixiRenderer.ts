@@ -7,6 +7,29 @@ const UNIT = 48;
 const DRAG_THRESHOLD = 4;
 
 const hex = (c: string) => parseInt(c.replace("#", ""), 16);
+const ROUTE_OK = 0x7dd3fc;
+const ROUTE_BAD = 0xff6b6b;
+const turns = (n: number) => `${n} turn${n === 1 ? "" : "s"}`;
+
+function label(text: string, color: number, size = 12): Text {
+  const t = new Text({ text, style: { fontFamily: "Inter, system-ui, sans-serif", fontSize: size, fill: color, fontWeight: "600" } });
+  t.anchor.set(0.5, 1);
+  t.resolution = 2;
+  return t;
+}
+
+/** Pixi has no dashed strokes, so lay the segments out by hand. */
+function dashTo(g: Graphics, x1: number, y1: number, x2: number, y2: number, dash = 7, gap = 5): Graphics {
+  const d = Math.hypot(x2 - x1, y2 - y1);
+  if (d === 0) return g;
+  const ux = (x2 - x1) / d;
+  const uy = (y2 - y1) / d;
+  for (let t = 0; t < d; t += dash + gap) {
+    const e = Math.min(d, t + dash);
+    g.moveTo(x1 + ux * t, y1 + uy * t).lineTo(x1 + ux * e, y1 + uy * e);
+  }
+  return g;
+}
 const NEBULA_URL = "art/galaxy.webp";
 /** How far the nebula moves relative to the map when panning, for a sense of depth. */
 const PARALLAX = 0.06;
@@ -17,6 +40,10 @@ export class PixiMapRenderer implements MapRenderer {
   private nebula: Sprite | null = null;
   private backdrop = new Graphics();
   private world = new Container();
+  /** The route preview under the cursor, redrawn on hover without rebuilding the map. */
+  private hover = new Container();
+  private hoverStarId: string | null = null;
+  private scene: MapScene | null = null;
   private input!: MapInput;
   private container!: HTMLElement;
   private mounted = false;
@@ -43,7 +70,7 @@ export class PixiMapRenderer implements MapRenderer {
     this.app.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     this.app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.app.stage.addChild(this.camera);
-    this.camera.addChild(this.backdrop, this.world);
+    this.camera.addChild(this.backdrop, this.world, this.hover);
     void Assets.load<Texture>(NEBULA_URL).then((texture) => {
       if (this.destroyed) return;
       this.nebula = new Sprite(texture);
@@ -141,6 +168,7 @@ export class PixiMapRenderer implements MapRenderer {
       this.pending = scene;
       return;
     }
+    this.scene = scene;
     this.fit(scene);
     for (const child of this.world.removeChildren()) child.destroy({ children: true });
 
@@ -148,8 +176,14 @@ export class PixiMapRenderer implements MapRenderer {
     this.world.addChild(lines);
     for (const f of scene.fleets) {
       if (!f.dest) continue;
+      const selected = f.id === scene.selectedFleetId;
       lines.moveTo(f.x * UNIT, f.y * UNIT).lineTo(f.dest.x * UNIT, f.dest.y * UNIT);
-      lines.stroke({ width: 1.5, color: hex(f.color), alpha: f.id === scene.selectedFleetId ? 0.9 : 0.45 });
+      lines.stroke({ width: selected ? 2.5 : 1.5, color: hex(f.color), alpha: selected ? 0.95 : 0.45 });
+      if (selected && f.eta !== null) {
+        const t = label(`arrives in ${turns(f.eta)}`, 0xffffff);
+        t.position.set(f.dest.x * UNIT, f.dest.y * UNIT - 24);
+        this.world.addChild(t);
+      }
     }
 
     for (const s of scene.stars) {
@@ -157,7 +191,7 @@ export class PixiMapRenderer implements MapRenderer {
       node.position.set(s.x * UNIT, s.y * UNIT);
       const g = new Graphics();
       const r = s.special === "orion" ? 9 : s.special === "raiderHome" ? 10 : 6;
-      if (scene.reachable.has(s.id)) g.circle(0, 0, r + 12).fill({ color: 0x3b82f6, alpha: 0.12 });
+      if (scene.reachable.has(s.id)) g.circle(0, 0, r + 12).fill({ color: 0x3b82f6, alpha: 0.18 }).stroke({ width: 1.5, color: 0x60a5fa, alpha: 0.7 });
       g.circle(0, 0, r * 2.2).fill({ color: hex(s.color), alpha: 0.12 });
       g.circle(0, 0, r).fill({ color: hex(s.color), alpha: s.explored ? 1 : 0.55 });
       s.owners.forEach((c, i) => {
@@ -175,8 +209,18 @@ export class PixiMapRenderer implements MapRenderer {
       label.resolution = 2;
       node.addChild(label);
       node.eventMode = "static";
-      node.cursor = "pointer";
+      const route = scene.routes.get(s.id);
+      node.cursor = route && !route.ok ? "not-allowed" : "pointer";
       node.hitArea = new Circle(0, 0, r + 14);
+      node.on("pointerover", () => {
+        this.hoverStarId = s.id;
+        this.drawHover();
+      });
+      node.on("pointerout", () => {
+        if (this.hoverStarId !== s.id) return;
+        this.hoverStarId = null;
+        this.drawHover();
+      });
       node.on("pointertap", (e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
@@ -222,6 +266,27 @@ export class PixiMapRenderer implements MapRenderer {
       });
       this.world.addChild(g);
     }
+    this.drawHover();
+  }
+
+  /** While one of your fleets is selected, show the route to the star under the cursor. */
+  private drawHover(): void {
+    for (const child of this.hover.removeChildren()) child.destroy({ children: true });
+    const scene = this.scene;
+    const route = scene && this.hoverStarId ? scene.routes.get(this.hoverStarId) : undefined;
+    if (!scene || !route) return;
+    const fleet = scene.fleets.find((f) => f.id === scene.selectedFleetId);
+    const star = scene.stars.find((s) => s.id === this.hoverStarId);
+    if (!fleet || !star || (fleet.starId === star.id && !fleet.dest)) return;
+    // The current destination already carries its own arrival label.
+    if (fleet.dest && fleet.dest.x === star.x && fleet.dest.y === star.y) return;
+    const color = route.ok ? ROUTE_OK : ROUTE_BAD;
+    const g = dashTo(new Graphics(), fleet.x * UNIT, fleet.y * UNIT, star.x * UNIT, star.y * UNIT);
+    g.stroke({ width: 2, color, alpha: 0.9 });
+    const text = fleet.starId === star.id ? "stay here" : route.ok ? turns(route.turns) : "out of range";
+    const t = label(text, color, 13);
+    t.position.set(star.x * UNIT, star.y * UNIT - 22);
+    this.hover.addChild(g, t);
   }
 
   destroy(): void {

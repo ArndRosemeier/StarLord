@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TIERS_BY_ID, availableTiers } from "@starlord/sim";
 import { GameSession } from "../src/game/session";
+import { buildScene } from "../src/map/scene";
 
 const opts = { seed: "ui", galaxySize: "small" as const, races: ["terran", "kordex", "zhrikk"] };
 
@@ -60,5 +61,25 @@ describe("GameSession records", () => {
     const watched = GameSession.fromJSON(JSON.parse(JSON.stringify(s.record)));
     expect(watched.spectator).toBe(true);
     expect(watched.state).toEqual(s.state);
+  });
+});
+
+describe("map routes", () => {
+  it("predicts arrival turns that match movement, and explains out-of-range stars", () => {
+    const s = GameSession.create(opts, 0);
+    const fleet = Object.values(s.view.fleets).find((f) => f.ownerId === 0 && f.starId)!;
+    const routes = buildScene(s.view, null, fleet.id, true).routes;
+    const far = [...routes].find(([, r]) => !r.ok);
+    expect(far?.[1]).toMatchObject({ ok: false, reason: expect.stringContaining("out of range") });
+    const [destId, route] = [...routes]
+      .filter(([id, r]) => r.ok && id !== fleet.starId)
+      .sort(([, a], [, b]) => (b.ok ? b.turns : 0) - (a.ok ? a.turns : 0))[0]!;
+    if (!route.ok) throw new Error("unreachable");
+    s.issue({ type: "moveFleet", fleetId: fleet.id, destStarId: destId });
+    for (let i = 0; i < route.turns; i++) {
+      expect(s.state.fleets[fleet.id]!.starId).not.toBe(destId);
+      s.endTurn();
+    }
+    expect(s.state.fleets[fleet.id]!.starId).toBe(destId);
   });
 });

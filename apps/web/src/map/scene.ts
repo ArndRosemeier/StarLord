@@ -1,4 +1,7 @@
-import { distance, type Fleet, type PlayerView, type Star } from "@starlord/sim";
+import {
+  canReach, distance, distanceToNearestColony, fleetRange, travelTurns,
+  type Fleet, type PlayerView, type Star,
+} from "@starlord/sim";
 
 /**
  * What the galaxy map shows, independent of how it is drawn. Renderers
@@ -14,6 +17,26 @@ export interface MapScene {
   selectedFleetId: string | null;
   /** Stars the selected fleet can reach this order. */
   reachable: Set<string>;
+  /** Where the selected fleet could be sent, keyed by star; empty unless it is the viewer's to order. */
+  routes: Map<string, Route>;
+}
+
+/** Whether a fleet can be sent to a star, and how long it would take or why not. */
+export type Route = { ok: true; turns: number } | { ok: false; reason: string };
+
+export function routeTo(view: PlayerView, fleet: Fleet, starId: string): Route {
+  const dest = view.galaxy.stars.find((s) => s.id === starId)!;
+  if (canReach(view, fleet.ownerId, fleet, starId)) return { ok: true, turns: travelTurns(view, fleet, starId) };
+  const here = fleet.starId ? view.galaxy.stars.find((s) => s.id === fleet.starId) : undefined;
+  if (dest.special === "raiderHome") return { ok: false, reason: `Only a dimensional portal reaches ${dest.name}, from a system you have colonized.` };
+  if (here?.special === "raiderHome") return { ok: false, reason: "From here the portal only leads back to your own colonies." };
+  const player = view.players[fleet.ownerId]!;
+  const d = distanceToNearestColony(view, fleet.ownerId, dest);
+  if (!Number.isFinite(d)) return { ok: false, reason: "With no colony left to refuel at, your ships cannot leave." };
+  return {
+    ok: false,
+    reason: `${dest.name} is out of range: ${d.toFixed(1)} parsecs from your nearest colony, but your fuel range is ${fleetRange(player)}.`,
+  };
 }
 
 export interface SceneStar {
@@ -38,6 +61,8 @@ export interface SceneFleet {
   mine: boolean;
   ships: number;
   dest: { x: number; y: number } | null;
+  /** Turns until arrival, for the viewer's own fleets under way. */
+  eta: number | null;
   starId: string | null;
   kind: "empire" | "monsters" | "raiders";
 }
@@ -51,7 +76,7 @@ export function buildScene(
   view: PlayerView,
   selectedStarId: string | null,
   selectedFleetId: string | null,
-  reach?: (fleet: Fleet, starId: string) => boolean,
+  canOrder = false,
 ): MapScene {
   const me = view.players[view.viewer]!;
   const explored = new Set(me.explored);
@@ -91,19 +116,25 @@ export function buildScene(
       mine: f.ownerId === view.viewer,
       ships: f.ships.reduce((n, s) => n + s.count, 0),
       dest: dest && f.ownerId === view.viewer ? { x: dest.x, y: dest.y } : null,
+      eta: dest && f.ownerId === view.viewer ? travelTurns(view, f, dest.id) : null,
       starId: f.starId,
       kind: owner.kind,
     };
   });
   const reachable = new Set<string>();
+  const routes = new Map<string, Route>();
   const sel = selectedFleetId ? view.fleets[selectedFleetId] : undefined;
-  if (sel && sel.ownerId === view.viewer && reach) {
-    for (const s of view.galaxy.stars) if (reach(sel, s.id)) reachable.add(s.id);
+  if (sel && sel.ownerId === view.viewer && canOrder) {
+    for (const s of view.galaxy.stars) {
+      const route = routeTo(view, sel, s.id);
+      routes.set(s.id, route);
+      if (route.ok) reachable.add(s.id);
+    }
   }
   return {
     width: view.galaxy.width,
     height: view.galaxy.height,
-    stars, fleets, selectedStarId, selectedFleetId, reachable,
+    stars, fleets, selectedStarId, selectedFleetId, reachable, routes,
   };
 }
 
