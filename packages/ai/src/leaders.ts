@@ -1,7 +1,15 @@
 import { LEADER_RULES, colonyOutput, hirePrice, type Command, type Leader, type PlayerView } from "@starlord/sim";
+import { strategyOf } from "./strategies.js";
 import { colonyStar, fleetStrength, me, myColonies, myFleets } from "./util.js";
 
-/** Hires leaders it can comfortably afford and puts them where they help most. */
+/** What the treasury must hold to hire: the hire price times `price`, plus `reserve`, plus `salaryTurns` of salary. */
+const THRIFT: Record<string, { price: number; reserve: number; salaryTurns: number }> = {
+  balanced: { price: 2, reserve: 100, salaryTurns: 20 },
+  thrifty: { price: 4, reserve: 300, salaryTurns: 40 },
+  eager: { price: 1, reserve: 20, salaryTurns: 5 },
+};
+
+/** Hires leaders it can comfortably afford (how comfortably depends on the strategy) and puts them where they help most. */
 export function leaderOrders(view: PlayerView): Command[] {
   const player = me(view);
   const out: Command[] = [];
@@ -13,7 +21,8 @@ export function leaderOrders(view: PlayerView): Command[] {
     .filter((l) => l.status === "offered" && l.offeredTo === view.viewer)
     .sort((a, b) => b.level - a.level || b.hireCost - a.hireCost || (a.id < b.id ? -1 : 1));
   const offer = offers.find((l) => ofKind(l.kind) < LEADER_RULES.maxPerKind);
-  if (offer && hired.length < LEADER_RULES.maxTotal && player.bc > hirePrice(view, view.viewer, offer) * 2 + 100 + Math.max(0, offer.salary) * 20) {
+  const t = THRIFT[strategyOf(view, "leaders")] ?? THRIFT.balanced!;
+  if (offer && hired.length < LEADER_RULES.maxTotal && player.bc > hirePrice(view, view.viewer, offer) * t.price + t.reserve + Math.max(0, offer.salary) * t.salaryTurns) {
     out.push({ type: "hireLeader", leaderId: offer.id });
   }
   const systems = myColonies(view)

@@ -271,6 +271,8 @@ export interface Player {
   doctrine: CombatDoctrine;
   /** Areas a human has handed to automation; ignored for AI players. */
   automation: string[];
+  /** Strategy each automated area follows, by area; areas not listed play the balanced strategy. */
+  automationStrategies?: Record<string, string>;
   /** Whether any colony of the empire has a Dimensional Portal (kept in step with `Colony.portal`). */
   hasPortal: boolean;
   eliminatedTurn: number | null;

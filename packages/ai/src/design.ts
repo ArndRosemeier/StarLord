@@ -4,6 +4,7 @@ import {
   type Colony, type Command, type HullSize, type PlayerView, type ShipDesign, type WeaponDef, type WeaponModId,
   type WeaponMount,
 } from "@starlord/sim";
+import { strategyOf } from "./strategies.js";
 import { me } from "./util.js";
 
 /** Specials worth their space on a warship, best first. */
@@ -20,12 +21,16 @@ const MOD_SETS: WeaponModId[][] = [
   ["mirv"], ["fast"], ["eccm"], ["overloaded"], ["enveloping"],
 ];
 
-/** Largest hull whose cost a colony with this industry can turn out in about twelve turns. */
+/** Turns of a colony's industry a warship may cost, by design strategy. */
+const BUILD_TURNS: Record<string, number> = { balanced: 12, heavy: 25, light: 6 };
+
+/** Largest hull whose cost a colony with this industry can turn out in about twelve turns (more or less by strategy). */
 function pickHull(view: PlayerView, industry: number, maxHull: HullSize = "titan"): HullSize {
   const player = me(view);
   const limit = HULLS.findIndex((h) => h.id === maxHull);
   const known = HULLS.filter((h, i) => knows(player, h.requires) && i <= limit);
-  const affordable = known.filter((h) => h.cost <= industry * 12);
+  const turns = BUILD_TURNS[strategyOf(view, "design")] ?? BUILD_TURNS.balanced!;
+  const affordable = known.filter((h) => h.cost <= industry * turns);
   return (affordable.at(-1) ?? known[0]!).id;
 }
 
@@ -143,10 +148,12 @@ export function designOrders(view: PlayerView): Command[] {
     const hull = tag === "W" ? pickHull(view, Math.max(10, docked), "titan") : pickHull(view, Math.max(10, average * 2), "destroyer");
     const current = player.designs.filter((d) => !d.obsolete && !d.module && d.id.startsWith(`ai${tag}`));
     // Missile boats when missiles out-hit beams; otherwise beam ships.
+    // The beam and missile strategies fix the weapon; missile boats use beams where missiles don't fit (frigates).
+    const strategy = strategyOf(view, "design");
     const beam = bestWarship(view, hull, "beam", `ai${tag}${view.turn}`);
-    const missile = hull === "frigate" ? null : bestWarship(view, hull, "missile", `ai${tag}${view.turn}`);
+    const missile = hull === "frigate" || strategy === "beams" ? null : bestWarship(view, hull, "missile", `ai${tag}${view.turn}`);
     const strength = (d: ShipDesign | null) => (d ? designStats(player, d).strength / Math.max(1, designStats(player, d).cost) : 0);
-    const candidate = strength(missile) > strength(beam) * 1.1 ? missile : beam;
+    const candidate = strategy === "missiles" ? missile ?? beam : strength(missile) > strength(beam) * 1.1 ? missile : beam;
     if (!candidate) continue;
     const value = designStats(player, candidate).strength;
     const best = Math.max(0, ...current.map((d) => designStats(player, d).strength));

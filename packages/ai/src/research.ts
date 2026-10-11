@@ -2,6 +2,7 @@ import {
   PICK_OPTIONS, TIERS_BY_ID, TRAIT_COSTS, availableTiers, getRace, learnsWholeField, mutationCost, researchOptions,
   type Command, type NumericPick, type PlayerView, type RacePicks,
 } from "@starlord/sim";
+import { strategyOf } from "./strategies.js";
 import { me } from "./util.js";
 
 /** Applications the AI wants, best first. Anything else is taken cheapest first. */
@@ -18,10 +19,36 @@ const PRIORITY = [
   "hyperDrive", "evolutionaryMutation", "doomStarHull", "classXShield", "stellarConverter",
 ];
 
-const rank = (tech: string) => {
-  const i = PRIORITY.indexOf(tech);
-  return i === -1 ? PRIORITY.length : i;
+/** Applications each research strategy pulls ahead of the usual order, best first. */
+export const RESEARCH_FOCUS: Record<string, string[]> = {
+  economy: [
+    "automatedFactory", "hydroponicFarm", "researchLab", "biospheres", "soilEnrichment", "cloningCenter", "roboMinerPlant",
+    "pollutionProcessor", "supercomputer", "planetaryStockExchange", "microbiotics", "subterraneanFarms", "roboticFactory",
+    "autolab", "astroUniversity", "recyclotron", "deepCoreMining", "androidWorkers", "androidScientists", "galacticNetwork",
+    "galacticCurrencyExchange", "heightenedIntelligence",
+  ],
+  military: [
+    "fusionBeam", "tritaniumArmor", "classIShield", "optronicComputer", "battleScanner", "merculiteMissile", "missileBase",
+    "neutronBlaster", "zortriumArmor", "classIIIShield", "positronicComputer", "gravitonBeam", "spaceAcademy", "phasor",
+    "titanHull", "plasmaCannon", "cyberneticComputer", "classVShield", "neutroniumArmor", "disruptorCannon",
+    "adamantiumArmor", "classVIIShield", "doomStarHull", "classXShield", "stellarConverter",
+  ],
+  expansion: [
+    "deuteriumFuelCells", "fusionDrive", "hydroponicFarm", "biospheres", "spacePort", "iridiumFuelCells", "soilEnrichment",
+    "cloningCenter", "terraforming", "microbiotics", "ionDrive", "subterraneanFarms", "uridiumFuelCells", "artificialPlanet",
+    "advancedCityPlanning", "antimatterDrive", "gaiaTransformation", "thoriumFuelCells", "hyperDrive",
+  ],
 };
+
+function ranker(view: PlayerView): (tech: string) => number {
+  const focus = RESEARCH_FOCUS[strategyOf(view, "research")] ?? [];
+  return (tech) => {
+    const f = focus.indexOf(tech);
+    if (f !== -1) return f;
+    const i = PRIORITY.indexOf(tech);
+    return focus.length + (i === -1 ? PRIORITY.length : i);
+  };
+}
 
 export function researchOrders(view: PlayerView): Command[] {
   const player = me(view);
@@ -29,10 +56,12 @@ export function researchOrders(view: PlayerView): Command[] {
   if (player.research.tierId) return out;
   const tiers = availableTiers(view, view.viewer).map((id) => TIERS_BY_ID[id]!);
   if (tiers.length === 0) return out;
+  const rank = ranker(view);
+  const unknown = rank("");
   const scored = tiers.map((t) => {
     const options = researchOptions(player, t).filter((x) => !player.techs.includes(x));
     const best = [...options].sort((a, b) => rank(a) - rank(b))[0];
-    const r = best ? rank(best) : PRIORITY.length + (t.hyper ? 10 : 0);
+    const r = best ? rank(best) : unknown + (t.hyper ? 10 : 0);
     // Wanted applications pull hard; otherwise prefer cheap fields.
     return { t, best, value: r * 40 + t.cost * 0.25 };
   });

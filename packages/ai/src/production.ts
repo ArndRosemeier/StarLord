@@ -5,6 +5,7 @@ import {
 } from "@starlord/sim";
 import { colonizationTargets, outpostTargets } from "./colonization.js";
 import { currentWarship } from "./design.js";
+import { strategyOf } from "./strategies.js";
 import { colonyStar, hostileFleetsNear, isOnly, me, myColonies, myFleets } from "./util.js";
 
 const ECONOMY_BUILDINGS = [
@@ -25,11 +26,23 @@ const DEFENSE_BUILDINGS = [
   "fluxShield", "starFortress", "barrierShield", "artemisSystemNet",
 ];
 
-/** Below this industry a colony isn't worth tying up with a colony ship. */
+/** Buildings that add research, first in line under the research strategy. */
+const RESEARCH_BUILDINGS = new Set(ECONOMY_BUILDINGS.filter((b) => {
+  const e = BUILDINGS_BY_ID[b]?.effects;
+  return !!e && ((e.researchFlat ?? 0) > 0 || (e.researchPerScientist ?? 0) > 0);
+}));
+
+/** Below this industry a colony isn't worth tying up with a colony ship... */
 const COLONY_SHIP_MIN_INDUSTRY = 8;
+/** ...unless the empire is set on expansion. */
+const COLONY_SHIP_MIN_INDUSTRY_EXPANSION = 5;
+/** Colony and outpost ships kept on the way at once, normally and under the expansion strategy. */
+const SETTLERS = { colony: 3, outpost: 2 };
+const SETTLERS_EXPANSION = { colony: 5, outpost: 4 };
 const MAX_SCOUTS = 2;
 
 interface Wants {
+  strategy: string;
   colonyShips: number;
   outposts: number;
   scouts: number;
@@ -57,6 +70,8 @@ export function productionOrders(view: PlayerView): Command[] {
   const fleets = myFleets(view);
   const designs = new Set(availableDesigns(view, view.viewer));
   const totals = empireTotals(view, view.viewer);
+  const strategy = strategyOf(view, "production");
+  const settlers = strategy === "expansion" ? SETTLERS_EXPANSION : SETTLERS;
 
   const queued = (pred: (q: BuildItem) => boolean) => colonies.reduce((n, c) => n + c.queue.filter(pred).length, 0);
   const owned = (role: "scout" | "colony" | "outpost" | "transport") =>
@@ -74,6 +89,7 @@ export function productionOrders(view: PlayerView): Command[] {
     for (const q of c.queue) if (q.kind === "project" && q.id === "colonyBase") colonyBases.delete(colonyStar(view, c).id);
   }
   const wants: Wants = {
+    strategy,
     portalQueued: false,
     colonyBases,
     upkeepRoom: 0,
@@ -82,8 +98,8 @@ export function productionOrders(view: PlayerView): Command[] {
       : 0,
     capitol: player.capitol === "lost",
     barracks: government(player).ungarrisonedPenalty > 0 && !government(player).noMorale,
-    colonyShips: Math.min(3, targets.length) - owned("colony") - shipQueued("colonyShip"),
-    outposts: designs.has("outpostShip") ? Math.min(2, outpostTargets(view).length) - owned("outpost") - shipQueued("outpostShip") : 0,
+    colonyShips: Math.min(settlers.colony, targets.length) - owned("colony") - shipQueued("colonyShip"),
+    outposts: designs.has("outpostShip") ? Math.min(settlers.outpost, outpostTargets(view).length) - owned("outpost") - shipQueued("outpostShip") : 0,
     scouts: unexploredInReach(view) ? MAX_SCOUTS - owned("scout") - shipQueued("scout") : 0,
     warships: 0,
     transports: 0,
@@ -116,7 +132,10 @@ export function productionOrders(view: PlayerView): Command[] {
   const queuedCp = colonies.reduce((n, c) => n + c.queue.reduce((m, q) => m + (q.kind === "ship" ? hullCp(q.designId) : 0), 0), 0);
   // Peacetime: a modest fleet that grows with the economy so late-game industry isn't all turned into BC.
   // Wartime: fill command points, and go over only while income can carry it.
-  const peaceTarget = Math.min(cpFree + Math.floor(overBudget / 2), Math.ceil(colonies.length / 2) + Math.floor(totals.industry / 40) * perShip);
+  // The military strategy fills command points in peacetime too; the industry strategy keeps half the usual fleet.
+  const peaceCap = cpFree + Math.floor(overBudget / 2);
+  const peaceFleet = Math.ceil(colonies.length / 2) + Math.floor(totals.industry / 40) * perShip;
+  const peaceTarget = strategy === "military" ? peaceCap : Math.min(peaceCap, strategy === "industry" ? Math.ceil(peaceFleet / 2) : peaceFleet);
   wants.warships = Math.max(0, Math.floor(((war ? cpFree + overBudget : peaceTarget) - queuedCp) / perShip));
   const transportsOwned = fleets.reduce((n, f) => n + f.ships.filter((s) => s.designId === "transport").reduce((m, s) => m + s.count, 0), 0);
   wants.transports = war ? Math.max(0, 4 - transportsOwned - shipQueued("transport")) : 0;
@@ -195,7 +214,8 @@ function chooseItem(
   }
   const ship = (designId: string): BuildItem => ({ kind: "ship", designId });
 
-  if (threatened || (war && rank < 3)) {
+  const military = wants.strategy === "military";
+  if (threatened || ((war || military) && rank < 3)) {
     const d = DEFENSE_BUILDINGS.find((b) => buildable.has(b));
     if (d && (!hasArmedDefenses(c) || !hasStarDock(c))) return { kind: "building", id: d };
   }
@@ -208,7 +228,8 @@ function chooseItem(
     wants.scouts--;
     return ship("scout");
   }
-  if (wants.colonyShips > 0 && designs.has("colonyShip") && industry >= COLONY_SHIP_MIN_INDUSTRY) {
+  const colonyShipIndustry = wants.strategy === "expansion" ? COLONY_SHIP_MIN_INDUSTRY_EXPANSION : COLONY_SHIP_MIN_INDUSTRY;
+  if (wants.colonyShips > 0 && designs.has("colonyShip") && industry >= colonyShipIndustry) {
     wants.colonyShips--;
     return ship("colonyShip");
   }
@@ -228,7 +249,7 @@ function chooseItem(
   if (c.farmers > 0 && buildable.has("hydroponicFarm")) return { kind: "building", id: "hydroponicFarm" };
   if (wants.barracks && pop >= 4 && buildable.has("marineBarracks")) return { kind: "building", id: "marineBarracks" };
   const warship = currentWarship(view, c);
-  if (war && warship && wants.warships > 0 && rank < 3 && industry >= 10) {
+  if ((war || military) && warship && wants.warships > 0 && rank < 3 && industry >= 10) {
     wants.warships--;
     return ship(warship);
   }
@@ -236,6 +257,8 @@ function chooseItem(
     wants.transports--;
     return ship("transport");
   }
+  // Expansion grows young colonies before anything else.
+  if (wants.strategy === "expansion" && pop < 4) return { kind: "project", id: "housing" };
   // Small colonies only build what pays off quickly.
   // Upkeep has to be paid every turn; past what the income spares, only buildings that add industry go up.
   const economy = ECONOMY_BUILDINGS.filter((b) => buildable.has(b))
@@ -244,6 +267,9 @@ function chooseItem(
     .filter((b) => !FARM_BUILDINGS.has(b) || c.farmers >= 2)
     .filter((b) => b !== "alienManagementCenter" || (c.aliens ?? 0) > 0 || c.raceId !== me(view).raceId)
     .filter((b) => b !== "pleasureDome" || pop >= 8);
+  // Industry and research strategies move their kind of building to the front, keeping the usual order otherwise.
+  const favored = wants.strategy === "industry" ? INDUSTRY_BUILDINGS : wants.strategy === "research" ? RESEARCH_BUILDINGS : null;
+  if (favored) economy.sort((a, b) => Number(favored.has(b)) - Number(favored.has(a)));
   if (economy.length > 0) {
     wants.upkeepRoom -= BUILDINGS_BY_ID[economy[0]!]?.maintenance ?? 0;
     return { kind: "building", id: economy[0]! };
@@ -265,7 +291,7 @@ function chooseItem(
   if (projects.has("terraform") && industry >= 20 && c.terraformed < 3) return { kind: "project", id: "terraform" };
   if (projects.has("artificialPlanet") && industry >= 30) return { kind: "project", id: "artificialPlanet" };
   const defense = DEFENSE_BUILDINGS.find((b) => buildable.has(b));
-  if (defense && industry >= 25) return { kind: "building", id: defense };
+  if (defense && industry >= (military ? 10 : 25)) return { kind: "building", id: defense };
   if (pop < 6) return { kind: "project", id: "housing" };
   // A rich empire with nothing left to build keeps its fleet growing rather than hoarding BC.
   if (warship && rich && industry >= 10) return ship(warship);
