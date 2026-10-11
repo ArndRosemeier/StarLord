@@ -11,7 +11,7 @@ const VICTORY: Record<VictoryKind, string> = {
   conquest: "Conquest",
   council: "Council vote",
   raiders: "Vex Prime taken",
-  score: "Score at turn limit",
+  score: "Still going at the turn limit",
 };
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 const words = (id: string) => cap(id.replace(/([A-Z])/g, " $1").toLowerCase());
@@ -108,7 +108,7 @@ export function Simulator() {
           <label title="Each game gets its own seed counting up from this one; the same seed and setup always plays the same game.">
             First seed <input value={firstSeed} onChange={(e) => setFirstSeed(e.target.value)} style={{ width: 72 }} />
           </label>
-          <label title="A game still going at this turn ends with a score victory for the highest score.">
+          <label title="Real games have no turn limit unless you set one, but a simulation needs a stopping point: a game still going at this turn is called for the highest score.">
             Turn limit <input type="number" min={50} max={1000} step={50} value={maxTurns} onChange={(e) => setMaxTurns(Math.min(1000, Math.max(50, Math.floor(Number(e.target.value) || 400))))} style={{ width: 72 }} />
           </label>
           <label>AI level <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as Difficulty)}>

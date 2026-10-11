@@ -25,6 +25,7 @@ export interface NewGameOptions {
   playerCount?: number;
   /** Player slots controlled by a person. Empty means an all-AI game. */
   humanPlayers?: PlayerId[];
+  /** Optional turn limit with a score victory; omitted or 0 means none, as in the original. */
   maxTurns?: number;
   monsters?: boolean;
   /** Antaran-style attacks by the Vexari raiders (and the portal victory). */
@@ -61,7 +62,7 @@ export function newGame(opts: NewGameOptions): GameState {
     galaxySize: opts.galaxySize ?? "medium",
     races,
     humanPlayers: opts.humanPlayers ?? [],
-    maxTurns: opts.maxTurns ?? 400,
+    maxTurns: opts.maxTurns ?? 0,
     monsters: opts.monsters ?? true,
     raiders: opts.raiders ?? true,
     council: opts.council ?? true,

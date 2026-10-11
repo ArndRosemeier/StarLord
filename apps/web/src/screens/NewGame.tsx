@@ -34,7 +34,8 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
   const [opponents, setOpponents] = useState(3);
   const [galaxy, setGalaxy] = useState<GalaxySize>("medium");
   const [seed, setSeed] = useState(() => String(Math.floor(Math.random() * 1e6)));
-  const [maxTurns, setMaxTurns] = useState(300);
+  const [maxTurns, setMaxTurns] = useState(400);
+  const [turnLimit, setTurnLimit] = useState(false);
   const [monsters, setMonsters] = useState(true);
   const [raiders, setRaiders] = useState(true);
   const [council, setCouncil] = useState(true);
@@ -67,7 +68,7 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
     const races = spectate ? shuffled(RACES.map((r) => r.id)).slice(0, opponents + 1) : [raceId, ...others];
     const customRaces = !spectate && chosenCustom ? [chosenCustom.spec] : [];
     const session = GameSession.create({
-      seed, galaxySize: galaxy, races, maxTurns, monsters, raiders, council, customRaces, difficulty, galaxyAge, techLevel, randomEvents, shipInitiative,
+      seed, galaxySize: galaxy, races, maxTurns: turnLimit ? maxTurns : 0, monsters, raiders, council, customRaces, difficulty, galaxyAge, techLevel, randomEvents, shipInitiative,
       ...(debug ? { debug: true } : {}),
     }, spectate ? null : 0);
     // Start with the automation the player chose last game.
@@ -173,7 +174,11 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
                 <option value="average">Average</option>
                 <option value="advanced">Advanced</option>
               </select></label>
-              <label>Turn limit <input type="number" min={50} max={1000} step={50} value={maxTurns} onChange={(e) => setMaxTurns(Number(e.target.value))} /></label>
+              <label title="Off, as in the original: the game runs until someone conquers the galaxy, wins the council vote or takes Vex Prime. On: when the limit is reached, the highest score wins.">
+                <input type="checkbox" checked={turnLimit} onChange={(e) => setTurnLimit(e.target.checked)} /> Turn limit
+                {turnLimit && <input type="number" min={50} max={1000} step={50} value={maxTurns} onChange={(e) => setMaxTurns(Number(e.target.value))} style={{ marginLeft: 6 }} />}
+                {!turnLimit && <small className="muted"> none, as in the original</small>}
+              </label>
               <label>Seed <input type="text" size={8} value={seed} onChange={(e) => setSeed(e.target.value)} /></label>
             </div>
             <div className="row">

@@ -15,6 +15,7 @@ export interface GameSettings {
   /** Race id per empire slot. */
   races: string[];
   humanPlayers: PlayerId[];
+  /** Turn after which the highest score wins; 0 means no limit, as in the original. */
   maxTurns: number;
   /** Monsters guarding systems, Orion's guardian and the late-game raiders. */
   monsters: boolean;
