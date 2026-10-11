@@ -4,7 +4,7 @@ import {
   DRIVES, EXCLUSIVE_TRAITS, FIELD_NAMES, FUEL_RANGES, GOVERNMENTS, GOVERNMENT_COSTS, HULLS, HULLS_BY_ID, INDUSTRY_PER_WORKER,
   LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
   PLANETS_PER_STAR, PLANET_SIZE_WEIGHTS, PLANET_TYPE_WEIGHTS, PROJECTS, PROJECTS_BY_ID, PROJECT_COSTS, RACES, RACES_BY_ID,
-  RAIDER_ERAS, RAIDER_SHIP_NAMES, RAID_DIFFICULTY_SHIFT, RAID_FIRST_TURN, SCRAP_TECH_CHANCE, SHIELDS, SHIELDS_BY_ID, POLLUTION_TOLERANCE, SIZE_FACTOR, SIZE_POP_BASE, SPECIALS, SPECIALS_BY_ID, climatePopulation,
+  RAIDER_ERAS, RAIDER_SHIP_NAMES, RAID_BUDGET_MULT, RAID_BUDGET_PERIOD, RAID_FLEET_CAP, RAID_GRACE_TURNS, RAID_LAUNCH_ROLL, RAIDER_HULL_COST, SCRAP_TECH_CHANCE, SHIELDS, SHIELDS_BY_ID, POLLUTION_TOLERANCE, SIZE_FACTOR, SIZE_POP_BASE, SPECIALS, SPECIALS_BY_ID, climatePopulation,
   RESEARCH, STARTING_TECH_APPS, STARTING_TIERS, STAR_COLOR_WEIGHTS, TECHS, TECH_FIELDS, TECH_TIERS, TERRAFORM_STEP,
   TIERS_BY_ID, TRAIT_COSTS, WEAPONS, WEAPONS_BY_ID, nextTier, previousTier, ARCS, MISSILE_RACKS, STATION_HULLS,
   WEAPON_MODS, WEAPON_MODS_BY_ID, SHIELD_SPACE_BY_HULL, SHIELD_COST_BY_HULL, COMPUTER_COST_BY_HULL,
@@ -970,21 +970,26 @@ function MonstersPage() {
       <table className="help-table">{monsterHead}<tbody>{MONSTER_DESIGNS.map((d) => <MonsterRow key={d.id} d={d} />)}</tbody></table>
       <h3>Raiders</h3>
       <p>
-        The Vexari raiders live in a pocket dimension outside the galaxy. On Average difficulty their first raid comes around
-        turn {RAID_FIRST_TURN} ({signed(RAID_DIFFICULTY_SHIFT.tutor)} turns on Tutor, {signed(RAID_DIFFICULTY_SHIFT.impossible)} on
-        Impossible). A raid fleet appears at one of the most populous colonies and fights its defenders. If the
-        defenses fall, it kills colonists and wrecks buildings, then vanishes. Lucky races are often overlooked.
-        Their ships are real warships with xentronium armor, and their technology improves in four eras counted from the
-        first raid. Raids get bigger and more frequent with each era.
+        The Vexari raiders live in a pocket dimension outside the galaxy. They leave the galaxy alone for the first
+        {RAID_GRACE_TURNS.average} turns ({RAID_GRACE_TURNS.preWarp} when starting pre-warp, none when starting advanced).
+        After that, every {RAID_BUDGET_PERIOD} turns they gain build points: 1, then 2, then 3 and so on, {RAID_BUDGET_MULT.hard / 100} times
+        as much on Hard and {RAID_BUDGET_MULT.impossible / 100} times as much on Impossible. They spend the points on raid ships
+        ({Object.entries(RAIDER_HULL_COST).map(([h, c]) => `${RAIDER_SHIP_NAMES[h as keyof typeof RAIDER_SHIP_NAMES]} ${c}, up to ${RAID_FLEET_CAP[h as keyof typeof RAID_FLEET_CAP]}`).join("; ")}).
+        Once a raid fleet is ready, each turn it waits it has one more chance in {RAID_LAUNCH_ROLL} of setting off.
+      </p>
+      <p>
+        A raid goes for a big empire: empires are weighted by the square of how much more population they have than the
+        smallest one, who is left alone. Lucky empires count a third of their population. Human players count less on Tutor and Easy
+        and more on Hard and Impossible. The raid hits that empire's most populous colony and fights its defenders. If the
+        defenses fall, it kills colonists and wrecks buildings, then vanishes. Their ships are real warships with
+        xentronium armor, and their technology improves in four eras counted from the first raid.
       </p>
       <table className="help-table">
-        <thead><tr><th>Era from</th><th>Every</th><th>Raid</th><th>Home fleet</th><th>New technology</th><th>Raid damage</th></tr></thead>
+        <thead><tr><th>Era from</th><th>Home fleet</th><th>New technology</th><th>Raid damage</th></tr></thead>
         <tbody>
           {RAIDER_ERAS.map((e, i) => (
             <tr key={i}>
-              <td>{e.from === 0 ? "first raid" : `+${e.from} turns`}</td>
-              <td>{e.interval[0]}–{e.interval[1]} turns</td>
-              <td>{e.raid.map((r, j) => `${r.count}${j === 0 && e.extra ? `–${r.count + e.extra}` : ""}× ${RAIDER_SHIP_NAMES[r.hull]}`).join(", ")}</td>
+              <td>{e.from === 0 ? "first raid" : `+${e.from} turns, ${e.minTechs} techs known by someone`}</td>
               <td>{e.garrison.map((g) => `${g.count}× ${RAIDER_SHIP_NAMES[g.hull]}`).join(", ")} and the <HelpLink to={`monster:${citadelDesign(i).id}`} /></td>
               <td>{e.techs.filter((t) => !t.endsWith("Hull")).map((t, j) => <span key={t}>{j > 0 && ", "}<HelpLink to={`tech:${t}`} /></span>)}</td>
               <td>{e.raze.pop[0]}–{e.raze.pop[1]} pop, {e.raze.buildings} building{e.raze.buildings > 1 ? "s" : ""}</td>

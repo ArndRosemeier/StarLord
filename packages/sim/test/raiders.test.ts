@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  RAIDER_CITADEL_ID, RAIDER_ERAS, TECHS, RAIDERS_DEFEATED_SCORE, canReach, designStats, moveProblem, newGame, processTurn,
+  RAID_GRACE_TURNS, RAID_LAUNCH_ROLL, RAIDER_CITADEL_ID, RAIDER_ERAS, TECHS, RAIDERS_DEFEATED_SCORE, canReach, designStats, moveProblem, newGame, processTurn,
   raiderDesignId, raiderDesigns, raiderTechs, raidersId, returnThroughPortal, score, validateDesign, type Fleet, type GameState,
 } from "@starlord/sim";
 
@@ -13,6 +13,13 @@ function addFleet(s: GameState, ownerId: number, starId: string, ships: Fleet["s
   const f: Fleet = { id: `t${s.nextId++}`, ownerId, x: star.x, y: star.y, starId, destStarId: null, ships, stance: "attack", name: "Test" };
   s.fleets[f.id] = f;
   return f;
+}
+
+/** A raid fleet ready to launch this turn. */
+function readyRaid(s: GameState, ships: Fleet["ships"] = [{ designId: raiderDesignId("cruiser"), count: 2 }]): void {
+  s.raiders.nextRaid = s.turn;
+  s.raiders.fleet = ships;
+  s.raiders.launch = RAID_LAUNCH_ROLL;
 }
 
 const raiderHome = (s: GameState) => s.galaxy.stars.find((x) => x.special === "raiderHome")!;
@@ -48,7 +55,7 @@ describe("raider ships", () => {
 describe("raids", () => {
   it("come with ships of the current era, which advances with time", () => {
     let s = game();
-    s.raiders.nextRaid = s.turn;
+    readyRaid(s);
     s = processTurn(s, {});
     expect(s.events.some((e) => e.kind === "raid")).toBe(true);
     expect(s.raiders.era).toBe(0);
@@ -56,15 +63,13 @@ describe("raids", () => {
 
     // Time alone is not enough: the raiders keep pace with the most advanced empire.
     s.raiders.firstRaid = s.turn - RAIDER_ERAS[2]!.from;
-    s.raiders.nextRaid = s.turn;
+    readyRaid(s);
     s = processTurn(s, {});
     expect(s.raiders.era).toBe(0);
     s.players[0]!.techs = Object.keys(TECHS).slice(0, RAIDER_ERAS[2]!.minTechs);
-    s.raiders.nextRaid = s.turn;
+    readyRaid(s);
     s = processTurn(s, {});
     expect(s.raiders.era).toBe(2);
-    const raid = Object.values(s.fleets).find((f) => f.ownerId === raidersId(s) && f.name === "Vexari Raid");
-    if (raid) expect(raid.ships.some((x) => x.designId === raiderDesignId("titan"))).toBe(true);
     // The home fleet is topped up to the new era's garrison.
     const home = Object.values(s.fleets).find((f) => f.starId === raiderHome(s).id)!;
     expect(home.ships.find((x) => x.designId === raiderDesignId("titan"))!.count).toBeGreaterThanOrEqual(3);
@@ -79,13 +84,65 @@ describe("raids", () => {
     c.workers += 6;
     const before = { pop: c.farmers + c.workers + c.scientists, buildings: c.buildings.length };
     s.raiders.firstRaid = s.turn - RAIDER_ERAS[1]!.from;
-    s.raiders.nextRaid = s.turn;
+    readyRaid(s);
     s = processTurn(s, {});
     expect(s.events.find((e) => e.kind === "raid")).toMatchObject({ playerId: 0, starId: homeStar(s, 0) });
     const after = s.colonies[c.id];
     if (after) {
       expect(after.farmers + after.workers + after.scientists).toBeLessThan(before.pop);
       expect(after.buildings.length).toBeLessThan(before.buildings);
+    }
+  });
+});
+
+describe("raid timing (decoded from the original)", () => {
+  it("waits out a grace period set by the starting tech level", () => {
+    expect(newGame({ seed: "g", races: ["terran", "felhari"], techLevel: "preWarp" }).raiders.nextRaid).toBe(RAID_GRACE_TURNS.preWarp);
+    expect(newGame({ seed: "g", races: ["terran", "felhari"], techLevel: "advanced" }).raiders.nextRaid).toBe(RAID_GRACE_TURNS.advanced);
+    let s = game("grace");
+    expect(s.raiders.nextRaid).toBe(RAID_GRACE_TURNS.average);
+    s.raiders.fleet = [{ designId: raiderDesignId("cruiser"), count: 2 }];
+    s.raiders.launch = RAID_LAUNCH_ROLL;
+    s = processTurn(s, {});
+    expect(s.events.some((e) => e.kind === "raid")).toBe(false);
+  });
+
+  it("grows the budget every 25 turns, faster on harder levels", () => {
+    const grow = (difficulty: "average" | "impossible") => {
+      let s = newGame({ seed: "b", races: ["terran", "felhari"], monsters: false, council: false, difficulty });
+      s.raiders.launch = -10_000;
+      const got: number[] = [];
+      for (const k of [1, 2, 3]) {
+        s.turn = s.raiders.nextRaid + 25 * k;
+        s.raiders.budget = 0;
+        s.raiders.fleet = [{ designId: raiderDesignId("titan"), count: 2 }, { designId: raiderDesignId("battleship"), count: 2 },
+          { designId: raiderDesignId("cruiser"), count: 3 }, { designId: raiderDesignId("destroyer"), count: 4 }, { designId: raiderDesignId("frigate"), count: 4 }];
+        s = processTurn(s, {});
+        got.push(s.raiders.budget!);
+      }
+      return got;
+    };
+    expect(grow("average")).toEqual([1, 2, 3]);
+    expect(grow("impossible")).toEqual([2, 4, 6]);
+  });
+
+  it("buys the biggest ships it can afford, up to a cap per hull", () => {
+    let s = game("buy");
+    s.turn = s.raiders.nextRaid + 1;
+    s.raiders.budget = 100;
+    s.raiders.launch = -10_000;
+    s = processTurn(s, {});
+    expect(s.raiders.fleet).toEqual([{ designId: raiderDesignId("titan"), count: 1 }, { designId: raiderDesignId("cruiser"), count: 2 }]);
+    expect(s.raiders.budget).toBe(1);
+  });
+
+  it("goes for the bigger empire and leaves the smallest alone", () => {
+    for (const seed of ["t1", "t2", "t3"]) {
+      let s = game(seed);
+      capital(s, 1).workers += 8;
+      readyRaid(s);
+      s = processTurn(s, {});
+      expect(s.events.find((e) => e.kind === "raid")).toMatchObject({ playerId: 1 });
     }
   });
 });

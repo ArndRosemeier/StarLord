@@ -518,12 +518,19 @@ export interface CouncilState {
 }
 
 export interface RaidersState {
+  /** First turn raids can come (the end of the grace period). */
   nextRaid: number;
   defeated: boolean;
   /** Turn of the first raid; raider technology advances from it. */
   firstRaid?: number;
   /** Index into RAIDER_ERAS: how far raider technology has come. */
   era?: number;
+  /** Build points not yet spent on raid ships. */
+  budget?: number;
+  /** Raid ships bought and waiting to launch. */
+  fleet?: ShipStack[];
+  /** Turns the ready raid fleet has waited; each makes the launch likelier. */
+  launch?: number;
   /** Empire that destroyed the raiders at home. */
   defeatedBy?: PlayerId;
 }
