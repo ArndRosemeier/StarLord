@@ -16,7 +16,8 @@ import { canMindControl, exterminateProblem } from "./ground.js";
 import { moveProblem } from "./movement.js";
 import { bribeProblem } from "./randomEvents.js";
 import {
-  availableBuildings, canBuildShips, availableDesigns, availableProjects, availableTiers, itemCost, researchOptions,
+  PLACED_PROJECTS, availableBuildings, baseClaims, baseTargets, canBuildShips, availableDesigns, availableProjects, availableTiers, itemCost,
+  researchOptions,
 } from "./rules.js";
 import { validateMutation } from "./mutation.js";
 import { debugProblem, type DebugAction } from "./debug.js";
@@ -34,6 +35,8 @@ export type Command =
   | { type: "setJobs"; colonyId: Id; farmers: number; workers: number; scientists: number }
   | { type: "setQueue"; colonyId: Id; queue: BuildItem[] }
   | { type: "buy"; colonyId: Id }
+  /** Puts a finished Colony Base, Outpost Base or Artificial Planet waiting at this colony on a planet in its system. */
+  | { type: "placeBase"; colonyId: Id; projectId: string; planetId: Id }
   /** techId picks the application; general and hyper-advanced fields need none. */
   | { type: "setResearch"; tierId: string; techId?: string }
   /** Spends Evolutionary Mutation points on new race picks (same government). */
@@ -138,6 +141,19 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
         const alreadyHere = item.kind === "project" && c.queue.some((q) => q.kind === "project" && q.id === item.id);
         if (item.kind === "project" && !projects.has(item.id) && !alreadyHere) return fail(`project ${item.id} not available`);
       }
+      // Every Colony Base, Outpost Base or Artificial Planet needs a planet of its own.
+      for (const id of new Set(cmd.queue.flatMap((q) => (q.kind === "project" && PLACED_PROJECTS[q.id] ? [q.id] : [])))) {
+        const claims = baseClaims(state, c, id, cmd.queue);
+        const free = baseTargets(state, c, id).length;
+        if (claims > free && claims > baseClaims(state, c, id)) return fail(`only ${free} free planet${free === 1 ? "" : "s"} in this system for ${id}`);
+      }
+      return OK;
+    }
+    case "placeBase": {
+      const c = ownColony(state, playerId, cmd.colonyId);
+      if (!c) return fail("not your colony");
+      if (!(c.readyBases ?? []).includes(cmd.projectId)) return fail("no such base waiting here");
+      if (!baseTargets(state, c, cmd.projectId).some((p) => p.id === cmd.planetId)) return fail("that planet can't take it");
       return OK;
     }
     case "buy": {

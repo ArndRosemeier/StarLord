@@ -359,3 +359,5 @@ select.strategy-select { flex: 0 0 150px; width: 150px; margin-left: auto; align
 .simulator .sim-problems { margin: 0; padding-left: 18px; font-size: 13px; }
 .simulator .sim-problems code { white-space: pre-wrap; word-break: break-word; }
 .simulator .sim-events { font-size: 13px; }
+.base-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.base-choice { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 6px 10px; flex: 1 1 240px; text-align: left; }

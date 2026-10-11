@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   exterminateProblem,
-  BUILDINGS_BY_ID, MAX_QUEUE, PROJECTS_BY_ID, availableBuildings, availableDesigns, availableProjects, buyCost,
+  BUILDINGS_BY_ID, MAX_QUEUE, PLACED_PROJECTS, PROJECTS_BY_ID, baseTargets, availableBuildings, availableDesigns, availableProjects, buyCost,
   FREIGHTERS, androids, colonyOutput, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
   type BuildItem, type Colony,
 } from "@starlord/sim";
@@ -12,6 +12,7 @@ import { Icon } from "../ui/fx";
 import { Tip } from "../ui/Tip";
 import { PlanetFacts, buildingTip, moraleTip, projectTip, tradeGoodsTip } from "../ui/explain";
 import { designTip } from "./designTips";
+import { BaseChoices } from "./BasePrompt";
 
 export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (starId: string) => void; initialColony?: string | null }) {
   const { view, me } = useGame();
@@ -177,6 +178,12 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
         </div>
       </div>
 
+      {(colony.readyBases?.length ?? 0) > 0 && (
+        <div className="panel col">
+          <BaseChoices colony={colony} />
+        </div>
+      )}
+
       {!colony.outpost && (
         <div className="panel col">
           <div className="row">
@@ -266,7 +273,7 @@ function AddToQueue({ onAdd, buildings, designs, projects, colony, industry }: {
       </div>
       <div className="row" style={{ gap: 4 }}>
         {projects.map((p) => (
-          <Tip key={p} card={() => projectTip(p, colony, view.planets[colony.planetId]!, industry)}>
+          <Tip key={p} card={() => projectTip(p, colony, view.planets[colony.planetId]!, industry, PLACED_PROJECTS[p] ? baseTargets(view, colony, p) : undefined)}>
             <button className="small" onClick={() => onAdd({ kind: "project", id: p })}>
               {PROJECTS_BY_ID[p]?.name}
             </button>

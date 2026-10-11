@@ -267,7 +267,7 @@ export function tradeGoodsTip(raceId: string, industry: number): TipCard {
 }
 
 /** What a colony project does, with this colony's numbers where they matter. */
-export function projectTip(id: string, colony: Colony, planet: Planet, industry: number): TipCard {
+export function projectTip(id: string, colony: Colony, planet: Planet, industry: number, freePlanets?: Planet[]): TipCard {
   const p = PROJECTS_BY_ID[id]!;
   const text = [p.description];
   const rows: [string, string][] = [];
@@ -280,6 +280,12 @@ export function projectTip(id: string, colony: Colony, planet: Planet, industry:
     const next = TERRAFORM_STEP[planet.type];
     rows.push(["Next step", next?.length ? next.map(climateName).join(" or ") + (next.length > 1 ? " (random)" : "") : `none, ${climateName(planet.type)} can't be terraformed`]);
     if (colony.terraformed) rows.push(["Done here", `${colony.terraformed} time${colony.terraformed > 1 ? "s" : ""}`]);
+  }
+  if (freePlanets) {
+    rows.push(["Free planets here", freePlanets.length ? freePlanets.map((f) => `${words(f.size)} ${climateName(f.type)}`).join(", ") : "none"]);
+    text.push(freePlanets.length > 1
+      ? "When it is finished you choose which planet it goes to."
+      : "When it is finished it goes to the only free planet. If none is left by then, it is scrapped for half its cost.");
   }
   return { title: p.name, kind: "Project", rows, text };
 }

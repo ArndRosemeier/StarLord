@@ -132,6 +132,11 @@ export interface Colony {
   /** Marines and tank battalions trained by the barracks beyond the ones present when built. */
   marinesTrained?: number;
   tanksTrained?: number;
+  /**
+   * Finished Colony Bases, Outpost Bases and Artificial Planets (project ids)
+   * waiting for the owner to pick which planet in the system they go to.
+   */
+  readyBases?: string[];
   /** A Dimensional Portal stands here: fleets in this system can strike at the raiders' home. */
   portal?: boolean;
 }
@@ -527,6 +532,10 @@ export type GameEvent =
   | { turn: number; kind: "hyperAdvance"; playerId: PlayerId; field: TechField; level: number }
   | { turn: number; kind: "built"; playerId: PlayerId; colonyId: Id; item: BuildItem }
   | { turn: number; kind: "starvation"; playerId: PlayerId; colonyId: Id }
+  /** A finished base has several possible planets; the owner must pick one (placeBase). */
+  | { turn: number; kind: "baseReady"; playerId: PlayerId; colonyId: Id; projectId: string }
+  /** A finished base had no planet left to use; it was scrapped and paid back `refund` BC. */
+  | { turn: number; kind: "baseScrapped"; playerId: PlayerId; colonyId: Id; projectId: string; refund: number }
   | { turn: number; kind: "explored"; playerId: PlayerId; starId: Id }
   | { turn: number; kind: "commandRejected"; playerId: PlayerId; reason: string }
   | { turn: number; kind: "combat"; playerId: PlayerId; reportId: Id; starId: Id; won: boolean }

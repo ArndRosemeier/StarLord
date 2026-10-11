@@ -1,6 +1,6 @@
 import {
   BUILDINGS_BY_ID, availableBuildings, availableDesigns, availableProjects, buyCost, colonyOutput, commandPointsAvailable,
-  commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasMarineBarracks, hasStarDock, queuedAnywhere, relation,
+  commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasMarineBarracks, hasStarDock, queuedAnywhere, relation, suggestedBaseTarget,
   type BuildItem, type Colony, type Command, type PlayerView,
 } from "@starlord/sim";
 import { colonizationTargets, outpostTargets } from "./colonization.js";
@@ -165,6 +165,15 @@ export function productionOrders(view: PlayerView): Command[] {
   // Taxes: raise them while the books are red, lower them once the treasury is healthy.
   const tax = income.net < 0 || player.bc < 30 ? Math.min(0.5, player.taxRate + 0.1) : player.bc > 300 && player.taxRate > 0 ? player.taxRate - 0.1 : player.taxRate;
   if (Math.abs(tax - player.taxRate) > 1e-9) out.push({ type: "setTaxRate", rate: Math.round(tax * 10) / 10 });
+  // A finished base waiting for a target goes to the best planet left.
+  const taken = new Set<string>();
+  for (const c of colonies) {
+    for (const id of c.readyBases ?? []) {
+      const target = suggestedBaseTarget(view, c, id, taken);
+      if (target) taken.add(target.id);
+      if (target) out.push({ type: "placeBase", colonyId: c.id, projectId: id, planetId: target.id });
+    }
+  }
   let bc = player.bc;
   const ranked = colonies
     .map((c) => ({ c, out: colonyOutput(view, c) }))

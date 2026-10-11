@@ -14,7 +14,7 @@ export const SECTION_LABELS: Record<ReportSection, string> = {
 };
 
 const SECTION_OF: Record<GameEvent["kind"], ReportSection> = {
-  built: "production", starvation: "production",
+  built: "production", starvation: "production", baseReady: "production", baseScrapped: "production",
   techLearned: "research", hyperAdvance: "research",
   colonyFounded: "colonies", colonyCaptured: "colonies", colonyLost: "colonies", invasionFailed: "colonies", bombarded: "colonies",
   combat: "military", raid: "military", raidersDefeated: "military",
@@ -62,7 +62,7 @@ export function turnReport(view: PlayerView, events: readonly GameEvent[]): Repo
     const d = describeEvent(view, e);
     const section = SECTION_OF[e.kind] ?? "other";
     let target: ReportTarget | undefined;
-    if ((e.kind === "built" || e.kind === "starvation" || e.kind === "colonyFounded" || e.kind === "colonyCaptured") && view.colonies[e.colonyId]?.ownerId === view.viewer) {
+    if ((e.kind === "built" || e.kind === "starvation" || e.kind === "colonyFounded" || e.kind === "colonyCaptured" || e.kind === "baseReady" || e.kind === "baseScrapped") && view.colonies[e.colonyId]?.ownerId === view.viewer) {
       target = { kind: "colony", colonyId: e.colonyId };
     } else if (section === "research") {
       target = { kind: "research" };

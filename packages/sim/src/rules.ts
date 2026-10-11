@@ -37,6 +37,53 @@ export function freePlanetsInSystem(state: GameState, colony: Colony, kind: "hab
     .filter((p) => !p.colonyId && (kind === "habitable" ? CLIMATES[p.type].habitable : !CLIMATES[p.type].habitable));
 }
 
+/** Projects that settle or convert another planet in the builder's system, and the planets they can use. */
+export const PLACED_PROJECTS: Record<string, "habitable" | "unsettleable"> = {
+  colonyBase: "habitable",
+  outpostBase: "habitable",
+  artificialPlanet: "unsettleable",
+};
+
+/** Planets in the colony's system a placed project (Colony Base etc.) could go to right now. */
+export function baseTargets(state: GameState, colony: Colony, projectId: string): Planet[] {
+  const kind = PLACED_PROJECTS[projectId];
+  return kind ? freePlanetsInSystem(state, colony, kind) : [];
+}
+
+/**
+ * Placed projects of the same planet class the owner already has queued or
+ * waiting for a target anywhere in this colony's system. Each will use up
+ * one free planet, so no more can be started than there are planets.
+ */
+export function baseClaims(state: GameState, colony: Colony, projectId: string, queueOverride?: BuildItem[]): number {
+  const kind = PLACED_PROJECTS[projectId];
+  if (!kind) return 0;
+  const starId = state.planets[colony.planetId]!.starId;
+  let n = 0;
+  for (const c of Object.values(state.colonies)) {
+    if (c.ownerId !== colony.ownerId || state.planets[c.planetId]?.starId !== starId) continue;
+    const queue = c.id === colony.id && queueOverride ? queueOverride : c.queue;
+    n += queue.filter((q) => q.kind === "project" && PLACED_PROJECTS[q.id] === kind).length;
+    n += (c.readyBases ?? []).filter((id) => PLACED_PROJECTS[id] === kind).length;
+  }
+  return n;
+}
+
+/**
+ * The planet a finished base is best put on: a Colony Base takes the room for
+ * the most people, an Outpost Base the least (keeping good worlds for colonies),
+ * an Artificial Planet a gas giant (it becomes a huge planet) before an asteroid belt.
+ */
+export function suggestedBaseTarget(state: GameState, colony: Colony, projectId: string, taken?: Set<Id>): Planet | undefined {
+  const free = baseTargets(state, colony, projectId).filter((p) => !taken?.has(p.id));
+  const player = state.players[colony.ownerId]!;
+  const race = getRace(player.raceId);
+  const room = (p: Planet) => maxPopulation(p, race, [], player);
+  const score = (p: Planet) =>
+    projectId === "colonyBase" ? room(p) : projectId === "outpostBase" ? -room(p) : p.type === "gasGiant" ? 1 : 0;
+  return [...free].sort((a, b) => score(b) - score(a))[0];
+}
+
 export function queuedAnywhere(state: GameState, playerId: PlayerId, projectId: string): boolean {
   return Object.values(state.colonies).some(
     (c) => c.ownerId === playerId && c.queue.some((q) => q.kind === "project" && q.id === projectId),
@@ -66,9 +113,9 @@ export function availableProjects(state: GameState, playerId: PlayerId, colony: 
     switch (p.id) {
       case "colonyBase":
       case "outpostBase":
-        return freePlanetsInSystem(state, colony, "habitable").length > 0;
       case "artificialPlanet":
-        return freePlanetsInSystem(state, colony, "unsettleable").length > 0;
+        // Only while a free planet is left that no other base here has claimed.
+        return baseTargets(state, colony, p.id).length > baseClaims(state, colony, p.id);
       case "terraform":
         return planet.type in TERRAFORM_STEP;
       case "gaiaTransform":
