@@ -1,0 +1,1 @@
+- The automation strategy pickers on the Empire & automation screen now all have the same width and line up in one column.

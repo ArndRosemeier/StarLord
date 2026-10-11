@@ -337,3 +337,6 @@ kbd { background: var(--panel-2); border: 1px solid var(--line); border-bottom-w
   .help-article { padding: 12px 14px 24px; }
 }
 .help-error { white-space: pre-wrap; font-size: 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px; color: #ffc9c9; user-select: text; }
+
+/* Automation strategy pickers line up in one column at one width. */
+select.strategy-select { flex: 0 0 150px; width: 150px; margin-left: auto; align-self: center; }
