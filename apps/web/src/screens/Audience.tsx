@@ -134,7 +134,7 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
       <div className="audience" role="dialog" aria-label={`Audience with the ${them.name}`} onClick={(e) => e.stopPropagation()}
         style={{ ["--envoy" as string]: them.color }}>
         <div className="audience-portrait">
-          <Envoy raceId={them.raceId} color={them.color} className="envoy audience-envoy" autoPlay />
+          <Envoy raceId={them.raceId} color={them.color} className="envoy audience-envoy" autoPlay once />
           <div className="audience-plate">
             <div className="row"><span className="dot" style={{ background: them.color }} /><b>{them.name}</b></div>
             <div className="muted">{race.archetype} · {government(them).name}</div>

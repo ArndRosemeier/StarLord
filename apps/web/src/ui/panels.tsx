@@ -276,8 +276,14 @@ export function ProgressRing({ value, max, size = 120, color = "var(--accent)", 
   );
 }
 
-/** A race's portrait that comes alive with its video while hovered (or always, with `autoPlay`). */
-export function Envoy({ raceId, color, className = "envoy", autoPlay = false }: { raceId: string; color?: string; className?: string; autoPlay?: boolean }) {
+/**
+ * A race's portrait that comes alive with its video while hovered (or always,
+ * with `autoPlay`). With `once` the video plays a single time and stays on its
+ * last frame, for clips that are not made to loop.
+ */
+export function Envoy({ raceId, color, className = "envoy", autoPlay = false, once = false }: {
+  raceId: string; color?: string; className?: string; autoPlay?: boolean; once?: boolean;
+}) {
   const r = getRace(raceId);
   const [active, setActive] = useState(autoPlay);
   const [ready, setReady] = useState(false);
@@ -286,7 +292,7 @@ export function Envoy({ raceId, color, className = "envoy", autoPlay = false }: 
       onPointerEnter={() => setActive(true)} onPointerLeave={() => { if (!autoPlay) { setActive(false); setReady(false); } }}>
       <img src={`races/${r.assetKey}.webp`} alt={r.name} />
       {active && (
-        <video src={`races/${r.assetKey}.mp4`} autoPlay muted loop playsInline
+        <video src={`races/${r.assetKey}.mp4`} autoPlay muted loop={!once} playsInline
           onPlaying={() => setReady(true)} onError={() => setActive(false)} />
       )}
     </div>
