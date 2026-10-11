@@ -1,7 +1,7 @@
-import { answerProposal, automationOrders } from "@starlord/ai";
+import { audienceAnswer, automationOrders } from "@starlord/ai";
 import {
   newGame, newRecord, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
-  type CombatReport, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Proposal, type TurnOrders,
+  type CombatReport, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type TurnOrders,
 } from "@starlord/sim";
 
 /**
@@ -22,6 +22,8 @@ export class GameSession {
    * the turn ends, so the deal holds as agreed.
    */
   answers: Record<string, boolean> = {};
+  /** Prices computer empires named in audiences this turn, by the player's proposal they answer. */
+  counters: Record<string, { to: PlayerId; kind: ProposalKind; price: Price }> = {};
   rejected: string[] = [];
   view!: PlayerView;
   /** Reports of recent turns, newest first; filtered per viewer by the UI. */
@@ -33,13 +35,17 @@ export class GameSession {
   /** Every turn's orders since the game began, for replays and lockstep play; null for old saves. */
   record: GameRecord | null;
 
-  constructor(state: GameState, me: PlayerId | null, pending: Command[] = [], record: GameRecord | null = null, answers: Record<string, boolean> = {}) {
+  constructor(
+    state: GameState, me: PlayerId | null, pending: Command[] = [], record: GameRecord | null = null, answers: Record<string, boolean> = {},
+    counters: GameSession["counters"] = {},
+  ) {
     this.state = state;
     this.record = record;
     this.me = me;
     this.watching = me ?? 0;
     this.pending = pending;
     this.answers = answers;
+    this.counters = counters;
     this.refresh();
   }
 
@@ -89,12 +95,17 @@ export class GameSession {
       this.view = { ...this.state, viewer: this.watching };
       this.rejected = [];
     } else {
-      const { state, rejected } = previewOrders(this.state, this.me, this.pending);
-      // Deals struck in audiences show at once.
-      let after = state;
-      for (const [id, cmds] of this.answerOrders()) after = previewOrders(after, id, cmds).state;
-      this.view = playerView(after, this.me);
-      this.rejected = rejected;
+      // As the turn does: everyone's orders first, then everyone's answers, so deals struck in audiences
+      // (and the player's answer to a counter-offer made there) show at once.
+      const answers = (c: Command) => c.type === "respond";
+      const first = previewOrders(this.state, this.me, this.pending.filter((c) => !answers(c)));
+      let after = first.state;
+      const ai = [...this.answerOrders()];
+      for (const [id, cmds] of ai) after = previewOrders(after, id, cmds.filter((c) => !answers(c))).state;
+      for (const [id, cmds] of ai) after = previewOrders(after, id, cmds.filter(answers)).state;
+      const last = previewOrders(after, this.me, this.pending.filter(answers));
+      this.view = playerView(last.state, this.me);
+      this.rejected = [...first.rejected, ...last.rejected];
     }
     this.version++;
     for (const fn of this.listeners) fn();
@@ -129,10 +140,19 @@ export class GameSession {
       this.refresh();
       return null;
     }
-    const answer = answerProposal(playerView(state, cmd.to), proposal);
-    this.answers[id] = answer;
+    const answer = audienceAnswer(playerView(state, cmd.to), proposal);
+    this.answers[id] = answer.accept;
+    if (answer.price) this.counters[id] = { to: cmd.to, kind: cmd.kind, price: answer.price };
     this.refresh();
-    return answer;
+    return answer.accept;
+  }
+
+  /** The counter-offer a computer empire made in an audience to one of the player's proposals this turn, if any. */
+  counterTo(id: string): Proposal | undefined {
+    const c = this.counters[id];
+    if (!c || this.me === null) return undefined;
+    const counterId = proposalId(this.state.turn, c.to, this.me, c.kind);
+    return this.view.proposals.find((p) => p.id === counterId);
   }
 
   /** The computer empires' audience answers still owed, for proposals still among the pending orders. */
@@ -144,7 +164,12 @@ export class GameSession {
       const id = proposalId(this.state.turn, this.me, cmd.to, cmd.kind);
       const accept = this.answers[id];
       if (accept === undefined) continue;
-      out.set(cmd.to, [...(out.get(cmd.to) ?? []), { type: "respond", proposalId: id, accept }]);
+      const price = this.counters[id]?.price;
+      out.set(cmd.to, [
+        ...(out.get(cmd.to) ?? []),
+        { type: "respond", proposalId: id, accept },
+        ...(price ? [{ type: "propose" as const, to: this.me, kind: cmd.kind, price }] : []),
+      ]);
     }
     return out;
   }
@@ -194,11 +219,12 @@ export class GameSession {
     this.history = [{ turn, events: this.state.events, combats: this.state.combats }, ...this.history].slice(0, HISTORY_TURNS);
     this.pending = [];
     this.answers = {};
+    this.counters = {};
     this.refresh();
   }
 
   toJSON(): SavedGame {
-    return { format: "starlord-save", version: 1, state: this.state, me: this.me, pending: this.pending, record: this.record, answers: this.answers };
+    return { format: "starlord-save", version: 1, state: this.state, me: this.me, pending: this.pending, record: this.record, answers: this.answers, counters: this.counters };
   }
 
   static fromJSON(data: unknown): GameSession {
@@ -206,7 +232,7 @@ export class GameSession {
     const save = data as SavedGame;
     if (save?.format !== "starlord-save" || !save.state) throw new Error("Not a StarLord save file");
     if (save.state.version !== 2) throw new Error(`Unsupported game version ${save.state.version}`);
-    return new GameSession(save.state, save.me, save.pending ?? [], save.record ?? null, save.answers ?? {});
+    return new GameSession(save.state, save.me, save.pending ?? [], save.record ?? null, save.answers ?? {}, save.counters ?? {});
   }
 }
 
@@ -222,6 +248,8 @@ export interface SavedGame {
   record?: GameRecord | null;
   /** Audience answers given this turn (absent in older saves). */
   answers?: Record<string, boolean>;
+  /** Counter-offers named in audiences this turn (absent in older saves). */
+  counters?: GameSession["counters"];
 }
 
 /** Orders that replace earlier orders of the same key instead of stacking. */

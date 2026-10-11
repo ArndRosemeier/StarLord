@@ -1,5 +1,5 @@
 import {
-  TIER_OF_TECH, TREATY_ANSWER, attitude, audienceTired, patience, treatyScore, canSign, empireBonus, empireTotals, isDemand, monsterDemands, relation, type Command, type PlayerView,
+  TIER_OF_TECH, attitude, audienceTired, isScoredTreaty, patience, treatyAnswer, type Price, canSign, empireBonus, empireTotals, isDemand, monsterDemands, relation, type Command, type PlayerView,
   type Proposal, type ProposalKind, type ProposalTerms,
 } from "@starlord/sim";
 import { strategyOf } from "./strategies.js";
@@ -47,27 +47,42 @@ function acceptDemand(view: PlayerView, p: Proposal, feel: number, myPower: numb
  * once in an audience.
  */
 export function answerProposal(view: PlayerView, p: Proposal): boolean {
+  return audienceAnswer(view, p).accept;
+}
+
+/**
+ * The viewer's full answer to a proposal: accept or not, and for a treaty it
+ * would refuse, perhaps a price it would sign for (the original's counter-offer).
+ */
+export function audienceAnswer(view: PlayerView, p: Proposal): { accept: boolean; price?: Price } {
   const peaceful = strategyOf(view, "diplomacy") === "peaceful";
   // A peaceful empire takes treaties it would otherwise turn down.
   const warmth = peaceful ? 15 : 0;
+  if (canSign(view, p.from, p.to, p.kind, p)) return { accept: false };
+  if (isScoredTreaty(p.kind)) {
+    const a = treatyAnswer(view, p, warmth);
+    if (a.kind === "accept") return { accept: true };
+    // A counter-offer is a proposal back to them; skip it if they would not hear it.
+    if (a.kind === "price" && !audienceTired(view, view.viewer, p.from) && !canSign(view, view.viewer, p.from, p.kind, { price: a.price })) {
+      return { accept: false, price: a.price };
+    }
+    return { accept: false };
+  }
   const myPower = myFleets(view).reduce((s, f) => s + fleetStrength(view, f), 0);
   // Xeno Psychology, telepathy, charisma and Diplomat leaders make every deal the proposer offers more appealing.
   const proposer = view.players[p.from]!;
   const feel = attitude(view, view.viewer, p.from) + empireBonus(proposer).diplomacy + (proposer.diplomacyBonus ?? 0) + warmth;
-  const r = relation(view, view.viewer, p.from);
-  let accept = false;
-  if (p.kind === "peace" || p.kind === "ceasefire") {
-    const theirPower = militaryPower(view, p.from);
-    const war = view.turn - r.since;
-    accept = war >= TREATY_ANSWER.peaceMinWarTurns && (peaceful || (war > 15 && (feel > -50 || theirPower > myPower)));
-  } else if (p.kind === "trade" || p.kind === "research" || p.kind === "nonAggression" || p.kind === "alliance") {
-    // The original's rule: attitude + d100 - need + temperament + patience + the proposer's bonuses >= 0.
-    const t = treatyScore(view, p.from, view.viewer, p.kind, p.roll ?? 50, p.patience ?? 0);
-    accept = !t.blocked && t.score + warmth >= 0;
-  }
-  else if (p.kind === "techExchange") accept = feel > -10 && techValue(p.wantTechId) <= techValue(p.techId) * 1.25;
-  else if (isDemand(p.kind)) accept = acceptDemand(view, p, feel, myPower);
-  return accept && !canSign(view, p.from, p.to, p.kind, p);
+  if (p.kind === "techExchange") return { accept: feel > -10 && techValue(p.wantTechId) <= techValue(p.techId) * 1.25 };
+  if (isDemand(p.kind)) return { accept: acceptDemand(view, p, feel, myPower) };
+  return { accept: false };
+}
+
+/** Answers to a proposal as orders: the answer, plus a counter-offer when the viewer names a price. */
+export function answerOrders(view: PlayerView, p: Proposal): Command[] {
+  const a = audienceAnswer(view, p);
+  const out: Command[] = [{ type: "respond", proposalId: p.id, accept: a.accept }];
+  if (a.price) out.push({ type: "propose", to: p.from, kind: p.kind, price: a.price });
+  return out;
 }
 
 /**
@@ -88,9 +103,7 @@ export function diplomacyOrders(view: PlayerView): Command[] {
   const myPower = myFleets(view).reduce((s, f) => s + fleetStrength(view, f), 0);
   const myPop = empireTotals(view, view.viewer).population;
 
-  for (const p of view.proposals.filter((x) => x.to === view.viewer)) {
-    out.push({ type: "respond", proposalId: p.id, accept: answerProposal(view, p) });
-  }
+  for (const p of view.proposals.filter((x) => x.to === view.viewer)) out.push(...answerOrders(view, p));
 
   // A monster demanding tribute leaves if paid; pay when we can afford it.
   for (const ev of monsterDemands(view, view.viewer)) {

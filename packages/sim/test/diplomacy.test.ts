@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  COUNCIL, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, TIER_OF_TECH, audienceTired, canSign, previewOrders, validateCommand, patience, temperament, treatyAcceptChance, treatyScore, TREATY_YIELD, attitude, destructibleBuildings, empireIncome, empireTotals,
+  COUNCIL, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, TIER_OF_TECH, audienceTired, canSign, previewOrders, validateCommand, patience, temperament, treatyAcceptChance, treatyPriceChance, treatyScore, counterPrice, trustIn, reputationOf, TREATY_YIELD, attitude, destructibleBuildings, empireIncome, empireTotals,
   newGame, playerView, processTurn, relKey, relation, spyEdge, treatyTotals, treatyYield, type GameState,
 } from "@starlord/sim";
 
@@ -218,5 +218,58 @@ describe("how computer rulers answer treaties", () => {
     s = processTurn(s, { 0: [{ type: "breakTreaty", target: 1, treaty: "trade" }] });
     expect(audienceTired(s, 0, 1)).toBe(true);
     expect(patience(s, 1, 0)).toBeLessThanOrEqual(PATIENCE.broken + PATIENCE.recovery);
+  });
+});
+
+describe("counter-offers, trust and peace", () => {
+  it("a price is something the payer can give, and accepting it pays and signs", () => {
+    let s = met("price");
+    s.players[0]!.bc = 500;
+    const price = counterPrice(s, 1, 0, "small", "k")!;
+    expect(price).toBeTruthy();
+    expect(canSign(s, 1, 0, "nonAggression", { price })).toBeNull();
+    s = processTurn(s, { 1: [{ type: "propose", to: 0, kind: "nonAggression", price: { bc: 100 } }] });
+    const p = s.proposals.find((x) => x.from === 1 && x.price)!;
+    const yes = processTurn(structuredClone(s), { 0: [{ type: "respond", proposalId: p.id, accept: true }] });
+    const no = processTurn(structuredClone(s), { 0: [{ type: "respond", proposalId: p.id, accept: false }] });
+    expect(relation(yes, 0, 1).status).toBe("nonAggression");
+    expect(relation(no, 0, 1).status).not.toBe("nonAggression");
+    expect(no.players[0]!.bc - yes.players[0]!.bc).toBeCloseTo(100, 0);
+  });
+
+  it("the odds of yes, a price and no add up", () => {
+    const s = met("sum");
+    for (const a of [-60, -20, 0, 40]) {
+      s.attitude[1] = { ...(s.attitude[1] ?? {}), 0: a };
+      const yes = treatyAcceptChance(s, 0, 1, "nonAggression");
+      const price = treatyPriceChance(s, 0, 1, "nonAggression");
+      expect(yes + price).toBeLessThanOrEqual(1);
+      expect(treatyPriceChance(s, 0, 1, "trade")).toBe(0);
+    }
+  });
+
+  it("breaking faith costs trust with the victim and reputation with everyone else", () => {
+    let s = met("faith", ["terran", "felhari", "kordex"]);
+    s = signTreaties(s);
+    const before = treatyScore(s, 0, 1, "research", 50, 0).score;
+    s = processTurn(s, { 0: [{ type: "breakTreaty", target: 1, treaty: "trade" }] });
+    expect(trustIn(s, 1, 0)).toBeLessThan(0);
+    expect(reputationOf(s, 2, 0)).toBeLessThan(0);
+    expect(treatyScore(s, 0, 1, "research", 50, 0).parts.some((p) => p.why.startsWith("their trust"))).toBe(true);
+    expect(treatyScore(s, 0, 1, "research", 50, 0).score).toBeLessThan(before);
+  });
+
+  it("peace weighs the war, not attitude, and waits ten turns", () => {
+    let s = met("peace");
+    s = processTurn(s, { 0: [{ type: "declareWar", target: 1 }] });
+    expect(treatyScore(s, 0, 1, "peace", 50).blocked).toMatch(/turns of war/);
+    s.turn += TREATY_ANSWER.peaceMinWarTurns;
+    const t = treatyScore(s, 0, 1, "peace", 50);
+    expect(t.blocked).toBeNull();
+    expect(t.parts.some((p) => p.why.startsWith("their attitude"))).toBe(false);
+    expect(t.parts.some((p) => p.why === "turns of war so far")).toBe(true);
+    const later = structuredClone(s);
+    later.turn += 30;
+    expect(treatyScore(later, 0, 1, "peace", 50).score).toBeGreaterThan(t.score);
   });
 });

@@ -441,8 +441,16 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         {TREATY_ANSWER.need.trade} for trade, {TREATY_ANSWER.need.research} for research), plus its temperament and
         your diplomatic bonuses, comes to 0 or more. Temperaments: {Object.values(TEMPERAMENTS).map((t) => `${t.name} ${t.treaty >= 0 ? "+" : ""}${t.treaty}`).join(", ")}.
         Charismatic proposers get +{TRAIT_EFFECTS.charismaticDiplomacy}, telepathic +{TRAIT_EFFECTS.telepathicDiplomacy};
-        Xeno Psychology and diplomat leaders add more. Peace comes only after{" "}
-        {TREATY_ANSWER.peaceMinWarTurns} turns of war.
+        Xeno Psychology and diplomat leaders add more. Their trust in you and your reputation count too: breaking a
+        treaty costs the victim's trust and some of your reputation with everyone you know, for good. When the sum
+        falls between {TREATY_ANSWER.bigPrice} and 0, a ruler asked for a non-aggression pact, an alliance or peace may
+        name a price instead of refusing: BC, a technology, a tribute or, for a big price, a star system. Pay it and the
+        treaty is signed.
+      </P>
+      <P>
+        Peace comes only after {TREATY_ANSWER.peaceMinWarTurns} turns of war, and attitude does not count: the longer the
+        war, the more other wars they fight, the stronger you are and the more of their systems your ships hold, the
+        likelier they agree. Their ships in your systems make them bolder.
       </P>
       <P>
         Every proposal wears down their patience: {PATIENCE.perAsk} points, and {PATIENCE.firstAsk} to{" "}

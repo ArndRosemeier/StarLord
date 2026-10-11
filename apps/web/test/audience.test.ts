@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RACES, relation } from "@starlord/sim";
+import { RACES, proposalId, relation } from "@starlord/sim";
 import { GameSession } from "../src/game/session";
 import { VOICES, speak, type Moment } from "../src/diplomacy/voices";
 
@@ -55,6 +55,29 @@ describe("audiences", () => {
     expect(asked).toBeGreaterThan(40);
     expect(yes / asked).toBeLessThan(0.5);
     expect(yes).toBeGreaterThan(0);
+  });
+
+  it("a ruler may name a price instead of refusing, and paying it signs the pact", () => {
+    let found = false;
+    for (let i = 0; i < 60 && !found; i++) {
+      const s = GameSession.create({ ...opts, races: ["kordex", "terran", "zhrikk"], seed: `price${i}` }, 0);
+      s.state.players[0]!.contacts = [1];
+      s.state.players[1]!.contacts = [0];
+      s.state.players[0]!.bc = 1000;
+      s.state.attitude[1] = { 0: -40 };
+      s.clearOrders();
+      const answer = s.audience({ type: "propose", to: 1, kind: "nonAggression" });
+      const counter = s.counterTo(proposalId(s.state.turn, 0, 1, "nonAggression"));
+      if (answer !== false || !counter) continue;
+      found = true;
+      expect(counter.price).toBeTruthy();
+      expect(counter.from).toBe(1);
+      s.issue({ type: "respond", proposalId: counter.id, accept: true });
+      expect(relation(s.view, 0, 1).status).toBe("nonAggression");
+      s.endTurn();
+      expect(relation(s.state, 0, 1).status).toBe("nonAggression");
+    }
+    expect(found).toBe(true);
   });
 
   it("every built-in race has its own voice for every moment", () => {
