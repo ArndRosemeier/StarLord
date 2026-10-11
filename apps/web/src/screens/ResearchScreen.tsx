@@ -1,3 +1,6 @@
+import { Tip } from "../ui/Tip";
+import { techTip } from "../ui/explain";
+import { techSummary } from "../help/articles";
 import { useState } from "react";
 import {
   FIELD_NAMES, PICK_OPTIONS, RESEARCH, TECHS, TECH_FIELDS, TECH_TIERS, TIERS_BY_ID, TRAIT_COSTS, availableTiers, getRace,
@@ -57,7 +60,7 @@ export function ResearchScreen() {
               <div style={{ fontSize: 18 }}>
                 <b>{current.name}</b> <span className="muted">({FIELD_NAMES[current.field]})</span>
               </div>
-              {me.research.techChoice && <div>Goal: <b style={{ color: FIELD_LOOK[current.field]?.color }}>{TECHS[me.research.techChoice]?.name}</b> <span className="muted">{TECHS[me.research.techChoice]?.description}</span></div>}
+              {me.research.techChoice && <div>Goal: <b style={{ color: FIELD_LOOK[current.field]?.color }}>{TECHS[me.research.techChoice]?.name}</b> <span className="muted">{techSummary(me.research.techChoice)}</span></div>}
               <small className="muted">
                 {fmt(me.research.progress)} / {fmt(cost)} research points.
                 {pastBase
@@ -92,16 +95,21 @@ export function ResearchScreen() {
                   <div key={t.id} className="col" style={{ gap: 4 }}>
                     <div className="row">
                       <b>{t.hyper ? `${t.name} ${hyper + 1}` : t.name}</b>
-                      {t.general && <small className="chip">General</small>}
+                      {t.general && <Tip card={{ title: "General field", text: ["Basic knowledge: researching it teaches every application, whatever your race."] }}><small className="chip">General</small></Tip>}
                       <span className="muted">{fmt(t.cost)} RP{rpt > 0 && `, ~${Math.ceil(t.cost / rpt)} turns`}</span>
                     </div>
                     {t.hyper || whole ? (
                       <div className="row" style={{ gap: 4 }}>
-                        <button className={`small tech${researching ? " active" : ""}`} disabled={readOnly}
-                          title={t.hyper ? "Improves miniaturization of this category's components." : "Every application of this field is learned."}
-                          onClick={() => session.issue({ type: "setResearch", tierId: t.id })}>
-                          {t.hyper ? "Research" : `Research all: ${options.map((id) => TECHS[id]!.name).join(", ")}`}
-                        </button>
+                        <Tip card={t.hyper
+                          ? { title: `${t.name} ${hyper + 1}`, kind: "Hyper-advanced", text: [
+                              `Counts as one more refinement for every ${FIELD_NAMES[t.field]} component: each shrinks and gets cheaper by the next miniaturization step, and enough refinement unlocks weapon modifications.`,
+                              `Each level costs ${fmt(RESEARCH.hyperCostStep)} RP more than the last and adds ${RESEARCH.hyperScore} score.`] }
+                          : { title: t.name, kind: "Every application is learned", text: options.map((id) => `${TECHS[id]!.name}: ${techSummary(id)}`) }}>
+                          <button className={`small tech${researching ? " active" : ""}`} disabled={readOnly}
+                            onClick={() => session.issue({ type: "setResearch", tierId: t.id })}>
+                            {t.hyper ? "Research" : `Research all: ${options.map((id) => TECHS[id]!.name).join(", ")}`}
+                          </button>
+                        </Tip>
                       </div>
                     ) : (
                       <div className="row" style={{ gap: 4 }}>
@@ -109,10 +117,12 @@ export function ResearchScreen() {
                           const tech = TECHS[id]!;
                           const active = researching && me.research.techChoice === id;
                           return (
-                            <button key={id} className={`small tech${active ? " active" : ""}`} disabled={readOnly} title={tech.description}
-                              onClick={() => session.issue({ type: "setResearch", tierId: t.id, techId: id })}>
-                              {tech.name}{me.techs.includes(id) ? " (known)" : ""}
-                            </button>
+                            <Tip key={id} card={() => techTip(id)}>
+                              <button className={`small tech${active ? " active" : ""}`} disabled={readOnly}
+                                onClick={() => session.issue({ type: "setResearch", tierId: t.id, techId: id })}>
+                                {tech.name}{me.techs.includes(id) ? " (known)" : ""}
+                              </button>
+                            </Tip>
                           );
                         })}
                       </div>
@@ -126,7 +136,7 @@ export function ResearchScreen() {
                   <summary className="muted">Known</summary>
                   <ul style={{ margin: "6px 0", paddingLeft: 18 }}>
                     {done.flatMap((t) => t.techs.filter((id) => me.techs.includes(id))).map((id) => (
-                      <li key={id} title={TECHS[id]?.description}>{TECHS[id]?.name}</li>
+                      <li key={id}><Tip card={() => techTip(id)}><span className="explained">{TECHS[id]?.name}</span></Tip></li>
                     ))}
                   </ul>
                 </details>

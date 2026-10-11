@@ -1,3 +1,6 @@
+import { Tip } from "../ui/Tip";
+import { difficultyText, galaxyAgeText, governmentTip, pickText, techLevelText, traitTip } from "../ui/explain";
+import { COUNCIL, RAID_GRACE_TURNS, type NumericPick } from "@starlord/sim";
 import { useMemo, useState } from "react";
 import {
   DIFFICULTIES, DIFFICULTY_ORDER, RACES, STAR_COUNTS, TRAIT_COSTS, getRace, type CustomRaceSpec, type Difficulty, type GalaxyAge, type GalaxySize,
@@ -127,8 +130,8 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
           </div>
           {race.description && <p style={{ margin: 0 }}>{race.description}</p>}
           <div className="row">
-            <span className="chip">{words(race.picks.government)}</span>
-            {traits.map((t) => <span key={t} className="chip">{t}</span>)}
+            <Tip card={governmentTip(race.picks.government)}><span className="chip explained">{words(race.picks.government)}</span></Tip>
+            {race.picks.traits.map((t) => <Tip key={t} card={traitTip(t)}><span className="chip explained">{traits[race.picks.traits.indexOf(t)]}</span></Tip>)}
           </div>
           <table style={{ maxWidth: 360 }}>
             <tbody>
@@ -136,8 +139,8 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
                 const v = race.picks[k] as number;
                 return (
                   <tr key={k}>
-                    <td>{label}</td>
-                    <td className={v > 0 ? "good" : "bad"}>{k === "growth" ? `${v > 0 ? "+" : ""}${Math.round(v * 100)}%` : `${v > 0 ? "+" : ""}${v}`}</td>
+                    <td title={pickText(k as NumericPick, v)}>{label}</td>
+                    <td className={v > 0 ? "good" : "bad"} title={pickText(k as NumericPick, v)}>{k === "growth" ? `${v > 0 ? "+" : ""}${Math.round(v * 100)}%` : `${v > 0 ? "+" : ""}${v}`}</td>
                   </tr>
                 );
               })}
@@ -169,14 +172,17 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
               <label>Seed <input type="text" size={8} value={seed} onChange={(e) => setSeed(e.target.value)} /></label>
             </div>
             <div className="row">
-              <label><input type="checkbox" checked={monsters} onChange={(e) => setMonsters(e.target.checked)} /> Monsters</label>
-              <label><input type="checkbox" checked={raiders} onChange={(e) => setRaiders(e.target.checked)} /> Raiders</label>
-              <label><input type="checkbox" checked={council} onChange={(e) => setCouncil(e.target.checked)} /> Galactic council</label>
-              <label><input type="checkbox" checked={randomEvents} onChange={(e) => setRandomEvents(e.target.checked)} /> Random events</label>
+              <label title="Space monsters guard rich systems, and the Guardian holds the best planet in the galaxy. Beat them to settle there."><input type="checkbox" checked={monsters} onChange={(e) => setMonsters(e.target.checked)} /> Monsters</label>
+              <label title={`The Vexari raid colonies from their own dimension, from turn ${RAID_GRACE_TURNS[techLevel]} at this tech level, and grow stronger over time. Storming Vex Prime through a Dimensional Portal wins the game.`}><input type="checkbox" checked={raiders} onChange={(e) => setRaiders(e.target.checked)} /> Raiders</label>
+              <label title={`Meets every ${COUNCIL.interval} turns once ${Math.round(COUNCIL.settledShare * 100)}% of systems are settled (not before turn ${COUNCIL.earliestTurn}, at least ${COUNCIL.minEmpires} empires). One vote per ${COUNCIL.popPerVote} population; a ${Math.round(COUNCIL.majority * 100)}% majority elects a leader and wins the game.`}><input type="checkbox" checked={council} onChange={(e) => setCouncil(e.target.checked)} /> Galactic council</label>
+              <label title="Plagues, supernovas, derelicts, pirates, windfalls and other surprises, good and bad."><input type="checkbox" checked={randomEvents} onChange={(e) => setRandomEvents(e.target.checked)} /> Random events</label>
               <label title="In battle, every ship of both sides acts in order of combat speed plus beam attack / 10, instead of the attacker's whole side first">
                 <input type="checkbox" checked={shipInitiative} onChange={(e) => setShipInitiative(e.target.checked)} /> Ship initiative
               </label>
             </div>
+            <small className="muted">{difficultyText(difficulty)}</small>
+            <small className="muted">Galaxy age {galaxyAgeText(galaxyAge)}</small>
+            <small className="muted">Tech level {techLevelText(techLevel)}</small>
             {customBlocked && <div className="bad">Custom races need Average difficulty or harder.</div>}
             <div className="row">
               <button className="primary" disabled={customBlocked} onClick={(e) => start(false, e.ctrlKey && e.altKey)} {...debugHold}>Play as the {race.plural}</button>

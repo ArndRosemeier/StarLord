@@ -1,3 +1,5 @@
+import { Tip } from "../ui/Tip";
+import { FOCUS_TIPS, STANCE_TIPS } from "../ui/explain";
 import { useState } from "react";
 import { designStats, distance, findDesign, fleetSpeed, type Fleet } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -33,7 +35,7 @@ export function FleetsScreen({ onShowStar }: { onShowStar: (starId: string) => v
                     <td>{f.starId ? starName(f.starId) : "in transit"}{dest && dest.id !== f.starId && <span className="muted"> → {dest.name} ({eta})</span>}</td>
                     <td>{fleetShips(f)}</td>
                     <td>{fmt(strength(f))}</td>
-                    <td className={f.stance === "attack" ? "warn" : ""}>{words(f.stance)}</td>
+                    <td className={f.stance === "attack" ? "warn" : ""}><Tip card={STANCE_TIPS[f.stance]}><span className="explained">{words(f.stance)}</span></Tip></td>
                     <td>{at && <button className="small" onClick={(e) => { e.stopPropagation(); onShowStar(at); }}>Map</button>}</td>
                   </tr>
                 );
@@ -52,10 +54,13 @@ export function FleetsScreen({ onShowStar }: { onShowStar: (starId: string) => v
           <div className="row">
             Target
             {(["nearest", "weakest", "strongest"] as const).map((f) => (
-              <button key={f} className={`small${doctrine.focus === f ? " active" : ""}`} disabled={readOnly}
-                onClick={() => session.issue({ type: "setDoctrine", doctrine: { ...doctrine, focus: f } })}>{words(f)}</button>
+              <Tip key={f} card={{ title: `Target ${f}`, text: [FOCUS_TIPS[f]] }}>
+                <button className={`small${doctrine.focus === f ? " active" : ""}`} disabled={readOnly}
+                  onClick={() => session.issue({ type: "setDoctrine", doctrine: { ...doctrine, focus: f } })}>{words(f)}</button>
+              </Tip>
             ))}
           </div>
+          <small className="muted">{FOCUS_TIPS[doctrine.focus]} When your side's total strength falls below the retreat share of the enemy's, your ships there retreat (not while your own station or planet defenses fight beside them).</small>
         </div>
       </div>
       {selected && view.fleets[selected] && (

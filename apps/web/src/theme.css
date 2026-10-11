@@ -639,3 +639,4 @@ html, body { overscroll-behavior: none; }
 .effect-list li { margin: 1px 0; }
 .attitude-breakdown summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .attitude-breakdown[open] summary { margin-bottom: 4px; }
+.explained { border-bottom: 1px dotted color-mix(in srgb, currentColor 55%, transparent); cursor: help; }

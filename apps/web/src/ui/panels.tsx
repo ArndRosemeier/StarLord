@@ -1,3 +1,5 @@
+import { STANCE_TIPS, climateTip, crewTip, gravityTip, mineralsTip, sizeTip, specialTip } from "./explain";
+import { Tip } from "./Tip";
 import { useState, type ReactNode } from "react";
 import {
   CLIMATES, canReach, crewLevel, crewName, designStats, findDesign, getRace, isHostile, maxPopulation, population, relation, travelTurns,
@@ -76,11 +78,13 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
             <PlanetIcon planet={p} />
             <div>
               <div>
-                {words(p.size)} {climateName(p.type)}
-                {p.special !== "none" && <span className="chip warn" style={{ marginLeft: 6 }}>{words(p.special)}</span>}
+                <Tip card={sizeTip(p)}><span className="explained">{words(p.size)}</span></Tip>{" "}
+                <Tip card={climateTip(p)}><span className="explained">{climateName(p.type)}</span></Tip>
+                {specialTip(p) && <Tip card={specialTip(p)}><span className="chip warn" style={{ marginLeft: 6 }}>{words(p.special)}</span></Tip>}
               </div>
               <small className="muted">
-                {words(p.minerals)} minerals, {p.gravity} gravity
+                <Tip card={mineralsTip(p)}><span className="explained">{words(p.minerals)} minerals</span></Tip>,{" "}
+                <Tip card={gravityTip(p, me.raceId)}><span className="explained">{p.gravity} gravity</span></Tip>
                 {habitable ? <> · max pop {maxPopulation(p, race, [], me)}</> : !colony && <> · needs an Artificial Planet</>}
               </small>
               {colony && owner && (
@@ -161,7 +165,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
         {captain && <> · Captain {captain.name}</>}
       </div>
       <table>
-        <thead><tr><th>Ship</th><th>Count</th><th>Strength</th>{mine && <th title="Crew experience: beam attack and defense rise with each level">Crew</th>}{mine && <th>Split</th>}</tr></thead>
+        <thead><tr><th>Ship</th><th>Count</th><th>Strength</th>{mine && <th>Crew</th>}{mine && <th>Split</th>}</tr></thead>
         <tbody>
           {fleet.ships.map((s) => {
             const d = findDesign(owner, s.designId);
@@ -178,7 +182,9 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
                   ) : null}
                 </td>
                 <td>{stats ? fmt(stats.strength) : "?"}</td>
-                {mine && <td title={`${s.xp ?? 0} XP`}>{d?.fixed ? "–" : crewName(crewLevel(s.xp ?? 0, owner))}</td>}
+                {mine && <td>{d?.fixed ? "–" : (
+                  <Tip card={crewTip(crewLevel(s.xp ?? 0, owner), s.xp ?? 0)}><span className="explained">{crewName(crewLevel(s.xp ?? 0, owner))}</span></Tip>
+                )}</td>}
                 {mine && (
                   <td>
                     <input type="number" min={0} max={s.count} value={split[s.designId] ?? 0} style={{ width: 52 }}
@@ -195,7 +201,9 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
           <div className="row">
             <span className="muted">Stance</span>
             {(["defend", "attack"] as const).map((st) => (
-              <button key={st} className={`small${fleet.stance === st ? " active" : ""}`} onClick={() => session.issue({ type: "setStance", fleetId, stance: st })}>{words(st)}</button>
+              <Tip key={st} card={STANCE_TIPS[st]}>
+                <button className={`small${fleet.stance === st ? " active" : ""}`} onClick={() => session.issue({ type: "setStance", fleetId, stance: st })}>{words(st)}</button>
+              </Tip>
             ))}
           </div>
           <div className="row">
