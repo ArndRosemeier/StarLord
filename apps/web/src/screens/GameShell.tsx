@@ -72,7 +72,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const tier = me.research.tierId ? TIERS_BY_ID[me.research.tierId] : undefined;
   const cpUsed = commandPointsUsed(view, me.id);
   const cpMax = commandPointsAvailable(view, me.id);
-  const reportBadge = view.turn !== seenTurn ? view.events.filter((e) => e.kind !== "explored" && e.kind !== "built").length : 0;
+  const reportBadge = view.turn !== seenTurn ? session.lastTurnEvents(me.id).filter((e) => e.kind !== "explored" && e.kind !== "built").length : 0;
 
   // Nothing to research is worth a warning unless automation picks the next field or none is left.
   const noResearch = !readOnly && !me.research.tierId && !me.automation.includes("research") && availableTiers(view, me.id).length > 0;
@@ -96,7 +96,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     lastTurn.current = view.turn;
     if (autoplay) return;
     audio.play("turn");
-    if (view.events.some((e) => e.playerId === me.id && ALERT_EVENTS.has(e.kind))) setTimeout(() => audio.play("alert"), 700);
+    if (session.lastTurnEvents(me.id).some((e) => ALERT_EVENTS.has(e.kind))) setTimeout(() => audio.play("alert"), 700);
   }, [view.turn]);
 
   useEffect(() => {
@@ -191,7 +191,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
               {session.rejected.length > 0 && tab !== "map" && (
                 <div className="panel bad" style={{ marginBottom: 12 }}>Some orders are invalid: {session.rejected.join("; ")}</div>
               )}
-              {tab === "map" && <MapScreen focusStar={focusStar} onFocused={() => setFocusStar(null)} onOpenColony={openColony} />}
+              {tab === "map" && <MapScreen focusStar={focusStar} onFocused={() => setFocusStar(null)} onOpenColony={openColony}
+                onOpenResearch={() => go("research")} onOpenReports={() => go("events")} />}
               {tab === "colonies" && <ColoniesScreen onShowStar={showStar} initialColony={colonyFocus} />}
               {tab === "research" && <ResearchScreen />}
               {tab === "designs" && <DesignScreen />}
