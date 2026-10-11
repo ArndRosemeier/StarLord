@@ -24,7 +24,8 @@ export type SystemPick = { kind: "planet"; id: string } | { kind: "fleet"; id: s
 
 export interface SystemSceneOptions {
   reduced: boolean;
-  onPick?: (pick: SystemPick | null) => void;
+  /** `additive` is true on a shift-click. */
+  onPick?: (pick: SystemPick | null, additive: boolean) => void;
 }
 
 export const STAR_RADIUS = 2.4;
@@ -396,7 +397,7 @@ export class SystemScene {
     const body = this.pickAt(e);
     const pick = body?.pick ?? null;
     this.select(pick);
-    this.opts.onPick?.(pick);
+    this.opts.onPick?.(pick, e.shiftKey);
   };
 
   private onDoubleClick = () => {
