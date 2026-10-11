@@ -15,7 +15,8 @@ export function checkInvariants(state: GameState): string[] {
   // Every number anywhere in the state must be finite.
   const walk = (v: unknown, path: string, depth: number): void => {
     if (typeof v === "number") {
-      if (!Number.isFinite(v)) bad(`${path} is ${v}`);
+      // Infinity is the "never" of a game without raiders.
+      if (!Number.isFinite(v) && !(path === "state.raiders.nextRaid" && v === Infinity)) bad(`${path} is ${v}`);
     } else if (v && typeof v === "object" && depth < 12) {
       for (const [k, x] of Object.entries(v)) walk(x, `${path}.${k}`, depth + 1);
     }

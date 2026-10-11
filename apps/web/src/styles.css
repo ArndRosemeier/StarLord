@@ -347,6 +347,15 @@ kbd { background: var(--panel-2); border: 1px solid var(--line); border-bottom-w
 /* Automation strategy pickers line up in one column at one width. */
 select.strategy-select { flex: 0 0 150px; width: 150px; margin-left: auto; align-self: center; }
 .modal.sim-modal { max-width: 980px; }
+.lab-sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; margin: 8px 0; }
+.lab-side h4 { margin: 0 0 6px; }
+.lab-side small { display: block; margin-bottom: 6px; }
+.lab-ship { border-top: 1px solid var(--line, rgba(255,255,255,0.1)); padding-top: 6px; margin-top: 6px; }
+.combat-lab .panel { margin: 8px 0; }
+.lab-problems { margin: 6px 0; padding-left: 18px; }
+.lab-problems li { margin-bottom: 4px; }
+.lab-table { margin-top: 6px; border-collapse: collapse; }
+.lab-table td, .lab-table th { padding: 2px 8px; text-align: left; }
 .simulator .sim-settings { border: 0; padding: 0; margin: 0; }
 .simulator .sim-check { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; }
 .simulator .sim-summary { margin: 10px 0; display: grid; gap: 4px; }

@@ -930,7 +930,8 @@ class Battle {
     const ships = enemies.filter((e) => e.kind !== "planet");
     if (u.immobile) return ships.filter((e) => e.kind !== "station");
     if (ships.length > 0) return ships;
-    return this.sides[u.side]!.attacksPlanet ? enemies : [];
+    // Off attack stance a fleet leaves the planet alone, but it shoots back at guns firing on it.
+    return this.sides[u.side]!.attacksPlanet ? enemies : enemies.filter(hasWeapons);
   }
 
   chooseTarget(u: Unit): Unit | undefined {

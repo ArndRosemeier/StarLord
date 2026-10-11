@@ -12,7 +12,8 @@
     "build": "pnpm --filter @starlord/web build",
     "balance": "tsx apps/cli/src/balance.ts",
     "replay": "tsx apps/cli/src/replay.ts",
-    "soak": "tsx apps/cli/src/soak.ts"
+    "soak": "tsx apps/cli/src/soak.ts",
+    "combat-fuzz": "tsx apps/cli/src/combatFuzz.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
