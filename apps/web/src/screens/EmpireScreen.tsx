@@ -1,3 +1,5 @@
+import { Tip } from "../ui/Tip";
+import { governmentTip, taxPreview, traitTip } from "../ui/explain";
 import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES, type AutomationDomain } from "@starlord/ai";
 import { TAX_STEPS, empireIncome, empireTotals, empires, foodPlan, getRace, government, score } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -27,7 +29,12 @@ export function EmpireScreen() {
             <Envoy key={me.raceId} raceId={me.raceId} color={me.color} className="empire-portrait" autoPlay={!still} />
             <div className="col" style={{ gap: 4 }}>
               <h2 className="empire-title" style={{ margin: 0 }}>{me.name}</h2>
-              <div className="muted">{race.plural} · {government(me).name}</div>
+              <div className="muted">{race.plural} · <Tip card={governmentTip(me.government)}><span className="explained">{government(me).name}</span></Tip></div>
+              {race.picks.traits.length > 0 && (
+                <div className="row" style={{ gap: 4 }}>
+                  {race.picks.traits.map((t) => <Tip key={t} card={traitTip(t)}><span className="chip">{traitTip(t).title}</span></Tip>)}
+                </div>
+              )}
               <div><small className="muted" style={{ letterSpacing: "0.12em" }}>SCORE</small><div className="score-big"><AnimatedNumber value={score(view, me.id)} format={fmt} /></div></div>
             </div>
           </div>
@@ -58,11 +65,17 @@ export function EmpireScreen() {
           <div className="row">
             <span>Tax rate</span>
             {TAX_STEPS.map((t) => (
-              <button key={t} className={`small${Math.abs(me.taxRate - t) < 1e-9 ? " active" : ""}`} disabled={readOnly}
-                onClick={() => session.issue({ type: "setTaxRate", rate: t })}>{pct(t)}</button>
+              <Tip key={t} card={() => {
+                const x = taxPreview(view, me.id, t);
+                return { title: `${pct(t)} tax`, rows: [["BC a turn", `+${fmt(x.bc)}`], ["Industry a turn", `−${fmt(x.industry)}`]],
+                  text: ["Each colony hands this share of its industry, after pollution and upkeep, to the treasury at 1 BC per point."] };
+              }}>
+                <button className={`small${Math.abs(me.taxRate - t) < 1e-9 ? " active" : ""}`} disabled={readOnly}
+                  onClick={() => session.issue({ type: "setTaxRate", rate: t })}>{pct(t)}</button>
+              </Tip>
             ))}
           </div>
-          <small className="muted">Taxes turn a share of every colony's industry into BC.</small>
+          <small className="muted">Taxes turn a share of every colony's industry into BC: now +{fmt(taxPreview(view, me.id, me.taxRate).bc)} BC for −{fmt(taxPreview(view, me.id, me.taxRate).industry)} industry a turn.</small>
         </div>
         {readOnly && (
           <div className="panel">

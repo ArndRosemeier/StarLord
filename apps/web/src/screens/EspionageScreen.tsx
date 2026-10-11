@@ -1,4 +1,6 @@
-import { securityLevel, spyingLevel, type SpyMission } from "@starlord/sim";
+import { SPY, securityLevel, spyEdge, spyOdds, spyingLevel, type PlayerView, type SpyMission } from "@starlord/sim";
+import { Tip, type TipCard } from "../ui/Tip";
+import { pct } from "../ui/format";
 import { useGame } from "../ui/hooks";
 import { fmt, words } from "../ui/format";
 
@@ -32,7 +34,7 @@ export function EspionageScreen() {
       </div>
       <div className="panel">
         <table>
-          <thead><tr><th>Empire</th><th>Spies</th><th>Mission</th></tr></thead>
+          <thead><tr><th>Empire</th><th>Spies</th><th>Mission</th><th>Each turn</th></tr></thead>
           <tbody>
             {targets.map((p) => {
               const a = me.spies.abroad[p.id] ?? { count: 0, mission: "steal" as SpyMission };
@@ -48,17 +50,51 @@ export function EspionageScreen() {
                   </td>
                   <td>
                     {(["steal", "sabotage", "idle"] as const).map((m) => (
-                      <button key={m} className={`small${a.mission === m && a.count > 0 ? " active" : ""}`} disabled={readOnly || a.count === 0}
-                        onClick={() => set(p.id, a.count, m)} style={{ marginRight: 4 }}>{m === "idle" ? "Lie low" : words(m)}</button>
+                      <Tip key={m} card={() => missionTip(view, me.id, p.id, Math.max(1, a.count), m)}>
+                        <button className={`small${a.mission === m && a.count > 0 ? " active" : ""}`} disabled={readOnly || a.count === 0}
+                          onClick={() => set(p.id, a.count, m)} style={{ marginRight: 4 }}>{m === "idle" ? "Lie low" : words(m)}</button>
+                      </Tip>
                     ))}
                   </td>
+                  <td className="muted">{a.count > 0 ? oddsLine(view, me.id, p.id, a.count, a.mission) : "—"}</td>
                 </tr>
               );
             })}
-            {targets.length === 0 && <tr><td colSpan={3} className="muted">No known empires to spy on.</td></tr>}
+            {targets.length === 0 && <tr><td colSpan={4} className="muted">No known empires to spy on.</td></tr>}
           </tbody>
         </table>
       </div>
     </div>
   );
+}
+
+const MISSION_TEXT: Record<SpyMission, string> = {
+  steal: "Steals a technology they know and you don't (never from the field you are researching); pricier techs are likelier.",
+  sabotage: "Destroys one of their buildings; pricier buildings are likelier.",
+  idle: "No mission: the spies only hide, which makes them harder to catch.",
+};
+
+function oddsLine(view: PlayerView, me: number, target: number, count: number, mission: SpyMission): string {
+  const o = spyOdds(spyEdge(view, me, target, count), mission);
+  const lines = mission === "idle" ? [] : [`${pct(o.success)} success`];
+  lines.push(`${pct(o.lost)} lose a spy`);
+  if (view.players[target]!.spies.home > 0) lines.push(`${pct(o.killDefender)} kill one of theirs`);
+  return lines.join(", ");
+}
+
+function missionTip(view: PlayerView, me: number, target: number, count: number, mission: SpyMission): TipCard {
+  const o = spyOdds(spyEdge(view, me, target, count), mission);
+  const rows: [string, string][] = [];
+  if (mission !== "idle") {
+    rows.push(["Success", pct(o.success)]);
+    rows.push(["Blamed on a third empire", pct(o.blame)]);
+  }
+  rows.push(["One of your spies caught", pct(o.lost)]);
+  if (view.players[target]!.spies.home > 0) rows.push(["One of their spies killed", pct(o.killDefender)]);
+  return {
+    title: mission === "idle" ? "Lie low" : mission === "steal" ? "Steal" : "Sabotage", kind: `${count} spy${count > 1 ? "s" : ""}, each turn`,
+    rows,
+    text: [MISSION_TEXT[mission], `Success needs ${mission === "steal" ? SPY.steal : SPY.sabotage} on d100 + your edge − d100; ${SPY.blame}+ frames someone else. More spies and higher spying over their security raise the edge; their spies at home lower it.`],
+    note: "A caught spy or a noticed success sours their attitude toward you.",
+  };
 }

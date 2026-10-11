@@ -1,3 +1,4 @@
+import { TECHS } from "@starlord/sim";
 import type { ReactNode } from "react";
 import { HERO_SKILLS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, abilityValue, type Leader } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -18,7 +19,7 @@ function Abilities({ l }: { l: Leader }) {
           </span>
         );
       })}
-      {l.techs.length > 0 && <span className="chip" title="Teaches these technologies when hired">Brings {l.techs.length} tech{l.techs.length > 1 ? "s" : ""}</span>}
+      {l.techs.length > 0 && <span className="chip" title={`Teaches these technologies when hired: ${l.techs.map((t) => TECHS[t]?.name ?? t).join(", ")}`}>Brings {l.techs.length} tech{l.techs.length > 1 ? "s" : ""}</span>}
     </span>
   );
 }

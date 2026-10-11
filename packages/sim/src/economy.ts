@@ -139,14 +139,33 @@ export function isMultiRacial(player: Player, colony: Colony): boolean {
 
 export function colonyMorale(player: Player, colony: Colony, turn: number, leader?: LeaderSkills): number {
   void turn;
+  if (government(player).noMorale) return 0;
+  return Math.max(MORALE_FLOOR, moraleParts(player, colony, leader).reduce((s, p) => s + p.value, 0));
+}
+
+/** What a colony's morale is made of, in percent, before the floor. Empty for governments without morale. */
+export function moraleParts(player: Player, colony: Colony, leader?: LeaderSkills): { why: string; value: number }[] {
   const gov = government(player);
-  if (gov.noMorale) return 0;
+  if (gov.noMorale) return [];
   const b = colony.buildings;
-  let morale = gov.morale + empireBonus(player).morale + sumEffect(b, "morale") + (leader?.morale ?? 0);
-  if (gov.ungarrisonedPenalty && !hasEffect(b, "garrison")) morale -= gov.ungarrisonedPenalty;
-  if (capitalLost(player)) morale -= gov.capitalLossMorale;
-  if (isMultiRacial(player, colony) && !hasEffect(b, "alienManagement")) morale -= ASSIMILATION.multiRacePenalty;
-  return Math.max(MORALE_FLOOR, morale);
+  const parts: { why: string; value: number }[] = [];
+  const add = (why: string, value: number) => {
+    if (value !== 0) parts.push({ why, value });
+  };
+  add(gov.name, gov.morale);
+  add("technologies", empireBonus(player).morale);
+  add("buildings", sumEffect(b, "morale"));
+  add("administrator", leader?.morale ?? 0);
+  if (gov.ungarrisonedPenalty && !hasEffect(b, "garrison")) add("no marine barracks", -gov.ungarrisonedPenalty);
+  if (capitalLost(player)) add("capitol lost", -gov.capitalLossMorale);
+  if (isMultiRacial(player, colony) && !hasEffect(b, "alienManagement")) add("several races, no alien management", -ASSIMILATION.multiRacePenalty);
+  return parts;
+}
+
+/** Morale for a colony in a full state, with its system's administrator. */
+export function colonyMoraleParts(state: GameState, colony: Colony): { why: string; value: number }[] {
+  const planet = state.planets[colony.planetId]!;
+  return moraleParts(state.players[colony.ownerId]!, colony, administratorSkills(state, planet.starId, colony.ownerId));
 }
 
 export interface ColonyOutput {

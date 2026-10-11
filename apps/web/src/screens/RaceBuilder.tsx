@@ -1,3 +1,4 @@
+import { governmentTip, pickText } from "../ui/explain";
 import { useState } from "react";
 import {
   CUSTOM_RACE_POINTS, EXCLUSIVE_TRAITS, GOVERNMENT_COSTS, MAX_NEGATIVE_POINTS, PICK_OPTIONS, RACE_LOOKS, RACE_SHIP_STYLE,
@@ -89,9 +90,11 @@ export function RaceBuilder({ initial, isNew = true, onSave, onCancel, onDelete 
       <h4>Government</h4>
       <div className="row" style={{ gap: 4 }}>
         {(Object.keys(GOVERNMENT_COSTS) as Government[]).map((g) => (
-          <button key={g} className={`small${picks.government === g ? " active" : ""}`} onClick={() => setPick({ government: g })}>
-            {words(g)} <span className="muted">{signedCost(GOVERNMENT_COSTS[g])}</span>
-          </button>
+          <Tip key={g} card={governmentTip(g)}>
+            <button className={`small${picks.government === g ? " active" : ""}`} onClick={() => setPick({ government: g })}>
+              {words(g)} <span className="muted">{signedCost(GOVERNMENT_COSTS[g])}</span>
+            </button>
+          </Tip>
         ))}
       </div>
 
@@ -106,7 +109,7 @@ export function RaceBuilder({ initial, isNew = true, onSave, onCancel, onDelete 
                 <td>
                   <div className="row" style={{ gap: 4 }}>
                     {opts.map((o) => (
-                      <button key={o.value} className={`small${picks[k] === o.value ? " active" : ""}`} onClick={() => setPick({ [k]: o.value })}>
+                      <button key={o.value} className={`small${picks[k] === o.value ? " active" : ""}`} title={o.value === 0 ? "No bonus or penalty" : pickText(k, o.value)} onClick={() => setPick({ [k]: o.value })}>
                         {o.text} {o.cost !== 0 && <span className={o.cost < 0 ? "good" : "muted"}>{signedCost(o.cost)}</span>}
                       </button>
                     ))}

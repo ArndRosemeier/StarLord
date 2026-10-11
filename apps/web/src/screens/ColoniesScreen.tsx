@@ -9,6 +9,9 @@ import { useGame } from "../ui/hooks";
 import { climateName, fmt, itemName, signed, words } from "../ui/format";
 import { PlanetIcon, PlanetOrb, viewStarOfColony } from "../ui/panels";
 import { Icon } from "../ui/fx";
+import { Tip } from "../ui/Tip";
+import { PlanetFacts, buildingTip, moraleTip, projectTip, tradeGoodsTip } from "../ui/explain";
+import { designTip } from "./designTips";
 
 export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (starId: string) => void; initialColony?: string | null }) {
   const { view, me } = useGame();
@@ -108,8 +111,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
               {star && onShowStar && <button className="small" onClick={() => onShowStar(star.id)}>Show on map</button>}
             </div>
             <div className="muted">
-              {words(planet.size)} {climateName(planet.type)}, {words(planet.minerals)} minerals, {planet.gravity} gravity
-              {planet.special !== "none" && `, ${words(planet.special)}`}
+              <PlanetFacts planet={planet} raceId={colony.raceId} />
             </div>
           </div>
         </div>
@@ -138,7 +140,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
                 <tr><td className="industry"><span className="stat-label"><Icon name="industry" />Industry</span></td><td>{fmt(o.industryGross, 1)} gross, {fmt(o.pollution, 1)} pollution, {fmt(o.taxes, 1)} taxed <b>{fmt(o.industry, 1)}</b></td></tr>
                 <tr><td className="research"><span className="stat-label"><Icon name="research" />Research</span></td><td>{fmt(o.research, 1)}</td></tr>
                 <tr><td className="bc"><span className="stat-label"><Icon name="bc" />BC</span></td><td>{signed(o.bc, 1)} income, {fmt(o.maintenance, 1)} upkeep</td></tr>
-                <tr><td>Morale</td><td className={o.morale < 0 ? "bad" : o.morale > 0 ? "good" : ""}>{signed(o.morale)}%{o.blockaded && <span className="bad"> · blockaded, production halved</span>}</td></tr>
+                <tr><td>Morale</td><td className={o.morale < 0 ? "bad" : o.morale > 0 ? "good" : ""}><Tip card={() => moraleTip(view, colony)}><span className="explained">{signed(o.morale)}%</span></Tip>{o.blockaded && <span className="bad"> · blockaded, production halved</span>}</td></tr>
                 <tr><td>Troops</td><td>{fmt(o.troops)}</td></tr>
               </tbody>
             </table>
@@ -171,7 +173,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
         <h4>Buildings</h4>
         <div className="row">
           {colony.buildings.length === 0 && <span className="muted">None</span>}
-          {colony.buildings.map((b) => <span key={b} className="chip" title={BUILDINGS_BY_ID[b]?.description}>{BUILDINGS_BY_ID[b]?.name ?? b}</span>)}
+          {colony.buildings.map((b) => <Tip key={b} card={BUILDINGS_BY_ID[b] ? () => buildingTip(b) : null}><span className="chip">{BUILDINGS_BY_ID[b]?.name ?? b}</span></Tip>)}
         </div>
       </div>
 
@@ -213,6 +215,8 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
           {!readOnly && colony.queue.length < MAX_QUEUE && (
             <AddToQueue
               onAdd={(item) => setQueue([...colony.queue, item])}
+              colony={colony}
+              industry={o.industry}
               buildings={buildings}
               designs={designs}
               projects={projects}
@@ -224,8 +228,10 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
   );
 }
 
-function AddToQueue({ onAdd, buildings, designs, projects }: {
+function AddToQueue({ onAdd, buildings, designs, projects, colony, industry }: {
   onAdd: (item: BuildItem) => void;
+  colony: Colony;
+  industry: number;
   buildings: string[];
   designs: string[];
   projects: string[];
@@ -238,9 +244,11 @@ function AddToQueue({ onAdd, buildings, designs, projects }: {
         {buildings.map((b) => {
           const def = BUILDINGS_BY_ID[b]!;
           return (
-            <button key={b} className="small" title={`${def.description} Upkeep ${def.maintenance} BC.`} onClick={() => onAdd({ kind: "building", id: b })}>
-              {def.name} <span className="muted">{def.cost}</span>
-            </button>
+            <Tip key={b} card={() => buildingTip(b)}>
+              <button className="small" onClick={() => onAdd({ kind: "building", id: b })}>
+                {def.name} <span className="muted">{def.cost}</span>
+              </button>
+            </Tip>
           );
         })}
       </div>
@@ -248,19 +256,25 @@ function AddToQueue({ onAdd, buildings, designs, projects }: {
         {designs.map((d) => {
           const design = findDesign(me, d)!;
           return (
-            <button key={d} className="small" onClick={() => onAdd({ kind: "ship", designId: d })}>
-              ⛭ {design.name} <span className="muted">{fmt(itemCost(view, me.id, { kind: "ship", designId: d }))}</span>
-            </button>
+            <Tip key={d} card={() => designTip(me, design)}>
+              <button className="small" onClick={() => onAdd({ kind: "ship", designId: d })}>
+                ⛭ {design.name} <span className="muted">{fmt(itemCost(view, me.id, { kind: "ship", designId: d }))}</span>
+              </button>
+            </Tip>
           );
         })}
       </div>
       <div className="row" style={{ gap: 4 }}>
         {projects.map((p) => (
-          <button key={p} className="small" title={PROJECTS_BY_ID[p]?.description} onClick={() => onAdd({ kind: "project", id: p })}>
-            {PROJECTS_BY_ID[p]?.name}
-          </button>
+          <Tip key={p} card={() => projectTip(p, colony, view.planets[colony.planetId]!, industry)}>
+            <button className="small" onClick={() => onAdd({ kind: "project", id: p })}>
+              {PROJECTS_BY_ID[p]?.name}
+            </button>
+          </Tip>
         ))}
-        <button className="small" title="Converts industry into BC." onClick={() => onAdd({ kind: "tradeGoods" })}>Trade Goods</button>
+        <Tip card={() => tradeGoodsTip(colony.raceId, industry)}>
+          <button className="small" onClick={() => onAdd({ kind: "tradeGoods" })}>Trade Goods</button>
+        </Tip>
       </div>
     </div>
   );

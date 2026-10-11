@@ -111,7 +111,7 @@ export function techSummary(id: string): string {
 const dmg = (w: WeaponDef) => (w.damageMin === w.damageMax ? `${w.damageMin}` : `${w.damageMin}–${w.damageMax}`);
 
 /** Key numbers of something a tech unlocks, so the tech page carries the full data. */
-function unlockSummary(u: Unlock): string {
+export function unlockSummary(u: Unlock): string {
   switch (u.kind) {
     case "building": {
       const b = BUILDINGS_BY_ID[u.id]!;

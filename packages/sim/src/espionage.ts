@@ -8,7 +8,7 @@ import { grantTech, securityLevel, spyingLevel } from "./empire.js";
 import { destructibleBuildings } from "./economy.js";
 import { leaderAssassinChance } from "./leaders.js";
 import type { Rng } from "./rng.js";
-import type { GameState } from "./types.js";
+import type { GameState, PlayerId, SpyMission } from "./types.js";
 import type { Emit } from "./context.js";
 
 /**
@@ -50,9 +50,7 @@ export function espionageTick(state: GameState, rng: Rng, emit: Emit): void {
         }
       }
       // Offense and defense in roll points; computer spies get the difficulty shift against humans.
-      let edge = (spyingLevel(spyMaster, state) - securityLevel(state, targetId)) * PICK_VALUES.spyingPerLevel +
-        spyCountBonus(cell.count) - spyCountBonus(target.spies.home);
-      if (!spyMaster.isHuman && target.isHuman) edge += DIFFICULTY_ORDER.indexOf(state.settings.difficulty ?? "average") - 2;
+      const edge = spyEdge(state, spyMaster.id, targetId, cell.count);
 
       if (cell.mission !== "idle") {
         const die = rng.int(1, 100);
@@ -129,4 +127,35 @@ function sabotage(state: GameState, rng: Rng, saboteur: number, victim: number, 
   emit({ kind: "spy", playerId: victim, other: saboteur, what: `${BUILDINGS_BY_ID[b]?.name ?? b} destroyed at ${c.name}` });
   emit({ kind: "spy", playerId: saboteur, other: victim, what: "sabotage succeeded" });
   return true;
+}
+
+/** Roll points a spy team of this size gets against a target: spying over security, plus the head-count bonuses. */
+export function spyEdge(state: GameState, spyMasterId: PlayerId, targetId: PlayerId, count: number): number {
+  const spyMaster = state.players[spyMasterId]!;
+  const target = state.players[targetId]!;
+  let edge = (spyingLevel(spyMaster, state) - securityLevel(state, targetId)) * PICK_VALUES.spyingPerLevel +
+    spyCountBonus(count) - spyCountBonus(target.spies.home);
+  // Computer spies get the difficulty shift against humans.
+  if (!spyMaster.isHuman && target.isHuman) edge += DIFFICULTY_ORDER.indexOf(state.settings.difficulty ?? "average") - 2;
+  return edge;
+}
+
+/** Chances per turn (0..1) for a spy team, from the same rolls the turn makes. */
+export function spyOdds(edge: number, mission: SpyMission): { success: number; blame: number; killDefender: number; lost: number } {
+  let success = 0, blame = 0, killDefender = 0, lost = 0;
+  const need = mission === "steal" ? SPY.steal : SPY.sabotage;
+  const penalty = mission === "idle" ? 0 : SPY.killPenalty;
+  for (let a = 1; a <= 100; a++) {
+    for (let b = 1; b <= 100; b++) {
+      const x = a + edge - b;
+      if (mission !== "idle" && (x >= need || a === 100)) {
+        success++;
+        if (x >= SPY.blame || a === 100) blame++;
+      }
+      const y = x - penalty;
+      if (y >= SPY.killThreshold || a === 100) killDefender++;
+      else if (y <= -SPY.killThreshold || b === 100) lost++;
+    }
+  }
+  return { success: success / 1e4, blame: blame / 1e4, killDefender: killDefender / 1e4, lost: lost / 1e4 };
 }
