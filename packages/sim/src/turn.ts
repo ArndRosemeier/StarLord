@@ -25,7 +25,7 @@ import { repairTick } from "./repair.js";
 import { addShips, deleteFleet, removeShips, takeShips } from "./fleetOps.js";
 import { builtCrewXp, crewTick } from "./crew.js";
 import { captureColony, destroyColony, exterminate, groundPhase, troopUnit, type Silenced } from "./ground.js";
-import { assignDefaultJobs, newUnitJob, removePopulation } from "./jobs.js";
+import { assignDefaultJobs, newUnitJob, removeAndroids, removePopulation } from "./jobs.js";
 import {
   assignLeader, captainLost, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
 } from "./leaders.js";
@@ -911,8 +911,10 @@ function grow(ctx: TurnContext, colony: Colony, out: ColonyOutput, foodShort: nu
     colony.growthK = 0;
     return;
   }
-  const starving = Math.ceil(foodShort * 2 - 1e-9) * (GROWTH.starvationK / 2);
-  if (starving > 0) ctx.emit({ kind: "starvation", playerId: colony.ownerId, colonyId: colony.id });
+  // Each half unit of food or industry upkeep the colonists lack costs 25k; androids without industry shut down.
+  const starving = (Math.ceil(foodShort * 2 - 1e-9) + out.cyberShortHalf) * (GROWTH.starvationK / 2);
+  if (out.androidsUnfed > 0) removeAndroids(colony, out.androidsUnfed);
+  if (starving > 0 || out.androidsUnfed > 0) ctx.emit({ kind: "starvation", playerId: colony.ownerId, colonyId: colony.id });
   colony.growthK += out.growthK - starving;
   while (colony.growthK < 0) {
     if (population(colony) <= 1) {
