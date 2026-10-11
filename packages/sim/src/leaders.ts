@@ -104,7 +104,6 @@ function makeHero(heroId: number, rng: Rng): Leader {
   const abilities = h.skills.map(parseAbility);
   if (h.randomSkills) abilities.push(...randomAbilities(h.kind, rng));
   const techs = [...(h.techs ?? [])];
-  if (h.randomTechs) techs.push(...randomTechs(h.randomTechs, rng));
   const l: Leader = {
     id: heroLeaderId(heroId), heroId, name: h.name, title: h.title, kind: h.kind, xp: h.xp, level: levelFromXp(h.xp, false),
     abilities, techs, skills: {}, hireCost: 0, salary: 0, status: "pool", offeredTo: null, ownerId: null,
@@ -125,20 +124,6 @@ function randomAbilities(kind: Leader["kind"], rng: Rng): LeaderAbility[] {
     );
     if (options.length === 0) continue;
     out.push({ skill: rng.pick(options), improved: rng.chance(0.5) });
-  }
-  return out;
-}
-
-/** One technology from the cheaper half of the tree and one from the dearer half. */
-function randomTechs(n: number, rng: Rng): string[] {
-  const all = Object.keys(TIER_OF_TECH).filter((t) => !TIER_OF_TECH[t]!.general).sort((a, b) => TIER_OF_TECH[a]!.cost - TIER_OF_TECH[b]!.cost || (a < b ? -1 : 1));
-  if (all.length === 0) return [];
-  const half = Math.ceil(all.length / 2);
-  const out: string[] = [];
-  for (let i = 0; i < n; i++) {
-    const pool = i % 2 === 0 ? all.slice(0, half) : all.slice(half);
-    const t = rng.pick(pool.length ? pool : all);
-    if (!out.includes(t)) out.push(t);
   }
   return out;
 }

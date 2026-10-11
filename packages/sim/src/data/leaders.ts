@@ -118,8 +118,6 @@ export interface HeroDef {
   randomSkills?: boolean;
   /** Never offered; joins through a deed instead. */
   special?: "guardian" | "raiders";
-  /** Brings this many random technologies, rolled at the start of the game. */
-  randomTechs?: number;
 }
 
 /** "skill*" is the improved version. Order is the original's: later heroes appear later in the game. */
@@ -189,7 +187,7 @@ export const HEROES: HeroDef[] = [
   { name: "Brakka Holt", title: "Battle Marshal", kind: "administrator", xp: 300, skills: ["commando*", "instructor*", "laborLeader*", "spiritualLeader*"] },
   { name: "Malachar", title: "Shadow Lord", kind: "administrator", xp: 300, skills: ["telepath*", "financialLeader*", "laborLeader*", "scienceLeader*", "spiritualLeader*"] },
   { name: "Solenne", title: "Supreme Regent", kind: "administrator", xp: 300, skills: ["environmentalist*", "financialLeader*", "laborLeader*", "scienceLeader*", "spiritualLeader*"] },
-  { name: "Aldric the Last", title: "Last of the Elders", kind: "captain", xp: 1000, skills: ["fighterPilot*", "galacticLore*", "helmsman*", "ordnance*", "weaponry*"], special: "guardian", randomTechs: 2 },
+  { name: "Aldric the Last", title: "Last of the Elders", kind: "captain", xp: 1000, skills: ["fighterPilot*", "galacticLore*", "helmsman*", "ordnance*", "weaponry*"], special: "guardian" },
   { name: "Xal Tereth", title: "Raider Renegade", kind: "captain", xp: 1000, skills: ["fighterPilot*", "helmsman*", "ordnance*", "security*", "weaponry*"], special: "raiders" },
 ];
 

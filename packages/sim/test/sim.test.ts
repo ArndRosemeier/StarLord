@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  RACES, STAR_COUNTS, availableProjects, canReach, colonyOutput, empires, getRace, maxPopulation, newGame, playerView, processTurn, stateHash, UNKNOWN_STAR_NAME,
+  GUARDIAN_RANDOM_XENON, RACES, Rng, STAR_COUNTS, XENON_FIELD_TECHS, guardianSlain, seedRng, availableProjects, canReach, colonyOutput, empires, getRace, maxPopulation, newGame, playerView, processTurn, stateHash, UNKNOWN_STAR_NAME,
   type GameState,
 } from "@starlord/sim";
 
@@ -29,6 +29,18 @@ describe("new game", () => {
     expect(s.galaxy.stars.filter((x) => x.special === "raiderHome")).toHaveLength(1);
     const guardian = Object.values(s.fleets).find((f) => f.ships[0]!.designId === "guardian");
     expect(guardian).toBeDefined();
+  });
+
+  it("rewards the Guardian's slayer with the Death Ray and three more xenon techs", () => {
+    const s = newGame({ seed: "npc" });
+    const orion = s.galaxy.stars.find((x) => x.special === "orion")!;
+    const before = s.players[0]!.techs.length;
+    guardianSlain({ state: s, rng: new Rng(seedRng(1)), emit: () => {} }, 0, orion.id);
+    const techs = s.players[0]!.techs;
+    expect(techs).toContain("deathRay");
+    expect(techs.filter((t) => XENON_FIELD_TECHS.includes(t) && t !== "deathRay")).toHaveLength(GUARDIAN_RANDOM_XENON);
+    expect(techs.length).toBe(before + 1 + GUARDIAN_RANDOM_XENON);
+    expect(techs).not.toContain("phaseShifter");
   });
 
   it("always gives every empire's first ships at least two systems in reach", () => {

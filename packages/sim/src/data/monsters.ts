@@ -35,6 +35,12 @@ export const NPC_WEAPONS: WeaponDef[] = [
 /** Monster mix by how deep into the galaxy (0..1 of max home distance) a lair is. */
 export const LAIR_MONSTERS = ["voidAmoeba", "latticeCrystal", "ionEel", "starHydra", "starWyrm"];
 
+/**
+ * Slaying the Guardian: Loknar's ship carries the Death Ray plus up to this many
+ * other xenon technologies the victor lacks, picked at random from the xenon field.
+ */
+export const GUARDIAN_RANDOM_XENON = 3;
+
 /** Score for the empire that slew the Guardian and holds Orion (the manual only says "a big chunk"). */
 export const ORION_SCORE = 500;
 

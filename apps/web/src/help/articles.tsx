@@ -965,7 +965,7 @@ function MonstersPage() {
       <p>
         Space monsters guard rich systems and attack any ship that enters; they never leave their lair. The deeper
         into the galaxy, the tougher the guard: {LAIR_MONSTERS.map((id) => MONSTER_DESIGNS.find((d) => d.id === id)?.name ?? id).join(", ")}.
-        The guardian holds Orion, the best system in the galaxy; whoever destroys it salvages the <HelpLink to="weapon:deathRay" />.
+        The guardian holds Orion, the best system in the galaxy; whoever destroys it salvages the <HelpLink to="weapon:deathRay" /> and up to three more random xenon technologies, and the last of the elders joins them if a captain's post is free.
       </p>
       <table className="help-table">{monsterHead}<tbody>{MONSTER_DESIGNS.map((d) => <MonsterRow key={d.id} d={d} />)}</tbody></table>
       <h3>Raiders</h3>
