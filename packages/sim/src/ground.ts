@@ -286,6 +286,44 @@ export function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
   captureColony(ctx, colony, attacker.id);
 }
 
+/** Rebels fight with their ruler's equipment, 20 below a marine. */
+export const REBEL_RATING_SHIFT = -10;
+
+/**
+ * Rebels rise against a colony's garrison: they fight with the ruler's
+ * equipment and their own race's picks at 20 below a marine, against the
+ * tanks, marines and loyal militia in the usual order. Returns how many rebels
+ * fell and whether they won.
+ */
+export function revoltFight(ctx: TurnContext, colony: Colony, rebels: number): { won: boolean; killed: number } {
+  const { state, rng } = ctx;
+  const starId = state.planets[colony.planetId]!.starId;
+  const rebel = troopUnit(state, colony.ownerId, colony.raceId, "militia", false);
+  rebel.rating += REBEL_RATING_SHIFT;
+  const attackers: number[] = Array(rebels).fill(rebel.hits);
+  const g = garrisonOf(state, colony);
+  const loyal = population(colony) - (colony.aliens ?? 0);
+  g.militia = Math.floor(loyal * MILITIA_PER_POP);
+  const owner = state.players[colony.ownerId]!;
+  const defenders: { unit: Unit; hp: number }[] = [];
+  for (const kind of ["armor", "marines", "militia"] as const) {
+    const unit = troopUnit(state, owner.id, owner.raceId, kind, true, starId);
+    for (let i = 0; i < g[kind]; i++) defenders.push({ unit, hp: unit.hits });
+  }
+  let killed = 0;
+  while (attackers.length > 0 && defenders.length > 0) {
+    const d = defenders[0]!;
+    const a = rng.int(1, 100) + rebel.rating;
+    const b = rng.int(1, 100) + d.unit.rating;
+    if (a >= b && --d.hp <= 0) defenders.shift();
+    if (b >= a && --attackers[0]! <= 0) {
+      attackers.shift();
+      killed++;
+    }
+  }
+  return { won: attackers.length > 0, killed };
+}
+
 /**
  * Hands a colony to a new owner (conquest, mind control or revolt). Its
  * people become aliens who must be assimilated, unless they came from a

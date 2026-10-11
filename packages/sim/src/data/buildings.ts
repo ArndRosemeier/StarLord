@@ -151,9 +151,6 @@ export const BUILDINGS: BuildingDef[] = [
     effects: { interdictRadius: 2 }, description: "Hostile fleets within 2 parsecs of the system move only 1 parsec per turn." },
   { id: "spaceAcademy", name: "Space Academy", cost: 100, maintenance: 2, requires: "spaceAcademy",
     effects: { crew: { startLevels: 1, xpPerTurn: 1 } }, description: "Ships built here start one crew level higher, and crews in the system train every turn." },
-  { id: "securityStations", name: "Security Stations", cost: 100, maintenance: 1, requires: "securityStations",
-    effects: { security: 2 }, description: "+2 spy defense." },
-
   // Food and population
   { id: "hydroponicFarm", name: "Hydroponic Farm", cost: 60, maintenance: 2, requires: "hydroponicFarm",
     effects: { foodFlat: 2 }, description: "+2 food." },

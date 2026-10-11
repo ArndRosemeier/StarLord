@@ -1,6 +1,6 @@
 import { ANDROID_PROJECTS, ARTIFICIAL_PLANET, BUILDINGS_BY_ID, PROJECT_UPKEEP, TERRAFORM_STEP } from "./data/buildings.js";
 import { DIFFICULTIES } from "./data/galaxy.js";
-import { FREIGHTERS, GROWTH, MILITIA_PER_POP, TRADE_GOODS_RATE } from "./data/economy.js";
+import { FREIGHTERS, GROWTH, TRADE_GOODS_RATE } from "./data/economy.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import type { PlanetType } from "./data/planets.js";
 import { getRace, hasTrait, registerRaces } from "./data/races.js";
@@ -17,14 +17,14 @@ import {
 } from "./diplomacy.js";
 import { COMMAND_OVERAGE_COST, commandPointsAvailable, commandPointsUsed, fleetSpeed, grantTech } from "./empire.js";
 import {
-  androids, assimilationTurns, colonyOutput, colonyTroops, foodPlan, maxPopulation, population, revoltChance, type ColonyOutput,
+  androids, assimilationTurns, colonyOutput, foodPlan, maxPopulation, population, revoltChance, type ColonyOutput,
 } from "./economy.js";
 import { espionageTick } from "./espionage.js";
 import { distance } from "./galaxy.js";
 import { repairTick } from "./repair.js";
 import { addShips, deleteFleet, removeShips, takeShips } from "./fleetOps.js";
 import { builtCrewXp, crewTick } from "./crew.js";
-import { captureColony, destroyColony, exterminate, groundPhase, troopUnit, type Silenced } from "./ground.js";
+import { captureColony, destroyColony, exterminate, groundPhase, revoltFight, type Silenced } from "./ground.js";
 import { assignDefaultJobs, newUnitJob, removeAndroids, removePopulation } from "./jobs.js";
 import {
   assignLeader, captainLost, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
@@ -678,22 +678,9 @@ function assimilate(ctx: TurnContext, c: Colony): void {
 function revolt(ctx: TurnContext, c: Colony, formerId: PlayerId): void {
   const { state, rng } = ctx;
   // Some of the aliens take up arms.
-  let rebels = rng.int(1, Math.max(1, c.aliens ?? 0));
-  const loyal = population(c) - (c.aliens ?? 0);
-  let defenders = colonyTroops(c) - Math.floor(population(c) * MILITIA_PER_POP) + Math.floor(loyal * MILITIA_PER_POP);
-  const starId = starOf(state, c.planetId).id;
-  const atk = troopUnit(state, formerId, c.raceId, "militia", false, starId).rating;
-  const def = troopUnit(state, c.ownerId, state.players[c.ownerId]!.raceId, "militia", true, starId).rating;
-  let killed = 0;
-  while (rebels > 0 && defenders > 0) {
-    if (rng.int(1, 100) + atk > rng.int(1, 100) + def) defenders--;
-    else {
-      rebels--;
-      killed++;
-    }
-  }
+  const { won, killed } = revoltFight(ctx, c, rng.int(1, Math.max(1, c.aliens ?? 0)));
   const owner = c.ownerId;
-  if (rebels > 0) {
+  if (won) {
     ctx.emit({ kind: "colonyLost", playerId: owner, colonyId: c.id, to: formerId, how: "revolted" });
     captureColony(ctx, c, formerId, { revolt: true });
     return;
