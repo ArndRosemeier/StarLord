@@ -239,7 +239,7 @@ export const PROJECTS: ProjectDef[] = [
   { id: "terraform", name: "Terraforming", requires: "terraforming", description: "Improves this planet's climate one step. Cost rises each time." },
   { id: "gaiaTransform", name: "Gaia Transformation", requires: "gaiaTransformation", description: "Turns a terran planet into a Gaia world." },
   { id: "artificialPlanet", name: "Artificial Planet", requires: "artificialPlanet", description: "Turns an asteroid belt in this system into a large barren planet, or a gas giant into a huge one; normal gravity, abundant minerals." },
-  { id: "dimensionalPortal", name: "Dimensional Portal", requires: "dimensionalPortal", description: "Opens a way to the raiders' home dimension. 2 BC upkeep." },
+  { id: "dimensionalPortal", name: "Dimensional Portal", requires: "dimensionalPortal", description: "Fleets in this system can cross to the raiders' home dimension and back. 2 BC upkeep." },
   { id: "spy", name: "Train Spy", requires: null, description: "Trains a spy for espionage or counter-espionage." },
   { id: "housing", name: "Housing", requires: null, description: "Turns industry into extra population growth." },
 ];

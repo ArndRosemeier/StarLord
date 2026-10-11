@@ -124,6 +124,8 @@ export interface Colony {
   /** Marines and tank battalions trained by the barracks beyond the ones present when built. */
   marinesTrained?: number;
   tanksTrained?: number;
+  /** A Dimensional Portal stands here: fleets in this system can strike at the raiders' home. */
+  portal?: boolean;
 }
 
 export interface AndroidCounts {
@@ -194,8 +196,10 @@ export interface ShipDesign {
   module: DesignModule | null;
   /** Hidden from build lists but kept for existing ships. */
   obsolete: boolean;
-  /** Monster and raider designs set their stats directly. */
+  /** Monster designs and the raiders' citadel set their stats directly. */
   fixed?: FixedStats;
+  /** Owner of the ship this design was copied from when boarders took it; scrapping one can teach its technology. */
+  capturedFrom?: PlayerId;
 }
 
 export interface FixedStats {
@@ -212,6 +216,8 @@ export interface FixedStats {
   weapons: WeaponMount[];
   missileEvasion?: number;
   sizeClass?: number;
+  /** Fights as an immobile fortress, like an orbital station. */
+  immobile?: boolean;
 }
 
 export type PlayerKind = "empire" | "monsters" | "raiders";
@@ -265,6 +271,7 @@ export interface Player {
   doctrine: CombatDoctrine;
   /** Areas a human has handed to automation; ignored for AI players. */
   automation: string[];
+  /** Whether any colony of the empire has a Dimensional Portal (kept in step with `Colony.portal`). */
   hasPortal: boolean;
   eliminatedTurn: number | null;
   /** Freighter ships owned; they carry food and colonists. */
@@ -492,6 +499,8 @@ export type GameEvent =
   | { turn: number; kind: "council"; playerId: PlayerId; what: string }
   | { turn: number; kind: "random"; playerId: PlayerId; what: string; starId?: Id }
   | { turn: number; kind: "raid"; playerId: PlayerId; starId: Id }
+  /** Everyone hears when an empire destroys the raiders at home and the galaxy capitulates. */
+  | { turn: number; kind: "raidersDefeated"; playerId: PlayerId; by: PlayerId }
   | { turn: number; kind: "eliminated"; playerId: PlayerId }
   | { turn: number; kind: "victory"; playerId: PlayerId; how: VictoryKind };
 
@@ -502,6 +511,17 @@ export interface CouncilState {
   pending?: { winner: PlayerId; turn: number; refused: PlayerId[] } | null;
   /** Whether the council has started meeting (it first meets once most of the galaxy is settled). */
   convened?: boolean;
+}
+
+export interface RaidersState {
+  nextRaid: number;
+  defeated: boolean;
+  /** Turn of the first raid; raider technology advances from it. */
+  firstRaid?: number;
+  /** Index into RAIDER_ERAS: how far raider technology has come. */
+  era?: number;
+  /** Empire that destroyed the raiders at home. */
+  defeatedBy?: PlayerId;
 }
 
 export interface GameState {
@@ -522,7 +542,7 @@ export interface GameState {
   proposals: Proposal[];
   leaders: Record<Id, Leader>;
   council: CouncilState;
-  raiders: { nextRaid: number; defeated: boolean };
+  raiders: RaidersState;
   /** Nebula clouds drawn on the map; stars inside carry `nebula`. */
   nebulae?: Nebula[];
   tributes?: Tribute[];

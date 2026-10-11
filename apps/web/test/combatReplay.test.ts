@@ -1,5 +1,5 @@
 import { describe as group, expect, it } from "vitest";
-import { newGame, playerView, type CombatReport } from "@starlord/sim";
+import { newGame, playerView, processTurn, raiderDesignId, type CombatReport, type Fleet } from "@starlord/sim";
 import { describe, framesAt, replaySteps, unitInfo, type CombatEvent, type UnitSnapshot } from "../src/screens/combat/replayModel";
 
 const state = newGame({ seed: "replay-model", playerCount: 2, monsters: true });
@@ -18,6 +18,26 @@ const ship = (key: string, ownerId: number, extra: Partial<UnitSnapshot> = {}): 
   ({ key, ownerId, designId: "frigate", name: key, maxHits: 10, x: 5, y: 5, isPlanet: false, ...extra });
 
 group("combat replay model", () => {
+  it("shows the raiders' citadel as a fortress and their ships on their real hulls", () => {
+    let s = newGame({ seed: "replay-raiders", playerCount: 2, council: false });
+    const home = s.galaxy.stars.find((x) => x.special === "raiderHome")!;
+    const capital = Object.values(s.colonies).find((c) => c.ownerId === 0)!;
+    capital.portal = true;
+    s.players[0]!.hasPortal = true;
+    const start = s.galaxy.stars.find((x) => x.id === s.players[0]!.homeStarId)!;
+    const f: Fleet = { id: "strike", ownerId: 0, x: start.x, y: start.y, starId: start.id, destStarId: null, ships: [{ designId: "frigate", count: 3 }], stance: "attack", name: "Strike" };
+    s.fleets[f.id] = f;
+    s = processTurn(s, { 0: [{ type: "moveFleet", fleetId: f.id, destStarId: home.id }] });
+    const r = s.combats.find((c) => c.starId === home.id)!;
+    const units = unitInfo(r, playerView(s, 0));
+    const citadel = units.find((u) => u.snap.designId === "vexariCitadel")!;
+    expect(citadel.kind).toBe("station");
+    expect(citadel.station).toBe("starFortress");
+    const cruiser = units.find((u) => u.snap.designId === raiderDesignId("cruiser"))!;
+    expect(cruiser.kind).toBe("ship");
+    expect(cruiser.hull).toBe("cruiser");
+  });
+
   it("reads old reports: isPlanet, ship hulls from designs, monsters by owner", () => {
     const r = report([
       ship(`planet:${colony.id}`, 0, { isPlanet: true, designId: "planet", x: 29.5 }),

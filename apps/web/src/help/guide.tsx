@@ -500,7 +500,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <Ul>
         <li><b>Conquest</b>: be the last empire standing. An empire is out when it has no colonies and no colony ships.</li>
         <li><b>Council</b>: be elected by the <HelpLink to="guide:council">galactic council</HelpLink>.</li>
-        <li><b>Raiders</b>: build a dimensional portal and destroy the raiders at their home (<HelpLink to="page:monsters" />).</li>
+        <li><b>Raiders</b>: build a Dimensional Portal and send a fleet from that system to destroy the raiders' home fleet and citadel. Every other empire then capitulates (<HelpLink to="page:monsters" />).</li>
         <li><b>Score</b>: when the turn limit is reached, the highest score wins. Score counts population, colonies, outposts, techs, industry, research and ships.</li>
       </Ul>
       <P>

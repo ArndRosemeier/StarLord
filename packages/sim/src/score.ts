@@ -1,4 +1,5 @@
 import { ORION_SCORE } from "./data/monsters.js";
+import { RAIDERS_DEFEATED_SCORE } from "./data/raiders.js";
 import { RESEARCH, TECH_FIELDS } from "./data/techs.js";
 import { empireTotals } from "./economy.js";
 import { hyperLevel } from "./empire.js";
@@ -15,5 +16,7 @@ export function score(state: GameState, playerId: PlayerId): number {
   const orion = Object.values(state.colonies).some(
     (c) => c.ownerId === playerId && state.galaxy.stars.find((s) => s.id === state.planets[c.planetId]?.starId)?.special === "orion",
   ) ? ORION_SCORE : 0;
-  return Math.round(orion + t.population * 10 + t.colonies * 25 + t.outposts * 5 + p.techs.length * 15 + hyper + t.industry + t.research + fleet * 2);
+  // Destroying the raiders at home is worth more than anything else.
+  const raiders = state.raiders.defeatedBy === playerId ? RAIDERS_DEFEATED_SCORE : 0;
+  return Math.round(orion + raiders + t.population * 10 + t.colonies * 25 + t.outposts * 5 + p.techs.length * 15 + hyper + t.industry + t.research + fleet * 2);
 }

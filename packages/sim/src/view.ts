@@ -85,7 +85,8 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
   // Unexplored systems keep their names to themselves, and one-time finds
   // (pirate caches, wrecks, stranded heroes) are only known once a system is explored.
   const shownStars = stars.map((s) => {
-    if (explored.has(s.id)) return s;
+    // The raiders' home is only shown once a portal leads there, and the portal tells you its name.
+    if (explored.has(s.id) || s.special === "raiderHome") return s;
     const { feature, ...rest } = s;
     return { ...rest, name: UNKNOWN_STAR_NAME, ...(feature === "wormhole" ? { feature } : {}) };
   });

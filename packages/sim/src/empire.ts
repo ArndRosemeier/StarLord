@@ -188,7 +188,8 @@ export function empireIncome(state: GameState, playerId: PlayerId): EmpireIncome
     maintenance += o.maintenance;
   }
   const food = foodPlan(state, playerId, outputs);
-  const projects = state.players[playerId]!.hasPortal ? PROJECT_UPKEEP.dimensionalPortal : 0;
+  const portals = Object.values(state.colonies).filter((c) => c.ownerId === playerId && c.portal).length;
+  const projects = portals * PROJECT_UPKEEP.dimensionalPortal;
   const salaries = Object.values(state.leaders).filter((l) => l.ownerId === playerId).reduce((s, l) => s + l.salary, 0);
   const over = Math.max(0, commandPointsUsed(state, playerId) - commandPointsAvailable(state, playerId));
   const commandOverage = over * COMMAND_OVERAGE_COST;

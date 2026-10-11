@@ -1,6 +1,6 @@
 import {
   ARMORS, BUILDINGS, CLIMATES, COMPUTERS, FIELD_NAMES, GOVERNMENTS, HULLS, MODULES, MONSTER_DESIGNS, PROJECTS,
-  RACES, RAIDER_DESIGNS, SHIELDS, SPECIALS, TECHS, TECH_FIELDS, TECH_TIERS, TIER_OF_TECH, TRAIT_COSTS, WEAPONS,
+  RACES, citadelDesign, SHIELDS, SPECIALS, TECHS, TECH_FIELDS, TECH_TIERS, TIER_OF_TECH, TRAIT_COSTS, WEAPONS,
   techUnlocks, type RaceTrait, type Unlock,
 } from "@starlord/sim";
 import { words } from "../ui/format";
@@ -125,7 +125,7 @@ function build(): HelpEntry[] {
   for (const [id, g] of Object.entries(GOVERNMENTS)) e.push({ id: `government:${id}`, group: "races", title: g.name, subtitle: "Government" });
 
   page("monsters", "threats", "Monsters, guardian & raiders", "monster lair orion guardian raiders portal");
-  for (const d of [...MONSTER_DESIGNS, ...RAIDER_DESIGNS]) e.push({ id: `monster:${d.id}`, group: "threats", title: d.name, subtitle: MONSTER_DESIGNS.includes(d) ? "Space monster" : "Raider ship" });
+  for (const d of [...MONSTER_DESIGNS, citadelDesign(0)]) e.push({ id: `monster:${d.id}`, group: "threats", title: d.name, subtitle: MONSTER_DESIGNS.includes(d) ? "Space monster" : "Raider fortress" });
   return e;
 }
 

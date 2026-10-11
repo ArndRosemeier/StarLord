@@ -35,8 +35,8 @@ export function routeTo(view: PlayerView, fleet: Fleet, starId: string): Route {
   const dest = view.galaxy.stars.find((s) => s.id === starId)!;
   if (canReach(view, fleet.ownerId, fleet, starId)) return { ok: true, turns: travelTurns(view, fleet, starId) };
   const here = fleet.starId ? view.galaxy.stars.find((s) => s.id === fleet.starId) : undefined;
-  if (dest.special === "raiderHome") return { ok: false, reason: `Only a dimensional portal reaches ${dest.name}, from a system you have colonized.` };
-  if (here?.special === "raiderHome") return { ok: false, reason: "From here the portal only leads back to your own colonies." };
+  if (dest.special === "raiderHome") return { ok: false, reason: `Only fleets in a system with one of your Dimensional Portals can cross over to ${dest.name}.` };
+  if (here?.special === "raiderHome") return { ok: false, reason: "From here the way back leads only to your Dimensional Portals." };
   const player = view.players[fleet.ownerId]!;
   const d = distanceToNearestColony(view, fleet.ownerId, dest);
   if (!Number.isFinite(d)) return { ok: false, reason: "With no colony left to refuel at, your ships cannot leave." };
