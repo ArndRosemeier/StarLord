@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  RACES, STAR_COUNTS, availableProjects, canReach, colonyOutput, empires, getRace, maxPopulation, newGame, playerView, processTurn, stateHash,
+  RACES, STAR_COUNTS, availableProjects, canReach, colonyOutput, empires, getRace, maxPopulation, newGame, playerView, processTurn, stateHash, UNKNOWN_STAR_NAME,
   type GameState,
 } from "@starlord/sim";
 
@@ -132,5 +132,19 @@ describe("turns", () => {
     s.colonies[home.id]!.progress = 1000;
     s = processTurn(s, {});
     expect(s.colonies[home.id]!.buildings).toContain("automatedFactory");
+  });
+});
+
+describe("unexplored systems", () => {
+  it("hide their names, Orion's included, until explored", () => {
+    const s = newGame({ seed: "names", races: ["terran", "felhari"] });
+    const v = playerView(s, 0);
+    const me = v.players[0]!;
+    for (const star of v.galaxy.stars) {
+      const real = s.galaxy.stars.find((x) => x.id === star.id)!.name;
+      expect(star.name).toBe(me.explored.includes(star.id) ? real : UNKNOWN_STAR_NAME);
+    }
+    expect(v.galaxy.stars.some((x) => x.name === "Orion")).toBe(false);
+    expect(s.galaxy.stars.some((x) => x.name === "Orion")).toBe(true);
   });
 });

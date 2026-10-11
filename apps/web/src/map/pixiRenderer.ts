@@ -388,18 +388,21 @@ export class PixiMapRenderer implements MapRenderer {
         node.addChild(ping);
         this.pulses.push({ obj: ping, base: 1, amp: 0.12, speed: 2.4, phase: 0, prop: "scale" });
       }
-      const label = new Text({
-        text: s.name,
-        style: {
-          fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, fill: s.explored ? 0xd7def0 : 0x6b7590,
-          fontWeight: s.owners.length ? "600" : "400",
-          dropShadow: { color: 0x000000, alpha: 0.9, blur: 3, distance: 0, angle: 0 },
-        },
-      });
-      label.anchor.set(0.5, 0);
-      label.position.set(0, r + 6);
-      label.resolution = 2;
-      node.addChild(label);
+      // Unexplored systems carry no name on the map.
+      if (s.explored) {
+        const label = new Text({
+          text: s.name,
+          style: {
+            fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, fill: 0xd7def0,
+            fontWeight: s.owners.length ? "600" : "400",
+            dropShadow: { color: 0x000000, alpha: 0.9, blur: 3, distance: 0, angle: 0 },
+          },
+        });
+        label.anchor.set(0.5, 0);
+        label.position.set(0, r + 6);
+        label.resolution = 2;
+        node.addChild(label);
+      }
       node.eventMode = "static";
       const route = scene.routes.get(s.id);
       node.cursor = route && !route.ok ? "not-allowed" : "pointer";

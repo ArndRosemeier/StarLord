@@ -42,6 +42,9 @@ export const NPC_WEAPONS: WeaponDef[] = [
 /** Monster mix by how deep into the galaxy (0..1 of max home distance) a lair is. */
 export const LAIR_MONSTERS = ["voidAmoeba", "latticeCrystal", "ionEel", "starHydra", "starWyrm"];
 
+/** Score for the empire that slew the Guardian and holds Orion (the manual only says "a big chunk"). */
+export const ORION_SCORE = 500;
+
 /** First raid turn and the gap between raids. */
 export const RAID_START = 120;
 export const RAID_INTERVAL: [number, number] = [15, 25];
