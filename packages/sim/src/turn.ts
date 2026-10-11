@@ -13,7 +13,7 @@ import { councilTick } from "./council.js";
 import { designStats, findDesign } from "./designs.js";
 import { SCOUT_LAB_RESEARCH, hullIndex } from "./data/components.js";
 import {
-  acceptProposal, breakTreaty, declareWar, diplomacyTick, giveGift, isHostile, proposalId, rejectProposal, surrenderEmpire, treatyIncome,
+  acceptProposal, breakTreaty, chargePatience, declareWar, diplomacyTick, giveGift, isHostile, proposalId, rejectProposal, surrenderEmpire, treatyIncome,
 } from "./diplomacy.js";
 import { COMMAND_OVERAGE_COST, commandPointsAvailable, commandPointsUsed, fleetSpeed, grantTech } from "./empire.js";
 import {
@@ -264,9 +264,12 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "setDoctrine":
       player.doctrine = { ...cmd.doctrine };
       break;
-    case "propose":
-      state.proposals.push({ id: proposalId(state.turn, playerId, cmd.to, cmd.kind), from: playerId, to: cmd.to, kind: cmd.kind, turn: state.turn, ...termsOf(cmd) });
+    case "propose": {
+      const id = proposalId(state.turn, playerId, cmd.to, cmd.kind);
+      const charged = chargePatience(state, playerId, cmd.to, cmd.kind, id);
+      state.proposals.push({ id, from: playerId, to: cmd.to, kind: cmd.kind, turn: state.turn, ...termsOf(cmd), ...charged });
       break;
+    }
     case "respond": {
       const p = state.proposals.find((x) => x.id === cmd.proposalId)!;
       state.proposals = state.proposals.filter((x) => x.id !== p.id);

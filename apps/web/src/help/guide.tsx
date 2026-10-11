@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES } from "@starlord/ai";
 import {
-  ANDROIDS, ASSIMILATION, AUDIENCE_ITEMS, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_HIT,
+  ANDROIDS, ASSIMILATION, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_HIT,
   CAPTURE_TECH_CHANCE, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST,
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING,
@@ -415,13 +415,13 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
     <>
       <P>
         Once you meet an empire you can trade proposals on the <b>Diplomacy</b> screen. Proposals expire after{" "}
-        {PROPOSAL_LIFETIME} turns, and a ruler hears at most {AUDIENCE_ITEMS} of yours a turn.
+        {PROPOSAL_LIFETIME} turns.
       </P>
       <Ul>
         <li><b>War</b>: your ships and theirs fight on sight. Declaring war on someone you had a treaty with angers everyone, and their allies join in. Breaking a peace treaty within {PEACE_TREATY_TURNS} turns is an outrage.</li>
         <li><b>Peace</b>: ends a war.</li>
-        <li><b>Non-aggression pact</b>: a promise not to attack; relations warm over time.</li>
-        <li><b>Alliance</b>: allies share fuel range and warm faster.</li>
+        <li><b>Non-aggression pact</b>: a promise not to attack; relations warm over time. Not while at war.</li>
+        <li><b>Alliance</b>: allies share fuel range and warm faster. Only from a non-aggression pact, and only with an empire whose attitude toward you is at least {TREATY_ANSWER.allianceMinAttitude}.</li>
         <li><b>Trade treaty</b>: both sides earn {TREATY_YIELD.trade.perPop} BC per population of the smaller partner.</li>
         <li><b>Research treaty</b>: both sides gain {TREATY_YIELD.research.perPop} research per population of the smaller partner.</li>
         <li><b>Technology exchange</b>, <b>gifts</b> of BC, techs or systems, and a standing <b>tribute</b> of 5% or 10% of your income.</li>
@@ -433,6 +433,22 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         {TREATY_YIELD.trade.full}. <HelpLink to="trait:fantasticTraders" /> earn 25% more from trade treaties; <HelpLink to="trait:repulsive" /> races
 
         can only make peace or war.
+      </P>
+      <h3>How computer rulers answer</h3>
+      <P>
+        A computer ruler accepts a treaty when its attitude toward you, plus a d100, minus what the treaty asks of it
+        ({TREATY_ANSWER.need.nonAggression} for a non-aggression pact, {TREATY_ANSWER.need.alliance} for an alliance,{" "}
+        {TREATY_ANSWER.need.trade} for trade, {TREATY_ANSWER.need.research} for research), plus its temperament and
+        your diplomatic bonuses, comes to 0 or more. Temperaments: {Object.values(TEMPERAMENTS).map((t) => `${t.name} ${t.treaty >= 0 ? "+" : ""}${t.treaty}`).join(", ")}.
+        Charismatic proposers get +{TRAIT_EFFECTS.charismaticDiplomacy}, telepathic +{TRAIT_EFFECTS.telepathicDiplomacy};
+        Xeno Psychology and diplomat leaders add more. Peace comes only after{" "}
+        {TREATY_ANSWER.peaceMinWarTurns} turns of war.
+      </P>
+      <P>
+        Every proposal wears down their patience: {PATIENCE.perAsk} points, and {PATIENCE.firstAsk} to{" "}
+        {PATIENCE.firstAsk + PATIENCE.firstAskRoll} more for the first in a turn, all of it counted against their next
+        answers. Asking for the same kind of thing again and again, or making demands, soon has them refuse to see you.
+        Patience comes back by {PATIENCE.recovery} a turn; breaking a treaty exhausts it.
       </P>
       <h3>Attitude</h3>
       <P>

@@ -420,6 +420,10 @@ export interface Proposal {
   third?: PlayerId;
   /** Tribute percentage (5 or 10). */
   percent?: number;
+  /** The listener's d100 for its answer, fixed when the proposal is made. */
+  roll?: number;
+  /** The listener's patience with the proposer just before this ask. */
+  patience?: number;
 }
 
 /** Standing tribute: `from` pays `percent` of its income to `to` every turn. */
@@ -574,6 +578,10 @@ export interface GameState {
   relations: Record<string, Relation>;
   /** attitude[a][b]: how a feels about b, -100..100. */
   attitude: Record<string, Record<string, number>>;
+  /** patience[a][b]: how much more a will hear from b (0 at rest, lower after asks). */
+  patience?: Record<string, Record<string, number>>;
+  /** asks[a][b][kind]: a's tally of asking b, per proposal kind. */
+  asks?: Record<string, Record<string, Record<string, number>>>;
   proposals: Proposal[];
   leaders: Record<Id, Leader>;
   council: CouncilState;

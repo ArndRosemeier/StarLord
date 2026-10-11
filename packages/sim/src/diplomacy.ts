@@ -1,11 +1,11 @@
 import { DIFFICULTIES } from "./data/galaxy.js";
 import {
-  ATTITUDE, ATTITUDE_EVENTS, AUDIENCE_ITEMS,
+  ATTITUDE, ATTITUDE_EVENTS, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, type Temperament,
   PEACE_TREATY_TURNS, PROPOSAL_LIFETIME, TREATY_YIELD, TRIBUTE_PERCENTS,
 } from "./data/diplomacy.js";
 import { TRAIT_EFFECTS } from "./data/racePicks.js";
 import { leaderTradeBonus } from "./leaders.js";
-import { treatyIncomeMult } from "./raceEffects.js";
+import { raceDiplomacyPoints, treatyIncomeMult } from "./raceEffects.js";
 import { getRace, hasTrait } from "./data/races.js";
 import { TIER_OF_TECH } from "./data/techs.js";
 import type { Emit } from "./context.js";
@@ -133,9 +133,9 @@ export function canSign(state: GameState, from: PlayerId, to: PlayerId, kind: Pr
     case "peace":
       return r.status === "war" ? null : "not at war";
     case "nonAggression":
-      return r.status === "nonAggression" || r.status === "alliance" ? "already pledged" : null;
+      return r.status === "nonAggression" || r.status === "alliance" ? "already pledged" : r.status === "war" ? "make peace first" : null;
     case "alliance":
-      return r.status === "alliance" ? "already allied" : null;
+      return r.status === "alliance" ? "already allied" : r.status !== "nonAggression" ? "needs a non-aggression pact first" : null;
     case "trade":
       return r.status !== "war" && !r.trade ? null : r.trade ? "already trading" : "not while at war";
     case "research":
@@ -184,9 +184,128 @@ export function audienceItems(state: GameState, from: PlayerId, to: PlayerId): n
   return state.proposals.filter((p) => p.from === from && p.to === to && p.turn === state.turn).length;
 }
 
-export function audienceTired(state: GameState, from: PlayerId, to: PlayerId): boolean {
-  return audienceItems(state, from, to) >= AUDIENCE_ITEMS;
+/** How much more `listener` will hear from `asker`: 0 at rest, negative after asks. */
+export function patience(state: GameState, listener: PlayerId, asker: PlayerId): number {
+  return state.patience?.[listener]?.[asker] ?? 0;
 }
+
+/** The asker's own tally per proposal kind with that listener. */
+export function askTally(state: GameState, asker: PlayerId, listener: PlayerId): Record<string, number> {
+  return state.asks?.[asker]?.[listener] ?? {};
+}
+
+/** True once `to` will hear no more from `from` until patience recovers. */
+export function audienceTired(state: GameState, from: PlayerId, to: PlayerId): boolean {
+  return Object.values(askTally(state, from, to)).some((v) => v <= PATIENCE.refuse);
+}
+
+/** A d-n roll fixed by the game seed and a key, so answers are the same in previews and replays. */
+export function fixedRoll(state: GameState, key: string, n: number): number {
+  let h = 2166136261 >>> 0;
+  const text = `${state.seed}|${key}`;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619) >>> 0;
+  h = (h ^ (h >>> 15)) >>> 0;
+  h = Math.imul(h, 2246822507) >>> 0;
+  h = (h ^ (h >>> 13)) >>> 0;
+  return 1 + (h % n);
+}
+
+/** A computer empire's temperament, after the original's six AI personalities; fixed for the game. */
+export function temperament(state: GameState, playerId: PlayerId): Temperament | null {
+  const p = state.players[playerId];
+  if (!p || p.kind !== "empire" || p.isHuman) return null;
+  const all = Object.keys(TEMPERAMENTS) as Temperament[];
+  return all[fixedRoll(state, `temperament${playerId}`, all.length) - 1]!;
+}
+
+/** Records a proposal's cost to both sides' patience; returns the listener's patience before it and the listener's roll. */
+export function chargePatience(state: GameState, from: PlayerId, to: PlayerId, kind: ProposalKind, id: string): { patience: number; roll: number } {
+  const before = patience(state, to, from);
+  const first = !state.proposals.some((p) => p.from === from && p.to === to && p.turn === state.turn);
+  const cost = PATIENCE.perAsk + (first ? PATIENCE.firstAsk + fixedRoll(state, `${id}|first`, PATIENCE.firstAskRoll) : 0);
+  state.patience = { ...(state.patience ?? {}), [to]: { ...(state.patience?.[to] ?? {}), [from]: before - cost } };
+  const tally = { ...askTally(state, from, to) };
+  const own = askGroup(kind);
+  for (const k of ASK_GROUPS) {
+    tally[k] = (tally[k] ?? 0) - (isDemand(kind) ? PATIENCE.demand : PATIENCE.perAsk + (k === own ? PATIENCE.sameKind : 0));
+  }
+  state.asks = { ...(state.asks ?? {}), [from]: { ...(state.asks?.[from] ?? {}), [to]: tally } };
+  return { patience: before, roll: fixedRoll(state, id, 100) };
+}
+
+/** The asker's four tallies, as in the original: pacts, trade, research and everything else. */
+const ASK_GROUPS = ["pact", "trade", "research", "other"] as const;
+function askGroup(kind: ProposalKind): (typeof ASK_GROUPS)[number] {
+  if (kind === "nonAggression" || kind === "alliance" || kind === "peace" || kind === "ceasefire") return "pact";
+  return kind === "trade" || kind === "research" ? kind : "other";
+}
+
+/** Every turn patience recovers toward 0. */
+function recoverPatience(state: GameState): void {
+  const up = (v: number) => Math.min(0, v + PATIENCE.recovery);
+  for (const a of Object.values(state.patience ?? {})) for (const b of Object.keys(a)) a[b] = up(a[b]!);
+  for (const a of Object.values(state.asks ?? {})) for (const t of Object.values(a)) for (const k of Object.keys(t)) t[k] = up(t[k]!);
+}
+
+/** Breaking a treaty exhausts both sides' patience. */
+function exhaustPatience(state: GameState, a: PlayerId, b: PlayerId): void {
+  for (const [x, y] of [[a, b], [b, a]] as const) {
+    state.patience = { ...(state.patience ?? {}), [x]: { ...(state.patience?.[x] ?? {}), [y]: PATIENCE.broken } };
+    const tally = Object.fromEntries(ASK_GROUPS.map((k) => [k, PATIENCE.broken]));
+    state.asks = { ...(state.asks ?? {}), [x]: { ...(state.asks?.[x] ?? {}), [y]: tally } };
+  }
+}
+
+export interface TreatyScore {
+  /** Accepted at 0 or more (before the roll is added when `roll` is null). */
+  score: number;
+  parts: { why: string; value: number }[];
+  /** Hard conditions that refuse whatever the score. */
+  blocked: string | null;
+}
+
+/**
+ * The original's treaty answer for a non-aggression pact, alliance, trade or
+ * research treaty: the listener's attitude, a d100, the treaty's need, the
+ * listener's temperament and patience, and the proposer's diplomatic bonuses.
+ * With `roll` null the result leaves the die out (for showing odds).
+ */
+export function treatyScore(
+  state: GameState, from: PlayerId, to: PlayerId, kind: ProposalKind, roll: number | null, patienceBefore = patience(state, to, from),
+): TreatyScore {
+  const proposer = state.players[from]!;
+  const race = getRace(proposer.raceId);
+  const temper = temperament(state, to);
+  const parts: { why: string; value: number }[] = [
+    { why: "their attitude toward you", value: attitude(state, to, from) },
+    { why: `what a ${words(kind)} asks of them`, value: -(TREATY_ANSWER.need[kind] ?? 0) },
+  ];
+  if (temper) parts.push({ why: `${TEMPERAMENTS[temper].name} temperament`, value: TEMPERAMENTS[temper].treaty });
+  if (patienceBefore) parts.push({ why: "patience worn by earlier asks", value: patienceBefore });
+  // Charismatic and telepathic proposers, Xeno Psychology and the best diplomat leader.
+  const racial = raceDiplomacyPoints(race);
+  if (racial) parts.push({ why: hasTrait(race, "charismatic") ? (hasTrait(race, "telepathic") ? "you are charismatic and telepathic" : "you are charismatic") : "you are telepathic", value: racial });
+  const tech = empireBonus(proposer).diplomacy;
+  if (tech) parts.push({ why: "Xeno Psychology", value: tech });
+  const leader = (proposer.diplomacyBonus ?? 0) - racial;
+  if (leader > 0) parts.push({ why: "your diplomat leader", value: leader });
+  if (roll !== null) parts.push({ why: "their mood today (d100)", value: roll });
+  let blocked: string | null = null;
+  if (kind === "alliance" && attitude(state, to, from) < TREATY_ANSWER.allianceMinAttitude) {
+    blocked = `they ally only at attitude ${TREATY_ANSWER.allianceMinAttitude} or better`;
+  }
+  return { score: parts.reduce((s, p) => s + p.value, 0), parts, blocked };
+}
+
+/** Chance (0..1) a computer empire accepts a treaty now, over its d100. */
+export function treatyAcceptChance(state: GameState, from: PlayerId, to: PlayerId, kind: ProposalKind): number {
+  const t = treatyScore(state, from, to, kind, null);
+  if (t.blocked) return 0;
+  // Accepts when score + d100 >= 0.
+  return Math.max(0, Math.min(100, 101 + t.score)) / 100;
+}
+
+const words = (kind: ProposalKind) => (kind === "nonAggression" ? "non-aggression pact" : kind === "alliance" ? "alliance" : `${kind} treaty`);
 
 export function isDemand(kind: ProposalKind): boolean {
   return kind.startsWith("demand");
@@ -328,6 +447,7 @@ export type TreatyName = "trade" | "research" | "nonAggression" | "alliance" | "
 /** Ends one treaty without going to war. */
 export function breakTreaty(state: GameState, from: PlayerId, to: PlayerId, treaty: TreatyName): void {
   const r = relation(state, from, to);
+  exhaustPatience(state, from, to);
   switch (treaty) {
     case "trade":
       writeRelation(state, from, to, { ...r, trade: false });
@@ -467,6 +587,7 @@ function bordersTouch(state: GameState, a: PlayerId, b: PlayerId): boolean {
 export function diplomacyTick(state: GameState, emit?: Emit): void {
   const list = empires(state).filter((p) => p.alive);
   updateContacts(state, emit);
+  recoverPatience(state);
   for (const a of list) {
     for (const b of list) {
       if (a.id === b.id || !a.contacts.includes(b.id)) continue;

@@ -26,11 +26,35 @@ describe("audiences", () => {
 
   it("a refusal is final for the turn and nothing is signed", () => {
     const s = metSession();
-    s.state.attitude[1] = { 0: -60 };
+    s.state.attitude[1] = { 0: -90 };
     s.clearOrders();
-    expect(s.audience({ type: "propose", to: 1, kind: "alliance" })).toBe(false);
+    expect(s.audience({ type: "propose", to: 1, kind: "nonAggression" })).toBe(false);
     s.endTurn();
-    expect(relation(s.state, 0, 1).status).not.toBe("alliance");
+    expect(relation(s.state, 0, 1).status).not.toBe("nonAggression");
+  });
+
+  // Regression: right after first contact every treaty used to be accepted at once.
+  it("at first contact most rulers turn most treaties down", () => {
+    let asked = 0;
+    let yes = 0;
+    for (let i = 0; i < 20; i++) {
+      // Kordex proposers have no charisma or telepathy to help them.
+      const s = GameSession.create({ ...opts, races: ["kordex", "terran", "zhrikk"], seed: `contact${i}` }, 0);
+      s.state.players[0]!.contacts = [1];
+      s.state.players[1]!.contacts = [0];
+      s.state.attitude[1] = { 0: 0 };
+      s.clearOrders();
+      for (const kind of ["nonAggression", "trade", "research"] as const) {
+        const a = s.audience({ type: "propose", to: 1, kind });
+        if (a === null) continue;
+        asked++;
+        if (a) yes++;
+      }
+      expect(s.audience({ type: "propose", to: 1, kind: "alliance" })).toBeNull();
+    }
+    expect(asked).toBeGreaterThan(40);
+    expect(yes / asked).toBeLessThan(0.5);
+    expect(yes).toBeGreaterThan(0);
   });
 
   it("every built-in race has its own voice for every moment", () => {
