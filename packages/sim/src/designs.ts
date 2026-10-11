@@ -8,6 +8,7 @@ import {
 import { BEAM_HIT, DEFENSE_PER_SPEED, PLANET_WEAPON_SPACE, RANGE_BANDS } from "./data/combat.js";
 import { NPC_WEAPONS } from "./data/monsters.js";
 import { getRace } from "./data/races.js";
+import { isShipStyle } from "./data/shipStyles.js";
 import { raceCombatSpeedBonus, shipAttackPickBonus, shipDefensePickBonus } from "./raceEffects.js";
 import { TIER_OF_TECH, TIERS_BY_ID } from "./data/techs.js";
 import { empireBonus, government, hyperLevel, knows } from "./empire.js";
@@ -347,6 +348,7 @@ export function strengthOf(s: Pick<DesignStats, "weapons" | "attack" | "defense"
 /** Returns a reason the design is invalid for this player, or null. */
 export function validateDesign(player: Player, design: ShipDesign): string | null {
   if (!HULLS.some((h) => h.id === design.hull)) return "unknown hull";
+  if (design.style !== undefined && !isShipStyle(design.style)) return "unknown ship style";
   const hull = HULLS_BY_ID[design.hull];
   if (!design.module && !knows(player, hull.requires)) return "hull not researched";
   if (design.module) {

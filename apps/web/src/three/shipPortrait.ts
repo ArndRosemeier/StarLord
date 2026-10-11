@@ -31,8 +31,8 @@ function addLights(scene: THREE.Scene, camera: THREE.Camera): void {
 }
 
 /** Builds the hull's model scaled to `FIT` and centred on the origin. */
-function fittedShip(kit: ModelKit, hull: HullSize, color: string): UnitModel {
-  const model = buildShip(kit, hull, color);
+function fittedShip(kit: ModelKit, hull: HullSize, color: string, style: string): UnitModel {
+  const model = buildShip(kit, hull, color, style);
   model.root.scale.setScalar(FIT / SHIP_LENGTH[hull]);
   model.root.updateMatrixWorld(true);
   // Engine glows are sprites; leave them out so the hull itself is centred.
@@ -52,7 +52,7 @@ export class ShipViewer {
   private key = "";
   private resume = 0;
 
-  constructor(container: HTMLElement, hull: HullSize, color: string, private reduced: boolean) {
+  constructor(container: HTMLElement, hull: HullSize, color: string, style: string, private reduced: boolean) {
     this.stage = new Stage(container, {
       fov: 30, near: 0.05, far: 50, minDistance: 1.6, maxDistance: 7,
       minPolarAngle: 0.25, maxPolarAngle: Math.PI - 0.25, transparent: true,
@@ -72,16 +72,16 @@ export class ShipViewer {
       this.model.animate(time, this.reduced);
       if (!this.reduced) this.model.body.position.y = Math.sin(time * 1.3) * 0.03;
     });
-    this.setShip(hull, color);
+    this.setShip(hull, color, style);
     this.stage.start();
   }
 
-  setShip(hull: HullSize, color: string): void {
-    const key = `${hull}|${color}`;
+  setShip(hull: HullSize, color: string, style: string): void {
+    const key = `${hull}|${color}|${style}`;
     if (key === this.key) return;
     this.key = key;
     if (this.model) disposeModel(this.model);
-    this.model = fittedShip(this.kit, hull, color);
+    this.model = fittedShip(this.kit, hull, color, style);
     this.stage.scene.add(this.model.root);
   }
 
@@ -143,9 +143,9 @@ function getStudio(): Studio {
 }
 
 /** A still image (data URL) of the hull's model in the owner's colour, `size` CSS pixels square. */
-export function shipPortrait(hull: HullSize, color: string, size: number): Promise<string> {
+export function shipPortrait(hull: HullSize, color: string, size: number, style: string): Promise<string> {
   const ratio = Math.min(2, window.devicePixelRatio || 1);
-  const key = `${hull}|${color}|${size}|${ratio}`;
+  const key = `${hull}|${color}|${style}|${size}|${ratio}`;
   const hit = portraits.get(key);
   if (hit) return hit;
   // Portraits render one after another on the shared renderer.
@@ -154,7 +154,7 @@ export function shipPortrait(hull: HullSize, color: string, size: number): Promi
     await s.ready;
     s.renderer.setPixelRatio(ratio);
     s.renderer.setSize(size, size, false);
-    const model = fittedShip(s.kit, hull, color);
+    const model = fittedShip(s.kit, hull, color, style);
     s.scene.add(model.root);
     s.renderer.render(s.scene, s.camera);
     const url = s.renderer.domElement.toDataURL("image/png");

@@ -175,7 +175,7 @@ export class BattleScene {
           model = buildMonster(this.kit, 0.45 + info.size * 0.7, i);
           break;
         default:
-          model = buildShip(this.kit, info.hull, color);
+          model = buildShip(this.kit, info.hull, color, info.style);
       }
       this.stage.scene.add(model.root);
       const twoRows = info.snap.maxArmor !== undefined && info.snap.maxStructure !== undefined;

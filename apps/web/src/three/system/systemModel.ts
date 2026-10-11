@@ -1,4 +1,4 @@
-import { findDesign, population, type HullSize, type PlanetSize, type PlanetType, type PlayerView, type Star } from "@starlord/sim";
+import { designStyle, findDesign, population, raceShipStyle, type HullSize, type PlanetSize, type PlanetType, type PlayerView, type Star } from "@starlord/sim";
 import { STAR_COLORS } from "../../map/scene";
 import type { StationTierId } from "../models/stations";
 import { colonizeOption, type ColonizeOption } from "../../game/colonize";
@@ -39,6 +39,8 @@ export interface SystemFleet {
   ships: number;
   /** Largest hull class in the fleet, for its model; null when unknown. */
   hull: HullSize | null;
+  /** Ship style of that largest ship, or the owner's race style. */
+  style: string;
   /** Under orders to leave. */
   leaving: boolean;
 }
@@ -97,14 +99,20 @@ export function buildSystemModel(view: PlayerView, starId: string, preferFleetId
     .map((f) => {
       const owner = view.players[f.ownerId]!;
       let hull: HullSize | null = null;
+      let style: string = raceShipStyle(owner.raceId);
       for (const s of f.ships) {
-        const h = findDesign(owner, s.designId)?.hull;
-        if (h && (!hull || HULL_ORDER.indexOf(h) > HULL_ORDER.indexOf(hull))) hull = h;
+        const d = findDesign(owner, s.designId);
+        const h = d?.hull;
+        if (h && (!hull || HULL_ORDER.indexOf(h) > HULL_ORDER.indexOf(hull))) {
+          hull = h;
+          style = designStyle(owner, d);
+        }
       }
       return {
         id: f.id,
         name: f.ownerId === view.viewer ? f.name : owner.name,
         color: owner.color,
+        style,
         mine: f.ownerId === view.viewer,
         kind: owner.kind,
         ships: f.ships.reduce((n, s) => n + s.count, 0),

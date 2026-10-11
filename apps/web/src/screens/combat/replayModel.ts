@@ -1,4 +1,5 @@
 import {
+  designStyle, findDesign, raceShipStyle,
   HULLS, MONSTER_DESIGNS, WEAPONS_BY_ID,
   type CombatReport, type CombatShipSnapshot, type HullSize, type PlanetType, type PlayerView,
 } from "@starlord/sim";
@@ -50,6 +51,8 @@ export interface UnitInfo {
   kind: UnitKind;
   /** Hull class for ships; monsters get one from their size too. */
   hull: HullSize;
+  /** Ship style for the model family. */
+  style: string;
   station: StationTier | null;
   /** 0 for the smallest frigate up to 1 for the biggest station. */
   size: number;
@@ -100,6 +103,12 @@ function stationTier(s: UnitSnapshot): StationTier | null {
   }
   if (typeof s.sizeClass === "number" && s.sizeClass >= 8) return STATION_TIERS[Math.min(2, s.sizeClass - 8)]!;
   return null;
+}
+
+/** Style of a ship's design when the viewer can see it, else the owner's race style. */
+function designStyleOf(owner: PlayerView["players"][number], designId: string): string {
+  const d = findDesign(owner, designId);
+  return d ? designStyle(owner, d) : raceShipStyle(owner.raceId);
 }
 
 /** The hull the report states outright, if it does. */
@@ -164,6 +173,7 @@ export function unitInfo(report: CombatReport, view: PlayerView): UnitInfo[] {
       : kind === "planet" ? 1 : HULL_ORDER.indexOf(hull) / (HULL_ORDER.length - 1) * 0.8;
     return {
       snap, kind, hull, station: tier, size, side,
+      style: snap.shipStyle ?? (owner ? designStyleOf(owner, snap.designId) : "standard"),
       planetType: kind === "planet" ? planetTypeOf(snap, report, view) : null,
     };
   });

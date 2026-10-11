@@ -21,6 +21,7 @@ import {
 } from "./designs.js";
 import { empireBonus, knows } from "./empire.js";
 import { getRace } from "./data/races.js";
+import { designStyle } from "./data/shipStyles.js";
 import {
   raceCombatRepair, raceCombatSpeedBonus, raceGroundBonus, shipAttackPickBonus, shipDefensePickBonus,
 } from "./raceEffects.js";
@@ -145,6 +146,7 @@ interface Unit {
   name: string;
   kind: UnitKind;
   hullId?: string;
+  shipStyle?: string;
   sizeClass: number;
   x: number;
   y: number;
@@ -355,6 +357,7 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
           name: design.name,
           kind: fortress ? "station" : monster ? "monster" : "ship",
           hullId: fortress ? "starFortress" : monster ? undefined : design.hull,
+          shipStyle: fortress || monster ? undefined : designStyle(player, design),
           sizeClass: s.sizeClass,
           x: DEPLOY_COLUMNS[sideIdx] + (sideIdx === 0 ? -1 : 1) * (row % 3) * 1.5,
           y: FIELD_HEIGHT / 2 + (((Math.floor(row / 3) % 9) + 1) >> 1) * 3 * ((Math.floor(row / 3) % 2) * 2 - 1),
@@ -616,6 +619,7 @@ class Battle {
     const snapshots: CombatShipSnapshot[] = units.map((u) => ({
       key: u.key, ownerId: u.ownerId, designId: u.designId, name: u.name, maxHits: u.maxArmor + u.maxStructure,
       x: u.x, y: u.y, isPlanet: u.kind === "planet", kind: u.kind, hullId: u.hullId, sizeClass: u.sizeClass,
+      ...(u.shipStyle ? { shipStyle: u.shipStyle } : {}),
       maxArmor: u.maxArmor, maxStructure: u.maxStructure, maxShield: u.shieldMax,
       ...(u.kind === "ship" && u.armor + u.structure < u.maxArmor + u.maxStructure ? { armor: u.armor, structure: u.structure } : {}),
     }));

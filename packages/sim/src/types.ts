@@ -216,6 +216,8 @@ export interface ShipDesign {
   fixed?: FixedStats;
   /** Owner of the ship this design was copied from when boarders took it; scrapping one can teach its technology. */
   capturedFrom?: PlayerId;
+  /** Look of the ship (a ship style id); unset means the owner's race style. Purely visual. */
+  style?: string;
 }
 
 export interface FixedStats {
@@ -461,6 +463,8 @@ export interface CombatShipSnapshot {
   hullId?: string;
   /** MoO2 size class (frigate 1 … doom star 7, stations 8-10); scales the model. */
   sizeClass?: number;
+  /** Ship style of a ship's design, for picking its model family. */
+  shipStyle?: string;
   /** Damage layers, when the combat model tracks them separately. maxHits is their sum. */
   maxArmor?: number;
   maxStructure?: number;

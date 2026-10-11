@@ -25,6 +25,7 @@ export * from "./score.js";
 export * from "./hash.js";
 export * from "./data/planets.js";
 export * from "./data/races.js";
+export * from "./data/shipStyles.js";
 export * from "./data/buildings.js";
 export * from "./data/components.js";
 export * from "./data/monsters.js";
