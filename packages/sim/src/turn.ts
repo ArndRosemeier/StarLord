@@ -13,7 +13,7 @@ import { councilTick } from "./council.js";
 import { designStats, findDesign } from "./designs.js";
 import { SCOUT_LAB_RESEARCH, hullIndex } from "./data/components.js";
 import {
-  acceptProposal, breakTreaty, declareWar, diplomacyTick, giveGift, isHostile, rejectProposal, surrenderEmpire, treatyIncome,
+  acceptProposal, breakTreaty, declareWar, diplomacyTick, giveGift, isHostile, proposalId, rejectProposal, surrenderEmpire, treatyIncome,
 } from "./diplomacy.js";
 import { COMMAND_OVERAGE_COST, commandPointsAvailable, commandPointsUsed, fleetSpeed, grantTech } from "./empire.js";
 import {
@@ -58,11 +58,12 @@ export function processTurn(prev: GameState, orders: TurnOrders): GameState {
   const ctx: TurnContext = { state, rng, emit: (e) => state.events.push({ turn: state.turn, ...e }) };
 
   // Rotate who acts first each turn so no seat always wins same-turn contests.
+  // Answers to proposals come after everything else, so an empire can answer
+  // in the same turn a proposal put to it in an audience.
   const n = state.players.length;
-  for (let i = 0; i < n; i++) {
-    const player = state.players[(state.turn + i) % n]!;
-    for (const cmd of orders[player.id] ?? []) applyCommand(ctx, player.id, cmd);
-  }
+  const seats = Array.from({ length: n }, (_, i) => state.players[(state.turn + i) % n]!.id);
+  for (const id of seats) for (const cmd of orders[id] ?? []) if (cmd.type !== "respond") applyCommand(ctx, id, cmd);
+  for (const id of seats) for (const cmd of orders[id] ?? []) if (cmd.type === "respond") applyCommand(ctx, id, cmd);
 
   // Ships that spent the last turn at one of their own systems leave it repaired.
   repairTick(state);
@@ -130,8 +131,13 @@ export function previewOrders(prev: GameState, playerId: PlayerId, cmds: Command
       if (e.kind === "commandRejected") rejected.push(e.reason);
     },
   };
-  for (const cmd of cmds) applyCommand(ctx, playerId, cmd);
+  for (const cmd of answersLast(cmds)) applyCommand(ctx, playerId, cmd);
   return { state, rejected };
+}
+
+/** Orders with answers to proposals moved to the end, as the turn applies them. */
+function answersLast(cmds: Command[]): Command[] {
+  return [...cmds.filter((c) => c.type !== "respond"), ...cmds.filter((c) => c.type === "respond")];
 }
 
 /** Validates and applies a single command. Invalid commands are reported, not thrown. */
@@ -259,7 +265,7 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       player.doctrine = { ...cmd.doctrine };
       break;
     case "propose":
-      state.proposals.push({ id: newId(state, "d"), from: playerId, to: cmd.to, kind: cmd.kind, turn: state.turn, ...termsOf(cmd) });
+      state.proposals.push({ id: proposalId(state.turn, playerId, cmd.to, cmd.kind), from: playerId, to: cmd.to, kind: cmd.kind, turn: state.turn, ...termsOf(cmd) });
       break;
     case "respond": {
       const p = state.proposals.find((x) => x.id === cmd.proposalId)!;

@@ -170,6 +170,15 @@ export function canSign(state: GameState, from: PlayerId, to: PlayerId, kind: Pr
   }
 }
 
+/**
+ * A proposal's id follows from who made it, to whom, what and when (an empire
+ * can only have one proposal of a kind open with another), so the other side
+ * can answer it in the same turn it is made.
+ */
+export function proposalId(turn: number, from: PlayerId, to: PlayerId, kind: ProposalKind): Id {
+  return `d${turn}.${from}.${to}.${kind}`;
+}
+
 /** Proposals already put to the same emperor this turn; leaders tire after a few. */
 export function audienceItems(state: GameState, from: PlayerId, to: PlayerId): number {
   return state.proposals.filter((p) => p.from === from && p.to === to && p.turn === state.turn).length;
@@ -441,7 +450,7 @@ function bordersTouch(state: GameState, a: PlayerId, b: PlayerId): boolean {
 /** Once per turn: make contact, drift attitudes, pay tribute, expire old proposals. */
 export function diplomacyTick(state: GameState, emit?: Emit): void {
   const list = empires(state).filter((p) => p.alive);
-  updateContacts(state);
+  updateContacts(state, emit);
   for (const a of list) {
     for (const b of list) {
       if (a.id === b.id || !a.contacts.includes(b.id)) continue;
@@ -475,7 +484,7 @@ function payTributes(state: GameState, emit?: Emit): void {
  * colonies lie within the other's fuel range of its own), or when their
  * scanners see each other's ships.
  */
-export function updateContacts(state: GameState): void {
+export function updateContacts(state: GameState, emit?: Emit): void {
   const list = empires(state).filter((p) => p.alive);
   const colonyStars = new Map<PlayerId, { x: number; y: number }[]>();
   const eyes = new Map<PlayerId, { x: number; y: number }[]>();
@@ -491,7 +500,10 @@ export function updateContacts(state: GameState): void {
   }
   const meet = (a: PlayerId, b: PlayerId) => {
     state.players[a]!.contacts.push(b);
-    if (!state.players[b]!.contacts.includes(a)) state.players[b]!.contacts.push(a);
+    emit?.({ kind: "diplomacy", playerId: a, other: b, what: "made contact with you" });
+    if (state.players[b]!.contacts.includes(a)) return;
+    state.players[b]!.contacts.push(a);
+    emit?.({ kind: "diplomacy", playerId: b, other: a, what: "made contact with you" });
   };
   for (const a of list) {
     const reach = Math.max(fleetRange(a), scanRange(a) + 1);

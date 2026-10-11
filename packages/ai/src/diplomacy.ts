@@ -43,6 +43,31 @@ function acceptDemand(view: PlayerView, p: Proposal, feel: number, myPower: numb
 }
 
 /**
+ * Whether the viewer accepts a proposal put to it, on the next turn or at
+ * once in an audience.
+ */
+export function answerProposal(view: PlayerView, p: Proposal): boolean {
+  const peaceful = strategyOf(view, "diplomacy") === "peaceful";
+  // A peaceful empire takes treaties it would otherwise turn down.
+  const warmth = peaceful ? 15 : 0;
+  const myPower = myFleets(view).reduce((s, f) => s + fleetStrength(view, f), 0);
+  // Xeno Psychology, telepathy, charisma and Diplomat leaders make every deal the proposer offers more appealing.
+  const proposer = view.players[p.from]!;
+  const feel = attitude(view, view.viewer, p.from) + empireBonus(proposer).diplomacy + (proposer.diplomacyBonus ?? 0) + warmth;
+  const r = relation(view, view.viewer, p.from);
+  let accept = false;
+  if (p.kind === "peace" || p.kind === "ceasefire") {
+    const theirPower = militaryPower(view, p.from);
+    accept = peaceful ? view.turn - r.since > 5 : view.turn - r.since > 15 && (feel > -50 || theirPower > myPower);
+  } else if (p.kind === "trade" || p.kind === "research") accept = feel > -15;
+  else if (p.kind === "nonAggression") accept = feel > 0;
+  else if (p.kind === "alliance") accept = feel > 40;
+  else if (p.kind === "techExchange") accept = feel > -10 && techValue(p.wantTechId) <= techValue(p.techId) * 1.25;
+  else if (isDemand(p.kind)) accept = acceptDemand(view, p, feel, myPower);
+  return accept && !canSign(view, p.from, p.to, p.kind, p);
+}
+
+/**
  * Answers proposals and demands, offers treaties and tech swaps to friendly
  * neighbors, leans on weak ones for tribute, sues for peace when a war drags
  * on, declares war on disliked weaker neighbors when its personality is
@@ -57,27 +82,11 @@ export function diplomacyOrders(view: PlayerView): Command[] {
   const peaceful = strategy === "peaceful";
   const base = personality(view);
   const pers = strategy === "aggressive" ? { ...base, aggression: Math.max(base.aggression, 0.9) } : base;
-  // A peaceful empire takes treaties it would otherwise turn down.
-  const warmth = peaceful ? 15 : 0;
   const myPower = myFleets(view).reduce((s, f) => s + fleetStrength(view, f), 0);
   const myPop = empireTotals(view, view.viewer).population;
 
   for (const p of view.proposals.filter((x) => x.to === view.viewer)) {
-    // Xeno Psychology, telepathy, charisma and Diplomat leaders make every deal the proposer offers more appealing.
-    const proposer = view.players[p.from]!;
-    const feel = attitude(view, view.viewer, p.from) + empireBonus(proposer).diplomacy + (proposer.diplomacyBonus ?? 0) + warmth;
-    const r = relation(view, view.viewer, p.from);
-    let accept = false;
-    if (p.kind === "peace" || p.kind === "ceasefire") {
-      const theirPower = militaryPower(view, p.from);
-      accept = peaceful ? view.turn - r.since > 5 : view.turn - r.since > 15 && (feel > -50 || theirPower > myPower);
-    } else if (p.kind === "trade" || p.kind === "research") accept = feel > -15;
-    else if (p.kind === "nonAggression") accept = feel > 0;
-    else if (p.kind === "alliance") accept = feel > 40;
-    else if (p.kind === "techExchange") accept = feel > -10 && techValue(p.wantTechId) <= techValue(p.techId) * 1.25;
-    else if (isDemand(p.kind)) accept = acceptDemand(view, p, feel, myPower);
-    if (accept && canSign(view, p.from, p.to, p.kind, p)) accept = false;
-    out.push({ type: "respond", proposalId: p.id, accept });
+    out.push({ type: "respond", proposalId: p.id, accept: answerProposal(view, p) });
   }
 
   // A monster demanding tribute leaves if paid; pay when we can afford it.

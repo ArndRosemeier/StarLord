@@ -11,6 +11,7 @@ import { ResearchScreen } from "./ResearchScreen";
 import { DesignScreen } from "./DesignScreen";
 import { FleetsScreen } from "./FleetsScreen";
 import { DiplomacyScreen } from "./DiplomacyScreen";
+import { Audience, type AudienceRequest } from "./Audience";
 import { EspionageScreen } from "./EspionageScreen";
 import { LeadersScreen } from "./LeadersScreen";
 import { EmpireScreen } from "./EmpireScreen";
@@ -66,6 +67,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [colonyFocus, setColonyFocus] = useState<string | null>(null);
   const [researchWarning, setResearchWarning] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
+  /** Audiences waiting to be held, the current one first. */
+  const [audiences, setAudiences] = useState<AudienceRequest[]>([]);
   const debug = !!view.settings.debug && !readOnly;
   const lastTurn = useRef(view.turn);
 
@@ -102,6 +105,19 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     if (autoplay) return;
     audio.play("turn");
     if (session.lastTurnEvents(me.id).some((e) => ALERT_EVENTS.has(e.kind))) setTimeout(() => audio.play("alert"), 700);
+  }, [view.turn]);
+
+  // Other empires ask for an audience when they first meet us, declare war or bring a proposal.
+  useEffect(() => {
+    if (readOnly || autoplay || view.over) return;
+    const news = session.lastTurnEvents(me.id).flatMap((e) => (e.kind === "diplomacy" ? [e] : []));
+    const met = news.filter((e) => e.what === "made contact with you").map((e) => ({ themId: e.other, opening: { kind: "contact" as const } }));
+    const wars = news.filter((e) => e.what === "declared war on you").map((e) => ({ themId: e.other, opening: { kind: "war" as const } }));
+    const offers = me.automation.includes("diplomacy") ? [] : view.proposals
+      .filter((p) => p.to === me.id && p.turn === view.turn - 1 && view.players[p.from]?.kind === "empire")
+      .map((p) => ({ themId: p.from, opening: { kind: "proposal" as const, proposal: p } }));
+    const queue: AudienceRequest[] = [...met, ...wars, ...offers].filter((a) => view.players[a.themId]?.alive);
+    setAudiences(queue);
   }, [view.turn]);
 
   useEffect(() => {
@@ -208,7 +224,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
               {tab === "research" && <ResearchScreen />}
               {tab === "designs" && <DesignScreen />}
               {tab === "fleets" && <FleetsScreen onShowStar={showStar} />}
-              {tab === "diplomacy" && <DiplomacyScreen />}
+              {tab === "diplomacy" && <DiplomacyScreen onAudience={(r) => setAudiences((q) => [r, ...q])} />}
               {tab === "espionage" && <EspionageScreen />}
               {tab === "leaders" && <LeadersScreen />}
               {tab === "empire" && <EmpireScreen />}
@@ -230,6 +246,10 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
             </div>
           </div>
         </div>
+      )}
+      {audiences[0] && !(view.over && !overSeen) && (
+        <Audience key={`${view.turn}:${audiences.length}:${audiences[0].themId}:${audiences[0].opening.kind}`} request={audiences[0]}
+          onClose={() => setAudiences((q) => q.slice(1))} />
       )}
       {debug && debugOpen && <DebugMenu onClose={() => setDebugOpen(false)} />}
       <TurnBanner turn={view.turn} quiet={autoplay} />

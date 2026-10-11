@@ -86,3 +86,4 @@ export function automationOrders(view: PlayerView): Command[] {
 export { STRATEGIES, strategyOf, type AutomationDomain, type StrategyInfo } from "./strategies.js";
 export { colonizationTargets, outpostTargets } from "./colonization.js";
 export { bestWarship } from "./design.js";
+export { answerProposal } from "./diplomacy.js";
