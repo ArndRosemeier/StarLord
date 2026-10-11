@@ -235,6 +235,8 @@ export interface FixedStats {
   defense: number;
   /** Damage taken off every hit. */
   shield: number;
+  /** Strength of each shield facing (0: the shield class alone). */
+  shieldStrength?: number;
   /** Squares per combat turn. */
   combatSpeed: number;
   weapons: WeaponMount[];
@@ -647,6 +649,8 @@ export interface GameState {
   leaders: Record<Id, Leader>;
   council: CouncilState;
   raiders: RaidersState;
+  /** The empire that slew Orion's guardian. */
+  guardianSlainBy?: PlayerId;
   /** Nebula clouds drawn on the map; stars inside carry `nebula`. */
   nebulae?: Nebula[];
   tributes?: Tribute[];

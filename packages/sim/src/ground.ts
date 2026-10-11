@@ -81,7 +81,7 @@ export function troopUnit(
   const race = getRace(raceId);
   // Race picks, low-G and subterranean come from the race module; Commando leaders fight where they serve.
   let rating = TROOPS[kind].rating + BASE_EQUIPMENT + RATING_PER_LEVEL * empireBonus(player).groundCombat + raceGroundBonus(race, defending);
-  if (starId) rating += commandoBonusAt(state, playerId, starId);
+  if (starId) rating += commandoBonusAt(state, playerId, starId, defending);
   // Computer players fight better on harder levels: -2 (tutor) to +2 (impossible).
   if (!player.isHuman && player.kind === "empire") rating += DIFFICULTY_ORDER.indexOf(state.settings.difficulty ?? "average") - 2;
   let hits: number = TROOPS[kind].hits;

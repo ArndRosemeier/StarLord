@@ -192,9 +192,12 @@ describe("original details", () => {
     expect(canBuildShips(c, transport)).toBe(true);
   });
 
-  it("serves warlike leaders one level higher", () => {
+  it("lets only warlike leaders reach level 6, at 1000 experience", () => {
     expect(levelFromXp(0, false)).toBe(1);
-    expect(levelFromXp(0, true)).toBe(2);
+    expect(levelFromXp(0, true)).toBe(1);
+    expect(levelFromXp(500, true)).toBe(5);
+    expect(levelFromXp(1000, false)).toBe(5);
+    expect(levelFromXp(1000, true)).toBe(6);
   });
 
   it("extends a fleet's range only when every ship carries fuel tanks", () => {

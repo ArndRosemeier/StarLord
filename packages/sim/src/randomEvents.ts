@@ -602,7 +602,8 @@ function invasion(ctx: TurnContext, p: Player, kind: keyof typeof ROAMING_MONSTE
   const { state, rng } = ctx;
   const owner = monstersId(state);
   if (owner === null) return false;
-  const list = coloniesOf(state, p.id, (c) => starOfColony(state, c) !== p.homeStarId);
+  // Any of the empire's colonies (not outposts), the homeworld included, as in the original.
+  const list = coloniesOf(state, p.id);
   if (list.length === 0) return false;
   const targetId = starOfColony(state, rng.pick(list));
   const target = state.galaxy.stars.find((s) => s.id === targetId)!;

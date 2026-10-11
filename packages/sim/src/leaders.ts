@@ -1,6 +1,6 @@
 import {
-  COMMANDO_ADMIN_WEIGHT, HEROES, HERO_SKILLS, LEADER_RULES, LEVEL_XP, MAX_LEVEL, WARLORD_MAX_LEVEL, heroLeaderId,
-  type HeroSkill,
+  COMMANDO_ADMIN_WEIGHT, COMMANDO_INVASION, HEROES, HERO_SKILLS, LEADER_RULES, LEVEL_XP, MAX_LEVEL, MEGAWEALTH_INCOME, WARLORD_MAX_LEVEL,
+  heroLeaderId, type HeroSkill,
 } from "./data/leaders.js";
 import { getRace, hasTrait } from "./data/races.js";
 import { TIER_OF_TECH } from "./data/techs.js";
@@ -26,15 +26,16 @@ export function parseAbility(s: string): LeaderAbility {
   return { skill: (improved ? s.slice(0, -1) : s) as HeroSkill, improved };
 }
 
-/** Level 1-5 from experience; warlike races' leaders serve one level higher, up to 6. */
+/** Level 1-5 from experience; only warlike races' leaders reach level 6, at 1000 experience. */
 export function levelFromXp(xp: number, warlord: boolean): number {
   let level = 1;
   for (let i = 1; i < LEVEL_XP.length; i++) if (xp >= LEVEL_XP[i]!) level = i + 1;
-  return Math.min(level + (warlord ? 1 : 0), warlord ? WARLORD_MAX_LEVEL : MAX_LEVEL);
+  return Math.min(level, warlord ? WARLORD_MAX_LEVEL : MAX_LEVEL);
 }
 
 /** What one ability is worth at a level. */
 export function abilityValue(a: LeaderAbility, level: number): number {
+  if (a.skill === "megawealth") return MEGAWEALTH_INCOME[a.improved ? 1 : 0];
   const def = HERO_SKILLS[a.skill];
   const steps = def.halfLevels ? Math.ceil(level / 2) : level;
   return Math.floor((steps * def.mult[a.improved ? 1 : 0]) / 10);
@@ -193,13 +194,27 @@ export function leaderStar(state: GameState, l: Leader): Id | null {
   return state.fleets[l.assignedTo]?.starId ?? null;
 }
 
-/** Ground combat points Commando leaders give an empire's troops at a star. */
-export function commandoBonusAt(state: GameState, playerId: PlayerId, starId: Id): number {
+/**
+ * Ground combat points Commando leaders give an empire's troops at a star.
+ * Defenders get the system administrator's Commando; troops landing from
+ * orbit get the best captain's at the star, at the larger invasion rate.
+ */
+export function commandoBonusAt(state: GameState, playerId: PlayerId, starId: Id, defending: boolean): number {
   let best = 0;
   for (const l of hiredLeaders(state, playerId)) {
-    if (leaderStar(state, l) === starId) best = Math.max(best, leaderSkill(l, "commando"));
+    if (!l.assignedTo || leaderStar(state, l) !== starId) continue;
+    const a = l.abilities.find((x) => x.skill === "commando");
+    if (!a) continue;
+    if (defending && l.kind === "administrator") best = Math.max(best, abilityValue(a, l.level));
+    if (!defending && l.kind === "captain") best = Math.max(best, invasionCommando(a, l.level));
   }
   return best;
+}
+
+/** A captain's Commando for troops landing from orbit. */
+export function invasionCommando(a: LeaderAbility, level: number): number {
+  const c = COMMANDO_INVASION;
+  return a.improved ? Math.floor((c.improvedPerLevel * level + c.improvedPlus) / c.improvedDivisor) : c.perLevel * level;
 }
 
 /** The administrator governing a star system for an empire, if any. */
@@ -305,7 +320,8 @@ export function offerChance(state: GameState, playerId: PlayerId): number {
 /** How far into the roster offers can reach this turn (heroes are ordered weakest first). */
 export function rosterReach(state: GameState, playerId: PlayerId): number {
   const race = getRace(state.players[playerId]!.raceId);
-  let reach = Math.floor(state.turn / LEADER_RULES.poolTurns) + LEADER_RULES.poolBase;
+  const empires = state.players.filter((p) => p.kind === "empire").length;
+  let reach = Math.floor(state.turn / LEADER_RULES.poolTurns) + LEADER_RULES.poolBase + empires;
   if (hasTrait(race, "charismatic")) reach += LEADER_RULES.charismaticPool;
   if (hasTrait(race, "repulsive")) reach = Math.floor(reach / LEADER_RULES.repulsivePoolDivisor);
   return Math.max(1, Math.min(HEROES.length, reach));
@@ -444,12 +460,13 @@ function joinEmpire(state: GameState, playerId: PlayerId, l: Leader, emit?: Emit
 }
 
 /** A hero who joins through a deed (the guardian's fall, beating raiders) rather than an offer. */
-export function heroJoins(state: GameState, playerId: PlayerId, special: "guardian" | "raiders", emit?: Emit): void {
+export function heroJoins(state: GameState, playerId: PlayerId, special: "guardian" | "raiders", emit?: Emit, post?: Id): void {
   const id = HEROES.findIndex((h) => h.special === special);
   const l = state.leaders[heroLeaderId(id)];
   if (!l || l.status !== "pool" || state.players[playerId]?.kind !== "empire") return;
   if (!hasRoomFor(state, playerId, l.kind)) return;
   joinEmpire(state, playerId, l, emit);
+  if (post) takePost(state, l, post);
 }
 
 /** Sends a leader to a post (or to the pool with null). Posts in another system take a few turns to reach. */

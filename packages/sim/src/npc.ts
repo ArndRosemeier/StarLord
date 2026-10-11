@@ -1,4 +1,4 @@
-import { GUARDIAN_RANDOM_XENON, LAIR_MONSTERS, LAIR_PLANET_UPGRADE, MONSTER_DESIGNS } from "./data/monsters.js";
+import { AVENGER_DESIGN, GUARDIAN_RANDOM_XENON, LAIR_MONSTERS, LAIR_PLANET_UPGRADE, MONSTER_DESIGNS } from "./data/monsters.js";
 import { LAIR_PLACEMENT_TRIES } from "./data/galaxy.js";
 import { gravityOf } from "./data/planets.js";
 import { TIER_OF_TECH, XENON_FIELD_TECHS, emptyHyperLevels } from "./data/techs.js";
@@ -32,7 +32,7 @@ export function npcPlayer(id: number, kind: "monsters" | "raiders"): Player {
     explored: [],
     contacts: [],
     homeStarId: "",
-    designs: kind === "monsters" ? MONSTER_DESIGNS : [],
+    designs: kind === "monsters" ? structuredClone(MONSTER_DESIGNS) : [],
     spies: { home: 0, abroad: {} },
     leaderOffers: [],
     councilVote: "abstain",
@@ -113,15 +113,24 @@ function upgradeLairPlanet(state: GameState, rng: Rng, star: Star, designId: str
   state.planets[p.id] = p;
 }
 
+/** Games saved before the monsters got their original stats take the current designs. */
+export function refreshMonsterDesigns(state: GameState): void {
+  const monsters = state.players.find((p) => p.kind === "monsters");
+  if (!monsters || MONSTER_DESIGNS.every((d) => monsters.designs.some((x) => x.id === d.id && x.fixed?.crew === 0))) return;
+  monsters.designs = structuredClone(MONSTER_DESIGNS);
+}
+
 /**
- * Rewards for clearing monster lairs. Orion's guardian guards Loknar's ship:
- * the victor learns the Death Ray plus up to three other xenon technologies
- * it lacks, and the last of the elders joins if a captain's post is free.
+ * Rewards for slaying Orion's guardian, as in the original: the victor gets
+ * the elders' ship it guarded (the Avenger, with the last of the elders as its
+ * captain if a captain's post is free), learns the Death Ray plus up to three
+ * other xenon technologies it lacks, and scores a bonus.
  */
 export function guardianSlain(ctx: TurnContext, killer: number, starId: string): void {
   const star = ctx.state.galaxy.stars.find((s) => s.id === starId);
-  if (star?.special !== "orion") return;
+  if (star?.special !== "orion" || ctx.state.guardianSlainBy !== undefined) return;
   const p = ctx.state.players[killer]!;
+  if (p.kind === "empire") ctx.state.guardianSlainBy = killer;
   const learn = (tech: string) => {
     if (grantTech(p, tech)) ctx.emit({ kind: "techLearned", playerId: killer, techId: tech, tierId: TIER_OF_TECH[tech]?.id ?? "xenon", source: "salvage" });
   };
@@ -130,7 +139,11 @@ export function guardianSlain(ctx: TurnContext, killer: number, starId: string):
   for (let i = 0; i < GUARDIAN_RANDOM_XENON && pool.length > 0; i++) {
     learn(pool.splice(ctx.rng.int(0, pool.length - 1), 1)[0]!);
   }
-  if (p.kind === "empire") heroJoins(ctx.state, killer, "guardian", ctx.emit);
+  if (p.kind !== "empire") return;
+  if (!p.designs.some((d) => d.id === AVENGER_DESIGN.id)) p.designs.push(structuredClone(AVENGER_DESIGN));
+  const fleet = spawn(ctx.state, killer, star, [{ designId: AVENGER_DESIGN.id, count: 1 }], AVENGER_DESIGN.name);
+  fleet.stance = "defend";
+  heroJoins(ctx.state, killer, "guardian", ctx.emit, fleet.id);
 }
 
 /** Every NPC weapon tech resolves to a tier or "never"; keep the helper close to its data. */

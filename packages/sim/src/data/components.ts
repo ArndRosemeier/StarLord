@@ -116,6 +116,8 @@ export interface WeaponDef {
   speed?: number;
   /** Maximum reach in squares for weapons that are not range-banded beams. */
   range?: number;
+  /** Damage a dissipating torpedo loses per square flown after the first (default: the Plasma Torpedo's). */
+  dissipation?: number;
   traits?: WeaponTrait[];
   /** Modifications this weapon may take. */
   mods: WeaponModId[];

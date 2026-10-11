@@ -6,7 +6,7 @@ import {
   BOARDING, DEPLOY, EXPLOSION, HULLS_BY_ID, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE, STATION_ARMS, ANTI_MISSILE, BOMBARD_ROUNDS,
   COMBAT_BOMB_RANGE, CRAFT, DAMAGE, PLANET_POPULATION_HP,
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES, EVENT_NUMBERS,
-  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING,
+  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, GUARDIAN_SCORE,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
   SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
   TRADE_GOODS_RATE, TRAIT_EFFECTS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, abilityValue, type HeroSkill, type HeroSkillGroup,
@@ -440,7 +440,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         levels. Each racial ground combat pick is worth ±
         {PICK_VALUES.groundCombatPerLevel}. <HelpLink to="trait:lowG" /> troops fight at −10,{" "}
         <HelpLink to="trait:subterranean" /> defenders at +10, <HelpLink to="trait:highG" /> troops take one more hit,
-        and a Commando leader in the system adds his skill. A captured colony keeps its buildings and its people, who
+        and Commando leaders add their skill: the system's colony leader for the defenders, and the best ship officer at
+        the star for troops landing from orbit, at {COMMANDO_INVASION.perLevel} per level ({COMMANDO_INVASION.improvedPerLevel / COMMANDO_INVASION.improvedDivisor} improved). A captured colony keeps its buildings and its people, who
         must be assimilated (see Colonies). It may also yield up to {CAPTURE_TECH.maxTechs} of the loser's techs: each
         building whose tech you lack gives it with a {CAPTURE_TECH.perBuilding.human / 10}% chance, then each colonist one
         of the loser's techs with a {CAPTURE_TECH.perColonist.human / 10}% chance, both divided by one more than the techs
@@ -552,7 +553,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>
         {HEROES.length} legendary leaders roam the galaxy. From turn {LEADER_RULES.firstOfferTurn} one may offer their
         services on the <b>Leaders</b> screen; the longer since the last offer the likelier the next, and the more leaders
-        you already have the rarer. Stronger leaders appear as the game goes on. An offer you don't take stays open for
+        you already have the rarer. Stronger leaders appear as the game goes on, sooner in games with more empires. An offer you don't take stays open for
         {" "}{LEADER_RULES.queueTurns} turns. You can employ up to {MAX_LEADERS}, at most {LEADER_RULES.maxPerKind} of each kind.
       </P>
       <P>
@@ -579,6 +580,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
           </Ul>
         </div>
       ))}
+      <P>
+        In battle the best ship officer on each side counts for each combat skill, and helps every ship, station and planet
+        of that side, as long as the officer's own fleet still has a ship in the fight.
+      </P>
       <P>Only one leader can hold each post. A leader whose post is lost waits at home for a new one.</P>
     </>
   ),
@@ -633,7 +638,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><b>Conquest</b>: be the last empire standing. An empire is out when it has no colonies and no colony ships.</li>
         <li><b>Council</b>: be elected by the <HelpLink to="guide:council">galactic council</HelpLink>.</li>
         <li><b>Raiders</b>: build a Dimensional Portal and send a fleet from that system to destroy the raiders' home fleet and citadel. Every other empire then capitulates (<HelpLink to="page:monsters" />).</li>
-        <li><b>Score</b>: only in games started with a turn limit (off by default; the original has none): when it is reached, the highest score wins. Score counts population, colonies, outposts, techs, industry, research and ships.</li>
+        <li><b>Score</b>: only in games started with a turn limit (off by default; the original has none): when it is reached, the highest score wins. Score counts population, colonies, outposts, techs, industry, research and ships, plus {GUARDIAN_SCORE} for slaying the guardian of Orion.</li>
       </Ul>
       <P>
         Galaxy sizes: {(Object.keys(STAR_COUNTS) as (keyof typeof STAR_COUNTS)[]).map((k) => `${k} ${STAR_COUNTS[k]} stars on ${Math.round(mapSize(k).width)} × ${Math.round(mapSize(k).height)} parsecs`).join(", ")}. Monsters, raiders,

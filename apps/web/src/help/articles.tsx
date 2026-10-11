@@ -3,7 +3,7 @@ import {
   CREW, DEFENSE_CREW_LEVEL, SIDE_ATTACK_BY_IMMOBILE_SIZE, hullIndex,
   ALL_WEAPONS, ARMORS, ARMORS_BY_ID, BUILDINGS, BUILDINGS_BY_ID, CLIMATES, COMPUTERS, COMPUTERS_BY_ID, CUSTOM_RACE_POINTS,
   DRIVES, EXCLUSIVE_TRAITS, FIELD_NAMES, FUEL_RANGES, GOVERNMENTS, GOVERNMENT_COSTS, HULLS, HULLS_BY_ID, INDUSTRY_PER_WORKER,
-  LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
+  AVENGER_DESIGN, GUARDIAN_SCORE, LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
   PLANETS_PER_STAR_D10, PLANET_SIZE_WEIGHTS, PROJECTS, PROJECTS_BY_ID, PROJECT_COSTS, RACES, RACES_BY_ID,
   RAIDER_CITADEL, RAIDER_CITADEL_ID, RAIDER_DESIGNS, RAIDER_HULLS, RAIDER_SHIP_NAMES, RAID_BUDGET_MULT, RAID_BUDGET_PERIOD, RAID_DESTROYER_WINDOW, RAID_FLEET_CAP,
   RAID_FRIGATE_WINDOW, RAID_GRACE_TURNS, RAID_HOME_MIN_TITANS, RAID_HOME_QUOTA, RAID_HUMAN_POP_MULT, RAID_LAUNCH_ROLL, RAID_LAUNCH_VALUE_MULT, RAID_MAX_SHIPS,
@@ -991,12 +991,16 @@ function MonstersPage() {
   return (
     <div className="col">
       <p>
-        Space monsters guard rich systems and attack any ship that enters; they never leave their lair. Each system
+        Space monsters guard rich systems and attack any ship that enters (except the ion eel, which only fights back);
+        they never leave their lair. While another empire is there too, monsters and raiders leave{" "}
+        <HelpLink to="trait:lucky" /> empires alone. The ones that invade from beyond the rim (random events) are bigger
+        kinds of the same monsters. Monsters have no armor, beam attack from their computer and beam defense of 5 per
+        square of combat speed, and cannot be boarded. Each system
         with planets has a {pct(LAIR_CHANCE.average)} chance of a lair ({pct(LAIR_CHANCE.hard)} on Hard,{" "}
         {pct(LAIR_CHANCE.impossible)} on Impossible), at most {MAX_LAIRS} in a galaxy, never at a homeworld. The guard is
         one of {LAIR_MONSTERS.map((id) => MONSTER_DESIGNS.find((d) => d.id === id)?.name ?? id).join(", ")}, at random. Its
         lair holds a medium or bigger, rich or ultra rich planet, and keeps whatever special the system already had.
-        The guardian holds Orion, near the middle of the map, the best system in the galaxy; whoever destroys it salvages the <HelpLink to="weapon:deathRay" /> and up to three more random xenon technologies, and the last of the elders joins them if a captain's post is free.
+        The guardian holds Orion, near the middle of the map, the best system in the galaxy; whoever destroys it gets the {AVENGER_DESIGN.name}, the battleship it guarded, salvages the <HelpLink to="weapon:deathRay" /> and up to three more random xenon technologies, scores {GUARDIAN_SCORE}, and the last of the elders takes command of the {AVENGER_DESIGN.name} if a captain's post is free.
       </p>
       <table className="help-table">{monsterHead}<tbody>{MONSTER_DESIGNS.map((d) => <MonsterRow key={d.id} d={d} />)}</tbody></table>
       <h3>Raiders</h3>

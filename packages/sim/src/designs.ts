@@ -199,7 +199,7 @@ export function designStats(player: Player, design: ShipDesign): DesignStats {
     const fx = design.specials.length > 0 ? mergeEffects(design.specials) : noEffects();
     const stats: DesignStats = {
       spaceUsed: 0, spaceTotal: 0, cost: 0, armor: f.armor ?? 0, structure: f.hits, hits: f.hits + (f.armor ?? 0),
-      shield: f.shield, shieldStrength: 0, attack: f.attack + fx.beamAttack, defense: f.defense + fx.beamDefense, combatSpeed: f.combatSpeed,
+      shield: f.shield, shieldStrength: f.shieldStrength ?? 0, attack: f.attack + fx.beamAttack, defense: f.defense + fx.beamDefense, combatSpeed: f.combatSpeed,
       missileEvasion: (f.missileEvasion ?? 0) + fx.missileEvasion, weapons: f.weapons, marines: 0, troops: 0, sizeClass: f.sizeClass ?? 5,
       driveHP: 0, computerHP: 0, shieldGenHP: 0, effects: fx, role: "warship", strength: 0,
     };
