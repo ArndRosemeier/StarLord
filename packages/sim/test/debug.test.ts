@@ -39,6 +39,8 @@ describe("debug menu commands", () => {
   it("finish builds and research at the end of the turn", () => {
     const s = game();
     const c = home(s);
+    // An average start has every building its six fields allow; learn one more to build.
+    s.players[0]!.techs.push("hydroponicFarm");
     const tier = TECH_TIERS.find((t) => !s.players[0]!.tiers.includes(t.id) && t.prev && s.players[0]!.tiers.includes(t.prev))!;
     const before = c.buildings.length;
     const next = processTurn(s, {

@@ -3,14 +3,14 @@ import {
   ALL_WEAPONS, ARMORS, ARMORS_BY_ID, BUILDINGS, BUILDINGS_BY_ID, CLIMATES, COMPUTERS, COMPUTERS_BY_ID, CUSTOM_RACE_POINTS,
   DRIVES, EXCLUSIVE_TRAITS, FIELD_NAMES, FUEL_RANGES, GOVERNMENTS, GOVERNMENT_COSTS, HULLS, HULLS_BY_ID, INDUSTRY_PER_WORKER,
   LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
-  PLANETS_PER_STAR, PLANET_SIZE_WEIGHTS, PLANET_TYPE_WEIGHTS, PROJECTS, PROJECTS_BY_ID, PROJECT_COSTS, RACES, RACES_BY_ID,
+  PLANETS_PER_STAR_D10, PLANET_SIZE_WEIGHTS, PROJECTS, PROJECTS_BY_ID, PROJECT_COSTS, RACES, RACES_BY_ID,
   RAIDER_CITADEL, RAIDER_CITADEL_ID, RAIDER_DESIGNS, RAIDER_HULLS, RAIDER_SHIP_NAMES, RAID_BUDGET_MULT, RAID_BUDGET_PERIOD, RAID_DESTROYER_WINDOW, RAID_FLEET_CAP,
   RAID_FRIGATE_WINDOW, RAID_GRACE_TURNS, RAID_HOME_MIN_TITANS, RAID_HOME_QUOTA, RAID_HUMAN_POP_MULT, RAID_LAUNCH_ROLL, RAID_LAUNCH_VALUE_MULT, RAID_MAX_SHIPS,
   RAID_TITAN_DISCOUNT, RAIDER_HULL_COST, BOMB_DAMAGE_PER_HIT, crewName, type Difficulty, type WeaponMount, SCRAP_TECH_CHANCE, SHIELDS, SHIELDS_BY_ID, POLLUTION_TOLERANCE, SIZE_FACTOR, SIZE_POP_BASE, SPECIALS, SPECIALS_BY_ID, climatePopulation,
-  RESEARCH, STARTING_TECH_APPS, STARTING_TIERS, STAR_COLOR_WEIGHTS, TECHS, TECH_FIELDS, TECH_TIERS, TERRAFORM_STEP,
+  RESEARCH, STARTING_TECH_APPS, STARTING_TIERS, STAR_COLORS_BY_AGE, LAIR_CHANCE, MAX_LAIRS, SPECIAL_CHANCE, BLACK_HOLE_CLEARANCE, TECHS, TECH_FIELDS, TECH_TIERS, TERRAFORM_STEP,
   TIERS_BY_ID, TRAIT_COSTS, WEAPONS, WEAPONS_BY_ID, nextTier, previousTier, ARCS, MISSILE_RACKS, STATION_HULLS,
   WEAPON_MODS, WEAPON_MODS_BY_ID, SHIELD_SPACE_BY_HULL, SHIELD_COST_BY_HULL, COMPUTER_COST_BY_HULL,
-  cumulativeTierCost, fleetRange, fleetSpeed, gravityMultiplier, gravityOf, citadelDesign, techHasEffect,
+  bodyMix, meanPlanets, cumulativeTierCost, fleetRange, fleetSpeed, gravityMultiplier, gravityOf, citadelDesign, techHasEffect,
   techInfo, techUnlocks, type GovernmentDef, type Minerals, type NumericPick, type PlanetSize, type PlanetType, type Player,
   type RaceDef, type RaceTrait, type ShipDesign, type StarColor, type TechTier, type Unlock, type WeaponDef,
 } from "@starlord/sim";
@@ -676,7 +676,9 @@ function DrivesPage() {
 
 const SIZES = Object.keys(SIZE_FACTOR) as PlanetSize[];
 const MINERALS = Object.keys(INDUSTRY_PER_WORKER) as Minerals[];
-const STARS = Object.keys(STAR_COLOR_WEIGHTS) as StarColor[];
+const STARS = Object.keys(STAR_COLORS_BY_AGE.average) as StarColor[];
+/** Climates that still exist only in old saves; new galaxies never have them. */
+const RETIRED_CLIMATES: PlanetType[] = ["inferno"];
 const share = (weights: Partial<Record<string, number>>, key: string) => {
   const total = Object.values(weights).reduce((s: number, v) => s + (v ?? 0), 0);
   return total > 0 ? (weights[key] ?? 0) / total : 0;
@@ -694,7 +696,7 @@ function PlanetsPage() {
       <table className="help-table">
         <thead><tr><th>Type</th><th>Climate %</th><th>Food per farmer</th><th>Max pop tiny → huge</th><th>Notes</th></tr></thead>
         <tbody>
-          {(Object.keys(CLIMATES) as PlanetType[]).map((t) => {
+          {(Object.keys(CLIMATES) as PlanetType[]).filter((t) => !RETIRED_CLIMATES.includes(t)).map((t) => {
             const c = CLIMATES[t];
             return (
               <tr key={t}>
@@ -731,9 +733,9 @@ function ClimatePage({ type }: { type: PlanetType }) {
       <h3>Where it is found</h3>
       <table className="help-table">
         <thead><tr>{STARS.map((s) => <th key={s}>{words(s)}</th>)}</tr></thead>
-        <tbody><tr>{STARS.map((s) => <td key={s}>{pct(share(PLANET_TYPE_WEIGHTS[s], type))}</td>)}</tr></tbody>
+        <tbody><tr>{STARS.map((s) => <td key={s}>{pct(bodyMix(s)[type] ?? 0)}</td>)}</tr></tbody>
       </table>
-      <small className="muted">Share of planets around each star color.</small>
+      <small className="muted">Share of planets, asteroid belts and gas giants around each star color in an average galaxy.</small>
     </div>
   );
 }
@@ -757,7 +759,7 @@ function PlanetTraitsPage() {
         <tbody>{MINERALS.map((m) => <tr key={m}><td>{words(m)}</td><td>{INDUSTRY_PER_WORKER[m]}</td></tr>)}</tbody>
       </table>
       <h3>Gravity</h3>
-      <p>Gravity follows from size and minerals. Living away from your home gravity cuts food, industry and research. A <HelpLink to="building:gravityGenerator" /> removes the penalty.</p>
+      <p>Gravity follows from size and minerals: rich worlds are dense, small poor ones light. Living away from your home gravity cuts food, industry and research. A <HelpLink to="building:gravityGenerator" /> removes the penalty.</p>
       <table className="help-table">
         <thead><tr><th>Size</th>{MINERALS.map((m) => <th key={m}>{words(m)}</th>)}</tr></thead>
         <tbody>{SIZES.map((s) => <tr key={s}><td>{words(s)}</td>{MINERALS.map((m) => <td key={m}>{gravityOf(s, m)}</td>)}</tr>)}</tbody>
@@ -778,20 +780,30 @@ function PlanetTraitsPage() {
 }
 
 function StarsPage() {
-  const total = Object.values(STAR_COLOR_WEIGHTS).reduce((s, v) => s + v, 0);
+  const ages = Object.keys(STAR_COLORS_BY_AGE) as (keyof typeof STAR_COLORS_BY_AGE)[];
+  const freq = (age: (typeof ages)[number], s: StarColor) => share(STAR_COLORS_BY_AGE[age], s);
   return (
     <div className="col">
-      <p>Star color shapes what orbits it: hot stars skew toward hostile worlds and rich minerals, yellow and orange stars toward temperate ones. Black holes have no planets.</p>
+      <p>
+        Star color shapes what orbits it: hot stars skew toward hostile worlds and rich minerals, yellow and orange
+        stars have the most planets and the most temperate ones. Inner orbits are scorched, outer ones frozen. Black
+        holes have no planets and stand at least {BLACK_HOLE_CLEARANCE} parsecs from any other star.
+        About {pct(SPECIAL_CHANCE)} of systems with planets hold a special.
+      </p>
       <table className="help-table">
-        <thead><tr><th>Star</th><th>Frequency</th><th>Planets</th><th>Most common planets</th><th>Rich or better minerals</th></tr></thead>
+        <thead>
+          <tr><th>Star</th>{ages.map((a) => <th key={a}>{words(a)} galaxy</th>)}<th>Planets</th><th>Most common bodies</th><th>Rich or better minerals</th></tr>
+        </thead>
         <tbody>
           {STARS.map((s) => {
-            const types = Object.entries(PLANET_TYPE_WEIGHTS[s]).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0)).slice(0, 3);
-            const [lo, hi] = PLANETS_PER_STAR[s];
+            const types = Object.entries(bodyMix(s)).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0)).slice(0, 3);
+            const counts = PLANETS_PER_STAR_D10[s];
+            const hi = Math.max(...counts);
             const rich = share(MINERAL_WEIGHTS_BY_STAR[s], "rich") + share(MINERAL_WEIGHTS_BY_STAR[s], "ultraRich");
             return (
               <tr key={s}>
-                <td>{words(s)}</td><td>{pct(STAR_COLOR_WEIGHTS[s] / total)}</td><td>{hi === 0 ? "None" : `${lo}–${hi}`}</td>
+                <td>{words(s)}</td>{ages.map((a) => <td key={a}>{pct(freq(a, s))}</td>)}
+                <td>{hi === 0 ? "None" : `${Math.min(...counts)}–${hi}, ${meanPlanets(s).toFixed(1)} on average`}</td>
                 <td>{types.length ? <Links ids={types.map(([t]) => `climate:${t}`)} /> : "–"}</td>
                 <td>{hi === 0 ? "–" : pct(rich)}</td>
               </tr>
@@ -973,9 +985,12 @@ function MonstersPage() {
   return (
     <div className="col">
       <p>
-        Space monsters guard rich systems and attack any ship that enters; they never leave their lair. The deeper
-        into the galaxy, the tougher the guard: {LAIR_MONSTERS.map((id) => MONSTER_DESIGNS.find((d) => d.id === id)?.name ?? id).join(", ")}.
-        The guardian holds Orion, the best system in the galaxy; whoever destroys it salvages the <HelpLink to="weapon:deathRay" /> and up to three more random xenon technologies, and the last of the elders joins them if a captain's post is free.
+        Space monsters guard rich systems and attack any ship that enters; they never leave their lair. Each system
+        with planets has a {pct(LAIR_CHANCE.average)} chance of a lair ({pct(LAIR_CHANCE.hard)} on Hard,{" "}
+        {pct(LAIR_CHANCE.impossible)} on Impossible), at most {MAX_LAIRS} in a galaxy, never at a homeworld. The guard is
+        one of {LAIR_MONSTERS.map((id) => MONSTER_DESIGNS.find((d) => d.id === id)?.name ?? id).join(", ")}, at random. Its
+        lair holds a medium or bigger, rich or ultra rich planet, and keeps whatever special the system already had.
+        The guardian holds Orion, near the middle of the map, the best system in the galaxy; whoever destroys it salvages the <HelpLink to="weapon:deathRay" /> and up to three more random xenon technologies, and the last of the elders joins them if a captain's post is free.
       </p>
       <table className="help-table">{monsterHead}<tbody>{MONSTER_DESIGNS.map((d) => <MonsterRow key={d.id} d={d} />)}</tbody></table>
       <h3>Raiders</h3>

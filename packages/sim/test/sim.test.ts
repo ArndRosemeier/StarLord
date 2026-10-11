@@ -43,14 +43,15 @@ describe("new game", () => {
     expect(techs).not.toContain("phaseShifter");
   });
 
-  it("always gives every empire's first ships at least two systems in reach", () => {
+  it("always gives every empire's first ships a system with a real planet in reach, as the original does", () => {
     for (const galaxySize of ["small", "medium", "large", "huge"] as const) {
       for (let i = 0; i < 40; i++) {
         const s = newGame({ seed: `reach${i}`, galaxySize, playerCount: 6 });
         for (const p of empires(s)) {
           const fleet = Object.values(s.fleets).find((f) => f.ownerId === p.id)!;
-          const reachable = s.galaxy.stars.filter((st) => st.id !== fleet.starId && canReach(s, p.id, fleet, st.id));
-          expect(reachable.length, `${galaxySize} seed reach${i} player ${p.id}`).toBeGreaterThanOrEqual(2);
+          const reachable = s.galaxy.stars.filter((st) => st.id !== fleet.starId && canReach(s, p.id, fleet, st.id)
+            && st.planetIds.some((id) => !["asteroids", "gasGiant"].includes(s.planets[id]!.type)));
+          expect(reachable.length, `${galaxySize} seed reach${i} player ${p.id}`).toBeGreaterThanOrEqual(1);
         }
       }
     }

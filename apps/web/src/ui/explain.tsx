@@ -1,7 +1,7 @@
 import {
   ARTIFACTS_RESEARCH, CLIMATES, INDUSTRY_PER_WORKER, NATIVE_FOOD_BONUS, NATIVES_FRACTION, POLLUTION_TOLERANCE, SIZE_POP_BASE,
   SPECIAL_INCOME, SPLINTER_POP, TERRAFORM_STEP, climatePopulation, colonyMoraleParts, colonyOutput, getRace, government,
-  gravityMultiplier, AGE_MINERAL_SHIFT, CREW, DIFFICULTIES, GOVERNMENTS, PICK_OPTIONS, STAR_COLORS_BY_AGE, TAX_BC_PER_INDUSTRY,
+  gravityMultiplier, ADVANCED_START, CLIMATE_TABLE_BY_AGE, CREW, FIRST_FIELDS, TIERS_BY_ID, bodyMix, meanPlanets, DIFFICULTIES, GOVERNMENTS, PICK_OPTIONS, STAR_COLORS_BY_AGE, TAX_BC_PER_INDUSTRY,
   BUILDINGS_BY_ID, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
 } from "@starlord/sim";
 import { Tip, type TipCard } from "./Tip";
@@ -213,21 +213,34 @@ export function difficultyText(d: keyof typeof DIFFICULTIES): string {
 export function galaxyAgeText(a: GalaxyAge): string {
   const w = STAR_COLORS_BY_AGE[a];
   const total = Object.values(w).reduce((s, v) => s + v, 0);
-  const shift = AGE_MINERAL_SHIFT[a];
-  return `${words(a)}: ${pct((w.blue + w.white) / total)} blue and white stars (rich, hostile planets), ${pct((w.orange + w.red) / total)} orange and red (fertile, mineral-poor)` +
-    (shift ? `; ${pct(Math.abs(shift))} of planets one mineral step ${shift > 0 ? "richer" : "poorer"}.` : ".");
+  // Share of all bodies (planets, asteroid belts, gas giants) with a farmable climate.
+  let bodies = 0;
+  let farmable = 0;
+  for (const [c, weight] of Object.entries(w) as [keyof typeof w, number][]) {
+    const n = weight * meanPlanets(c);
+    bodies += n;
+    const mix = Object.entries(bodyMix(c, a)) as [keyof typeof CLIMATES, number][];
+    farmable += n * mix.reduce((s, [t, v]) => s + (CLIMATES[t].foodPerFarmer > 0 ? v : 0), 0);
+  }
+  return `${words(a)}: ${pct((w.blue + w.white) / total)} blue and white stars (rich minerals, hostile planets), ` +
+    `${pct((w.yellow + w.orange) / total)} yellow and orange, ${pct(w.red / total)} red, ${pct(w.blackHole / total)} black holes; ` +
+    `${pct(farmable / bodies)} of planets can grow food` +
+    (CLIMATE_TABLE_BY_AGE[a] === "organic" ? ", more of them in the middle orbits." : ".");
 }
 
 export function techLevelText(t: TechLevel): string {
   const d = TECH_LEVELS[t];
+  const first = FIRST_FIELDS.slice(0, d.firstFields).map((id) => TIERS_BY_ID[id]!.name);
   const parts = [
-    d.generalFields ? "all basic fields" : "no fields beyond the starting ones (ships can't leave home until a drive is researched)",
-    d.maxFieldLevel ? `every field up to level ${d.maxFieldLevel}` : "",
-    d.extraFields ? `${d.extraFields} random extra fields` : "",
+    d.firstFields === 1 ? `only ${first[0]} (ships can't leave home until a drive is researched)` : `the ${first.length} basic fields`,
+    d.pickedFields ? `${d.pickedFields} more fields, cheapest first` : "",
     d.buildings.length ? `${d.buildings.length} homeworld buildings` : "",
+    d.advancedPop ? `homeworld at ${pct(ADVANCED_START.popBase * ADVANCED_START.popScale)} of its maximum population (at least ${ADVANCED_START.minPop})` : "",
     d.extraColonies ? `${d.extraColonies} extra colonies of ${d.extraColonyPop} population` : "",
     d.exploredRadius ? `${d.exploredRadius} parsecs around home explored` : "",
-    `${d.bc} BC`,
+    d.bc === null
+      ? `${ADVANCED_START.moneyLevelOffset * ADVANCED_START.bcPerMoneyLevel} BC (${ADVANCED_START.bcPerMoneyLevel} more or less per money pick step)`
+      : `${d.bc} BC`,
   ].filter(Boolean);
   return `${d.name}: ${parts.join(", ")}.`;
 }

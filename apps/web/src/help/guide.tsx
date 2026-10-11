@@ -6,7 +6,7 @@ import {
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
-  SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
+  SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
   TRADE_GOODS_RATE, TRAIT_EFFECTS, TREATY_YIELD, TROOPS, abilityValue, type HeroSkill, type HeroSkillGroup,
 } from "@starlord/sim";
 import { fmt, pct } from "../ui/format";
@@ -101,8 +101,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Every unit of population works as a farmer, worker or scientist. Farmers grow food according to the planet's
         climate, workers make industry according to its minerals, and scientists make research (3 points each before
         bonuses). Race picks, techs, buildings, the government, morale, gravity and an administrator all modify the
-        result, but every unit makes at least 1, farmers only where farming is possible at all: barren, radiated, toxic
-        and inferno worlds grow nothing until Biomorphic Fungi. See <HelpLink to="page:planets" /> and{" "}
+        result, but every unit makes at least 1, farmers only where farming is possible at all: barren, radiated and toxic
+        worlds grow nothing until Biomorphic Fungi. See <HelpLink to="page:planets" /> and{" "}
         <HelpLink to="page:planetTraits" />.
       </P>
       <h3>Androids</h3>
@@ -571,9 +571,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><b>Score</b>: only in games started with a turn limit (off by default; the original has none): when it is reached, the highest score wins. Score counts population, colonies, outposts, techs, industry, research and ships.</li>
       </Ul>
       <P>
-        Galaxy sizes: {Object.entries(STAR_COUNTS).map(([k, v]) => `${k} ${v} stars`).join(", ")}. Monsters, raiders,
+        Galaxy sizes: {(Object.keys(STAR_COUNTS) as (keyof typeof STAR_COUNTS)[]).map((k) => `${k} ${STAR_COUNTS[k]} stars on ${Math.round(mapSize(k).width)} × ${Math.round(mapSize(k).height)} parsecs`).join(", ")}. Monsters, raiders,
         random events and the council can each be switched off when starting a game. Difficulty sets how fast computer
-        empires produce and research and how warmly they treat you; galaxy age changes the mix of stars and minerals;
+        empires produce and research and how warmly they treat you; galaxy age changes the mix of star colors, which
+        orbits fill up and, in old galaxies, makes middle orbits more fertile;
         the tech level starts everyone pre-warp, average or advanced.
 
       </P>

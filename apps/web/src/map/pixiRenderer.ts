@@ -170,6 +170,8 @@ export class PixiMapRenderer implements MapRenderer {
   private gestured = false;
   private hold: { timer: number; x: number; y: number; id: number } | null = null;
   private lastSize = "";
+  /** Zoom that shows the whole map; big maps may need to zoom out further than the usual limit. */
+  private fitScale = 1;
   private destroyed = false;
   /** Soft empire-coloured glow around owned systems, under everything else. */
   private territory = new Container();
@@ -272,7 +274,7 @@ export class PixiMapRenderer implements MapRenderer {
   /** Zoom to `scale`, keeping the galaxy point under screen position (x, y) in place. */
   private zoomAt(x: number, y: number, scale: number): void {
     const old = this.camera.scale.x;
-    const next = Math.min(4, Math.max(0.3, scale));
+    const next = Math.min(4, Math.max(Math.min(0.3, this.fitScale), scale));
     this.camera.x = x - ((x - this.camera.x) * next) / old;
     this.camera.y = y - ((y - this.camera.y) * next) / old;
     this.camera.scale.set(next);
@@ -356,6 +358,7 @@ export class PixiMapRenderer implements MapRenderer {
     if (size === this.lastSize) return;
     this.lastSize = size;
     const s = Math.min(w / ((scene.width + 2) * UNIT), h / ((scene.height + 2) * UNIT));
+    this.fitScale = s;
     this.camera.scale.set(s);
     this.focus(scene.width / 2, scene.height / 2);
     this.drawBackdrop(scene);
