@@ -110,16 +110,12 @@ export const TRAIT_EFFECTS = {
   /** Diplomatic points added to deals by telepaths and charismatic races (+25% / +50% acceptance in the original). */
   telepathicDiplomacy: 25,
   charismaticDiplomacy: 50,
-  /** Multipliers on attitude changes towards a charismatic race. */
-  charismaticGood: 2,
-  charismaticBad: 0.5,
   /** Smallest hull (index, frigate 0) a telepathic fleet needs in orbit to mind-control a colony: cruiser. */
   telepathicMindControlSize: 2,
   /** Cybernetic repair per combat round: armor/structure and internal systems. */
   cyberneticRepair: 0.1,
   cyberneticSystemsRepair: 0.05,
-  /** Trade treaty income bonus and BC per surplus food (instead of ½) for fantastic traders. */
-  traderTreatyBonus: 0.25,
+  /** BC per surplus food (instead of ½) for fantastic traders (their trade treaty bonus is TREATY_YIELD.traderPoints). */
   traderFoodBc: 1,
   normalFoodBc: 0.5,
   traderGoodsMult: 2,

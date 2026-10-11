@@ -44,6 +44,8 @@ export interface SimResult {
   rejected: Record<string, number>;
   /** How often each kind of event happened. */
   events: Record<string, number>;
+  /** Diplomatic changes between empires: wars declared, peace treaties, pacts, alliances, trade and research treaties signed. */
+  diplomacy: Record<string, number>;
   empires: EmpireResult[];
 }
 
@@ -79,6 +81,7 @@ export class Simulation {
       problems: [],
       rejected: {},
       events: {},
+      diplomacy: {},
       empires: [],
     };
     this.problems(0, checkInvariants(this.state), "invariant");
@@ -99,7 +102,9 @@ export class Simulation {
       for (const p of this.state.players) {
         if (p.alive && p.kind === "empire") orders[p.id] = automationOrders(playerView(this.state, p.id));
       }
+      const before = this.state.relations;
       this.state = processTurn(this.state, orders);
+      this.countDiplomacy(before, this.state.relations);
     } catch (err) {
       r.crashed = true;
       this.problems(this.state.turn, [err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err)], "crash");
@@ -134,6 +139,17 @@ export class Simulation {
     if (e.kind === "commandRejected") {
       const key = e.reason.replace(/\d+(\.\d+)?/g, "#");
       r.rejected[key] = (r.rejected[key] ?? 0) + 1;
+    }
+  }
+
+  private countDiplomacy(before: GameState["relations"], after: GameState["relations"]): void {
+    const d = this.result.diplomacy;
+    const bump = (k: string) => (d[k] = (d[k] ?? 0) + 1);
+    for (const [key, r] of Object.entries(after)) {
+      const old = before[key];
+      if (r.status !== (old?.status ?? "none")) bump(r.status === "none" ? "lapsed" : r.status);
+      if (r.trade && !old?.trade) bump("trade");
+      if (r.research && !old?.research) bump("research");
     }
   }
 

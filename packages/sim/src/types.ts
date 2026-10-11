@@ -403,7 +403,7 @@ export interface Relation {
   /** Turns the trade and research treaties were signed; their yield ramps up from a loss. */
   tradeSince?: number;
   researchSince?: number;
-  /** A peace treaty forbids attacks until this turn; breaking it is a grave offence. */
+  /** Only in games saved before peace treaties lapsed by the no-war counter (see GameState.noWar); read once to carry them over. */
   peaceUntil?: number;
 }
 
@@ -413,7 +413,9 @@ export type ProposalKind =
   | "techExchange"
   /** Demands the receiver may accept or refuse. */
   | "demandTribute" | "demandTech" | "demandSystem" | "demandWar" | "demandPeace" | "demandBreakAlliance"
-  | "demandStopSpying" | "demandRemoveFleet";
+  | "demandStopSpying" | "demandRemoveFleet"
+  /** A computer ruler with two strikes against you asks this price (in `price`) to keep its treaties; refusing ends them. */
+  | "compensation";
 
 /** What one empire pays another, as the price of a treaty. */
 export interface Price {
@@ -568,6 +570,8 @@ export interface CouncilState {
   pending?: { winner: PlayerId; turn: number; refused: PlayerId[] } | null;
   /** Whether the council has started meeting (it first meets once most of the galaxy is settled). */
   convened?: boolean;
+  /** Who each empire backed at the last session (null: abstained). */
+  lastVotes?: Record<string, PlayerId | null>;
 }
 
 export interface RaidersState {
@@ -611,8 +615,24 @@ export interface GameState {
   players: Player[];
   /** Key `${a}-${b}` with a < b. */
   relations: Record<string, Relation>;
-  /** attitude[a][b]: how a feels about b, -100..100. */
+  /** attitude[a][b]: the relation between a and b as a sees it, -100..100; kept equal on both sides at the end of every turn. */
   attitude: Record<string, Record<string, number>>;
+  /** baseline[a][b]: the relation a's view drifts back toward (the race table, moved by wars, gifts and broken treaties). Missing: the race table. */
+  baseline?: Record<string, Record<string, number>>;
+  /** noWar[a][b]: turns computer empire a will not declare war on b; a peace treaty lapses when the lower-numbered side's count runs out. */
+  noWar?: Record<string, Record<string, number>>;
+  /** strikes[a][b]: warnings computer empire a holds against b. */
+  strikes?: Record<string, Record<string, number>>;
+  /** shipLosses[a][b]: what a lost to b's ships in the current war (2 to the power of hull size + 1 per ship). */
+  shipLosses?: Record<string, Record<string, number>>;
+  /** relationEvents[observer][actor]: the biggest relation event since the last diplomacy tick (it holds drift back and can earn a strike). */
+  relationEvents?: Record<string, Record<string, { reason: number; size: number }>>;
+  /** treatyYields[a][b]: what a's trade (BC) and research treaties with b yield a this turn; they ramp toward the full value. */
+  treatyYields?: Record<string, Record<string, { trade?: number; research?: number }>>;
+  /** audienceClock[a][b]: turns since a last came to b with a proposal (capped at 250). */
+  audienceClock?: Record<string, Record<string, number>>;
+  /** deficitTurns[a]: turns in a row a's treasury shrank. */
+  deficitTurns?: Record<string, number>;
   /** patience[a][b]: how much more a will hear from b (0 at rest, lower after asks). */
   patience?: Record<string, Record<string, number>>;
   /** trust[a][b]: a's trust in b, lowered when b breaks a treaty with a. */

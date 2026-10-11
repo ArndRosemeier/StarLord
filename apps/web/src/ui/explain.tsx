@@ -1,7 +1,7 @@
 import {
   ARTIFACTS_RESEARCH, CLIMATES, INDUSTRY_PER_WORKER, NATIVE_FOOD_BONUS, NATIVES_FRACTION, POLLUTION_TOLERANCE, SIZE_POP_BASE,
   SPECIAL_INCOME, SPLINTER_POP, TERRAFORM_STEP, climatePopulation, colonyMoraleParts, colonyOutput, getRace, government,
-  gravityMultiplier, ADVANCED_START, CLIMATE_TABLE_BY_AGE, CREW, FIRST_FIELDS, TIERS_BY_ID, bodyMix, meanPlanets, DIFFICULTIES, GOVERNMENTS, PICK_OPTIONS, STAR_COLORS_BY_AGE, TAX_BC_PER_INDUSTRY,
+  gravityMultiplier, ADVANCED_START, CLIMATE_TABLE_BY_AGE, CREW, FIRST_FIELDS, TIERS_BY_ID, bodyMix, meanPlanets, DIFFICULTIES, DIFFICULTY_ORDER, JEALOUSY, GOVERNMENTS, PICK_OPTIONS, STAR_COLORS_BY_AGE, TAX_BC_PER_INDUSTRY,
   BUILDINGS_BY_ID, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
 } from "@starlord/sim";
 import { Tip, type TipCard } from "./Tip";
@@ -204,7 +204,9 @@ export function difficultyText(d: keyof typeof DIFFICULTIES): string {
     x.aiOutputPerUnit ? `computer empires make ${signed(x.aiOutputPerUnit)} industry or research per worker and scientist (${signed(x.aiOutputPerUnit / 2)} food per farmer)` : "computer empires produce normally",
     x.aiGrowthPercent ? `grow ${signed(x.aiGrowthPercent)}% faster` : "",
     x.aiBcPerPop ? `earn ${signed(x.aiBcPerPop)} BC per population` : "",
-    x.aiAttitudeToHumans ? `feel ${signed(x.aiAttitudeToHumans)} toward you` : "",
+    // AI_OFFERS: x grows by 4 per level, and offers come less often the bigger x; AI_TREATIES: the die shrinks by 40 per level.
+    `come to you with offers ${DIFFICULTY_ORDER.indexOf(d) >= 3 ? "rarely" : DIFFICULTY_ORDER.indexOf(d) >= 2 ? "now and then" : "often"} and sign treaties among themselves ${DIFFICULTY_ORDER.indexOf(d) >= 3 ? "often" : DIFFICULTY_ORDER.indexOf(d) >= 2 ? "now and then" : "rarely"}`,
+    DIFFICULTY_ORDER.indexOf(d) >= JEALOUSY.minDifficulty ? "grow jealous of your treaties with others" : "",
     x.customRaces ? "" : "custom races off",
   ].filter(Boolean);
   return `${x.name}: ${parts.join(", ")}.`;

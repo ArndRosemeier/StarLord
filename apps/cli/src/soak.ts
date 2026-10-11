@@ -61,6 +61,7 @@ async function main(): Promise<void> {
       console.log(r
         ? `${tag} ${r.crashed ? "CRASHED" : `${r.victory} by ${r.winner}`} on turn ${r.turns}` +
           `, ${(r.ms / Math.max(1, r.turns)).toFixed(0)} ms/turn` +
+          `, wars ${r.diplomacy?.war ?? 0}, peace ${r.diplomacy?.peace ?? 0}, pacts ${r.diplomacy?.nonAggression ?? 0}, alliances ${r.diplomacy?.alliance ?? 0}` +
           (r.problems.length ? `, ${r.problems.length} problems` : "")
         : `${tag} FAILED ${out.error}`);
     }
@@ -73,6 +74,11 @@ async function main(): Promise<void> {
   console.log(`\n${results.length} games in ${((performance.now() - started) / 1000).toFixed(0)}s`);
   console.log("Endings:", endings);
   console.log("Average length:", Math.round(done.reduce((n, r) => n + r.turns, 0) / Math.max(1, done.length)), "turns");
+  const diplomacy: Record<string, number> = {};
+  for (const r of done) for (const [k, n] of Object.entries(r.diplomacy ?? {})) diplomacy[k] = (diplomacy[k] ?? 0) + n;
+  console.log("Diplomacy (all games):", diplomacy);
+  const quiet = done.filter((r) => !r.diplomacy?.war).length;
+  if (quiet) console.log(`${quiet} games without a single war.`);
 
   const rejected: Record<string, number> = {};
   for (const r of done) for (const [k, n] of Object.entries(r.rejected)) rejected[k] = (rejected[k] ?? 0) + n;

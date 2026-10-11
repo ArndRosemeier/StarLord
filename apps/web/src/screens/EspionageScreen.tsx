@@ -95,6 +95,6 @@ function missionTip(view: PlayerView, me: number, target: number, count: number,
     title: mission === "idle" ? "Lie low" : mission === "steal" ? "Steal" : "Sabotage", kind: `${count} spy${count > 1 ? "s" : ""}, each turn`,
     rows,
     text: [MISSION_TEXT[mission], `Success needs ${mission === "steal" ? SPY.steal : SPY.sabotage} on d100 + your edge − d100; ${SPY.blame}+ frames someone else. More spies and higher spying over their security raise the edge; their spies at home lower it.`],
-    note: "A caught spy or a noticed success sours their attitude toward you.",
+    note: "Each theft or sabotage costs relations with the victim -(d15 + d5) (or with whoever was framed), and a computer ruler may count it as a strike.",
   };
 }

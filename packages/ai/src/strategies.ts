@@ -63,8 +63,8 @@ export const STRATEGIES: Record<AutomationDomain, StrategyInfo[]> = {
   ],
   diplomacy: [
     BALANCED,
-    { id: "peaceful", name: "Peaceful", description: "Never starts a war or makes demands, and makes peace readily." },
-    { id: "aggressive", name: "Aggressive", description: "Leans on weak neighbors and goes to war more readily." },
+    { id: "peaceful", name: "Peaceful", description: "Never starts a war, accepts treaties more readily and offers peace as soon as the enemy will hear it." },
+    { id: "aggressive", name: "Aggressive", description: "Declares war when its fleets clearly outgun a neighbor's, by the computer empires' own strength test." },
   ],
   espionage: [
     BALANCED,

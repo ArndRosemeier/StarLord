@@ -94,7 +94,7 @@ describe("leaders", () => {
     expect(o).toBeDefined();
     expect(playerView(s, 1).players[0]!.leaderOffers).toHaveLength(0);
     s.players[0]!.bc = 10000;
-    const idle = processTurn(s, {});
+    const idle = processTurn(structuredClone(s), {});
     s = processTurn(s, { 0: [{ type: "hireLeader", leaderId: o.id }] });
     const l = s.leaders[o.id]!;
     expect(l.status).toBe("hired");

@@ -1,64 +1,61 @@
 import {
-  AI_WAR, NO_WAR_MULT, TEMPERAMENTS, TIER_OF_TECH, attitude, settledShare, temperament, audienceTired, isScoredTreaty, patience, treatyAnswer, type Price, canSign, empireBonus, empireTotals, isDemand, monsterDemands, relation, type Command, type PlayerView,
-  type Proposal, type ProposalKind, type ProposalTerms,
+  AI_OFFERS, AI_WAR, TIER_OF_TECH, attitude, audienceTired, canSign, counterPrice, demandAnswer, difficultyLevel, effectiveTemperament,
+  empireExpenses, fixedRoll, isDemand, isScoredTreaty, monsterDemands, patience, peacePriceLevel, peaceWish, persOf, raceDiplomacyPoints,
+  getRace, relation, strengthRatio, treatyAnswer, trustIn,
+  type Command, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type ProposalTerms,
 } from "@starlord/sim";
 import { strategyOf } from "./strategies.js";
-import { fleetStrength, me, myFleets, personality } from "./util.js";
+import { fleetStrength, me, myFleets } from "./util.js";
 
-function militaryPower(view: PlayerView, playerId: number): number {
-  return Object.values(view.fleets)
-    .filter((f) => f.ownerId === playerId)
-    .reduce((s, f) => s + fleetStrength(view, f), 0);
+/**
+ * Diplomacy for one empire, after the original. Computer rulers answer
+ * proposals by the original's scores, come to human rulers with offers as
+ * often as the original's contact gate allows (and with what its d20 table
+ * picks), ask human allies to join their wars and join theirs, and offer
+ * peace by the original's formula. Their dealings with other computer
+ * empires (pacts, tribute, wars) and their grievances against humans
+ * (strikes) are rules the turn itself runs (see the sim's aiDiplomacy and
+ * relations). A human's automation answers the same way and offers peace and
+ * treaties; its Aggressive strategy also starts wars by the computer
+ * empires' strength test.
+ */
+
+/** A die fixed by the game, turn and purpose, so the same view always gives the same orders. */
+function die(view: PlayerView, key: string): (n: number) => number {
+  let i = 0;
+  return (n) => fixedRoll(view, `ai${view.turn}|${view.viewer}|${key}|${i++}`, Math.max(1, Math.floor(n)));
 }
 
 function techValue(tech: string | undefined): number {
   return tech ? (TIER_OF_TECH[tech]?.cost ?? 0) : 0;
 }
 
-/** Whether to give in to a demand: it depends on how strong the demander is and how we feel about them. */
-function acceptDemand(view: PlayerView, p: Proposal, feel: number, myPower: number): boolean {
-  const ratio = militaryPower(view, p.from) / Math.max(1, myPower);
-  const third = p.third;
-  switch (p.kind) {
-    case "demandTribute":
-    case "demandTech":
-      return ratio > 1.5 && feel > -40;
-    case "demandStopSpying":
-    case "demandRemoveFleet":
-      return ratio > 1 || feel > 10;
-    case "demandSystem":
-      return ratio > 3;
-    case "demandWar":
-      return third !== undefined && feel > 30 && attitude(view, view.viewer, third) < 0;
-    case "demandPeace": {
-      if (third === undefined) return false;
-      const r = relation(view, view.viewer, third);
-      return feel > 20 && view.turn - r.since > 10;
-    }
-    case "demandBreakAlliance":
-      return third !== undefined && ratio > 1.5 && feel > attitude(view, view.viewer, third) + 30;
-    default:
-      return false;
-  }
+/**
+ * What a computer ruler makes of a tech swap: the original's price factor
+ * (v = relation + trust + diplomat - 50 x difficulty + 20 x vsHumans + 150
+ * (+50 charismatic, +50 Xeno Psychology) + temperament + d150 - 1; factor
+ * v + 100 % when v >= 0, else 10000 / (100 - v) %). StarLord accepts when what
+ * you offer, times that factor, is worth what you ask for (how the original
+ * applies the factor is an estimate).
+ */
+export function techSwapFactor(view: PlayerView, p: Proposal): number {
+  const from = view.players[p.from]!;
+  const race = getRace(from.raceId);
+  const t = effectiveTemperament(view, view.viewer, p.from);
+  let v = attitude(view, view.viewer, p.from) + trustIn(view, view.viewer, p.from) + Math.max(0, (from.diplomacyBonus ?? 0) - raceDiplomacyPoints(race)) -
+    50 * difficultyLevel(view) + 20 * (from.isHuman ? (t?.vsHumans ?? 0) : 0) + 150 + (t?.treaty ?? 0) + fixedRoll(view, `${p.id}|swap`, 150) - 1;
+  if (race.picks.traits.includes("charismatic")) v += 50;
+  if (from.techs.includes("xenoPsychology")) v += 50;
+  return v >= 0 ? (v + 100) / 100 : 100 / (100 - v);
 }
 
-/**
- * Whether the viewer accepts a proposal put to it, on the next turn or at
- * once in an audience.
- */
-export function answerProposal(view: PlayerView, p: Proposal): boolean {
-  return audienceAnswer(view, p).accept;
-}
-
-/**
- * The viewer's full answer to a proposal: accept or not, and for a treaty it
- * would refuse, perhaps a price it would sign for (the original's counter-offer).
- */
+/** The viewer's full answer to a proposal: accept or not, and for a treaty it would refuse, perhaps a price (the original's counter-offer). */
 export function audienceAnswer(view: PlayerView, p: Proposal): { accept: boolean; price?: Price } {
   const peaceful = strategyOf(view, "diplomacy") === "peaceful";
-  // A peaceful empire takes treaties it would otherwise turn down.
+  // A human's peaceful automation takes treaties a computer ruler would turn down.
   const warmth = peaceful ? 15 : 0;
   if (canSign(view, p.from, p.to, p.kind, p)) return { accept: false };
+  const player = me(view);
   if (isScoredTreaty(p.kind)) {
     const a = treatyAnswer(view, p, warmth);
     if (a.kind === "accept") return { accept: true };
@@ -68,13 +65,25 @@ export function audienceAnswer(view: PlayerView, p: Proposal): { accept: boolean
     }
     return { accept: false };
   }
-  const myPower = myFleets(view).reduce((s, f) => s + fleetStrength(view, f), 0);
-  // Xeno Psychology, telepathy, charisma and Diplomat leaders make every deal the proposer offers more appealing.
-  const proposer = view.players[p.from]!;
-  const feel = attitude(view, view.viewer, p.from) + empireBonus(proposer).diplomacy + (proposer.diplomacyBonus ?? 0) + warmth;
-  if (p.kind === "techExchange") return { accept: feel > -10 && techValue(p.wantTechId) <= techValue(p.techId) * 1.25 };
-  if (isDemand(p.kind)) return { accept: acceptDemand(view, p, feel, myPower) };
+  if (p.kind === "techExchange") return { accept: techValue(p.techId) * techSwapFactor(view, p) >= techValue(p.wantTechId) };
+  if (p.kind === "compensation") {
+    // Only a human pays compensation; its automation pays what it can spare to keep its treaties.
+    const price = p.price ?? {};
+    return { accept: peaceful || (price.bc ?? 0) <= player.bc / 2 || !!price.techId || !!price.tribute };
+  }
+  if (isDemand(p.kind)) {
+    if (!player.isHuman) return { accept: demandAnswer(view, p).outcome === "accept" };
+    // A human's automation answers its ally's call to arms if its fleets can take the enemy, and other demands like a computer ruler.
+    if (p.kind === "demandWar" && relation(view, p.from, p.to).status === "alliance" && p.third !== undefined) {
+      return { accept: !peaceful && strengthRatio(view, view.viewer, p.third) >= 100 };
+    }
+    return { accept: demandAnswer(view, p).outcome === "accept" };
+  }
   return { accept: false };
+}
+
+export function answerProposal(view: PlayerView, p: Proposal): boolean {
+  return audienceAnswer(view, p).accept;
 }
 
 /** Answers to a proposal as orders: the answer, plus a counter-offer when the viewer names a price. */
@@ -85,34 +94,110 @@ export function answerOrders(view: PlayerView, p: Proposal): Command[] {
   return out;
 }
 
+/** Whether the viewer may put this proposal to `other` now. */
+function canOffer(view: PlayerView, other: PlayerId, kind: ProposalKind, terms: ProposalTerms = {}): boolean {
+  return !canSign(view, view.viewer, other, kind, terms) && !audienceTired(view, view.viewer, other) &&
+    !view.proposals.some((p) => p.from === view.viewer && p.to === other && p.kind === kind);
+}
+
+/** A tech swap with `other`: their most valuable tech we lack for our cheapest one worth at least 80% of it. */
+function techSwap(view: PlayerView, other: PlayerId): ProposalTerms | null {
+  const player = me(view);
+  const them = view.players[other]!;
+  const want = them.techs.filter((t) => !player.techs.includes(t) && TIER_OF_TECH[t]).sort((a, b) => techValue(b) - techValue(a) || a.localeCompare(b))[0];
+  if (!want) return null;
+  const give = player.techs.filter((t) => !them.techs.includes(t) && TIER_OF_TECH[t] && techValue(t) >= techValue(want) * 0.8)
+    .sort((a, b) => techValue(a) - techValue(b) || a.localeCompare(b))[0];
+  return give ? { techId: give, wantTechId: want } : null;
+}
+
 /**
- * Answers proposals and demands, offers treaties and tech swaps to friendly
- * neighbors, leans on weak ones for tribute, sues for peace when a war drags
- * on, declares war on disliked weaker neighbors when its personality is
- * aggressive, and pays off monsters that threaten its systems. The peaceful
- * strategy never starts a war or makes demands and settles wars quickly; the
- * aggressive one plays with the most warlike temperament.
+ * The original's offers to a human (FUN_000501c5): a contact gate first (see
+ * AI_OFFERS), then three d20 draws whose last fitting one picks a tech swap,
+ * a pact, trade, research or an alliance, each with its own test.
+ */
+function offer(view: PlayerView, other: PlayerId): Command | null {
+  const O = AI_OFFERS;
+  const d = difficultyLevel(view);
+  const them = view.players[other]!;
+  const r = relation(view, view.viewer, other);
+  if (r.status === "war") return null;
+  const t = effectiveTemperament(view, view.viewer, other);
+  const pers = t?.treaty ?? 0;
+  const rel = attitude(view, view.viewer, other);
+  const diplomat = Math.max(0, (them.diplomacyBonus ?? 0) - raceDiplomacyPoints(getRace(them.raceId)));
+  let x = O.base + O.perDifficulty * d - Math.trunc(patience(view, view.viewer, other) / O.patienceDiv) - Math.trunc(trustIn(view, view.viewer, other) / O.trustDiv) +
+    Math.trunc(rel / O.relationDiv) - Math.trunc(diplomat / O.diplomatDiv) + O.vsHumans * (t?.vsHumans ?? 0) - Math.trunc(pers / O.temperamentDiv) -
+    (r.status === "nonAggression" ? O.nonAggression : 0) - (r.status === "alliance" ? O.alliance : 0) - (them.techs.includes("xenoPsychology") ? O.xenoPsychology : 0);
+  x = Math.max(0, Math.min(O.max, x));
+  const clock = view.audienceClock?.[view.viewer]?.[other] ?? 0;
+  const roll = die(view, `offer${other}`);
+  if (roll(100) > Math.trunc(clock / (Math.trunc((x * x) / 50) + 1))) return null;
+  let pick: ProposalKind | null = null;
+  for (let i = 0; i < 3; i++) {
+    const n = roll(20);
+    if (n <= O.table.tech) pick = techSwap(view, other) ? "techExchange" : pick;
+    else if (n <= O.table.nonAggression) pick = r.status === "none" ? "nonAggression" : pick;
+    else if (n <= O.table.trade) pick = rel >= 0 && !r.trade ? "trade" : pick;
+    else if (n <= O.table.research) pick = rel >= 0 && !r.research ? "research" : pick;
+    else if (n <= O.table.alliance) pick = r.status === "nonAggression" ? "alliance" : pick;
+  }
+  if (!pick) return null;
+  const str = strengthRatio(view, view.viewer, other);
+  const mine = me(view);
+  const tradeTest = (a: number, b: number) =>
+    roll(O.tradeDie) >= O.tradePerDifficulty * d + Math.trunc((a * 100) / (b + 1)) + 1 - 2 * pers - (r.status === "nonAggression" ? 25 : 0) - (r.status === "alliance" ? 50 : 0);
+  let go = false;
+  let terms: ProposalTerms = {};
+  switch (pick) {
+    case "techExchange":
+      terms = techSwap(view, other) ?? {};
+      go = true;
+      break;
+    case "nonAggression":
+      go = str <= roll(O.pactDie - O.perDifficultyDie * d + 2 * pers);
+      break;
+    case "alliance":
+      go = str <= roll(O.allianceDie - O.perDifficultyDie * d + 2 * pers);
+      break;
+    case "trade":
+      go = tradeTest(Math.trunc(empireExpenses(view, view.viewer)), Math.trunc(empireExpenses(view, other)));
+      break;
+    case "research":
+      go = tradeTest(mine.techs.length, them.techs.length);
+      break;
+    default:
+      break;
+  }
+  // The original then may ask the human to attack an enemy for pay; StarLord's proposals cannot carry a payment to the receiver, so that offer is left out.
+  if (!go || !canOffer(view, other, pick, terms)) return null;
+  return { type: "propose", to: other, kind: pick, ...terms };
+}
+
+/** Peace by the original's formula (AI_PEACE); between two computer empires StarLord uses the same (the original's rule there is not decoded). */
+function peaceOffer(view: PlayerView, other: PlayerId, peaceful: boolean): Command | null {
+  if (!canOffer(view, other, "peace")) return null;
+  const w = peaceWish(view, view.viewer, other);
+  if (w.turns < 1) return null;
+  if (!peaceful && die(view, `peace${other}`)(100) > w.chance) return null;
+  if (w.score > 10 && !peaceful) {
+    const price = counterPrice(view, view.viewer, other, peacePriceLevel(w.score), `peace${view.turn}|${view.viewer}|${other}`, "peace");
+    if (price && canOffer(view, other, "peace", { price })) return { type: "propose", to: other, kind: "peace", price };
+  }
+  // The original's losing ruler offers to pay for peace; StarLord's proposals cannot carry that, so it offers plain peace.
+  return { type: "propose", to: other, kind: "peace" };
+}
+
+/**
+ * Answers proposals and demands, offers treaties to humans, asks human allies
+ * to join its wars and joins theirs, offers peace, and pays off monsters that
+ * threaten its systems.
  */
 export function diplomacyOrders(view: PlayerView): Command[] {
   const player = me(view);
   const out: Command[] = [];
   const strategy = strategyOf(view, "diplomacy");
   const peaceful = strategy === "peaceful";
-  const base = personality(view);
-  const pers = strategy === "aggressive" ? { ...base, aggression: Math.max(base.aggression, 0.9) } : base;
-  const myPower = myFleets(view).reduce((s, f) => s + fleetStrength(view, f), 0);
-  const myPop = empireTotals(view, view.viewer).population;
-  const temper = temperament(view, view.viewer);
-  const noWar = temper ? TEMPERAMENTS[temper].noWar : 0;
-  const lust = strategy === "aggressive" ? Math.max(0.9, pers.aggression) : temper ? (pers.aggression + TEMPERAMENTS[temper].warLust) / 2 : pers.aggression;
-  const crowded = settledShare(view) >= AI_WAR.crowdedShare || view.turn >= AI_WAR.crowdedTurn;
-  /** First turn a treaty with them no longer stops us declaring war. */
-  const bound = (r: ReturnType<typeof relation>) => Math.max(
-    r.status === "nonAggression" ? r.since + noWar * NO_WAR_MULT.nonAggression : 0,
-    r.trade ? (r.tradeSince ?? r.since) + noWar * NO_WAR_MULT.trade : 0,
-    r.research ? (r.researchSince ?? r.since) + noWar * NO_WAR_MULT.research : 0,
-    r.peaceUntil ?? 0,
-  );
 
   for (const p of view.proposals.filter((x) => x.to === view.viewer)) out.push(...answerOrders(view, p));
 
@@ -121,74 +206,68 @@ export function diplomacyOrders(view: PlayerView): Command[] {
     if ((ev.strength ?? Infinity) <= player.bc) out.push({ type: "bribeMonster", eventId: ev.id });
   }
 
-  // One new initiative per turn keeps the diplomatic screen readable for humans.
+  const declared = new Set<PlayerId>();
   for (const other of player.contacts) {
     const them = view.players[other]!;
     if (!them.alive) continue;
     const r = relation(view, view.viewer, other);
-    const feel = attitude(view, view.viewer, other);
-    // Computer rulers wait until the other side's patience has recovered before asking again.
-    const offer = (kind: ProposalKind, terms: ProposalTerms = {}) =>
-      !canSign(view, view.viewer, other, kind, terms) && !view.proposals.some((p) => p.from === view.viewer && p.to === other && p.kind === kind) &&
-      patience(view, other, view.viewer) >= 0 && !audienceTired(view, view.viewer, other);
     if (r.status === "war") {
-      const tired = peaceful ? view.turn - r.since > 10 : view.turn - r.since > 30 && militaryPower(view, other) >= myPower * 0.8;
-      if (tired && offer("peace")) {
-        out.push({ type: "propose", to: other, kind: "peace" });
-        return out;
-      }
+      const cmd = peaceOffer(view, other, peaceful);
+      if (cmd) out.push(cmd);
       continue;
     }
-    if (feel > 5 && (view.turn + other) % 10 === 0) {
-      for (const kind of ["trade", "research"] as const) {
-        if (offer(kind)) {
-          out.push({ type: "propose", to: other, kind });
-          return out;
+    if (!player.isHuman && !them.isHuman) continue; // computer empires deal with each other in the turn itself
+    if (!player.isHuman && r.status === "alliance") {
+      const roll = die(view, `ally${other}`);
+      // The original's ally duties, 1 in 10 turns each: ask the human ally to join a war, and join the ally's wars.
+      if (roll(AI_OFFERS.allyDuty) === 1) {
+        const enemy = player.contacts.find((k) => k !== other && relation(view, view.viewer, k).status === "war" && them.contacts.includes(k) &&
+          canOffer(view, other, "demandWar", { third: k }));
+        if (enemy !== undefined) out.push({ type: "propose", to: other, kind: "demandWar", third: enemy });
+      }
+      if (roll(AI_OFFERS.allyDuty) === 1) {
+        const enemy = them.contacts.find((k) => k !== view.viewer && !declared.has(k) && relation(view, other, k).status === "war" &&
+          relation(view, view.viewer, k).status !== "war" && player.contacts.includes(k));
+        if (enemy !== undefined) {
+          declared.add(enemy);
+          out.push({ type: "declareWar", target: enemy });
         }
       }
     }
-    if (r.status === "none" && feel > 10 && offer("nonAggression")) {
-      out.push({ type: "propose", to: other, kind: "nonAggression" });
-      return out;
-    }
-    if (feel > 50 && r.status === "nonAggression" && offer("alliance")) {
-      out.push({ type: "propose", to: other, kind: "alliance" });
-      return out;
-    }
-    // Swap technologies of similar value with friends every so often.
-    if (feel > 0 && (view.turn + other) % 15 === 7) {
-      const want = them.techs.filter((t) => !player.techs.includes(t) && TIER_OF_TECH[t]).sort((a, b) => techValue(b) - techValue(a))[0];
-      const give = want
-        ? player.techs.filter((t) => !them.techs.includes(t) && TIER_OF_TECH[t] && techValue(t) >= techValue(want) * 0.8)
-          .sort((a, b) => techValue(a) - techValue(b))[0]
-        : undefined;
-      if (want && give && offer("techExchange", { techId: give, wantTechId: want })) {
-        out.push({ type: "propose", to: other, kind: "techExchange", techId: give, wantTechId: want });
-        return out;
-      }
-    }
-    // Lean on a much weaker neighbor we dislike for tribute.
-    const theirPower = militaryPower(view, other);
-    if (
-      !peaceful && pers.aggression > 0.5 && feel < 0 && (view.turn + other) % 20 === 3 && myPower > Math.max(50, theirPower * 3) &&
-      offer("demandTribute", { percent: 5 })
-    ) {
-      out.push({ type: "propose", to: other, kind: "demandTribute", percent: 5 });
-      return out;
-    }
-    // War: dislike plus a clear military edge, or any neighbor it doesn't love once the galaxy is crowded,
-    // scaled by temperament. Never two wars at once, and never while a treaty still binds (the original's NOWAR).
-    const wars = player.contacts.filter((id) => relation(view, view.viewer, id).status === "war").length;
-    const theirPop = empireTotals(view, other).population;
-    const edge = (x: number) => myPower > Math.max(AI_WAR.minPower, theirPower * (x - lust));
-    const wanted = feel < AI_WAR.dislike - lust * AI_WAR.dislikeSpan ? edge(AI_WAR.edge) : crowded && feel < AI_WAR.crowdedMaxAttitude && edge(AI_WAR.crowdedEdge);
-    if (
-      !peaceful && wars === 0 && view.turn > (strategy === "aggressive" ? AI_WAR.earliestTurnAggressive : AI_WAR.earliestTurn) &&
-      r.status !== "alliance" && view.turn >= bound(r) && myPop > theirPop * AI_WAR.minPopShare && wanted
-    ) {
+    if (strategy === "aggressive" && player.isHuman && !declared.has(other) && aggressiveWar(view, other)) {
+      declared.add(other);
       out.push({ type: "declareWar", target: other });
-      return out;
+      continue;
     }
+    const cmd = offer(view, other);
+    if (cmd) out.push(cmd);
   }
-  return out;
+  // One proposal of a kind to an empire at a time (a counter-offer may already have used it).
+  const seen = new Set<string>();
+  return out.filter((c) => {
+    if (c.type !== "propose") return true;
+    const key = `${c.to}|${c.kind}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * A human's Aggressive automation goes to war by the computer empires'
+ * strength test: its fleets must outgun the neighbor's by 125% + d200 and
+ * more for each treaty (see AI_WAR), at most one war at a time.
+ */
+function aggressiveWar(view: PlayerView, other: PlayerId): boolean {
+  const player = me(view);
+  if (player.contacts.some((k) => relation(view, view.viewer, k).status === "war")) return false;
+  const r = relation(view, view.viewer, other);
+  if (r.status === "peace" || myFleets(view).reduce((s, f) => s + fleetStrength(view, f), 0) <= 0) return false;
+  const S = AI_WAR.strength;
+  let t = S.base + die(view, `war${other}`)(S.roll) + S.perDifficulty * 2 + S.temperament * persOf(view, view.viewer, other);
+  if (r.status === "nonAggression") t += S.nonAggression;
+  if (r.status === "alliance") t += S.alliance;
+  if (r.trade) t += S.trade;
+  if (r.research) t += S.research;
+  return strengthRatio(view, view.viewer, other) >= t;
 }

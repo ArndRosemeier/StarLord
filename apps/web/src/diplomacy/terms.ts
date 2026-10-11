@@ -38,6 +38,8 @@ function describeTerms(view: PlayerView, p: Proposal): string {
       return `demands that you make peace with the ${third}`;
     case "demandBreakAlliance":
       return `demands that you break your alliance with the ${third}`;
+    case "compensation":
+      return "demands compensation for your offences";
     case "demandStopSpying":
       return "demands that you recall your spies";
     case "demandRemoveFleet":

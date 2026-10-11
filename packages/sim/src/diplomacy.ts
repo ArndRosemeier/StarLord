@@ -1,29 +1,32 @@
-import { DIFFICULTIES } from "./data/galaxy.js";
 import {
-  ATTITUDE, ATTITUDE_EVENTS, COUNTER_PRICE, PATIENCE, PEACE_ANSWER, TEMPERAMENTS, TREATY_ANSWER, TRUST, type Temperament,
-  PEACE_TREATY_TURNS, PROPOSAL_LIFETIME, TREATY_YIELD, TRIBUTE_PERCENTS,
+  AI_PEACE, COUNTER_PRICE, DEMAND_ANSWER, NO_WAR_MULT, PATIENCE, PEACE_ANSWER, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS,
+  TEMPERAMENTS, TREATY_ANSWER, TREATY_YIELD, TRIBUTE_PERCENTS, TRUST, type Temperament, PROPOSAL_LIFETIME,
 } from "./data/diplomacy.js";
-import { TRAIT_EFFECTS } from "./data/racePicks.js";
+import { GOVERNMENTS } from "./data/governments.js";
 import { leaderTradeBonus } from "./leaders.js";
-import { raceDiplomacyPoints, treatyIncomeMult } from "./raceEffects.js";
+import { raceDiplomacyPoints } from "./raceEffects.js";
 import { getRace, hasTrait } from "./data/races.js";
 import { TIER_OF_TECH } from "./data/techs.js";
 import type { Emit } from "./context.js";
-import { empireTotals } from "./economy.js";
-import { empireBonus, empires, fleetRange, grantTech, scanRange } from "./empire.js";
+import { androids, empireTotals, population } from "./economy.js";
+import { empireBonus, empireIncome, empires, fleetRange, grantTech, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
 import type { DiplomaticStatus, GameState, Id, PlayerId, Price, Proposal, ProposalKind, Relation } from "./types.js";
-import { designStats, findDesign } from "./designs.js";
-import { empireIncome } from "./empire.js";
+import type { Rng } from "./rng.js";
+import {
+  REASON, addTreatyNoWar, baselineOf, clearShipLosses, firstContact, fleetPower, keyedRoll, persOf,
+  raceRelation, relationEvent, relationsTick, rngRoll, setBaseline, setNoWar, setRelation, setStrikes, shipLossesOf, strengthRatio,
+  strikesOf, type Roll,
+} from "./relations.js";
+import { aiDiplomacyTick } from "./aiDiplomacy.js";
 
 /**
  * Relations between empires, after the original: a status (no treaty, war,
  * peace treaty, non-aggression pact, alliance) plus independent trade and
- * research treaties and tribute. Each empire also feels an attitude toward
- * every other (-100..100) that drifts toward a baseline set by treaties,
- * borders, wars, race traits and difficulty; the AI uses it to decide what to
- * accept and whom to attack. Proposals cover treaties, tech exchanges and
- * demands; gifts and surrender happen at once.
+ * research treaties and tribute. Every pair of empires shares a relation
+ * value (-100..100, see relations.ts) that the computer rulers use to decide
+ * what to accept. Proposals cover treaties, tech exchanges and demands; gifts
+ * and surrender happen at once.
  */
 
 export { PROPOSAL_LIFETIME };
@@ -40,6 +43,15 @@ function writeRelation(state: GameState, a: PlayerId, b: PlayerId, r: Relation):
   state.relations[relKey(a, b)] = r;
 }
 
+function clearYields(state: GameState, a: PlayerId, b: PlayerId, kind?: "trade" | "research"): void {
+  for (const [x, y] of [[a, b], [b, a]] as const) {
+    const row = state.treatyYields?.[x]?.[y];
+    if (!row) continue;
+    if (kind) delete row[kind];
+    else delete state.treatyYields![x]![y];
+  }
+}
+
 export function setStatus(state: GameState, a: PlayerId, b: PlayerId, status: DiplomaticStatus): void {
   const r: Relation = { ...relation(state, a, b), status, since: state.turn };
   delete r.peaceUntil;
@@ -47,9 +59,9 @@ export function setStatus(state: GameState, a: PlayerId, b: PlayerId, status: Di
     // War cancels every treaty, tribute included.
     r.trade = false;
     r.research = false;
+    clearYields(state, a, b);
     state.tributes = (state.tributes ?? []).filter((t) => !((t.from === a && t.to === b) || (t.from === b && t.to === a)));
   }
-  if (status === "peace") r.peaceUntil = state.turn + PEACE_TREATY_TURNS;
   writeRelation(state, a, b, r);
 }
 
@@ -65,31 +77,9 @@ export function isHostile(state: GameState, a: PlayerId, b: PlayerId): boolean {
   return relation(state, a, b).status === "war";
 }
 
+/** The relation between a and b as a sees it (-100..100); before anything happened, the race table. */
 export function attitude(state: GameState, a: PlayerId, b: PlayerId): number {
-  return state.attitude[a]?.[b] ?? 0;
-}
-
-function shiftAttitude(state: GameState, a: PlayerId, b: PlayerId, delta: number): void {
-  const row = (state.attitude[a] ??= {});
-  row[b] = Math.max(-100, Math.min(100, Math.round(((row[b] ?? 0) + delta) * 10) / 10));
-}
-
-/**
- * Changes how a feels about b after something b did. Charismatic races get
- * double the good effects and half the bad ones.
- */
-export function adjustAttitude(state: GameState, a: PlayerId, b: PlayerId, delta: number): void {
-  const pb = state.players[b];
-  if (pb?.kind === "empire" && hasTrait(getRace(pb.raceId), "charismatic")) delta *= delta > 0 ? TRAIT_EFFECTS.charismaticGood : TRAIT_EFFECTS.charismaticBad;
-  shiftAttitude(state, a, b, delta);
-}
-
-/** Attitude change toward `actor` felt by every other living empire. */
-function everyoneFeels(state: GameState, actor: PlayerId, delta: number, except: PlayerId[] = []): void {
-  for (const p of empires(state)) {
-    if (p.id === actor || !p.alive || except.includes(p.id)) continue;
-    adjustAttitude(state, p.id, actor, delta);
-  }
+  return state.attitude[a]?.[b] ?? raceRelation(state, a, b);
 }
 
 /**
@@ -98,9 +88,7 @@ function everyoneFeels(state: GameState, actor: PlayerId, delta: number, except:
  */
 export function dealBonus(state: GameState, proposer: PlayerId): number {
   const p = state.players[proposer]!;
-  const race = getRace(p.raceId);
-  return empireBonus(p).diplomacy + (hasTrait(race, "charismatic") ? TRAIT_EFFECTS.charismaticDiplomacy : 0) +
-    (hasTrait(race, "telepathic") ? TRAIT_EFFECTS.telepathicDiplomacy : 0);
+  return empireBonus(p).diplomacy + raceDiplomacyPoints(getRace(p.raceId));
 }
 
 function repulsivePair(state: GameState, a: PlayerId, b: PlayerId): boolean {
@@ -173,6 +161,9 @@ export function canSign(state: GameState, from: PlayerId, to: PlayerId, kind: Pr
       return (pt.spies.abroad[from]?.count ?? 0) > 0 ? null : "they have no known spies with you";
     case "demandRemoveFleet":
       return intruders(state, from, to).length > 0 ? null : "none of their fleets orbit your systems";
+    case "compensation":
+      if (pf.isHuman || strikesOf(state, from, to) < 1) return "only a computer ruler with grievances asks compensation";
+      return terms.price ? null : "name a price";
   }
 }
 
@@ -236,6 +227,8 @@ export function chargePatience(state: GameState, from: PlayerId, to: PlayerId, k
     tally[k] = (tally[k] ?? 0) - (isDemand(kind) ? PATIENCE.demand : PATIENCE.perAsk + (k === own ? PATIENCE.sameKind : 0));
   }
   state.asks = { ...(state.asks ?? {}), [from]: { ...(state.asks?.[from] ?? {}), [to]: tally } };
+  // Coming to someone resets the clock that times the next visit.
+  ((state.audienceClock ??= {})[from] ??= {})[to] = 0;
   return { patience: before, roll: fixedRoll(state, id, 100) };
 }
 
@@ -246,14 +239,14 @@ function askGroup(kind: ProposalKind): (typeof ASK_GROUPS)[number] {
   return kind === "trade" || kind === "research" ? kind : "other";
 }
 
-/** Every turn patience recovers toward 0. */
+/** Every turn patience recovers toward 0 (goodwill from events lasts only the turn). */
 function recoverPatience(state: GameState): void {
   const up = (v: number) => Math.min(0, v + PATIENCE.recovery);
   for (const a of Object.values(state.patience ?? {})) for (const b of Object.keys(a)) a[b] = up(a[b]!);
   for (const a of Object.values(state.asks ?? {})) for (const t of Object.values(a)) for (const k of Object.keys(t)) t[k] = up(t[k]!);
 }
 
-/** Breaking a treaty exhausts both sides' patience. */
+/** Breaking a treaty or going to war exhausts both sides' patience. */
 function exhaustPatience(state: GameState, a: PlayerId, b: PlayerId): void {
   for (const [x, y] of [[a, b], [b, a]] as const) {
     state.patience = { ...(state.patience ?? {}), [x]: { ...(state.patience?.[x] ?? {}), [y]: PATIENCE.broken } };
@@ -280,43 +273,47 @@ export const trustIn = (state: GameState, a: PlayerId, b: PlayerId) => pairValue
 export const reputationOf = (state: GameState, a: PlayerId, b: PlayerId) => pairValue(state.reputation, a, b);
 const isDishonored = (state: GameState, a: PlayerId, b: PlayerId) => (state.dishonored?.[a] ?? []).includes(b);
 
-/** Strength of the fleets `state` shows for an empire (in a player's view, only those in sight). */
-export function fleetPower(state: GameState, playerId: PlayerId): number {
-  const owner = state.players[playerId]!;
-  let sum = 0;
-  for (const f of Object.values(state.fleets)) {
-    if (f.ownerId !== playerId) continue;
-    for (const sh of f.ships) {
-      const d = findDesign(owner, sh.designId);
-      if (d) sum += designStats(owner, d).strength * sh.count;
-    }
-  }
-  return sum;
-}
-
 /** Systems where `a` has a colony and `b` has ships. */
-function occupiedBy(state: GameState, a: PlayerId, b: PlayerId): number {
+export function occupiedBy(state: GameState, a: PlayerId, b: PlayerId): number {
   const stars = new Set(Object.values(state.colonies).filter((c) => c.ownerId === a).map((c) => state.planets[c.planetId]?.starId));
   return new Set(Object.values(state.fleets).filter((f) => f.ownerId === b && f.starId && stars.has(f.starId)).map((f) => f.starId)).size;
 }
 
 /** Wars `a` fights other than against `b`, a human enemy counting `humanWarWeight`. */
-function otherWars(state: GameState, a: PlayerId, b: PlayerId, onlyComputer = false): number {
+export function otherWars(state: GameState, a: PlayerId, b: PlayerId): number {
   let n = 0;
   for (const p of empires(state)) {
     if (p.id === a || p.id === b || !p.alive || relation(state, a, p.id).status !== "war") continue;
-    if (onlyComputer && p.isHuman) continue;
     n += p.isHuman ? PEACE_ANSWER.humanWarWeight : 1;
   }
   return n;
 }
 
 /**
+ * The original's K term for peace: how the ship losses compare. With yours =
+ * what `you` lost to all your computer enemies and theirs = what `ruler` lost
+ * to you (each at least 10): 100 x yours / theirs - 100 when you lost more,
+ * else 100 - 100 x theirs / yours, held to -300..300.
+ */
+export function peaceLossTerm(state: GameState, ruler: PlayerId, you: PlayerId): number {
+  let s = 0;
+  for (const p of empires(state)) {
+    if (p.id === you || p.isHuman || relation(state, you, p.id).status !== "war") continue;
+    s += shipLossesOf(state, you, p.id);
+  }
+  s = Math.max(s, PEACE_ANSWER.minLosses);
+  const x = Math.max(shipLossesOf(state, ruler, you), PEACE_ANSWER.minLosses);
+  const k = s < x ? 100 - Math.trunc((100 * x) / s) : Math.trunc((100 * s) / x) - 100;
+  return Math.max(-PEACE_ANSWER.lossCap, Math.min(PEACE_ANSWER.lossCap, k));
+}
+
+/**
  * The original's answer to a treaty: for a non-aggression pact, alliance,
- * trade or research treaty the listener's attitude, a d100, the treaty's need,
- * its trust in you and your reputation, its temperament and patience, and the
- * proposer's diplomatic bonuses. Peace leaves attitude out and weighs the war
- * instead. With `roll` null the result leaves the die out (for showing odds).
+ * trade or research treaty the listener's relation with you, a d100, the
+ * treaty's need, its trust in you and your reputation, its temperament and
+ * patience, and the proposer's diplomatic bonuses. Peace leaves the relation
+ * out and weighs the war instead. With `roll` null the result leaves the die
+ * out (for showing odds).
  */
 export function treatyScore(
   state: GameState, from: PlayerId, to: PlayerId, kind: ProposalKind, roll: number | null, patienceBefore = patience(state, to, from),
@@ -341,15 +338,12 @@ export function treatyScore(
     add("your reputation (counts twice)", (honorable ? 3 : 2) * rep);
     add("their other wars", PEACE_ANSWER.perTheirWar * otherWars(state, to, from));
     add("your other wars", -PEACE_ANSWER.perYourWar * otherWars(state, from, to));
-    const mine = fleetPower(state, to);
-    const theirs = fleetPower(state, from);
-    let ratio = Math.min(PEACE_ANSWER.strengthCap, ((mine + 1) * 100) / (theirs + 1));
-    ratio /= 2 ** otherWars(state, to, from, true);
-    add("their fleets against yours", -(ratio - 100) / 2);
+    add("their fleets against yours", -(strengthRatio(state, to, from) - 100) / 2);
     add("your systems their ships hold", -PEACE_ANSWER.theirFleetInYourSystem * occupiedBy(state, from, to));
     add("their systems your ships hold", PEACE_ANSWER.yourFleetInTheirSystem * occupiedBy(state, to, from));
+    add("ship losses so far", peaceLossTerm(state, to, from));
   } else {
-    parts.push({ why: "their attitude toward you", value: attitude(state, to, from) });
+    parts.push({ why: "their relation with you", value: attitude(state, to, from) });
     parts.push({ why: `what a ${words(kind)} asks of them`, value: -(TREATY_ANSWER.need[kind] ?? 0) });
     add("their trust in you", trust);
     add(honorable ? "your reputation (Honorable rulers count it twice)" : "your reputation", (honorable ? 2 : 1) * rep);
@@ -367,7 +361,7 @@ export function treatyScore(
   if (roll !== null) parts.push({ why: "their mood today (d100)", value: roll });
   let blocked: string | null = null;
   if (kind === "alliance" && attitude(state, to, from) < TREATY_ANSWER.allianceMinAttitude) {
-    blocked = `they ally only at attitude ${TREATY_ANSWER.allianceMinAttitude} or better`;
+    blocked = `they ally only at a relation of ${TREATY_ANSWER.allianceMinAttitude} or better`;
   }
   if (peace && state.turn - relation(state, from, to).since < TREATY_ANSWER.peaceMinWarTurns) {
     blocked = `they hear no peace before ${TREATY_ANSWER.peaceMinWarTurns} turns of war`;
@@ -407,32 +401,95 @@ export function treatyAnswer(state: GameState, p: Proposal, warmth = 0): TreatyA
   if (score < TREATY_ANSWER.bigPrice) return { kind: "refuse" };
   const chance = TREATY_ANSWER.counterChance[p.kind === "ceasefire" ? "peace" : p.kind] ?? 0;
   if (!chance || fixedRoll(state, `${p.id}|counter`, 100) > chance * 100) return { kind: "refuse" };
-  const price = counterPrice(state, p.to, p.from, score >= TREATY_ANSWER.smallPrice ? "small" : "big", p.id);
+  const level = score >= TREATY_ANSWER.smallPrice ? COUNTER_PRICE.levels.small : COUNTER_PRICE.levels.big;
+  const price = counterPrice(state, p.to, p.from, level, p.id, p.kind);
   return price ? { kind: "price", price } : { kind: "refuse" };
 }
 
-/** A price `ruler` asks of `payer`, small or big, picked by a fixed roll among what the payer can give. */
-export function counterPrice(state: GameState, ruler: PlayerId, payer: PlayerId, size: "small" | "big", key: string): Price | null {
-  const them = state.players[ruler]!;
-  const you = state.players[payer]!;
-  const options: Price[] = [];
-  const income = Math.max(0, empireIncome(state, ruler).net);
-  const bc = Math.min(Math.floor(you.bc), Math.max(COUNTER_PRICE.minBc, Math.round(income * COUNTER_PRICE.bcTurnsOfIncome * (size === "big" ? 2 : 1))));
-  if (bc >= COUNTER_PRICE.minBc) options.push({ bc });
-  const techs = you.techs.filter((t) => TIER_OF_TECH[t] && !them.techs.includes(t)).sort((a, b) => (TIER_OF_TECH[a]!.cost - TIER_OF_TECH[b]!.cost) || a.localeCompare(b));
-  if (techs.length) options.push({ techId: size === "big" ? techs[techs.length - 1]! : techs[0]! });
-  if (!(state.tributes ?? []).some((t) => t.from === payer && t.to === ruler)) options.push({ tribute: size === "big" ? COUNTER_PRICE.bigTribute : COUNTER_PRICE.smallTribute });
-  if (size === "big") {
-    const home = you.homeStarId;
-    const stars = [...new Set(Object.values(state.colonies).filter((c) => c.ownerId === payer).map((c) => state.planets[c.planetId]!.starId))]
-      .filter((id) => id !== home).sort();
-    if (stars.length) options.push({ starId: stars[fixedRoll(state, `${key}|star`, stars.length) - 1]! });
-  }
-  if (!options.length) return null;
-  return options[fixedRoll(state, `${key}|price`, options.length) - 1]!;
+/** An empire's expenses a turn, as the original counts them: upkeep, freighters, command overage, salaries and tribute paid. */
+export function empireExpenses(state: GameState, playerId: PlayerId): number {
+  const i = empireIncome(state, playerId);
+  const tribute = (state.tributes ?? []).filter((t) => t.from === playerId).reduce((s, t) => s + tributeAmount(state, playerId, t.percent), 0);
+  return i.maintenance + i.freighters + i.projects + i.salaries + i.commandOverage + tribute;
 }
 
-/** Records broken faith: the wronged empire's trust and everyone else's opinion of the breaker drop. */
+/** Highest tech level (1..18) among the techs an empire knows. */
+function bestTechLevel(state: GameState, playerId: PlayerId): number {
+  let best = 1;
+  for (const t of state.players[playerId]!.techs) best = Math.max(best, TIER_OF_TECH[t]?.level ?? 1);
+  return best;
+}
+
+/**
+ * The price `ruler` asks of `payer` at a level (4 small, 8 big), after the
+ * original's FUN_0004f936; see COUNTER_PRICE. Peace may cost a tribute (level
+ * 6 or lower) or a system (level 6 or higher); a pact or alliance only BC or
+ * a technology. Null when there is nothing to ask.
+ */
+export function counterPrice(state: GameState, ruler: PlayerId, payer: PlayerId, level: number, key: string, kind: ProposalKind): Price | null {
+  const roll = keyedRoll(state, `${key}|price`);
+  const them = state.players[ruler]!;
+  const you = state.players[payer]!;
+  const peace = kind === "peace" || kind === "ceasefire";
+  level = Math.max(1, Math.min(COUNTER_PRICE.maxLevel, Math.trunc(level)));
+
+  const expenses = Math.max(COUNTER_PRICE.minExpenses, Math.trunc(empireExpenses(state, ruler)));
+  const treasury = Math.max(0, Math.floor(you.bc));
+  const m = Math.min(10, Math.trunc(Math.trunc(treasury / expenses) / 10));
+  let bc = 0;
+  if (level <= m) {
+    let amount = Math.min(expenses * level * COUNTER_PRICE.bcPerLevel, treasury);
+    amount = amount < 100 ? Math.floor(amount / 10) * 10 : Math.floor(amount / 100) * 100;
+    bc = Math.min(COUNTER_PRICE.maxBc, amount);
+  }
+
+  // Technology: the further behind you are, the dearer the pick (r = your best level x 10 / theirs, 10 if you lead).
+  const mine = bestTechLevel(state, payer);
+  const theirs = bestTechLevel(state, ruler);
+  const r = mine >= theirs ? 10 : Math.max(1, Math.trunc((mine * 10) / theirs));
+  // The original also leaves out techs the ruler cannot learn and other governments' techs; StarLord lets every listed tech be traded.
+  const techs = you.techs.filter((t) => TIER_OF_TECH[t] && !them.techs.includes(t))
+    .sort((a, b) => (TIER_OF_TECH[b]!.cost - TIER_OF_TECH[a]!.cost) || a.localeCompare(b));
+  let techId: string | null = null;
+  if (level <= r && techs.length) {
+    const n = techs.length;
+    techId = techs[Math.max(0, Math.min(n - 1, n - 1 - (Math.trunc((n * level) / r) + roll(3) - 2)))]!;
+  }
+
+  const paying = (state.tributes ?? []).some((t) => t.from === payer && t.to === ruler);
+  const tribute = peace && level <= COUNTER_PRICE.tributeMaxLevel && !paying;
+
+  let starId: Id | null = null;
+  if (peace && level >= COUNTER_PRICE.systemMinLevel) {
+    const capital = new Set(Object.values(state.colonies).filter((c) => c.ownerId === payer && c.buildings.includes("capitol")).map((c) => state.planets[c.planetId]!.starId));
+    capital.add(you.homeStarId);
+    const pops = new Map<Id, number>();
+    for (const c of Object.values(state.colonies)) {
+      if (c.ownerId !== payer) continue;
+      const s = state.planets[c.planetId]!.starId;
+      pops.set(s, (pops.get(s) ?? 0) + population(c));
+    }
+    // The original also needs the system in the ruler's range; StarLord asks for any but the capital's.
+    const stars = pops.size > 1 ? [...pops].filter(([s]) => !capital.has(s)).sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1)) : [];
+    if (stars.length) {
+      const n = stars.length;
+      const h = Math.trunc((n + 1) / 2);
+      const i = level > COUNTER_PRICE.systemMinLevel ? n - roll(h) : roll(h) - 1;
+      starId = stars[Math.max(0, Math.min(n - 1, i))]![0];
+    }
+  }
+
+  if (starId && (roll(3) === 1 || (!techId && !tribute && !bc))) return { starId };
+  if (techId && (roll(3) === 1 || (!tribute && !bc))) return { techId };
+  if (tribute && (roll(2) === 1 || !bc)) return { tribute: COUNTER_PRICE.tribute };
+  if (bc) return { bc };
+  return null;
+}
+
+/**
+ * Records broken faith: the wronged empire's trust drops and it remembers the
+ * breaker as dishonored, and everyone else in contact thinks less of the breaker.
+ */
 export function recordBrokenFaith(state: GameState, breaker: PlayerId, wronged: PlayerId, treaty: string): void {
   const hurt = TRUST.broken[treaty] ?? 0;
   if (!hurt) return;
@@ -452,33 +509,31 @@ export function isDemand(kind: ProposalKind): boolean {
   return kind.startsWith("demand");
 }
 
+const isComputer = (state: GameState, id: PlayerId) => state.players[id]?.kind === "empire" && !state.players[id]!.isHuman;
+
 /** Carries out an accepted proposal. */
 export function acceptProposal(state: GameState, p: Proposal, emit?: Emit): void {
   if (p.price) payPrice(state, p.to, p.from, p.price, emit);
-  const r = relation(state, p.from, p.to);
+  const roll = keyedRoll(state, `${p.id}|accept`);
   switch (p.kind) {
     case "ceasefire":
     case "peace":
-      setStatus(state, p.from, p.to, "peace");
+      makePeace(state, p.from, p.to);
       break;
     case "nonAggression":
-      setStatus(state, p.from, p.to, "nonAggression");
-      break;
     case "alliance":
-      setStatus(state, p.from, p.to, "alliance");
+      signPact(state, p.from, p.to, p.kind);
       break;
     case "trade":
-      writeRelation(state, p.from, p.to, { ...r, trade: true, tradeSince: state.turn });
-      break;
     case "research":
-      writeRelation(state, p.from, p.to, { ...r, research: true, researchSince: state.turn });
+      signTreaty(state, p.from, p.to, p.kind);
       break;
     case "techExchange":
       giveTech(state, p.from, p.to, p.techId!, emit);
       giveTech(state, p.to, p.from, p.wantTechId!, emit);
-      adjustAttitude(state, p.to, p.from, ATTITUDE_EVENTS.techExchange);
-      adjustAttitude(state, p.from, p.to, ATTITUDE_EVENTS.techExchange);
-      return;
+      relationEvent(state, RELATION_EVENTS.techExchange, p.from, p.to);
+      relationEvent(state, RELATION_EVENTS.techExchange, p.to, p.from);
+      break;
     case "demandTribute":
       addTribute(state, p.to, p.from, p.percent!);
       break;
@@ -489,17 +544,18 @@ export function acceptProposal(state: GameState, p: Proposal, emit?: Emit): void
       cedeSystem(state, p.to, p.from, p.starId!, emit);
       break;
     case "demandWar":
-      declareWar(state, p.to, p.third!);
+      declareWar(state, p.to, p.third!, { roll });
       emit?.({ kind: "diplomacy", playerId: p.third!, other: p.to, what: "declared war on you" });
+      // A computer ruler is grateful when you attack the empire it asked you to.
+      relationEvent(state, 200, p.to, p.from, REASON.joinedWar);
       break;
     case "demandPeace":
-      setStatus(state, p.to, p.third!, "peace");
+      makePeace(state, p.to, p.third!);
       emit?.({ kind: "diplomacy", playerId: p.third!, other: p.to, what: "made peace with you" });
       break;
     case "demandBreakAlliance":
       recordBrokenFaith(state, p.to, p.third!, "alliance");
       setStatus(state, p.to, p.third!, "none");
-      adjustAttitude(state, p.third!, p.to, ATTITUDE_EVENTS.brokeAlliance);
       emit?.({ kind: "diplomacy", playerId: p.third!, other: p.to, what: "broke off its alliance with you" });
       break;
     case "demandStopSpying": {
@@ -514,18 +570,38 @@ export function acceptProposal(state: GameState, p: Proposal, emit?: Emit): void
         if (home && home !== f.starId) f.destStarId = home;
       }
       break;
+    case "compensation":
+      // The price is paid above; the ruler keeps its treaties.
+      break;
   }
-  if (isDemand(p.kind)) {
-    adjustAttitude(state, p.to, p.from, ATTITUDE_EVENTS.demandMet);
-  } else {
-    adjustAttitude(state, p.from, p.to, ATTITUDE_EVENTS.acceptedTreaty);
-    adjustAttitude(state, p.to, p.from, ATTITUDE_EVENTS.acceptedTreaty);
+  // A human who agrees to a computer ruler's request pleases it.
+  if (isComputer(state, p.from) && state.players[p.to]?.isHuman) {
+    const [lo, hi] = RELATION_EVENTS.agreedToRequest;
+    relationEvent(state, lo - 1 + roll(hi - lo + 1), p.to, p.from);
   }
 }
 
-/** Refusing a proposal; refused demands sour the demander. */
-export function rejectProposal(state: GameState, p: Proposal): void {
-  adjustAttitude(state, p.from, p.to, isDemand(p.kind) ? ATTITUDE_EVENTS.demandRefused : ATTITUDE_EVENTS.rejectedProposal);
+/**
+ * Refusing a proposal. A computer ruler that refuses a demand may answer with
+ * strikes, broken treaties or war (see demandAnswer); refusing a computer
+ * ally's call to arms ends the alliance; refusing compensation ends the
+ * computer ruler's treaties with you.
+ */
+export function rejectProposal(state: GameState, p: Proposal, emit?: Emit): void {
+  const roll = keyedRoll(state, `${p.id}|reject`);
+  if (isDemand(p.kind) && isComputer(state, p.to) && state.players[p.from]?.alive) {
+    demandConsequences(state, p, roll, emit);
+  }
+  if (p.kind === "demandWar" && isComputer(state, p.from) && relation(state, p.from, p.to).status === "alliance") {
+    recordBrokenFaith(state, p.to, p.from, "alliance");
+    setStatus(state, p.from, p.to, "none");
+    exhaustPatience(state, p.from, p.to);
+    emit?.({ kind: "diplomacy", playerId: p.to, other: p.from, what: "ended your alliance after you refused to join its war" });
+  }
+  if (p.kind === "compensation") {
+    breakAllTreaties(state, p.to, p.from, roll);
+    emit?.({ kind: "diplomacy", playerId: p.to, other: p.from, what: "ended its treaties with you after you refused compensation" });
+  }
 }
 
 function nearestColonyStar(state: GameState, playerId: PlayerId, from: { x: number; y: number }): Id | null {
@@ -579,38 +655,107 @@ export function cedeSystem(state: GameState, from: PlayerId, to: PlayerId, starI
   for (const l of Object.values(state.leaders)) if (l.ownerId === from && l.assignedTo === starId) l.assignedTo = null;
 }
 
-export function declareWar(state: GameState, from: PlayerId, to: PlayerId): void {
+/** A non-aggression pact or alliance: strikes are forgotten and each computer side adds its no-war time. */
+export function signPact(state: GameState, a: PlayerId, b: PlayerId, kind: "nonAggression" | "alliance"): void {
+  setStatus(state, a, b, kind);
+  setStrikes(state, a, b, 0);
+  setStrikes(state, b, a, 0);
+  addTreatyNoWar(state, a, b, NO_WAR_MULT[kind]);
+}
+
+/** A trade or research treaty: each side's yield starts at minus the base and ramps up from there. */
+export function signTreaty(state: GameState, a: PlayerId, b: PlayerId, kind: "trade" | "research"): void {
+  const r = relation(state, a, b);
+  writeRelation(state, a, b, { ...r, [kind]: true, [kind === "trade" ? "tradeSince" : "researchSince"]: state.turn });
+  addTreatyNoWar(state, a, b, NO_WAR_MULT[kind]);
+  const base = treatyBase(state, a, b, kind);
+  for (const [x, y] of [[a, b], [b, a]] as const) (((state.treatyYields ??= {})[x] ??= {})[y] ??= {})[kind] = -base;
+}
+
+/**
+ * Peace, after the original: the relation rises by 50 but no higher than 0,
+ * strikes and war losses are forgotten, and neither side may declare war for
+ * 30 turns, after which the treaty lapses to no treaty.
+ */
+export function makePeace(state: GameState, a: PlayerId, b: PlayerId): void {
+  setStatus(state, a, b, "peace");
+  setRelation(state, a, b, Math.min(attitude(state, a, b) + RELATION_EVENTS.peace.gain, RELATION_EVENTS.peace.max));
+  setNoWar(state, a, b, PEACE_TREATY_TURNS);
+  setNoWar(state, b, a, PEACE_TREATY_TURNS);
+  setStrikes(state, a, b, 0);
+  setStrikes(state, b, a, 0);
+  clearShipLosses(state, a, b);
+}
+
+/** Turns left on a peace treaty between a and b (0 when none). */
+export function peaceTurnsLeft(state: GameState, a: PlayerId, b: PlayerId): number {
+  if (relation(state, a, b).status !== "peace") return 0;
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  return state.noWar?.[lo]?.[hi] ?? Math.max(0, (relation(state, a, b).peaceUntil ?? state.turn) - state.turn);
+}
+
+/**
+ * War, after the original: the relation falls to -75 - d25 on both sides and
+ * the baseline by 10 (an estimate: the decoded write may set it to -10
+ * instead), treaties and tribute end, strikes and war losses are forgotten,
+ * patience runs out and the no-war time is gone. Whoever is to blame (the
+ * declarer, unless a computer ruler went to war over your offences) is
+ * recorded as having broken faith when a treaty was in force. Allies are not
+ * dragged in at once: computer allies join over the next turns (see aiDiplomacy).
+ */
+export function declareWar(state: GameState, from: PlayerId, to: PlayerId, opts: { blame?: PlayerId; roll?: Roll } = {}): void {
   const before = relation(state, from, to);
-  const brokePeace = (before.peaceUntil ?? 0) > state.turn;
-  if (brokePeace) recordBrokenFaith(state, from, to, "peace");
-  else if (before.status === "nonAggression" || before.status === "alliance") recordBrokenFaith(state, from, to, before.status);
+  const blamed = opts.blame ?? from;
+  const wronged = blamed === from ? to : from;
+  const roll = opts.roll ?? keyedRoll(state, `war${state.turn}|${from}|${to}`);
+  if (before.status === "peace" || before.status === "nonAggression" || before.status === "alliance") recordBrokenFaith(state, blamed, wronged, before.status);
+  else if (before.trade || before.research) recordBrokenFaith(state, blamed, wronged, before.research ? "research" : "trade");
   setStatus(state, from, to, "war");
-  adjustAttitude(state, to, from, ATTITUDE_EVENTS.declaredWar + (brokePeace ? ATTITUDE_EVENTS.brokePeace : 0));
-  for (const other of empires(state)) {
-    if (other.id === from || other.id === to || !other.alive) continue;
-    // Breaking a treaty sours everyone; friends of the victim more so; breaking a peace treaty most of all.
-    if (before.status !== "none" && before.status !== "war") adjustAttitude(state, other.id, from, ATTITUDE_EVENTS.brokeTreatyOthers);
-    if (brokePeace) adjustAttitude(state, other.id, from, ATTITUDE_EVENTS.brokePeaceOthers);
-    if (attitude(state, other.id, to) > ATTITUDE_EVENTS.likedVictimThreshold) adjustAttitude(state, other.id, from, ATTITUDE_EVENTS.likedVictim);
-    if (relation(state, other.id, to).status === "alliance" && relation(state, other.id, from).status !== "war") {
-      setStatus(state, other.id, from, "war");
-    }
-  }
+  const W = RELATION_EVENTS.declareWar;
+  setRelation(state, from, to, W.set - roll(W.roll));
+  setBaseline(state, from, to, baselineOf(state, from, to) + W.baseline);
+  setBaseline(state, to, from, baselineOf(state, to, from) + W.baseline);
+  setStrikes(state, from, to, 0);
+  setStrikes(state, to, from, 0);
+  clearShipLosses(state, from, to);
+  exhaustPatience(state, from, to);
+  setNoWar(state, from, to, 0);
+  setNoWar(state, to, from, 0);
 }
 
 export type TreatyName = "trade" | "research" | "nonAggression" | "alliance" | "tribute";
 
+/** Ending a research treaty, after the original: relation -(d20 + d20), baseline -d20. */
+function researchBreak(state: GameState, a: PlayerId, b: PlayerId, roll: Roll): void {
+  const R = RELATION_EVENTS.researchBreak;
+  setRelation(state, a, b, attitude(state, a, b) - (roll(R.roll) + roll(R.roll)));
+  const drop = roll(R.baselineRoll);
+  setBaseline(state, a, b, baselineOf(state, a, b) - drop);
+  setBaseline(state, b, a, baselineOf(state, b, a) - drop);
+}
+
+/** Breaking faith, after the original: the wronged side holds one more strike, patience runs out, no-war time is gone. */
+function brokeFaith(state: GameState, blamed: PlayerId, wronged: PlayerId, treaty: string): void {
+  recordBrokenFaith(state, blamed, wronged, treaty);
+  if (isComputer(state, wronged)) setStrikes(state, wronged, blamed, strikesOf(state, wronged, blamed) + 1);
+  exhaustPatience(state, blamed, wronged);
+  setNoWar(state, blamed, wronged, 0);
+  setNoWar(state, wronged, blamed, 0);
+}
+
 /** Ends one treaty without going to war. */
-export function breakTreaty(state: GameState, from: PlayerId, to: PlayerId, treaty: TreatyName): void {
+export function breakTreaty(state: GameState, from: PlayerId, to: PlayerId, treaty: TreatyName, roll: Roll = keyedRoll(state, `break${state.turn}|${from}|${to}|${treaty}`)): void {
   const r = relation(state, from, to);
-  exhaustPatience(state, from, to);
-  recordBrokenFaith(state, from, to, treaty);
+  brokeFaith(state, from, to, treaty);
   switch (treaty) {
     case "trade":
       writeRelation(state, from, to, { ...r, trade: false });
+      clearYields(state, from, to, "trade");
       break;
     case "research":
       writeRelation(state, from, to, { ...r, research: false });
+      clearYields(state, from, to, "research");
+      researchBreak(state, from, to, roll);
       break;
     case "nonAggression":
     case "alliance":
@@ -620,7 +765,25 @@ export function breakTreaty(state: GameState, from: PlayerId, to: PlayerId, trea
       state.tributes = (state.tributes ?? []).filter((t) => !(t.from === from && t.to === to));
       break;
   }
-  adjustAttitude(state, to, from, treaty === "alliance" ? ATTITUDE_EVENTS.brokeAlliance : ATTITUDE_EVENTS.brokeTreaty);
+}
+
+/** Every treaty between the two ends, `blamed` taking the blame (strikes, a refused compensation or demand). */
+export function breakAllTreaties(state: GameState, blamed: PlayerId, wronged: PlayerId, roll: Roll): void {
+  const r = relation(state, blamed, wronged);
+  if (r.status === "nonAggression" || r.status === "alliance") breakTreaty(state, blamed, wronged, r.status, roll);
+  if (r.research) breakTreaty(state, blamed, wronged, "research", roll);
+  if (r.trade) breakTreaty(state, blamed, wronged, "trade", roll);
+}
+
+/** A computer ruler with two strikes asks you to pay for its grievances; false when there is nothing to ask. */
+export function offerCompensation(state: GameState, ai: PlayerId, human: PlayerId): boolean {
+  const id = proposalId(state.turn, ai, human, "compensation");
+  if (state.proposals.some((p) => p.id === id)) return false;
+  // The original asks at level 6 through the same price routine; which options it allows here is not decoded, so like a pact (BC or a tech).
+  const price = counterPrice(state, ai, human, 6, id, "nonAggression");
+  if (!price) return false;
+  state.proposals.push({ id, from: ai, to: human, kind: "compensation", turn: state.turn, price });
+  return true;
 }
 
 /** Whether `from` has that treaty with `to` to break. */
@@ -662,97 +825,56 @@ export function giftProblem(state: GameState, from: PlayerId, to: PlayerId, gift
   return null;
 }
 
+/**
+ * What a gift is worth to a computer ruler (the original's m): BC / max(its
+ * expenses, 10) / 10, at most 8; a technology 5 x its level / the ruler's best
+ * level; a tribute 2; a system its population / 2 + 1 (an estimate). Each
+ * point raises the relation by 4 + d4 and the baseline by 1.
+ */
+export function giftWorth(state: GameState, from: PlayerId, to: PlayerId, gift: Gift): number {
+  const G = RELATION_EVENTS.gift;
+  let m = 0;
+  if (gift.bc) m += Math.min(G.maxBc, Math.trunc(Math.trunc(gift.bc / Math.max(G.minExpenses, empireExpenses(state, to))) / 10));
+  if (gift.techId) m += Math.trunc((G.techPerLevel * (TIER_OF_TECH[gift.techId]?.level ?? 1)) / bestTechLevel(state, to));
+  if (gift.tribute) m += G.tribute;
+  if (gift.starId) m += Math.trunc(coloniesAt(state, from, gift.starId).reduce((s, c) => s + population(c), 0) / 2) + 1;
+  return m;
+}
+
 export function giveGift(state: GameState, from: PlayerId, to: PlayerId, gift: Gift, emit?: Emit): void {
   const pf = state.players[from]!;
   const pt = state.players[to]!;
-  let warmth = 0;
+  const m = giftWorth(state, from, to, gift);
   if (gift.bc) {
     pf.bc -= gift.bc;
     pt.bc += gift.bc;
-    warmth += Math.min(ATTITUDE_EVENTS.giftBcCap, gift.bc * ATTITUDE_EVENTS.giftPerBc);
   }
-  if (gift.techId) {
-    giveTech(state, from, to, gift.techId, emit);
-    warmth += ATTITUDE_EVENTS.giftTech;
-  }
-  if (gift.starId) {
-    cedeSystem(state, from, to, gift.starId, emit);
-    warmth += ATTITUDE_EVENTS.giftSystem;
-  }
+  if (gift.techId) giveTech(state, from, to, gift.techId, emit);
+  if (gift.starId) cedeSystem(state, from, to, gift.starId, emit);
   if (gift.tribute) addTribute(state, from, to, gift.tribute);
-  adjustAttitude(state, to, from, warmth);
+  if (!pt.isHuman && m > 0) {
+    const G = RELATION_EVENTS.gift;
+    const roll = keyedRoll(state, `gift${state.turn}|${from}|${to}`);
+    setRelation(state, from, to, Math.min(RELATION.max, attitude(state, to, from) + m * (roll(G.roll) + G.rollBase)));
+    setBaseline(state, to, from, Math.min(RELATION.max, baselineOf(state, to, from) + m));
+    // A gift puts off the ruler's next visit.
+    const clock = (state.audienceClock ??= {})[to] ??= {};
+    clock[from] = Math.trunc((clock[from] ?? 0) / m);
+  }
   emit?.({ kind: "diplomacy", playerId: to, other: from, what: "sent you a gift" });
 }
 
-/** One reason for how a feels about b, with its weight in attitude points. */
-export interface AttitudePart {
-  why: string;
-  value: number;
-}
-
-/** What a's baseline attitude toward b is made of; attitude drifts toward its sum. */
-export function attitudeParts(state: GameState, a: PlayerId, b: PlayerId): AttitudePart[] {
-  const r = relation(state, a, b);
-  const pa = state.players[a]!;
-  const pb = state.players[b]!;
-  const raceB = getRace(pb.raceId);
-  const raceA = getRace(pa.raceId);
-  const parts: AttitudePart[] = [];
-  const add = (why: string, value: number) => {
-    if (value !== 0) parts.push({ why, value });
-  };
-  if (hasTrait(raceB, "charismatic")) add("charismatic race", ATTITUDE.charismatic);
-  if (hasTrait(raceB, "repulsive")) add("repulsive race", ATTITUDE.repulsive);
-  if (raceA.id === raceB.id) add("same race", ATTITUDE.sameRace);
-  const held = Math.floor(Math.max(0, state.turn - r.since) / ATTITUDE.pactWarmthTurns);
-  if (r.status === "war") add("at war", ATTITUDE.war);
-  if (r.status === "alliance") add("alliance", ATTITUDE.alliance + Math.min(ATTITUDE.allianceWarmthCap, held));
-  if (r.status === "nonAggression") add("non-aggression pact", ATTITUDE.nonAggression + Math.min(ATTITUDE.nonAggressionWarmthCap, held));
-  if (r.status === "peace") add("peace treaty", ATTITUDE.peace);
-  if (r.trade) add("trade treaty", ATTITUDE.treaty);
-  if (r.research) add("research treaty", ATTITUDE.treaty);
-  if ((state.tributes ?? []).some((t) => t.from === b && t.to === a)) add("tribute paid to them", ATTITUDE.tributePaid);
-  if (bordersTouch(state, a, b)) add("shared border", ATTITUDE.borders);
-  let shared = 0;
-  for (const c of empires(state)) {
-    if (c.id === a || c.id === b || !c.alive) continue;
-    if (relation(state, a, c.id).status === "war" && relation(state, b, c.id).status === "war") shared += ATTITUDE.sharedEnemy;
-  }
-  add("common enemies", shared);
-  // Difficulty: computer empires are friendlier (or hostile) toward human players.
-  if (!pa.isHuman && pb.isHuman) add("difficulty level", DIFFICULTIES[state.settings.difficulty ?? "average"].aiAttitudeToHumans);
-  return parts;
-}
-
-/** Baseline attitude a feels towards b before drift. */
-export function attitudeBaseline(state: GameState, a: PlayerId, b: PlayerId): number {
-  return attitudeParts(state, a, b).reduce((sum, p) => sum + p.value, 0);
-}
-
-function bordersTouch(state: GameState, a: PlayerId, b: PlayerId): boolean {
-  const starsOf = (p: PlayerId) =>
-    Object.values(state.colonies)
-      .filter((c) => c.ownerId === p)
-      .map((c) => state.galaxy.stars.find((s) => s.id === state.planets[c.planetId]?.starId))
-      .filter((s) => !!s);
-  const sa = starsOf(a);
-  const sb = starsOf(b);
-  return sa.some((x) => sb.some((y) => distance(x!, y!) <= ATTITUDE.borderRange));
-}
-
-/** Once per turn: make contact, drift attitudes, pay tribute, expire old proposals. */
-export function diplomacyTick(state: GameState, emit?: Emit): void {
-  const list = empires(state).filter((p) => p.alive);
+/**
+ * Once per turn: make contact, recover patience, run the relation rules and
+ * the computer empires' dealings among themselves, ramp treaty yields, pay
+ * tribute and expire old proposals.
+ */
+export function diplomacyTick(state: GameState, rng: Rng, emit?: Emit): void {
   updateContacts(state, emit);
   recoverPatience(state);
-  for (const a of list) {
-    for (const b of list) {
-      if (a.id === b.id || !a.contacts.includes(b.id)) continue;
-      const target = attitudeBaseline(state, a.id, b.id);
-      const now = attitude(state, a.id, b.id);
-      if (now !== target) shiftAttitude(state, a.id, b.id, Math.sign(target - now) * Math.min(ATTITUDE.driftPerTurn, Math.abs(target - now)));
-    }
-  }
+  relationsTick(state, rng, emit);
+  aiDiplomacyTick(state, rng, emit);
+  rampTreaties(state, rngRoll(rng));
   payTributes(state, emit);
   state.proposals = state.proposals.filter((p) => state.turn - p.turn < PROPOSAL_LIFETIME);
 }
@@ -798,6 +920,7 @@ export function updateContacts(state: GameState, emit?: Emit): void {
     if (state.players[b]!.contacts.includes(a)) return;
     state.players[b]!.contacts.push(a);
     emit?.({ kind: "diplomacy", playerId: b, other: a, what: "made contact with you" });
+    firstContact(state, a, b);
   };
   for (const a of list) {
     const reach = Math.max(fleetRange(a), scanRange(a) + 1);
@@ -811,15 +934,50 @@ export function updateContacts(state: GameState, emit?: Emit): void {
   }
 }
 
+// ---------------------------------------------------------------- trade and research treaties
+
 /**
- * Trade and research treaties: yield based on the smaller empire's
- * population. New treaties cost money while routes are set up, break even
- * after 5 turns and reach their full value after 10.
+ * An empire's population of its own kind for treaties: everyone who holds a
+ * job except natives and androids (android scientists count for research).
+ * In a player's view, a treaty partner's comes from `knownTreatyPop`.
  */
-export function treatyRamp(state: GameState, signed: number, kind: "trade" | "research"): number {
-  const y = TREATY_YIELD[kind];
-  const t = Math.max(0, state.turn - signed);
-  return Math.max(-1, Math.min(1, (t - y.breakEven) / (y.full - y.breakEven)));
+export function treatyPopulation(state: GameState, playerId: PlayerId, kind: "trade" | "research"): number {
+  const known = (state as { knownTreatyPop?: Record<PlayerId, { trade: number; research: number }> }).knownTreatyPop?.[playerId];
+  if (known) return known[kind];
+  let n = 0;
+  for (const c of Object.values(state.colonies)) {
+    if (c.ownerId !== playerId || c.outpost) continue;
+    n += Math.max(0, population(c) - (c.natives ?? 0));
+    if (kind === "research") n += androids(c).scientists;
+  }
+  return n;
+}
+
+const pirated = (state: GameState, playerId: PlayerId) => (state.activeEvents ?? []).some((e) => e.kind === "pirates" && e.playerId === playerId);
+
+/**
+ * The unscaled base of a treaty between a and b: half the smaller partner's
+ * population; trade halved again while pirates prey on either (the original
+ * halves for one random event that is probably its pirates: an estimate).
+ */
+export function treatyBase(state: GameState, a: PlayerId, b: PlayerId, kind: "trade" | "research"): number {
+  const base = Math.trunc(Math.min(treatyPopulation(state, a, kind), treatyPopulation(state, b, kind)) / TREATY_YIELD.baseDivisor);
+  if (kind === "trade" && (pirated(state, a) || pirated(state, b))) return Math.trunc(base / TREATY_YIELD.piratesDivisor);
+  return base;
+}
+
+/**
+ * What a treaty with b yields a each turn at full strength: the base times a's
+ * government's BC multiplier, +50% for Fantastic Traders and the best Trader
+ * leader's skill (trade), or times the government's research multiplier (research).
+ */
+export function treatyTarget(state: GameState, a: PlayerId, b: PlayerId, kind: "trade" | "research"): number {
+  const p = state.players[a]!;
+  const gov = GOVERNMENTS[p.government];
+  const base = treatyBase(state, a, b, kind);
+  if (kind === "research") return Math.trunc(base * gov.researchMult);
+  const points = Math.round(gov.bcMult * 100) + (hasTrait(getRace(p.raceId), "fantasticTraders") ? TREATY_YIELD.traderPoints : 0) + leaderTradeBonus(state, a);
+  return Math.trunc((base * points) / 100);
 }
 
 export interface TreatyIncome {
@@ -827,74 +985,204 @@ export interface TreatyIncome {
   research: number;
 }
 
-export function treatyIncome(
-  state: GameState,
-  playerId: PlayerId,
-  totals: Map<PlayerId, { population: number; research: number }>,
-): TreatyIncome {
+/** What a's trade and research treaties with b yield a this turn: trade in BC, research in research points (its setup cost in BC). */
+export function treatyYield(state: GameState, a: PlayerId, b: PlayerId): TreatyIncome {
+  const r = relation(state, a, b);
+  const out: TreatyIncome = { bc: 0, research: 0 };
+  const row = state.treatyYields?.[a]?.[b];
+  if (r.trade) out.bc += row?.trade ?? treatyTarget(state, a, b, "trade");
+  if (r.research) {
+    const v = row?.research ?? treatyTarget(state, a, b, "research");
+    if (v < 0) out.bc += v;
+    else out.research += v;
+  }
+  return out;
+}
+
+export function treatyIncome(state: GameState, playerId: PlayerId): TreatyIncome {
   const out: TreatyIncome = { bc: 0, research: 0 };
   for (const other of empires(state)) {
     if (other.id === playerId || !other.alive) continue;
-    const y = treatyYield(state, playerId, other.id, totals);
+    const y = treatyYield(state, playerId, other.id);
     out.bc += y.bc;
     out.research += y.research;
   }
   return out;
 }
 
-/** What a's trade and research treaties with b yield a this turn. */
-export function treatyYield(
-  state: GameState,
-  playerId: PlayerId,
-  other: PlayerId,
-  totals: Map<PlayerId, { population: number; research: number }>,
-): TreatyIncome {
-  const out: TreatyIncome = { bc: 0, research: 0 };
-  const me = totals.get(playerId);
-  const them = totals.get(other);
-  if (!me || !them) return out;
-  const r = relation(state, playerId, other);
-  const pop = Math.min(me.population, them.population);
-  if (r.trade) {
-    const k = treatyRamp(state, r.tradeSince ?? r.since, "trade");
-    out.bc += TREATY_YIELD.trade.perPop * pop * k * (k > 0 ? tradeMult(state, playerId) : 1);
+/** One ramp step: toward the full value by a fifth of it (the remainder rounds up by chance); above it, straight down. */
+export function rampStep(current: number, target: number, roll: Roll): number {
+  if (current >= target) return target;
+  const rest = target % TREATY_YIELD.rampSteps;
+  const step = Math.trunc(target / TREATY_YIELD.rampSteps) + (rest !== 0 && roll(TREATY_YIELD.rampSteps) <= rest ? 1 : 0);
+  return Math.min(target, current + step);
+}
+
+function rampTreaties(state: GameState, roll: Roll): void {
+  const list = empires(state).filter((p) => p.alive);
+  for (const a of list) {
+    for (const b of list) {
+      if (a.id === b.id) continue;
+      const r = relation(state, a.id, b.id);
+      for (const kind of ["trade", "research"] as const) {
+        if (!r[kind]) continue;
+        const target = treatyTarget(state, a.id, b.id, kind);
+        const row = (((state.treatyYields ??= {})[a.id] ??= {})[b.id] ??= {});
+        row[kind] = rampStep(row[kind] ?? target, target, roll);
+      }
+    }
   }
-  if (r.research) out.research += TREATY_YIELD.research.perPop * pop * treatyRamp(state, r.researchSince ?? r.since, "research");
-  return out;
+}
+
+// ---------------------------------------------------------------- demands and peace offers
+
+/** How a's number compares to b's, as the original's ratios: 100 x a / b - 100 when a is bigger, else 100 - 100 x b / a, held to -300..300. */
+function compare(a: number, b: number): number {
+  const x = Math.max(1, a);
+  const y = Math.max(1, b);
+  const v = x >= y ? Math.trunc((100 * x) / y) - 100 : 100 - Math.trunc((100 * y) / x);
+  return Math.max(-DEMAND_ANSWER.ratioCap, Math.min(DEMAND_ANSWER.ratioCap, v));
+}
+
+function sizeOf(state: GameState, playerId: PlayerId): number {
+  let n = 0;
+  for (const c of Object.values(state.colonies)) if (c.ownerId === playerId) n += population(c) + androids(c).farmers + androids(c).workers + androids(c).scientists;
+  return n;
+}
+
+export interface DemandAnswer {
+  score: number;
+  parts: { why: string; value: number }[];
+  /** What a refusal brings: nothing, a strike, a strike and broken treaties, or war. */
+  outcome: "accept" | "refuse" | "strike" | "breakTreaties" | "war";
 }
 
 /**
- * Pirates (a random event) choke off trade income; fantastic traders earn 25%
- * more from trade treaties, Trader leaders their skill in % on top.
+ * How a computer ruler answers a demand, after the original: d200 + how your
+ * fleets, size and technology compare to its own + your patience left + 2 x
+ * its temperament + what the demand costs it. See DEMAND_ANSWER for the bands.
+ * With `roll` null the die is left out.
  */
-function tradeMult(state: GameState, playerId: PlayerId): number {
-  const pirated = (state.activeEvents ?? []).some((e) => e.kind === "pirates" && e.playerId === playerId);
-  return pirated ? 0 : treatyIncomeMult(getRace(state.players[playerId]!.raceId)) + leaderTradeBonus(state, playerId) / 100;
+export function demandAnswer(state: GameState, p: Proposal, roll: number | null = fixedRoll(state, `${p.id}|demand`, DEMAND_ANSWER.die)): DemandAnswer {
+  const ai = p.to;
+  const you = p.from;
+  const parts: { why: string; value: number }[] = [];
+  const add = (why: string, value: number) => {
+    if (value) parts.push({ why, value: Math.trunc(value) });
+  };
+  const power = Math.trunc((compare(fleetPower(state, you), fleetPower(state, ai)) + compare(sizeOf(state, you), sizeOf(state, ai)) +
+    compare(state.players[you]!.techs.length, state.players[ai]!.techs.length)) / 3);
+  add("your power against theirs (fleets, size, technology)", power);
+  add("patience worn by earlier asks", Math.min(0, ...Object.values(askTally(state, you, ai))));
+  add("their temperament (counts twice)", 2 * persOf(state, ai, you));
+  const third = p.third;
+  const D = DEMAND_ANSWER;
+  switch (p.kind) {
+    case "demandWar": {
+      if (third === undefined) break;
+      const st = relation(state, ai, third).status;
+      add("what war on them costs", st === "alliance" ? D.war.alliance : st === "nonAggression" || st === "peace" ? D.war.nonAggression : D.war.none);
+      add("how they feel about them", -Math.trunc(attitude(state, ai, third) / 2));
+      add("how their fleets compare", -Math.trunc(compare(fleetPower(state, ai), fleetPower(state, third)) / 4));
+      if (isComputer(state, third)) add("they are a computer empire", -D.war.computer);
+      break;
+    }
+    case "demandPeace":
+      // Which of the original's demand types this is is an estimate.
+      add("what peace with them costs", -((third !== undefined ? persOf(state, third, ai) : 0) + D.peaceBase));
+      break;
+    case "demandBreakAlliance":
+      add("how they feel about their ally", third !== undefined ? -2 * attitude(state, ai, third) : 0);
+      break;
+    case "demandTech": {
+      // The original weighs the tech's value against theirs; StarLord compares it with the average tech they know (an estimate).
+      const known = state.players[ai]!.techs.map((t) => TIER_OF_TECH[t]?.cost ?? 0).filter((c) => c > 0);
+      const avg = known.length ? known.reduce((s, c) => s + c, 0) / known.length : 1;
+      add("what the technology is worth to them", -Math.min(D.systemCap, Math.trunc((100 * (TIER_OF_TECH[p.wantTechId ?? ""]?.cost ?? 0)) / Math.max(1, avg))));
+      break;
+    }
+    case "demandSystem": {
+      const pop = p.starId ? coloniesAt(state, ai, p.starId).reduce((s, c) => s + population(c), 0) : 0;
+      add("what the system is worth to them", -Math.min(D.systemCap, Math.trunc((pop * 1000) / Math.max(1, sizeOf(state, ai)))));
+      break;
+    }
+    default:
+      add("what the demand costs them", D.other);
+  }
+  if (roll !== null) parts.push({ why: "their mood today (d200)", value: roll });
+  const score = parts.reduce((s, x) => s + x.value, 0);
+  const pact = ["nonAggression", "alliance"].includes(relation(state, ai, you).status);
+  const dishonored = isDishonored(state, ai, you);
+  let outcome: DemandAnswer["outcome"];
+  if (pact) {
+    outcome = score <= D.pact.war || dishonored ? "war" : score <= D.pact.breakTreaties ? "breakTreaties"
+      : score <= D.pact.strike ? "strike" : score <= D.pact.refuse ? "refuse" : "accept";
+  } else {
+    outcome = score <= D.none.war || dishonored ? "war" : score <= D.none.strike ? "strike" : score <= D.none.refuse ? "refuse" : "accept";
+  }
+  return { score, parts, outcome };
+}
+
+/** What a computer ruler does after refusing a demand. */
+function demandConsequences(state: GameState, p: Proposal, roll: Roll, emit?: Emit): void {
+  const a = demandAnswer(state, p);
+  const ai = p.to;
+  const you = p.from;
+  switch (a.outcome) {
+    case "war":
+      declareWar(state, ai, you, { blame: you, roll });
+      emit?.({ kind: "diplomacy", playerId: you, other: ai, what: "answered your demand by declaring war on you" });
+      break;
+    case "breakTreaties":
+      setStrikes(state, ai, you, strikesOf(state, ai, you) + 1);
+      breakAllTreaties(state, you, ai, roll);
+      emit?.({ kind: "diplomacy", playerId: you, other: ai, what: "answered your demand by ending its treaties with you" });
+      break;
+    case "strike":
+      setStrikes(state, ai, you, strikesOf(state, ai, you) + 1);
+      setBaseline(state, ai, you, baselineOf(state, ai, you) + DEMAND_ANSWER.strikeBaseline);
+      emit?.({ kind: "diplomacy", playerId: you, other: ai, what: "warns you: one more demand like that and there will be consequences" });
+      break;
+    default:
+      break;
+  }
 }
 
 /**
- * Population and research of every empire as `state` knows them, for treaty
- * yields. In a player's view, a treaty partner's population comes from
- * `knownPopulation`, since their colonies may be out of sight.
+ * Whether a computer ruler offers peace this turn and on what terms, after
+ * the original (see AI_PEACE): S weighs the wars both fight, the fleets, the
+ * systems held, trust, reputation, the losses (K) and temperament.
  */
-export function treatyTotals(state: GameState): Map<PlayerId, { population: number; research: number }> {
-  const known = (state as { knownPopulation?: Record<PlayerId, number> }).knownPopulation ?? {};
-  return new Map(empires(state).map((p) => {
-    const t = empireTotals(state, p.id);
-    return [p.id, { population: known[p.id] ?? t.population, research: t.research }];
-  }));
+export function peaceWish(state: GameState, ai: PlayerId, you: PlayerId): { score: number; chance: number; turns: number } {
+  const r = relation(state, ai, you);
+  const t = state.turn - r.since - (AI_PEACE.minTurns - 1);
+  if (r.status !== "war" || t < 1) return { score: 0, chance: 0, turns: Math.max(0, t) };
+  let third = 0;
+  for (const k of empires(state)) {
+    if (k.id === ai || k.id === you || !k.alive || relation(state, k.id, you).status !== "war") continue;
+    third += occupiedBy(state, you, k.id);
+  }
+  const s = 5 * otherWarCount(state, ai, you) - 5 * otherWarCount(state, you, ai) + Math.trunc(strengthRatio(state, ai, you) / 10) - 10 +
+    40 * occupiedBy(state, you, ai) - 20 * occupiedBy(state, ai, you) + reputationOf(state, ai, you) + Math.trunc(trustIn(state, ai, you) / 2) +
+    Math.trunc(peaceLossTerm(state, ai, you) / 10) - Math.trunc(persOf(state, ai, you) / 5) + 20 * third;
+  const chance = s < 0 ? -s * t : t / Math.sqrt(s + 3);
+  return { score: s, chance: Math.min(100, chance), turns: t };
 }
 
-/** What a new trade or research treaty between a and b would yield a each turn once at full strength. */
-export function treatyPotential(state: GameState, a: PlayerId, b: PlayerId, kind: "trade" | "research"): number {
-  const totals = treatyTotals(state);
-  const pop = Math.min(totals.get(a)?.population ?? 0, totals.get(b)?.population ?? 0);
-  return TREATY_YIELD[kind].perPop * pop * (kind === "trade" ? tradeMult(state, a) : 1);
+function otherWarCount(state: GameState, a: PlayerId, b: PlayerId): number {
+  return empires(state).filter((p) => p.id !== a && p.id !== b && p.alive && relation(state, a, p.id).status === "war").length;
 }
+
+/** The price a computer ruler asks for peace when it is winning (S over 10): level (S - 10) / 5 + 2. */
+export function peacePriceLevel(score: number): number {
+  return Math.trunc((score - AI_PEACE.askAbove) / AI_PEACE.priceStep) + AI_PEACE.priceBase;
+}
+
+// ---------------------------------------------------------------- surrender and outrage
 
 /**
- * Surrender: everything the empire has (colonies, ships, treasury, leaders)
- * passes to the chosen empire and the surrendering empire leaves the game.
+ * Surrender: everything the empire has (colonies, ships, technology, treasury,
+ * leaders) passes to the chosen empire and the surrendering empire leaves the game.
  */
 export function surrenderEmpire(state: GameState, from: PlayerId, to: PlayerId, emit?: Emit): void {
   const loser = state.players[from]!;
@@ -933,12 +1221,8 @@ export function surrenderEmpire(state: GameState, from: PlayerId, to: PlayerId, 
   }
 }
 
-/** Biological weapons used on a colony: the whole galaxy is appalled. */
-export function bioWeaponOutrage(state: GameState, user: PlayerId): void {
-  everyoneFeels(state, user, ATTITUDE_EVENTS.bioWeapons);
+/** Population that votes at the council: everyone, androids and natives included. */
+export function votingPopulation(state: GameState, playerId: PlayerId): number {
+  return sizeOf(state, playerId);
 }
 
-/** Exterminating a conquered population. */
-export function exterminationOutrage(state: GameState, user: PlayerId): void {
-  everyoneFeels(state, user, ATTITUDE_EVENTS.exterminate);
-}

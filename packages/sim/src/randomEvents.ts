@@ -5,7 +5,8 @@ import { getRace, hasTrait } from "./data/races.js";
 import { RESEARCH, TECHS, TECH_TIERS, TIERS_BY_ID, TIER_OF_TECH, researchCost } from "./data/techs.js";
 import { newId, type TurnContext } from "./context.js";
 import { designStats, findDesign } from "./designs.js";
-import { adjustAttitude } from "./diplomacy.js";
+import { attitude } from "./diplomacy.js";
+import { setRelation } from "./relations.js";
 import { destructibleBuildings, population } from "./economy.js";
 
 import { grantTech } from "./empire.js";
@@ -445,8 +446,8 @@ function shiftRelations(ctx: TurnContext, p: Player, delta: number, text: (q: Pl
   const others = p.contacts.map((id) => ctx.state.players[id]!).filter((q) => q.alive && q.kind === "empire");
   if (others.length === 0) return false;
   const q = ctx.rng.pick(others);
-  adjustAttitude(ctx.state, p.id, q.id, delta);
-  adjustAttitude(ctx.state, q.id, p.id, delta);
+  // A random event writes the relation directly (no scaling).
+  setRelation(ctx.state, p.id, q.id, attitude(ctx.state, p.id, q.id) + delta);
   news(ctx, p.id, text(q));
   news(ctx, q.id, text(p));
   return true;
