@@ -2,10 +2,10 @@ import type { ReactNode } from "react";
 import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES } from "@starlord/ai";
 import {
   ANDROIDS, ASSIMILATION, AUDIENCE_ITEMS, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_POP,
-  BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE, CAPTURE_THRESHOLD, COMMAND_OVERAGE_COST, COUNCIL, COUNCIL_FIRST,
-  COUNCIL_INTERVAL, COUNCIL_MAJORITY, EVENT_CHANCE, EVENT_START, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
-  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP,
-  NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PROJECT_COSTS, PROPOSAL_LIFETIME, RATING_PER_LEVEL, RESEARCH,
+  BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST,
+  COUNCIL_INTERVAL, COUNCIL_MAJORITY, EVENT_START, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
+  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING,
+  NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
   SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
   TRADE_GOODS_RATE, TRAIT_EFFECTS, TREATY_YIELD, TROOPS, abilityValue, type HeroSkill, type HeroSkillGroup,
 } from "@starlord/sim";
@@ -206,11 +206,12 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><HelpLink to="trait:creative">Creative</HelpLink> races learn every application of a field they finish.</li>
         <li><HelpLink to="trait:uncreative">Uncreative</HelpLink> races get one random application instead of choosing.</li>
         <li>
-          Once the research points reach a field's cost, a breakthrough can come any turn ({Math.round(RESEARCH.breakthroughStartChance * 100)}%
-          chance at first, rising to certain at {RESEARCH.maxCostMult}x the cost). Points past the cost carry into the next field.
+          Once the research points pass a field's cost, a breakthrough can come any turn: the chance is how far past the
+          cost you are, as a percent of it (1% just past, certain at {RESEARCH.maxCostMult}x the cost). Points past the cost
+          are lost when the breakthrough comes.
         </li>
         <li>
-          When a category is finished, its hyper-advanced field ({fmt(RESEARCH.hyperCost)} RP) can be researched again
+          When a category is finished, its hyper-advanced field ({fmt(RESEARCH.hyperCost)} RP, {fmt(RESEARCH.hyperCostStep)} more for each further level) can be researched again
           and again: each level makes that category's components smaller and adds {RESEARCH.hyperScore} to the score.
         </li>
         <li>Applications you skipped can still be gained: stolen by spies, captured with a colony, found on a derelict ship, or learned from the guardian of Orion.</li>
@@ -350,18 +351,21 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Defenders</h3>
       <P>
-        Every colony has {fmt(MILITIA_PER_POP)} militia per population, rounded up. A Marine Barracks and an Armor
+        Every colony has one militia unit per {fmt(1 / MILITIA_PER_POP)} population, rounded down. A Marine Barracks and an Armor
         Barracks field marines and tanks when built and train more over time, up to a cap that grows with the planet.
       </P>
       <h3>Invasion</h3>
       <P>
         Select a fleet carrying troops (transports, troop pods or assault shuttles) at the star and press <b>Invade</b>.
-        The troops land when the defenses are down and fight the defenders one duel at a time until one side is gone.
+        The troops land when the defenses are down and fight the defenders one duel at a time until one side is gone:
+        first the tanks, then the marines, then the militia. The lower roll takes a hit, and a tie wounds both.
       </P>
       <P>
         Militia fight at {TROOPS.militia.rating}, marines at {TROOPS.marines.rating}, armor at {TROOPS.armor.rating} with{" "}
-        {TROOPS.armor.hits} hits. Every ground combat level from race picks and every equipment tech (powered armor,
-        personal shields and so on) adds {RATING_PER_LEVEL}, and each racial ground combat pick ±
+        {TROOPS.armor.hits} hits, all plus {BASE_EQUIPMENT} for basic armor. The best armor and the best hand weapon you
+        know add their bonus, and a personal shield and an anti-grav harness add theirs. Powered Armor gives marines and
+        Battleoids give tanks +{SPECIAL_UNIT_RATING} and one more hit. Computer players fight a little better on harder
+        levels. Each racial ground combat pick is worth ±
         {PICK_VALUES.groundCombatPerLevel}. <HelpLink to="trait:lowG" /> troops fight at −10,{" "}
         <HelpLink to="trait:subterranean" /> defenders at +10, <HelpLink to="trait:highG" /> troops take one more hit,
         and a Commando leader in the system adds his skill. A captured colony keeps its buildings and its people, who
@@ -417,13 +421,15 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         another empire to steal technology or sabotage buildings and population.
       </P>
       <P>
-        Each turn every spy abroad rolls 1–100, plus 10 per point your spying beats their security, minus 2 per spy
-        they keep at home. {SUCCESS_THRESHOLD} or more succeeds; {CAPTURE_THRESHOLD} or less gets the spy caught.
-        Successful spies are sometimes identified, which hurts relations.
+        Each turn your spies in an empire make one roll together: 1–100 plus your spying, plus 2 per spy (up to 5, then
+        1 each up to 10, then half), minus their 1–100, their security and the same bonus for the spies they keep home.
+        {SUCCESS_THRESHOLD} or more steals a technology (pricier fields are likelier), {SPY.sabotage} or more destroys a
+        building, and {SPY.blame} or more makes them blame a third empire. A second roll decides whether one of your
+        spies is caught or one of theirs dies; spies told only to hide are safer. Missions that work hurt relations.
       </P>
       <P>
-        Spying comes from race picks (10 per level), techs and Spy Master leaders; security from half the race's spying
-        picks, government, techs, security buildings and Telepath leaders. <HelpLink to="trait:telepathic" /> races add
+        Spying comes from race picks (10 per level), techs and Spy Master leaders; security from the same race picks and
+        techs, government, security buildings and Telepath leaders. <HelpLink to="trait:telepathic" /> races add
         10 to both. Assassin leaders kill enemy spies before they act.
       </P>
     </>
@@ -469,7 +475,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
     <>
       <P>
         If the council is enabled, it first convenes once {pct(COUNCIL.settledShare)} of the galaxy's systems are
-        settled (not before turn {COUNCIL_FIRST}, and by turn {COUNCIL.latestFirstTurn} at the latest), then every{" "}
+        owned (not before turn {COUNCIL_FIRST}, and only while at least {COUNCIL.minEmpires} empires live), then every{" "}
         {COUNCIL_INTERVAL} turns while at least {COUNCIL.minEmpires} empires remain. The two most populous empires stand
         as candidates and every empire gets one vote per {COUNCIL.popPerVote} population.
       </P>
@@ -484,13 +490,15 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
   events: () => (
     <>
       <P>
-        From turn {EVENT_START} on, each turn has a {pct(EVENT_CHANCE)} chance of a random event. They can be switched
-        off when starting a game. <HelpLink to="trait:lucky" /> races are spared the disasters and see good fortune twice
-        as often.
+        Random events start on turn {EVENT_START}. Every quiet turn makes the next one likelier (about one in{" "}
+        {EVENT_TIMING.dieSides} more per turn, a little less on easier levels), and after an event the galaxy stays calm
+        for {EVENT_TIMING.cooldown} turns. Disasters strike the most populous empires, never the smallest; windfalls go to
+        the smaller ones. Comets and supernovas don't come before turn 200. They can be switched off when starting a
+        game. <HelpLink to="trait:lucky" /> races are spared the disasters and build up to windfalls of their own.
       </P>
       <Ul>
         <li><b>Windfalls</b>: donations, derelict ships and research breakthroughs, new mineral deposits, a planet's axis shifting to a terran climate, population booms, diplomatic marriages.</li>
-        <li><b>Disasters</b>: earthquakes, industrial accidents that irradiate a planet, depleted mines, computer viruses, ship explosions, mutinies, assassinations.</li>
+        <li><b>Disasters</b>: earthquakes, industrial accidents that irradiate a planet, depleted mines, computer viruses, ship explosions, assassinations.</li>
         <li><b>Threats you can fight</b>: a comet bound for a colony (warships in orbit break it up), pirates (send warships to their system), a plague (the colony's research finds a cure) and a supernova (the system's research must stop it).</li>
         <li><b>Hyperspace trouble</b>: flux that stops all ships, a warp beast that eats ships in flight, warp funnels that trap a fleet, unstable wormholes that fling one across the galaxy, and time-space anomalies where nothing can be built or fought.</li>
         <li><b>Monsters</b> from beyond the rim: one turns a system toxic, one kills every colonist, one blockades, one ravages the population, and one demands BC or pillages the system.</li>

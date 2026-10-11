@@ -58,7 +58,7 @@ export const GOVERNMENTS: Record<Government | AdvancedGovernment, GovernmentDef>
   imperium: {
     name: "Imperium", foodMult: 1, industryMult: 1, researchMult: 1, bcMult: 1, shipCostMult: 1, commandPointsMult: 1.5,
     morale: 20, ungarrisonedPenalty: 20, noMorale: false, capitalLossMorale: 35, assimilationTurns: 4, assimilatesInstantly: false,
-    security: 2, advanced: null,
+    security: 1.5, advanced: null,
   },
   federation: {
     name: "Federation", foodMult: 1, industryMult: 1, researchMult: 1.75, bcMult: 1.75, shipCostMult: 1, commandPointsMult: 1,
@@ -81,10 +81,8 @@ export const ASSIMILATION = {
   /** Charismatic rulers assimilate twice as fast, repulsive ones half as fast. */
   charismaticMult: 0.5,
   repulsiveMult: 2,
-  /**
-   * Chance per turn and unassimilated unit that the aliens revolt, capped.
-   * The original says only that more aliens mean a larger chance.
-   */
-  revoltChancePerAlien: 0.02,
-  revoltChanceMax: 0.3,
+  /** Chance per turn and unassimilated unit that the aliens revolt (the original's 10 in 1000). */
+  revoltChancePerAlien: 0.01,
+  /** Extra chance per difficulty level above easy when aliens from a computer empire live under a human ruler. */
+  revoltChancePerDifficulty: 0.004,
 } as const;

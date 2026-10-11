@@ -76,27 +76,34 @@ export const ATTITUDE_EVENTS = {
 } as const;
 
 
-/** Espionage rolls: d100 + 10 x (spying - security) - per counter-agent. */
+/**
+ * Espionage, as in the original: once a turn for each spying empire and
+ * target, d100 + spying + spy count − d100 − security − their spy count.
+ */
 export const SPY = {
-  success: 88,
-  caught: 20,
-  perCounterAgent: 2,
-  /** Rolls in [killCounterAgent, success) kill one enemy counter-agent. */
-  killCounterAgent: 80,
-  /** A successful agent is sometimes killed doing the job anyway. */
-  diesOnSuccess: 0.1,
-  /** Sabotage destroys a building this often, else kills a colonist. */
-  sabotageBuilding: 0.6,
+  /** Roll needed to steal a technology, and to sabotage a building. */
+  steal: 80,
+  sabotage: 70,
+  /** A success this good pins the blame on a third empire. */
+  blame: 90,
+  /** Separate roll (with this penalty, removed when the spies only hide): this high kills a defender, this low an agent. */
+  killPenalty: 20,
+  killThreshold: 80,
 } as const;
+
+/** What a number of spies adds to the roll: 2 each up to 5, 1 each up to 10, half each beyond. */
+export function spyCountBonus(n: number): number {
+  if (n <= 5) return 2 * n;
+  if (n <= 10) return n + 5;
+  return 15 + Math.floor((n - 10) / 2);
+}
 
 /** The Galactic Council. */
 export const COUNCIL = {
-  /** It first meets once this share of the habitable systems are settled ("nearly the entire galaxy")... */
-  settledShare: 2 / 3,
-  /** ...or by this turn at the latest, so long games still get elections. */
-  latestFirstTurn: 200,
-  /** Earliest possible meeting. */
-  earliestTurn: 50,
+  /** It first meets once this share of all star systems has an owner... */
+  settledShare: 1 / 2,
+  /** ...and not before this turn. */
+  earliestTurn: 25,
   interval: 25,
   majority: 2 / 3,
   /** One vote per this many population units, at least one. */

@@ -49,8 +49,8 @@ export const ANDROIDS = {
   industryUpkeep: 1,
 } as const;
 
-/** Ground defenders every colony musters from its own population. */
-export const MILITIA_PER_POP = 0.5;
+/** Ground defenders every colony musters from its own population (rounded down). */
+export const MILITIA_PER_POP = 0.2;
 
 /** Extra BC a gold or gem deposit pays every turn, untouched by morale. */
 export const SPECIAL_INCOME = { gold: 5, gems: 10 } as const;

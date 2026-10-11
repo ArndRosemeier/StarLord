@@ -1,7 +1,6 @@
 /**
- * Random events, after the original's Galactic News list. The original gives
- * no frequencies or magnitudes; the numbers here are ours. "bad" events never
- * strike lucky races, and lucky races are twice as likely to get good ones.
+ * Random events, after the original's Galactic News list. How often they come
+ * and whom they strike follow the original program; most magnitudes are ours.
  */
 
 export type EventId =
@@ -12,49 +11,69 @@ export type EventId =
   | "amoeba" | "crystal" | "dragon" | "eel" | "hydra";
 
 export interface EventDef {
-  weight: number;
-  /** Disasters spare lucky races; good events favour them. */
+  /** Disasters strike big empires and spare lucky ones; good events go to small empires. */
   mood: "good" | "bad" | "neutral";
   /** Strikes the whole galaxy rather than one empire. */
   global?: boolean;
   /** Needs the monsters setting. */
   monster?: boolean;
+  /** Can't happen before this turn. */
+  fromTurn?: number;
+  /** Only while hyperspace flux is active (the original's comet works this way). */
+  needsFlux?: boolean;
+  /** Before this turn the monster only appears while hyperspace flux is active. */
+  fluxBefore?: number;
+  /** In the list but switched off, as in the original. */
+  disabled?: boolean;
 }
 
 export const EVENTS: Record<EventId, EventDef> = {
-  derelict: { weight: 4, mood: "good" },
-  axisShift: { weight: 2, mood: "good" },
-  donation: { weight: 4, mood: "good" },
-  mineralDeposit: { weight: 3, mood: "good" },
-  populationBoom: { weight: 3, mood: "good" },
-  breakthrough: { weight: 3, mood: "good" },
-  diplomaticMarriage: { weight: 2, mood: "good" },
-  comet: { weight: 3, mood: "bad" },
-  computerVirus: { weight: 3, mood: "bad" },
-  assassination: { weight: 2, mood: "bad" },
-  earthquake: { weight: 3, mood: "bad" },
-  shipExplosion: { weight: 3, mood: "bad" },
-  hyperspaceFlux: { weight: 2, mood: "neutral", global: true },
-  industrialAccident: { weight: 2, mood: "bad" },
-  mineralDepletion: { weight: 3, mood: "bad" },
-  mutiny: { weight: 2, mood: "bad" },
-  pirates: { weight: 3, mood: "bad" },
-  plague: { weight: 3, mood: "bad" },
-  supernova: { weight: 1, mood: "bad" },
-  timeSpaceAnomaly: { weight: 2, mood: "bad" },
-  warpBeast: { weight: 2, mood: "neutral", global: true },
-  warpFunnel: { weight: 2, mood: "bad" },
-  unstableWormhole: { weight: 2, mood: "neutral" },
-  amoeba: { weight: 1, mood: "bad", monster: true },
-  crystal: { weight: 1, mood: "bad", monster: true },
-  dragon: { weight: 1, mood: "bad", monster: true },
-  eel: { weight: 1, mood: "bad", monster: true },
-  hydra: { weight: 1, mood: "bad", monster: true },
+  derelict: { mood: "good" },
+  axisShift: { mood: "good" },
+  donation: { mood: "good" },
+  mineralDeposit: { mood: "good" },
+  populationBoom: { mood: "good" },
+  breakthrough: { mood: "good" },
+  diplomaticMarriage: { mood: "good" },
+  comet: { mood: "bad", fromTurn: 200, needsFlux: true },
+  computerVirus: { mood: "bad" },
+  assassination: { mood: "bad" },
+  earthquake: { mood: "bad" },
+  shipExplosion: { mood: "bad" },
+  hyperspaceFlux: { mood: "neutral", global: true },
+  industrialAccident: { mood: "bad" },
+  mineralDepletion: { mood: "bad" },
+  mutiny: { mood: "bad", disabled: true },
+  pirates: { mood: "bad" },
+  plague: { mood: "bad" },
+  supernova: { mood: "bad", fromTurn: 200 },
+  timeSpaceAnomaly: { mood: "bad" },
+  warpBeast: { mood: "neutral", global: true },
+  warpFunnel: { mood: "bad" },
+  unstableWormhole: { mood: "good" },
+  amoeba: { mood: "bad", monster: true, fluxBefore: 100 },
+  crystal: { mood: "bad", monster: true, fluxBefore: 200 },
+  dragon: { mood: "bad", monster: true, fluxBefore: 300 },
+  eel: { mood: "bad", monster: true, fluxBefore: 150 },
+  hydra: { mood: "bad", monster: true, fluxBefore: 250 },
 };
 
-/** Chance per turn that something happens, from EVENT_START on. */
-export const EVENT_CHANCE = 0.06;
-export const EVENT_START = 20;
+/**
+ * How often events come. From EVENT_START on, each quiet turn makes the next
+ * event likelier: the chance is the quiet turns, times (d + 1) / (d + 2) for
+ * difficulty d (0 tutor to 4 impossible), out of `dieSides`. For `cooldown`
+ * turns after an event nothing happens.
+ */
+export const EVENT_START = 50;
+export const EVENT_TIMING = {
+  dieSides: 512,
+  cooldown: 5,
+  /** Tries to find an event that can happen. */
+  tries: 5,
+  /** Lucky empires: each turn rnd(1000) <= turns waited / k forces a windfall; k by settings. */
+  luckDie: 1000,
+  luckDivisor: { events: 6, eventsAndRaiders: 8, noEvents: 10, noEventsWithRaiders: 12 },
+} as const;
 
 /** Event magnitudes. Ranges are inclusive [min, max]. */
 export const EVENT_NUMBERS = {

@@ -152,14 +152,15 @@ export function spyingLevel(player: Player, state?: GameState): number {
 }
 
 /**
- * Defensive spy level: counter-agents get only half the race pick, plus the
- * spy techs, telepathy, government security and security buildings.
+ * Defensive spy level: the race pick, the spy techs, telepathy, government
+ * security and security buildings.
  */
 export function securityLevel(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId]!;
-  // Defending spies get half the racial spying bonus (telepaths +10 in full) and the best Telepath leader's points.
+  // Defending spies get the racial spying bonus (telepaths +10) and the best Telepath leader's points.
   const points = defensiveSpyPoints(getRace(player.raceId)) + leaderSpyDefense(state, playerId);
-  let sec = points / PICK_VALUES.spyingPerLevel + empireBonus(player).security + government(player).security;
+  const bonus = empireBonus(player);
+  let sec = points / PICK_VALUES.spyingPerLevel + bonus.spying + bonus.security + government(player).security;
   for (const c of Object.values(state.colonies)) {
     if (c.ownerId !== playerId) continue;
     for (const b of c.buildings) sec += BUILDINGS_BY_ID[b]?.effects.security ?? 0;

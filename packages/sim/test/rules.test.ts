@@ -100,7 +100,7 @@ describe("ground forces", () => {
   it("every colony fields militia in proportion to its population", () => {
     const s = twoEmpires("militia");
     const c = Object.values(s.colonies).find((x) => x.ownerId === 0)!;
-    expect(garrisonOf(s, c).militia).toBe(Math.ceil(population(c) * MILITIA_PER_POP));
+    expect(garrisonOf(s, c).militia).toBe(Math.floor(population(c) * MILITIA_PER_POP));
   });
 });
 

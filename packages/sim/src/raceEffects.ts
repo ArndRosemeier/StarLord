@@ -68,9 +68,9 @@ export function offensiveSpyPoints(race: RaceDef): number {
   return race.picks.spying * PICK_VALUES.spyingPerLevel + (hasTrait(race, "telepathic") ? TRAIT_EFFECTS.telepathicSpy : 0);
 }
 
-/** Spy roll points for this race's defenders: half the racial bonus, +10 for telepaths. */
+/** Spy roll points for this race's defenders: the full racial bonus too, +10 for telepaths. */
 export function defensiveSpyPoints(race: RaceDef): number {
-  return race.picks.spying * PICK_VALUES.spyingPerLevel * PICK_VALUES.defensiveSpyShare + (hasTrait(race, "telepathic") ? TRAIT_EFFECTS.telepathicSpy : 0);
+  return offensiveSpyPoints(race);
 }
 
 /** Parsecs per turn a race's fleets move beyond their drive (trans-dimensional +2). */

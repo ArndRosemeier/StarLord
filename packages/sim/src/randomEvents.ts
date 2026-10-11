@@ -1,9 +1,8 @@
-import { EVENTS, EVENT_CHANCE, EVENT_NUMBERS as N, EVENT_START, type EventId } from "./data/events.js";
-import { MINERAL_STEPS } from "./data/galaxy.js";
+import { EVENTS, EVENT_NUMBERS as N, EVENT_START, EVENT_TIMING, type EventId } from "./data/events.js";
+import { DIFFICULTY_ORDER, MINERAL_STEPS } from "./data/galaxy.js";
 import { DRAGON_BRIBE_PER_POP, DRAGON_PILLAGE, HYDRA_KILL_SHARE, ROAMING_MONSTERS } from "./data/monsters.js";
-import { TRAIT_EFFECTS } from "./data/racePicks.js";
 import { getRace, hasTrait } from "./data/races.js";
-import { RESEARCH, TECHS, TECH_TIERS, TIERS_BY_ID, TIER_OF_TECH } from "./data/techs.js";
+import { RESEARCH, TECHS, TECH_TIERS, TIERS_BY_ID, TIER_OF_TECH, researchCost } from "./data/techs.js";
 import { newId, type TurnContext } from "./context.js";
 import { designStats, findDesign } from "./designs.js";
 import { adjustAttitude } from "./diplomacy.js";
@@ -18,41 +17,102 @@ import { monstersId, raidersId, spawn } from "./npc.js";
 import { explore } from "./specials.js";
 import type { ActiveEvent, Colony, Fleet, GameState, Id, Player, PlayerId } from "./types.js";
 
-export { EVENT_CHANCE } from "./data/events.js";
-
 /**
  * Random events after the original's Galactic News: windfalls, disasters
  * with a counter (a fleet for comets and pirates, colony research for plague
  * and supernova), galaxy-wide hyperspace trouble and monsters invading from
- * beyond the rim. Lucky races are spared the disasters and draw the good
- * events twice as often. The whole system can be switched off in the game
- * settings.
+ * beyond the rim. Timing, picking and victims follow the original program:
+ * the chance grows with every quiet turn, every event is equally likely,
+ * disasters hit the biggest empires and windfalls the smallest, and lucky
+ * empires are spared disasters and get extra windfalls. The whole system can
+ * be switched off in the game settings.
  */
 export function randomEventTick(ctx: TurnContext): void {
   const { state, rng } = ctx;
   state.activeEvents ??= [];
+  const clock = (state.eventClock ??= { last: 0, luck: {} });
   tickActive(ctx);
-  if (state.settings.randomEvents === false) return;
-  if (state.turn < EVENT_START || !rng.chance(EVENT_CHANCE)) return;
-  const monsters = state.settings.monsters && monstersId(state) !== null;
-  const weights: Partial<Record<EventId, number>> = {};
-  for (const [id, def] of Object.entries(EVENTS) as [EventId, (typeof EVENTS)[EventId]][]) {
-    if (def.monster && !monsters) continue;
-    if (def.global && state.activeEvents.some((e) => e.kind === id)) continue;
-    weights[id] = def.weight;
+  const on = state.settings.randomEvents !== false;
+  luckyWindfalls(ctx, on);
+  if (!on || state.turn < EVENT_START || state.turn - clock.last <= EVENT_TIMING.cooldown) return;
+  const d = DIFFICULTY_ORDER.indexOf(state.settings.difficulty ?? "average");
+  const quiet = Math.floor(((state.turn - clock.last) * (d + 1)) / (d + 2));
+  if (rng.int(1, EVENT_TIMING.dieSides) > quiet) return;
+  const ids = Object.keys(EVENTS) as EventId[];
+  for (let i = 0; i < EVENT_TIMING.tries; i++) {
+    if (strike(ctx, ids[rng.int(0, ids.length - 1)]!, d === 0)) {
+      clock.last = state.turn;
+      return;
+    }
   }
-  const kind = rng.weighted(weights as Record<EventId, number>);
+}
+
+/** Tries one event; false if it can't happen now. */
+function strike(ctx: TurnContext, kind: EventId, tutor: boolean, forced?: Player): boolean {
+  const { state } = ctx;
   const def = EVENTS[kind];
+  const flux = (state.activeEvents ?? []).some((e) => e.kind === "hyperspaceFlux");
+  if (def.disabled || (tutor && def.mood === "bad")) return false;
+  if (def.monster && !(state.settings.monsters && monstersId(state) !== null)) return false;
+  if (def.fromTurn !== undefined && state.turn < def.fromTurn) return false;
+  if (def.needsFlux && !flux) return false;
+  if (def.fluxBefore !== undefined && state.turn < def.fluxBefore && !flux) return false;
   if (def.global) {
-    HANDLERS[kind](ctx, null);
-    return;
+    if ((state.activeEvents ?? []).some((e) => e.kind === kind)) return false;
+    return HANDLERS[kind](ctx, null);
   }
-  const victims = state.players.filter((p) => p.kind === "empire" && p.alive && !(def.mood === "bad" && lucky(p)));
-  if (victims.length === 0) return;
-  const pw: Record<string, number> = {};
-  for (const p of victims) pw[p.id] = def.mood === "good" && lucky(p) ? TRAIT_EFFECTS.luckyGoodEvents : 1;
-  const victim = state.players[Number(rng.weighted(pw))]!;
-  HANDLERS[kind](ctx, victim);
+  const victim = forced ?? eventTarget(ctx, def.mood === "good");
+  if (!victim || (def.mood === "bad" && lucky(victim))) return false;
+  return HANDLERS[kind](ctx, victim);
+}
+
+/**
+ * Whom an event strikes: disasters skip the smallest empire (and anyone
+ * already suffering one) and favour the others by (population − smallest)²;
+ * windfalls skip the biggest and favour by (biggest − population)².
+ */
+function eventTarget(ctx: TurnContext, good: boolean): Player | null {
+  const { state, rng } = ctx;
+  const suffering = new Set((state.activeEvents ?? []).filter((e) => EVENTS[e.kind as EventId]?.mood === "bad").map((e) => e.playerId));
+  const pop = (p: Player) => coloniesOf(state, p.id).reduce((n, c) => n + population(c), 0);
+  const list = state.players
+    .filter((p) => p.kind === "empire" && p.alive && (good || !suffering.has(p.id)))
+    .map((p) => ({ p, pop: pop(p) }));
+  if (list.length === 0) return null;
+  if (list.length > 1) {
+    const extreme = good ? Math.max(...list.map((x) => x.pop)) : Math.min(...list.map((x) => x.pop));
+    list.splice(list.findIndex((x) => x.pop === extreme), 1);
+    const weights = list.map((x) => (good ? extreme - x.pop : x.pop - extreme) ** 2);
+    const total = weights.reduce((a, b) => a + b, 0);
+    if (total > 0) {
+      let roll = rng.next() * total;
+      for (let i = 0; i < list.length; i++) {
+        roll -= weights[i]!;
+        if (roll < 0) return list[i]!.p;
+      }
+    }
+  }
+  return list[0]!.p;
+}
+
+/** Lucky empires build up to a windfall of their own: the longer they wait, the likelier. */
+function luckyWindfalls(ctx: TurnContext, eventsOn: boolean): void {
+  const { state, rng } = ctx;
+  const clock = state.eventClock!;
+  const k = EVENT_TIMING.luckDivisor;
+  const div = eventsOn ? (state.settings.raiders ? k.eventsAndRaiders : k.events) : state.settings.raiders ? k.noEventsWithRaiders : k.noEvents;
+  const good = (Object.keys(EVENTS) as EventId[]).filter((id) => EVENTS[id].mood === "good");
+  for (const p of state.players) {
+    if (p.kind !== "empire" || !p.alive || !lucky(p)) continue;
+    const waited = (clock.luck[p.id] = (clock.luck[p.id] ?? 0) + 1);
+    if (state.turn < EVENT_START || rng.int(1, EVENT_TIMING.luckDie) > waited / div) continue;
+    for (let i = 0; i < EVENT_TIMING.tries; i++) {
+      if (strike(ctx, good[rng.int(0, good.length - 1)]!, false, p)) {
+        clock.luck[p.id] = 0;
+        break;
+      }
+    }
+  }
 }
 
 function lucky(p: Player): boolean {
@@ -172,7 +232,7 @@ const HANDLERS: Record<EventId, Handler> = {
   breakthrough(ctx, p) {
     const tier = p!.research.tierId ? TIERS_BY_ID[p!.research.tierId] : undefined;
     if (!tier) return false;
-    p!.research.progress = Math.max(p!.research.progress, tier.cost * RESEARCH.maxCostMult);
+    p!.research.progress = Math.max(p!.research.progress, researchCost(p!, tier) * RESEARCH.maxCostMult);
     news(ctx, p!.id, `Your scientists report a breakthrough in ${tier.name}; results are expected next turn.`);
     return true;
   },

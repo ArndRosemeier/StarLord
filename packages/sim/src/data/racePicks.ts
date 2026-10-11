@@ -52,8 +52,6 @@ export const PICK_VALUES = {
   shipDefense: { [-1]: -20, 0: 0, 1: 25, 2: 50 } as Record<number, number>,
   groundCombatPerLevel: 10,
   spyingPerLevel: 10,
-  /** Defensive spies get this share of the racial spying bonus, offensive ones all of it. */
-  defensiveSpyShare: 0.5,
 } as const;
 
 export const GOVERNMENT_COSTS: Record<Government, number> = {
@@ -125,8 +123,6 @@ export const TRAIT_EFFECTS = {
   traderGoodsMult: 2,
   /** Chance a raid or monster skips a lucky empire's colony and picks another target. */
   luckyOverlook: 0.75,
-  /** Weight multiplier of good random events for lucky races (bad ones are dropped). */
-  luckyGoodEvents: 2,
 } as const;
 
 /** Traits that can't be taken together. */

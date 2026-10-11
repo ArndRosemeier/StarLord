@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   FIELD_NAMES, PICK_OPTIONS, RESEARCH, TECHS, TECH_FIELDS, TECH_TIERS, TIERS_BY_ID, TRAIT_COSTS, availableTiers, getRace,
-  hasTrait, hyperLevel, learnsWholeField, mutationCost, researchOptions, type NumericPick, type Player, type RacePicks,
+  hasTrait, hyperLevel, learnsWholeField, mutationCost, researchCost, researchOptions, type NumericPick, type Player, type RacePicks,
   type RaceTrait,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -31,8 +31,9 @@ export function ResearchScreen() {
   const race = getRace(me.raceId);
   const creative = hasTrait(race, "creative");
   // Breakthroughs are random past the base cost, so the estimate is to the base cost.
-  const eta = current && rpt > 0 ? Math.max(1, Math.ceil((current.cost - me.research.progress) / rpt)) : null;
-  const pastBase = !!current && me.research.progress >= current.cost;
+  const cost = current ? researchCost(me, current) : 0;
+  const eta = current && rpt > 0 ? Math.max(1, Math.ceil((cost - me.research.progress) / rpt)) : null;
+  const pastBase = !!current && me.research.progress > cost;
 
   return (
     <div className="col">
@@ -47,8 +48,8 @@ export function ResearchScreen() {
         </div>
         {current ? (
           <div className="research-now" style={{ marginTop: 8 }}>
-            <ProgressRing value={me.research.progress} max={current.cost} size={124} color={FIELD_LOOK[current.field]?.color}>
-              <b>{Math.floor((me.research.progress / current.cost) * 100)}%</b>
+            <ProgressRing value={me.research.progress} max={cost} size={124} color={FIELD_LOOK[current.field]?.color}>
+              <b>{Math.floor((me.research.progress / cost) * 100)}%</b>
               {pastBase ? <small>any turn</small> : eta !== null && <small>{eta} turn{eta === 1 ? "" : "s"}</small>}
             </ProgressRing>
             <div className="col" style={{ gap: 4, flex: 1 }}>
@@ -58,10 +59,10 @@ export function ResearchScreen() {
               </div>
               {me.research.techChoice && <div>Goal: <b style={{ color: FIELD_LOOK[current.field]?.color }}>{TECHS[me.research.techChoice]?.name}</b> <span className="muted">{TECHS[me.research.techChoice]?.description}</span></div>}
               <small className="muted">
-                {fmt(me.research.progress)} / {fmt(current.cost)} research points.
+                {fmt(me.research.progress)} / {fmt(cost)} research points.
                 {pastBase
-                  ? ` A breakthrough can come any turn; certain at ${fmt(current.cost * RESEARCH.maxCostMult)}.`
-                  : ` After that, a breakthrough can come any turn, at the latest at ${fmt(current.cost * RESEARCH.maxCostMult)}.`}
+                  ? ` A breakthrough can come any turn; certain at ${fmt(cost * RESEARCH.maxCostMult)}.`
+                  : ` After that, a breakthrough can come any turn, at the latest at ${fmt(cost * RESEARCH.maxCostMult)}.`}
               </small>
             </div>
           </div>

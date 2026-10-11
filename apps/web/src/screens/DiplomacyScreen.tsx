@@ -347,9 +347,9 @@ export function DiplomacyScreen() {
         <div className="panel col">
           <h3>Galactic council</h3>
           <div className="muted">
-            The council first convenes once {pct(COUNCIL.settledShare)} of the galaxy is settled (by turn {COUNCIL.latestFirstTurn} at the latest),
+            The council first convenes once {pct(COUNCIL.settledShare)} of the galaxy's systems are owned (not before turn {COUNCIL.earliestTurn}),
             then every {COUNCIL_INTERVAL} turns. The two most populous empires stand; {pct(COUNCIL_MAJORITY)} of the votes elects one.{" "}
-            {nextSession !== null ? `Next session: turn ${nextSession}.` : `Settled so far: ${pct(settledShare(view))}.`}
+            {nextSession !== null ? `Next session: turn ${nextSession}.` : `Owned so far: ${pct(settledShare(view))}.`}
           </div>
           {council.lastResult && (
             <div>

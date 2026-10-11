@@ -1,8 +1,9 @@
 import { BUILDINGS_BY_ID } from "./data/buildings.js";
 import { MILITIA_PER_POP } from "./data/economy.js";
+import { DIFFICULTY_ORDER } from "./data/galaxy.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import {
-  BATTLEOID_HITS, BOMB_BUILDING_CHANCE, BOMB_DAMAGE_PER_POP, BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE,
+  BASE_EQUIPMENT, BATTLEOID_HITS, BOMB_BUILDING_CHANCE, SPECIAL_UNIT_RATING, BOMB_DAMAGE_PER_POP, BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE,
   POWERED_ARMOR_HITS, RATING_PER_LEVEL, SPORE_DEFENSE, SPORE_KILL_CHANCE_PER_POINT, TROOPS, type TroopKind,
 } from "./data/ground.js";
 import { hullIndex } from "./data/components.js";
@@ -46,7 +47,7 @@ function barracksTroops(colony: Colony, kind: "marines" | "tanks"): number {
 export function garrisonOf(state: GameState, colony: Colony): GroundForces {
   if (colony.outpost) return { militia: 0, marines: 0, armor: 0 };
   return {
-    militia: Math.ceil(population(colony) * MILITIA_PER_POP),
+    militia: Math.floor(population(colony) * MILITIA_PER_POP),
     marines: barracksTroops(colony, "marines") + (colony.marinesTrained ?? 0),
     armor: barracksTroops(colony, "tanks") + (colony.tanksTrained ?? 0),
   };
@@ -79,11 +80,19 @@ export function troopUnit(
   const player = state.players[playerId]!;
   const race = getRace(raceId);
   // Race picks, low-G and subterranean come from the race module; Commando leaders fight where they serve.
-  let rating = TROOPS[kind].rating + RATING_PER_LEVEL * empireBonus(player).groundCombat + raceGroundBonus(race, defending);
+  let rating = TROOPS[kind].rating + BASE_EQUIPMENT + RATING_PER_LEVEL * empireBonus(player).groundCombat + raceGroundBonus(race, defending);
   if (starId) rating += commandoBonusAt(state, playerId, starId);
+  // Computer players fight better on harder levels: -2 (tutor) to +2 (impossible).
+  if (!player.isHuman && player.kind === "empire") rating += DIFFICULTY_ORDER.indexOf(state.settings.difficulty ?? "average") - 2;
   let hits: number = TROOPS[kind].hits;
-  if (kind === "armor" && knows(player, "battleoids")) hits = BATTLEOID_HITS;
-  if (kind === "marines" && knows(player, "poweredArmor")) hits += POWERED_ARMOR_HITS;
+  if (kind === "armor" && knows(player, "battleoids")) {
+    hits += BATTLEOID_HITS;
+    rating += SPECIAL_UNIT_RATING;
+  }
+  if (kind === "marines" && knows(player, "poweredArmor")) {
+    hits += POWERED_ARMOR_HITS;
+    rating += SPECIAL_UNIT_RATING;
+  }
   // High-G troops take one more hit.
   hits += troopHits(race) - 1;
   return { rating, hits };
@@ -232,13 +241,14 @@ export function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
     const unit = troopUnit(state, colony.ownerId, colony.raceId, kind, true, starId);
     for (let i = 0; i < g[kind]; i++) defenders.push({ unit, hp: unit.hits, kind });
   }
-  // Each clash pairs the next invader with a random defender; the higher roll wounds the other.
+  // The defenders fight tanks first, then marines, then militia. Each clash pits the next unit of each side:
+  // the lower roll takes a hit, and a tie wounds both.
   while (attackers.length > 0 && defenders.length > 0) {
-    const di = rng.int(0, defenders.length - 1);
-    const d = defenders[di]!;
-    if (rng.int(1, 100) + atk.rating > rng.int(1, 100) + d.unit.rating) {
-      if (--d.hp <= 0) defenders.splice(di, 1);
-    } else if (--attackers[0]! <= 0) attackers.shift();
+    const d = defenders[0]!;
+    const a = rng.int(1, 100) + atk.rating;
+    const b = rng.int(1, 100) + d.unit.rating;
+    if (a >= b && --d.hp <= 0) defenders.shift();
+    if (b >= a && --attackers[0]! <= 0) attackers.shift();
   }
   // Survivors stay on as the garrison; militia losses are colonists' lives.
   const left = (k: TroopKind) => defenders.filter((d) => d.kind === k).length;
