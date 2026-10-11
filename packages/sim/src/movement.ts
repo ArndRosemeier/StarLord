@@ -5,6 +5,7 @@ import { BUILDINGS_BY_ID, INTERDICTED_SPEED } from "./data/buildings.js";
 import { ORBITAL_BASES } from "./data/techs.js";
 import { relation, isHostile } from "./diplomacy.js";
 import { fleetRange, fleetSpeed, hasFtl, knows } from "./empire.js";
+import { designStats, findDesign } from "./designs.js";
 import { blockedByBlackHole, distance } from "./galaxy.js";
 import { getRace } from "./data/races.js";
 import { ignoresSpaceHazards } from "./raceEffects.js";
@@ -130,7 +131,19 @@ export function moveProblem(state: GameState, playerId: PlayerId, fleet: Fleet, 
   if (isStarGateMove(state, playerId, fleet.starId, destStarId) || isWormholeMove(state, fleet.starId, destStarId)) return null;
   if (blockedByBlackHole(state.galaxy.stars, fleet, dest) && !hasNavigator(state, fleet)) return "blocked by a black hole";
   if (ownsColonyAt(state, playerId, dest.id)) return null;
-  return distanceToNearestColony(state, playerId, dest) <= fleetRange(player) ? null : "out of range";
+  return distanceToNearestColony(state, playerId, dest) <= fleetFuelRange(state, fleet) ? null : "out of range";
+}
+
+/** How far a fleet may fly from the nearest colony: the empire's fuel range, +50% when every ship carries Extended Fuel Tanks. */
+export function fleetFuelRange(state: Pick<GameState, "players">, fleet: Fleet): number {
+  const player = state.players[fleet.ownerId]!;
+  const base = fleetRange(player);
+  if (fleet.ships.length === 0) return base;
+  const pct = Math.min(...fleet.ships.map((s) => {
+    const d = findDesign(player, s.designId);
+    return d ? designStats(player, d).effects.fuelRangePct : 0;
+  }));
+  return base * (1 + pct / 100);
 }
 
 /** Fuel range, black holes, gates and the dimensional portal. */

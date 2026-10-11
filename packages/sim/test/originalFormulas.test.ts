@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CREW, Rng, buyPrice, crewLevel, crewTick, getRace, growthPerTurn, missileSpeed, newGame, raceMaxPopulation,
-  computeOutput, planetDefense, resolveCombat, spyCountBonus, troopUnit, WEAPONS_BY_ID, type Colony, type Fleet, type GameState,
+  canBuildShips, computeOutput, findDesign, fleetFuelRange, fleetRange, levelFromXp, planetDefense, resolveCombat, spyCountBonus, troopUnit, WEAPONS_BY_ID, type Colony, type Fleet, type GameState,
 } from "@starlord/sim";
 
 /** Numbers recovered from the original program; each case was worked out by hand from the decoded formulas. */
@@ -158,5 +158,33 @@ describe("original crews and space combat", () => {
     const events = out.report.rounds.flat().filter((e) => e.ship === planetKey);
     expect(events.some((e) => e.weapon === "stellarConverter")).toBe(true);
     expect(events.some((e) => e.kind === "launch" && e.weapon === "fighterBays")).toBe(true);
+  });
+});
+
+describe("original details", () => {
+  it("lets troop ships be built only at a Marine Barracks", () => {
+    const s = newGame({ seed: "det", races: ["terran", "felhari"], monsters: false, raiders: false, council: false });
+    const p = s.players[0]!;
+    const c = Object.values(s.colonies).find((x) => x.ownerId === 0)!;
+    const transport = findDesign(p, "transport")!;
+    c.buildings = c.buildings.filter((b) => b !== "marineBarracks");
+    expect(canBuildShips(c, transport)).toBe(false);
+    c.buildings.push("marineBarracks");
+    expect(canBuildShips(c, transport)).toBe(true);
+  });
+
+  it("serves warlike leaders one level higher", () => {
+    expect(levelFromXp(0, false)).toBe(1);
+    expect(levelFromXp(0, true)).toBe(2);
+  });
+
+  it("extends a fleet's range only when every ship carries fuel tanks", () => {
+    const s = newGame({ seed: "det", races: ["terran", "felhari"], monsters: false, raiders: false, council: false });
+    const p = s.players[0]!;
+    const f = Object.values(s.fleets).find((x) => x.ownerId === 0)!;
+    expect(fleetFuelRange(s, f)).toBe(fleetRange(p));
+    p.designs.push({ ...findDesign(p, "scout")!, id: "longScout", specials: ["extendedFuelTanks"] });
+    f.ships = [{ designId: "longScout", count: 1 }];
+    expect(fleetFuelRange(s, f)).toBe(fleetRange(p) * 1.5);
   });
 });

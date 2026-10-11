@@ -124,7 +124,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>
         Every 10% of morale adds or removes 10% of a colony's food, industry, research and population taxes. It comes
         from the government, buildings, techs and administrators. Feudal and dictatorial empires and their advanced forms
-        lose 20% on colonies without a Marine or Armor Barracks. A colony of a race other than its ruler's loses{" "}
+        lose 20% on colonies without a Marine or Armor Barracks. A colony where natives live among settlers loses{" "}
         {ASSIMILATION.multiRacePenalty}% unless it has an Alien Management Center. Losing the Capitol costs morale on every
         colony until it is rebuilt: 50% under feudal rule and confederation, 35% under dictatorship, imperium and
         federation, 20% under democracy. Unified governments have no morale at all, good or bad. Androids ignore morale.

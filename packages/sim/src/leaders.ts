@@ -5,7 +5,7 @@ import {
 import { getRace, hasTrait } from "./data/races.js";
 import { TIER_OF_TECH } from "./data/techs.js";
 import type { Emit } from "./context.js";
-import { grantTech } from "./empire.js";
+import { grantTech, knows } from "./empire.js";
 import { raceDiplomacyPoints } from "./raceEffects.js";
 import type { Rng } from "./rng.js";
 import type { Fleet, GameState, Id, Leader, LeaderAbility, LeaderSkills, PlayerId } from "./types.js";
@@ -26,11 +26,11 @@ export function parseAbility(s: string): LeaderAbility {
   return { skill: (improved ? s.slice(0, -1) : s) as HeroSkill, improved };
 }
 
-/** Level 1-5 from experience; the top level (6) needs 1000 XP and the Warlord trait. */
+/** Level 1-5 from experience; warlike races' leaders serve one level higher, up to 6. */
 export function levelFromXp(xp: number, warlord: boolean): number {
   let level = 1;
   for (let i = 1; i < LEVEL_XP.length; i++) if (xp >= LEVEL_XP[i]!) level = i + 1;
-  return Math.min(level, warlord ? WARLORD_MAX_LEVEL : MAX_LEVEL);
+  return Math.min(level + (warlord ? 1 : 0), warlord ? WARLORD_MAX_LEVEL : MAX_LEVEL);
 }
 
 /** What one ability is worth at a level. */
@@ -340,6 +340,23 @@ function offerHero(state: GameState, rng: Rng, playerId: PlayerId, emit?: Emit):
     emit?.({ kind: "leader", playerId, leaderId: l.id, what: `${l.name}, ${l.title}, offers their services` });
     return;
   }
+}
+
+/**
+ * A captain goes down with their ship unless the empire has Survival Pods and
+ * one of its ships came through the battle to pick them up.
+ */
+export function captainLost(state: GameState, fleetId: Id, rescued: boolean, emit?: Emit): void {
+  const l = captainOf(state, fleetId);
+  if (!l || l.ownerId === null) return;
+  const owner = state.players[l.ownerId]!;
+  if (rescued && knows(owner, "survivalPods")) return;
+  emit?.({ kind: "leader", playerId: owner.id, leaderId: l.id, what: `${l.name}, ${l.title}, was killed when their ship was destroyed` });
+  l.status = "dead";
+  l.ownerId = null;
+  l.offeredTo = null;
+  l.assignedTo = null;
+  l.travel = null;
 }
 
 function backToPool(l: Leader): void {

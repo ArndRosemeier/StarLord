@@ -35,11 +35,10 @@ export function espionageTick(state: GameState, rng: Rng, emit: Emit): void {
         continue;
       }
       if (cell.count <= 0) continue;
-      // Assassin leaders hunt down foreign agents before they act.
+      // Assassin leaders may hunt down one foreign agent a turn before they act.
       const assassin = leaderAssassinChance(state, targetId);
       if (assassin > 0) {
-        let killed = 0;
-        for (let i = 0; i < cell.count; i++) if (rng.int(0, 99) < assassin) killed++;
+        const killed = rng.int(1, 100) <= assassin ? 1 : 0;
         if (killed > 0) {
           cell.count -= killed;
           emit({ kind: "spy", playerId: targetId, other: spyMaster.id, what: `assassinated ${killed} enemy spy${killed > 1 ? "s" : ""}` });
@@ -62,7 +61,8 @@ export function espionageTick(state: GameState, rng: Rng, emit: Emit): void {
         if (x >= need || die === 100) {
           const scapegoat = x >= SPY.blame || die === 100 ? blameTarget(state, rng, spyMaster.id, targetId) : null;
           const done = cell.mission === "steal" ? steal(state, rng, spyMaster.id, targetId, emit) : sabotage(state, rng, spyMaster.id, targetId, emit);
-          if (done) adjustAttitude(state, targetId, scapegoat ?? spyMaster.id, ATTITUDE_EVENTS.spyNoticed);
+          // A framed empire takes a bigger, random hit than a caught culprit.
+          if (done) adjustAttitude(state, targetId, scapegoat ?? spyMaster.id, scapegoat !== null ? -(rng.int(1, SPY.blameDrop[0]) + rng.int(1, SPY.blameDrop[1])) : ATTITUDE_EVENTS.spyNoticed);
         }
       }
 
@@ -107,7 +107,8 @@ function weightedPick<T>(rng: Rng, items: T[], weight: (x: T) => number): T {
 function steal(state: GameState, rng: Rng, thief: number, victim: number, emit: Emit): boolean {
   const me = state.players[thief]!;
   const them = state.players[victim]!;
-  const options = them.techs.filter((t) => !me.techs.includes(t) && TIER_OF_TECH[t]);
+  // Never from the field the thief is researching right now.
+  const options = them.techs.filter((t) => !me.techs.includes(t) && TIER_OF_TECH[t] && TIER_OF_TECH[t]!.id !== me.research.tierId);
   if (options.length === 0) return false;
   const tech = weightedPick(rng, options, (t) => Math.max(1, TIER_OF_TECH[t]!.cost));
   grantTech(me, tech);

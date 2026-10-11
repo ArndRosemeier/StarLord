@@ -129,9 +129,12 @@ export function destructibleBuildings(colony: Colony): string[] {
   return colony.buildings.filter((b) => !BUILDINGS_BY_ID[b]?.effects.capitol);
 }
 
-/** A colony of another race than its ruler's counts as multi-racial. */
+/** A colony where two races live side by side (natives among settlers) counts as multi-racial; androids don't count. */
 export function isMultiRacial(player: Player, colony: Colony): boolean {
-  return colony.raceId !== player.raceId;
+  void player;
+  const pop = population(colony);
+  const natives = Math.min(pop, colony.natives ?? 0);
+  return pop > 1 && natives > 0 && natives < pop;
 }
 
 export function colonyMorale(player: Player, colony: Colony, turn: number, leader?: LeaderSkills): number {
@@ -338,9 +341,11 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   // Money: androids pay no tax. Morale touches only the population tax; every bonus is a share of tax plus deposits.
   const special = planet.special === "gold" ? SPECIAL_INCOME.gold : planet.special === "gems" ? SPECIAL_INCOME.gems : 0;
   const perPop = Math.max(0, TAX_PER_POP + race.picks.money + bonus.bcPerPop + (aiLevel?.aiBcPerPop ?? 0));
-  const popTax = Math.round(pop * perPop);
+  // Natives pay no tax and never grow.
+  const natives = Math.min(pop, colony.natives ?? 0);
+  const popTax = Math.round((pop - natives) * perPop);
   const moraleTax = gov.noMorale ? 0 : Math.round((popTax * morale) / 100);
-  const incomeShare = (gov.bcMult - 1) + sumEffect(b, "bcMult") + (lead.bc ?? 0) / 100;
+  const incomeShare = (gov.bcMult - 1) + sumEffect(b, "bcMult") + (lead.bc ?? 0) / 100 + bonus.incomePercent / 100;
   const bc = popTax + moraleTax + special + Math.trunc((popTax + special) * incomeShare) + taxes * TAX_BC_PER_INDUSTRY;
   const maintenance = colonyMaintenance(planet, b, foodReplicated * REPLICATED_FOOD_UPKEEP);
 
@@ -366,7 +371,7 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
     research,
     bc,
     maintenance,
-    growthK: growthPerTurn(pop, pop + nAndroids, max, race, b, bonus.growth * 100 + growthPct),
+    growthK: growthPerTurn(pop - natives, pop + nAndroids, max, race, b, bonus.growth * 100 + growthPct),
     troops,
     blockaded: !!ctx.blockaded,
   };

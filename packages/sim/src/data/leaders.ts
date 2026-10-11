@@ -32,7 +32,7 @@ export interface HeroSkillDef {
 }
 
 export const HERO_SKILLS: Record<HeroSkill, HeroSkillDef> = {
-  assassin: { name: "Assassin", group: "common", mult: [20, 30], weight: [2, 4], text: "{v}% chance each turn to kill an enemy spy in your empire." },
+  assassin: { name: "Assassin", group: "common", mult: [30, 45], weight: [2, 4], text: "{v}% chance each turn to kill an enemy spy in your empire." },
   commando: { name: "Commando", group: "common", mult: [20, 30], weight: [3, 6], text: "+{v} ground combat for all your troops in the same system, on planets and ships." },
   diplomat: { name: "Diplomat", group: "common", mult: [100, 150], weight: [1, 2], text: "+{v} diplomatic points in every negotiation." },
   famous: { name: "Famous", group: "common", mult: [600, 900], weight: [2, 4], text: "Other leaders apply more often and cost {v} BC less to hire." },
