@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CREW, Rng, buyPrice, crewLevel, crewTick, getRace, growthPerTurn, missileSpeed, newGame, raceMaxPopulation,
-  canBuildShips, computeOutput, fireEvent, processTurn, repairTick, findDesign, fleetFuelRange, fleetRange, levelFromXp, planetDefense, resolveCombat, spyCountBonus, troopUnit, WEAPONS_BY_ID, type Colony, type Fleet, type GameState,
+  canBuildShips, computeOutput, fireEvent, population, processTurn, repairTick, revoltFight, findDesign, fleetFuelRange, fleetRange, levelFromXp, planetDefense, resolveCombat, spyCountBonus, troopUnit, WEAPONS_BY_ID, type Colony, type Fleet, type GameState,
 } from "@starlord/sim";
 
 /** Numbers recovered from the original program; each case was worked out by hand from the decoded formulas. */
@@ -301,5 +301,20 @@ describe("industry upkeep shortfall", () => {
     expect(out.androidsUnfed).toBe(2);
     const human = computeOutput(planet, s.players[1]!, { ...colony, ownerId: 1, raceId: "terran", androids: undefined });
     expect(human.cyberShortHalf).toBe(0);
+  });
+});
+
+describe("revolts", () => {
+  it("lets a strong garrison put rebels down and lets rebels take an empty one", () => {
+    const s = newGame({ seed: "rev", races: ["terran", "felhari"], monsters: false, raiders: false, council: false });
+    const c = Object.values(s.colonies).find((x) => x.ownerId === 0)!;
+    const ctx = { state: s, rng: new Rng({ s: 5 }), emit: () => {} };
+    c.aliens = 0;
+    c.tanksTrained = 30;
+    expect(revoltFight(ctx, c, 3).won).toBe(false);
+    c.tanksTrained = 0;
+    c.buildings = [];
+    c.aliens = population(c);
+    expect(revoltFight(ctx, c, 3)).toEqual({ won: true, killed: 0 });
   });
 });
