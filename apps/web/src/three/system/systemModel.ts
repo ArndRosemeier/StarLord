@@ -1,6 +1,7 @@
 import { findDesign, population, type HullSize, type PlanetSize, type PlanetType, type PlayerView, type Star } from "@starlord/sim";
 import { STAR_COLORS } from "../../map/scene";
 import type { StationTierId } from "../models/stations";
+import { colonizeOption, type ColonizeOption } from "../../game/colonize";
 
 /**
  * What a star system looks like from the viewer's seat, independent of how it
@@ -25,6 +26,8 @@ export interface SystemPlanet {
     population: number;
     station: StationTierId | null;
   } | null;
+  /** How the viewer could settle this planet with a ship already here; null when they can't. */
+  settle: ColonizeOption | null;
 }
 
 export interface SystemFleet {
@@ -57,7 +60,7 @@ export interface SystemModel {
 const HULL_ORDER: HullSize[] = ["frigate", "destroyer", "cruiser", "battleship", "titan", "doomStar"];
 const STATIONS: StationTierId[] = ["starFortress", "battlestation", "starBase"];
 
-export function buildSystemModel(view: PlayerView, starId: string): SystemModel | null {
+export function buildSystemModel(view: PlayerView, starId: string, preferFleetId?: string | null, canOrder = true): SystemModel | null {
   const star = view.galaxy.stars.find((s) => s.id === starId);
   if (!star) return null;
   const me = view.players[view.viewer]!;
@@ -84,6 +87,7 @@ export function buildSystemModel(view: PlayerView, starId: string): SystemModel 
           population: population(c),
           station: STATIONS.find((s) => c.buildings.includes(s)) ?? null,
         } : null,
+        settle: canOrder ? colonizeOption(view, p.id, preferFleetId) : null,
       });
     }
     planets.sort((a, b) => a.orbit - b.orbit);

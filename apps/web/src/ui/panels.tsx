@@ -5,6 +5,7 @@ import {
 } from "@starlord/sim";
 import { useGame } from "./hooks";
 import { climateName, fmt, words } from "./format";
+import { colonizeOption } from "../game/colonize";
 
 /** Painted planet art in public/planets, scaled by planet size. */
 export function PlanetIcon({ planet, size }: { planet: Planet; size?: number }) {
@@ -35,7 +36,6 @@ export function StarPanel({ starId, fleetId, onSelectFleet, selectedPlanetId, on
   const fleets = Object.values(view.fleets).filter((f) => f.starId === star.id);
   const fleet = fleetId ? view.fleets[fleetId] : undefined;
   const myFleetHere = fleet && fleet.ownerId === me.id && fleet.starId === star.id ? fleet : undefined;
-  const modules = new Set(myFleetHere?.ships.map((s) => findDesign(me, s.designId)?.module).filter(Boolean));
   const troops = myFleetHere?.ships.reduce((n, s) => {
     const d = findDesign(me, s.designId);
     return n + (d ? designStats(me, d).troops * s.count : 0);
@@ -57,7 +57,8 @@ export function StarPanel({ starId, fleetId, onSelectFleet, selectedPlanetId, on
         const colony = p.colonyId ? view.colonies[p.colonyId] : undefined;
         const owner = colony ? view.players[colony.ownerId] : undefined;
         const habitable = CLIMATES[p.type].habitable;
-        const canColonize = !readOnly && myFleetHere && !colony && habitable && (modules.has("colony") || modules.has("outpost"));
+        // Any of your colony or outpost ships in the system will do; the selected fleet goes first.
+        const settle = readOnly ? null : colonizeOption(view, pid, fleetId);
         const canInvade = !readOnly && myFleetHere && colony && troops > 0 && isHostile(view, me.id, colony.ownerId);
         return (
           <div
@@ -83,7 +84,16 @@ export function StarPanel({ starId, fleetId, onSelectFleet, selectedPlanetId, on
               )}
             </div>
             <div className="col" style={{ gap: 4 }}>
-              {canColonize && <button className="small primary" onClick={() => session.issue({ type: "colonize", fleetId: myFleetHere!.id, planetId: pid })}>{modules.has("colony") ? "Colonize" : "Outpost"}</button>}
+              {settle && (
+                <button
+                  className="small primary"
+                  disabled={!!settle.blocked}
+                  title={settle.blocked ? `Can't settle: ${settle.blocked}.` : `${settle.fleetName} settles this planet when you end the turn.`}
+                  onClick={() => session.issue({ type: "colonize", fleetId: settle.fleetId, planetId: pid })}
+                >
+                  {settle.outpost ? "Outpost" : "Colonize"}
+                </button>
+              )}
               {canInvade && <button className="small danger" onClick={() => session.issue({ type: "invade", fleetId: myFleetHere!.id, colonyId: colony!.id })}>Invade ({troops})</button>}
             </div>
           </div>
