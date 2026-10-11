@@ -25,7 +25,7 @@ import { distance } from "./galaxy.js";
 import { repairTick } from "./repair.js";
 import { addShips, deleteFleet, removeShips, takeShips } from "./fleetOps.js";
 import { builtCrewXp, crewTick } from "./crew.js";
-import { captureColony, destroyColony, exterminate, groundPhase, revoltFight, type Silenced } from "./ground.js";
+import { bombColony, captureColony, destroyColony, exterminate, groundPhase, revoltFight, type Silenced } from "./ground.js";
 import { assignDefaultJobs, newUnitJob, removeAndroids, removePopulation } from "./jobs.js";
 import {
   assignLeader, captainLost, captainOf, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
@@ -488,6 +488,11 @@ function applyCombat(
   outcome: ReturnType<typeof resolveCombat>,
 ): void {
   const { state } = ctx;
+  // Bombs and fire that fell on a planet whose installations were already gone hit the colony itself.
+  for (const [colonyId, hits] of outcome.colonyHits) {
+    const c = state.colonies[colonyId];
+    if (c) bombColony(ctx, c, hits);
+  }
   // A destroyed orbital station is gone for good.
   for (const colonyId of outcome.stationsLost) {
     const c = state.colonies[colonyId];

@@ -148,6 +148,9 @@ describe("original crews and space combat", () => {
     const star = s.players[1]!.homeStarId;
     const colony = Object.values(s.colonies).find((c) => c.ownerId === 1)!;
     colony.buildings = [];
+    // Human players' unarmed ships stay put (computer players would pull them out).
+    s.players[0]!.isHuman = true;
+    s.players[1]!.isHuman = true;
     const a = addFleet(s, 0, star, [{ designId: "scout", count: 1 }]);
     const b = addFleet(s, 1, star, [{ designId: "scout", count: 1 }]);
     let checked = 0;

@@ -3,7 +3,7 @@ import { MILITIA_PER_POP } from "./data/economy.js";
 import { DIFFICULTY_ORDER } from "./data/galaxy.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import {
-  BASE_EQUIPMENT, BATTLEOID_HITS, BOMB_DAMAGE_PER_HIT, SPECIAL_UNIT_RATING, CAPTURE_TECH_CHANCE,
+  BASE_EQUIPMENT, BATTLEOID_HITS, BOMB_DAMAGE_PER_HIT, SPECIAL_UNIT_RATING, CAPTURE_TECH,
   POWERED_ARMOR_HITS, RATING_PER_LEVEL, SPORE_DEFENSE, SPORE_KILL_CHANCE_PER_POINT, TROOPS, type TroopKind,
 } from "./data/ground.js";
 import { hullIndex } from "./data/components.js";
@@ -141,6 +141,12 @@ function bombHits(ctx: TurnContext, colony: Colony, hits: number): number {
     left--;
   }
   return kills;
+}
+
+/** Lands bombing hits from a battle on a colony: buildings, troops and colonists, as after-battle bombing does. */
+export function bombColony(ctx: TurnContext, colony: Colony, hits: number): void {
+  if (hits <= 0 || !ctx.state.colonies[colony.id]) return;
+  raze(ctx, colony, bombHits(ctx, colony, hits));
 }
 
 /** Colonies whose orbital defenses are down this turn. */
@@ -344,10 +350,25 @@ export function captureColony(ctx: TurnContext, colony: Colony, newOwner: Player
     if (l.ownerId === loser && l.assignedTo === state.planets[colony.planetId]!.starId) l.assignedTo = null;
   }
   if (opts.revolt) return;
-  const loserTechs = state.players[loser]!.techs.filter((t) => !attacker.techs.includes(t) && TIER_OF_TECH[t]);
-  if (loserTechs.length > 0 && rng.chance(CAPTURE_TECH_CHANCE)) {
-    const tech = rng.pick(loserTechs);
+  // The conqueror studies the colony's buildings, then questions its people (see CAPTURE_TECH).
+  const C = CAPTURE_TECH;
+  const level = DIFFICULTY_ORDER.indexOf(state.settings.difficulty ?? "average");
+  const odds = (o: { human: number; ai: number; aiPerDifficulty: number }) => (attacker.isHuman ? o.human : o.ai + o.aiPerDifficulty * level);
+  let taken = 0;
+  const learn = (tech: string) => {
+    taken++;
     if (grantTech(attacker, tech)) ctx.emit({ kind: "techLearned", playerId: newOwner, techId: tech, tierId: TIER_OF_TECH[tech]!.id, source: "salvage" });
+  };
+  for (const b of colony.buildings) {
+    if (taken >= C.maxTechs) break;
+    const tech = BUILDINGS_BY_ID[b]?.requires;
+    if (!tech || !TIER_OF_TECH[tech] || attacker.techs.includes(tech)) continue;
+    if (rng.int(1, 1000) <= Math.floor(odds(C.perBuilding) / (taken + 1))) learn(tech);
+  }
+  const pool = loserPlayer.techs.filter((t) => !attacker.techs.includes(t) && TIER_OF_TECH[t]);
+  for (let i = population(colony); i > 0 && taken < C.maxTechs && pool.length > 0; i--) {
+    if (rng.int(1, 1000) > Math.floor(odds(C.perColonist) / (taken + 1))) continue;
+    learn(pool.splice(rng.int(0, pool.length - 1), 1)[0]!);
   }
 }
 

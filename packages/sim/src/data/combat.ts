@@ -98,8 +98,12 @@ export const MISSILE_DEFENSE_BONUS: Record<string, number> = {
 };
 /** Torpedoes do this fraction of their damage to planets. */
 export const PLANET_TORPEDO_DAMAGE = 0.5;
-/** Anti-missile rockets hit with this chance, minus a little per square. */
-export const ANTI_MISSILE = { base: 0.85, perSquare: 0.05 } as const;
+/**
+ * Each anti-missile rocket (one of the mount's 20 shots) downs an incoming
+ * missile when a d100 roll is below base - floor((band + 2) x 10 / 3), the band
+ * being the missile's range band from the ship: 64% as it strikes.
+ */
+export const ANTI_MISSILE = { base: 71, perBandStep: 10 / 3 } as const;
 /** Plasma torpedoes lose this much damage per square travelled after the first. */
 export const TORPEDO_DISSIPATION = 5;
 
@@ -112,16 +116,43 @@ export const SQUADRON_SIZE = 4;
 export const CRAFT_SPEED_PER_DRIVE = 2;
 export const CRAFT_ARMOR_STEP = 50;
 export const CRAFT = {
+  /** Shots are attack passes: every craft fires once a combat turn at its target until they are spent. */
   fighters: { hp: 2, shots: 4, speed: 10 },
   bombers: { hp: 4, shots: 1, speed: 8 },
+  /** Heavy fighters make two passes, each with a beam shot and a bomb. */
   heavyFighters: { hp: 5, shots: 2, speed: 8 },
   shuttles: { hp: 3, shots: 0, speed: 6 },
-  /** Turns a bay needs to recover and rearm a squadron. */
+  /** Turns a bay needs to recover and rearm a squadron (an estimate: the rearm time is not decoded). */
   rearm: 3,
+  /**
+   * Craft beam attack = this + the owner's best computer + race and side
+   * attack bonuses. A pass hits when d100 (above 95 counts as 100) + attack -
+   * defense reaches hitAt; the damage climbs from the beam's least to its most
+   * over the rest of the roll. Craft beam defense = 5 x speed + race defense.
+   */
+  attackBase: 50,
+  hitAt: 40,
+  /** Rolls above this count as the full die. */
+  sureAbove: 95,
 } as const;
 
-/** Black hole: the trapped ship is lost if the generator keeps it this many turns. */
-export const BLACK_HOLE_TURNS = 2;
+/**
+ * Black hole: the trapped ship's counter starts at 1 and rises at the end of
+ * every combat turn; the ship is lost when it reaches this, at the end of the
+ * second turn after the one it was caught in.
+ */
+export const BLACK_HOLE_TURNS = 3;
+/**
+ * Pulsar and Spatial Compressor go off when an enemy is within their range
+ * and strike every other unit (friends too, but not the planet) within this
+ * many squares, plus missiles and craft (an estimate: the original uses the
+ * blast sprite's size). A missile or craft is wrecked with chance damage x 25
+ * / its hit points percent; craft are skipped half the time.
+ */
+export const AREA_BLAST_RADIUS = 3;
+export const AREA_BLAST_PROJECTILE = { pctPerDamage: 25, craftSkip: 0.5 } as const;
+/** Phasing cloak: turns of its own the ship stays phased out before it works as a normal cloak. */
+export const PHASING_TURNS = 10;
 /** Plasma web damage fades by this much each turn. */
 export const PLASMA_WEB_DECAY = 5;
 
@@ -254,3 +285,35 @@ export const ARTEMIS = { chanceByHull: [20, 30, 40, 50, 80, 100], damage: [100, 
 export const REPAIR = {
   fullRepairTech: "advancedDamageControl",
 } as const;
+
+/**
+ * The damage routine. Damage past armor goes to an internal system with
+ * chance S x 100 / (structure left + S) percent, S = half the drive's hit
+ * points plus those of the computer, weapons, specials and shield generator
+ * (at most monsterSystemCap for monsters); otherwise to structure. A system
+ * takes what it can hold and the rest is placed again (a drive passes its
+ * excess to structure). Every point on structure or a system kills a marine
+ * with crewCasualty chance.
+ */
+export const DAMAGE = {
+  crewCasualty: 0.01,
+  monsterSystemCap: 25,
+  /** Energy Absorber: takes a quarter of each hit (at least 1) and adds it to the ship's next shot. */
+  absorberShare: 0.25,
+} as const;
+
+/**
+ * Bombs in battle drop only on the planet, from up to this many squares (more
+ * with Transporters); each volley uses one of the rack's shots.
+ */
+export const COMBAT_BOMB_RANGE = { normal: 3, transporters: 12 } as const;
+/** Once a planet's installations are gone, every this much damage past its shield is one bombing hit on the colony. */
+export const PLANET_POPULATION_HP = 100;
+/** Combat turns a victorious fleet bombards a planet after the battle; all its weapons fire and the planet does not answer. */
+export const BOMBARD_ROUNDS = 10;
+/**
+ * A unit's footprint in squares by hull size (frigate 1x1, destroyer and
+ * cruiser 2x2, battleship and larger 3x3; a planet 3x3). Range is measured
+ * between the nearest squares of the two footprints.
+ */
+export const FOOTPRINT = { byHull: [1, 2, 2, 3, 3, 3], planet: 3 } as const;

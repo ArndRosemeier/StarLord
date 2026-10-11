@@ -41,5 +41,16 @@ export const SPORE_DEFENSE: { tech: string; mult: number }[] = [
   { tech: "universalAntidote", mult: 0.25 },
 ];
 
-/** Chance to capture a technology from the loser when taking one of its colonies. */
-export const CAPTURE_TECH_CHANCE = 0.5;
+/**
+ * Technologies taken with a conquered colony, as the original rolls them (per
+ * mille, divided by one more than the techs taken so far; at most maxTechs).
+ * First each building whose technology the captor lacks yields it with
+ * perBuilding; then each colonist yields a random technology of the loser's
+ * with perColonist. Computer players' odds rise with the difficulty level
+ * (tutor 0 ... impossible 4).
+ */
+export const CAPTURE_TECH = {
+  maxTechs: 4,
+  perBuilding: { human: 125, ai: 115, aiPerDifficulty: 5 },
+  perColonist: { human: 65, ai: 55, aiPerDifficulty: 5 },
+} as const;

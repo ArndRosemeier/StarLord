@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   attitude, RELATION_EVENTS,
-  BATTLEOID_HITS, BOMB_DAMAGE_PER_HIT, CAPTURE_TECH_CHANCE, MILITIA_PER_POP, POWERED_ARMOR_HITS, Rng, SPECIAL_UNIT_RATING, TROOPS,
+  BATTLEOID_HITS, BOMB_DAMAGE_PER_HIT, MILITIA_PER_POP, POWERED_ARMOR_HITS, Rng, SPECIAL_UNIT_RATING, TROOPS,
   canMindControl, captureColony, defendingTroops, exterminate, exterminateProblem, garrisonOf, groundPhase, invade, newGame, population, raze,
   troopUnit, type Colony, type Fleet, type GameEvent, type GameState,
 } from "@starlord/sim";
@@ -157,7 +157,8 @@ describe("conquest", () => {
       if (gained.length > 0) learned++;
       for (const t of gained) expect(before).not.toContain(t);
     }
-    expect(learned).toBeGreaterThan(tries * CAPTURE_TECH_CHANCE * 0.5);
+    // A home colony of eight or so people and its buildings: roughly a third to a half of conquests yield something.
+    expect(learned).toBeGreaterThan(tries * 0.15);
     expect(learned).toBeLessThan(tries);
 
     const { s, ctx } = game();
@@ -230,13 +231,13 @@ describe("bombing and mind control after orbital combat", () => {
     const c = stripped(homeColony(s, 1), 8, { marines: 2 });
     c.buildings = ["marineBarracks", "hydroponicFarm"];
     for (const f of Object.values(s.fleets)) if (f.ownerId === 1) delete s.fleets[f.id];
-    // 20 ships × 4 bombs × 7.5 damage = 600 damage: six hits.
-    addFleet(s, 0, starOf(s, c), [{ designId: bomber(s), count: 20 }]);
+    // The fleet bombs for ten combat turns: 2 ships × 4 bombs × 7.5 damage × 10 = 600 damage: six hits.
+    addFleet(s, 0, starOf(s, c), [{ designId: bomber(s), count: 2 }]);
     const before = population(c) + c.buildings.length + (c.marinesTrained ?? 0);
     groundPhase(ctx, new Set([c.id]));
     const after = population(c) + c.buildings.length + (c.marinesTrained ?? 0);
     expect(before - after).toBeGreaterThan(0);
-    expect(before - after).toBeLessThanOrEqual(Math.ceil((20 * 4 * 7.5) / BOMB_DAMAGE_PER_HIT));
+    expect(before - after).toBeLessThanOrEqual(Math.ceil((2 * 4 * 7.5 * 10) / BOMB_DAMAGE_PER_HIT));
   });
 
   it("does nothing while the colony's defenses still stand, or when the fleet is not set to attack", () => {

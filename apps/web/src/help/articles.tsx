@@ -540,7 +540,7 @@ function WeaponPage({ w }: { w: WeaponDef }) {
     beam: "Fires every round. Attack against the target's beam defense sets the chance to hit; range lowers both the hit chance and the damage. Shields subtract from every hit.",
     missile: "Launched as a salvo that flies across the field at its own speed. Point defense, anti-missile rockets and jammers can stop it before it lands.",
     torpedo: "Flies like a missile but cannot be shot down, and its launcher needs a round to reload after each shot.",
-    bomb: "Only used against colonies whose defenses are down, by fleets set to attack. Kills population and may wreck buildings.",
+    bomb: "Dropped on an enemy planet in battle from close range (each volley uses a shot), and fired with every other weapon when a fleet set to attack bombards a colony whose defenses are down. Kills population and may wreck buildings.",
     spores: "Biological weapon against colonies: kills population directly, ignoring buildings.",
     special: "A special-purpose device with its own effect in battle, described below.",
     bay: "Launches small craft that fly to their targets, attack and return to rearm.",
@@ -1040,8 +1040,8 @@ function MonstersPage() {
         how much more population they have than it. Lucky empires count a third of their population. Human players count{" "}
         {pct(RAID_HUMAN_POP_MULT.tutor)} on Tutor, {pct(RAID_HUMAN_POP_MULT.easy)} on Easy, {RAID_HUMAN_POP_MULT.hard}× on Hard
         and {RAID_HUMAN_POP_MULT.impossible}× on Impossible. The raid strikes a random system with one of that empire's colonies
-        (outposts don't count) and fights everything there. If the defenses fall, the raiders bomb the colony with their
-        neutronium bombs like any bombardment (every {BOMB_DAMAGE_PER_HIT} damage kills a colonist or troop or wrecks a
+        (outposts don't count) and fights everything there. If the defenses fall, the raiders bombard the colony with every weapon aboard, their
+        neutronium bombs included, like any bombardment (every {BOMB_DAMAGE_PER_HIT} damage kills a colonist or troop or wrecks a
         building); a colony left with nobody is destroyed. Raiders never invade. At the end of the turn the survivors go home
         and can raid again; only the ships destroyed are lost. Ships the home fleet loses are replaced from the raid pool.
       </p>
