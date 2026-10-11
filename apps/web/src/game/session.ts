@@ -1,7 +1,7 @@
-import { automationOrders } from "@starlord/ai";
+import { answerProposal, automationOrders } from "@starlord/ai";
 import {
-  newGame, newRecord, playerView, previewOrders, processTurn, recordTurn, replayRecord, stateHash,
-  type CombatReport, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type TurnOrders,
+  newGame, newRecord, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
+  type CombatReport, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Proposal, type TurnOrders,
 } from "@starlord/sim";
 
 /**
@@ -16,6 +16,12 @@ export class GameSession {
   /** Empire whose view a spectator follows. */
   watching: PlayerId;
   pending: Command[] = [];
+  /**
+   * What computer empires said in audiences this turn to the human's
+   * proposals, by proposal id. They are sent as those empires' answers when
+   * the turn ends, so the deal holds as agreed.
+   */
+  answers: Record<string, boolean> = {};
   rejected: string[] = [];
   view!: PlayerView;
   /** Reports of recent turns, newest first; filtered per viewer by the UI. */
@@ -27,12 +33,13 @@ export class GameSession {
   /** Every turn's orders since the game began, for replays and lockstep play; null for old saves. */
   record: GameRecord | null;
 
-  constructor(state: GameState, me: PlayerId | null, pending: Command[] = [], record: GameRecord | null = null) {
+  constructor(state: GameState, me: PlayerId | null, pending: Command[] = [], record: GameRecord | null = null, answers: Record<string, boolean> = {}) {
     this.state = state;
     this.record = record;
     this.me = me;
     this.watching = me ?? 0;
     this.pending = pending;
+    this.answers = answers;
     this.refresh();
   }
 
@@ -83,7 +90,10 @@ export class GameSession {
       this.rejected = [];
     } else {
       const { state, rejected } = previewOrders(this.state, this.me, this.pending);
-      this.view = playerView(state, this.me);
+      // Deals struck in audiences show at once.
+      let after = state;
+      for (const [id, cmds] of this.answerOrders()) after = previewOrders(after, id, cmds).state;
+      this.view = playerView(after, this.me);
       this.rejected = rejected;
     }
     this.version++;
@@ -99,6 +109,49 @@ export class GameSession {
       this.pending.push(cmd);
     }
     this.refresh();
+  }
+
+  /**
+   * Puts a proposal to another empire in an audience. A computer empire
+   * answers on the spot; the answer is returned (null for human empires,
+   * who answer on their own turn, and for proposals that cannot be made).
+   */
+  audience(cmd: Extract<Command, { type: "propose" }>): boolean | null {
+    if (this.me === null) return null;
+    const id = proposalId(this.state.turn, this.me, cmd.to, cmd.kind);
+    if (this.pending.some((c) => c.type === "propose" && c.to === cmd.to && c.kind === cmd.kind)) return null;
+    const { state } = previewOrders(this.state, this.me, [...this.pending, cmd]);
+    const proposal = state.proposals.find((p) => p.id === id);
+    if (!proposal) return null;
+    this.pending.push(cmd);
+    const them = this.state.players[cmd.to]!;
+    if (them.isHuman) {
+      this.refresh();
+      return null;
+    }
+    const answer = answerProposal(playerView(state, cmd.to), proposal);
+    this.answers[id] = answer;
+    this.refresh();
+    return answer;
+  }
+
+  /** The computer empires' audience answers still owed, for proposals still among the pending orders. */
+  private answerOrders(): Map<PlayerId, Command[]> {
+    const out = new Map<PlayerId, Command[]>();
+    if (this.me === null) return out;
+    for (const cmd of this.pending) {
+      if (cmd.type !== "propose") continue;
+      const id = proposalId(this.state.turn, this.me, cmd.to, cmd.kind);
+      const accept = this.answers[id];
+      if (accept === undefined) continue;
+      out.set(cmd.to, [...(out.get(cmd.to) ?? []), { type: "respond", proposalId: id, accept }]);
+    }
+    return out;
+  }
+
+  /** The answer a computer empire gave in an audience this turn, if any. */
+  answerTo(p: Pick<Proposal, "id">): boolean | undefined {
+    return this.answers[p.id];
   }
 
   undo(): void {
@@ -119,13 +172,14 @@ export class GameSession {
   /** Orders for every empire this turn: AI for computer players, the human's own plus their automation. */
   ordersForTurn(): TurnOrders {
     const orders: TurnOrders = {};
+    const answers = this.answerOrders();
     for (const p of this.state.players) {
       if (!p.alive || p.kind !== "empire") continue;
       if (p.id === this.me) {
         const { state } = previewOrders(this.state, p.id, this.pending);
         orders[p.id] = [...this.pending, ...automationOrders(playerView(state, p.id))];
       } else {
-        orders[p.id] = automationOrders(playerView(this.state, p.id));
+        orders[p.id] = [...automationOrders(playerView(this.state, p.id)), ...(answers.get(p.id) ?? [])];
       }
     }
     return orders;
@@ -139,11 +193,12 @@ export class GameSession {
     if (this.record) recordTurn(this.record, orders, this.state);
     this.history = [{ turn, events: this.state.events, combats: this.state.combats }, ...this.history].slice(0, HISTORY_TURNS);
     this.pending = [];
+    this.answers = {};
     this.refresh();
   }
 
   toJSON(): SavedGame {
-    return { format: "starlord-save", version: 1, state: this.state, me: this.me, pending: this.pending, record: this.record };
+    return { format: "starlord-save", version: 1, state: this.state, me: this.me, pending: this.pending, record: this.record, answers: this.answers };
   }
 
   static fromJSON(data: unknown): GameSession {
@@ -151,7 +206,7 @@ export class GameSession {
     const save = data as SavedGame;
     if (save?.format !== "starlord-save" || !save.state) throw new Error("Not a StarLord save file");
     if (save.state.version !== 2) throw new Error(`Unsupported game version ${save.state.version}`);
-    return new GameSession(save.state, save.me, save.pending ?? [], save.record ?? null);
+    return new GameSession(save.state, save.me, save.pending ?? [], save.record ?? null, save.answers ?? {});
   }
 }
 
@@ -165,6 +220,8 @@ export interface SavedGame {
   pending: Command[];
   /** Absent in saves made before records existed. */
   record?: GameRecord | null;
+  /** Audience answers given this turn (absent in older saves). */
+  answers?: Record<string, boolean>;
 }
 
 /** Orders that replace earlier orders of the same key instead of stacking. */

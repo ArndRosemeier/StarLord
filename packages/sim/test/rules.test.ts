@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  MILITIA_PER_POP, TIER_OF_TECH, garrisonOf, hasTreaty, moveProblem, newGame, playerView, population, processTurn, travelTurns,
+  MILITIA_PER_POP, TIER_OF_TECH, garrisonOf, hasTreaty, proposalId, relation, moveProblem, newGame, playerView, population, processTurn, travelTurns,
   type Fleet, type GameState,
 } from "@starlord/sim";
 
@@ -68,6 +68,32 @@ describe("movement", () => {
 });
 
 describe("diplomacy deals", () => {
+  it("an empire can answer a proposal in the same turn it is made, as in an audience", () => {
+    let s = twoEmpires("audience");
+    const id = proposalId(s.turn, 0, 1, "nonAggression");
+    // The answer comes first in the orders and from the seat that acts first; it is still applied after the proposal.
+    s = processTurn(s, {
+      1: [{ type: "respond", proposalId: id, accept: true }],
+      0: [{ type: "propose", to: 1, kind: "nonAggression" }],
+    });
+    expect(relation(s, 0, 1).status).toBe("nonAggression");
+    expect(s.proposals).toHaveLength(0);
+    expect(s.events.some((e) => e.kind === "diplomacy" && e.playerId === 0 && e.what === "accepted nonAggression")).toBe(true);
+  });
+
+  it("empires that meet hear of it", () => {
+    let s = twoEmpires("contact");
+    s.players[0]!.contacts = [];
+    s.players[1]!.contacts = [];
+    const home1 = s.galaxy.stars.find((x) => x.id === s.players[1]!.homeStarId)!;
+    const f = addFleet(s, 0, s.players[0]!.homeStarId);
+    Object.assign(f, { x: home1.x, y: home1.y, starId: home1.id });
+    s = processTurn(s, {});
+    for (const [a, b] of [[0, 1], [1, 0]]) {
+      expect(s.events.some((e) => e.kind === "diplomacy" && e.playerId === a && e.other === b && e.what === "made contact with you")).toBe(true);
+    }
+  });
+
   it("a tribute demand, once accepted, makes the loser pay every turn", () => {
     let s = twoEmpires("tribute");
     s = processTurn(s, { 0: [{ type: "propose", to: 1, kind: "demandTribute", percent: 10 }] });
