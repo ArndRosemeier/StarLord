@@ -3,6 +3,7 @@ import { DEBUG, EVENTS, population, type DebugAction, type EventId } from "@star
 import { useGame } from "../ui/hooks";
 import { fmt } from "../ui/format";
 import { Simulator } from "./Simulator";
+import { CombatLab } from "./CombatLab";
 
 const words = (id: string) => id.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 
@@ -25,6 +26,7 @@ export function DebugMenu({ onClose }: { onClose: () => void }) {
   const [pop, setPop] = useState(10);
   const [event, setEvent] = useState<EventId>(events[0]!);
   const [simulator, setSimulator] = useState(false);
+  const [lab, setLab] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -34,6 +36,23 @@ export function DebugMenu({ onClose }: { onClose: () => void }) {
 
   const run = (action: DebugAction) => session.issue({ type: "debug", action });
   const colony = view.colonies[colonyId];
+
+  if (lab) {
+    return (
+      <div className="modal-back" onClick={onClose}>
+        <div className="modal debug-menu sim-modal" role="dialog" aria-label="Combat lab" onClick={(e) => e.stopPropagation()}>
+          <div className="whats-new-head">
+            <h2>Combat lab</h2>
+            <div className="row">
+              <button onClick={() => setLab(false)}>Back</button>
+              <button onClick={onClose} aria-label="Close">Close</button>
+            </div>
+          </div>
+          <CombatLab />
+        </div>
+      </div>
+    );
+  }
 
   if (simulator) {
     return (
@@ -69,6 +88,10 @@ export function DebugMenu({ onClose }: { onClose: () => void }) {
           <div className="row debug-row">
             <button className="primary" onClick={() => setSimulator(true)}>Open the game simulator</button>
             <small className="muted">plays whole computer-only games in the background and reports how they ended and anything that broke; your game is untouched</small>
+          </div>
+          <div className="row debug-row">
+            <button className="primary" onClick={() => setLab(true)}>Open the combat lab</button>
+            <small className="muted">sets up fleets, armed planets and space stations, fights them with the real combat rules and plays the battle back, or fights it many times and checks every battle for broken rules</small>
           </div>
         </section>
 

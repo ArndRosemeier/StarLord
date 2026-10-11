@@ -88,3 +88,4 @@ export { colonizationTargets, outpostTargets } from "./colonization.js";
 export { bestWarship } from "./design.js";
 export { answerOrders, answerProposal, audienceAnswer } from "./diplomacy.js";
 export * from "./simulate.js";
+export * from "./combatLab.js";

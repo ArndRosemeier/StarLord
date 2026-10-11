@@ -53,7 +53,9 @@ function bestMount(view: PlayerView, kinds: WeaponDef["kind"][], attack: number)
     for (const mods of MOD_SETS) {
       if (!modsAllowed(view, w, mods)) continue;
       const m: WeaponMount = { weaponId: w.id, count: 1, mods, ...(w.kind === "missile" ? { ammo: 10 } : {}) };
-      const value = mountFirepower(m, attack) / weaponUnitCost(player, m).space;
+      // Bombs never fire at ships, so firepower rates them 0; weigh them by their damage to planets instead.
+      const firepower = w.kind === "bomb" ? (w.damageMin + w.damageMax) / 2 : mountFirepower(m, attack);
+      const value = firepower / weaponUnitCost(player, m).space;
       if (value > bestValue) {
         bestValue = value;
         best = m;

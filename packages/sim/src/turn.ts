@@ -407,10 +407,13 @@ function combatPhase(ctx: TurnContext): Silenced {
   for (const starId of [...stars].sort()) {
     // Nobody can fight inside a time-space anomaly.
     if (systemFrozen(state, starId)) continue;
+    // Each pair of enemies fights once a turn; a battle that runs out of time goes on next turn.
+    const fought = new Set<string>();
     for (let guard = 0; guard < 6; guard++) {
-      const pair = nextBattle(state, starId, silenced);
+      const pair = nextBattle(state, starId, silenced, fought);
       if (!pair) break;
       const [a, b] = pair;
+      fought.add(`${a.ownerId}:${b.ownerId}`);
       const outcome = resolveCombat(state, rng, starId, a, b, newId(state, "cb"));
       state.combats.push(outcome.report);
       applyCombat(ctx, starId, [a, b], outcome);
@@ -447,14 +450,14 @@ function sideAt(state: GameState, starId: Id, ownerId: PlayerId, silenced: Silen
 }
 
 /** Finds the next pair of hostile parties at a star that will fight, if any. */
-function nextBattle(state: GameState, starId: Id, silenced: Silenced): [CombatSide, CombatSide] | null {
+function nextBattle(state: GameState, starId: Id, silenced: Silenced, fought: Set<string>): [CombatSide, CombatSide] | null {
   const owners = new Set<PlayerId>();
   for (const f of Object.values(state.fleets)) if (f.starId === starId) owners.add(f.ownerId);
   for (const c of Object.values(state.colonies)) if (state.planets[c.planetId]!.starId === starId) owners.add(c.ownerId);
   const list = [...owners].sort((x, y) => x - y);
   for (let i = 0; i < list.length; i++) {
     for (let j = i + 1; j < list.length; j++) {
-      if (!isHostile(state, list[i]!, list[j]!)) continue;
+      if (!isHostile(state, list[i]!, list[j]!) || fought.has(`${list[i]}:${list[j]}`)) continue;
       const a = sideAt(state, starId, list[i]!, silenced);
       const b = sideAt(state, starId, list[j]!, silenced);
       if (wantsFight(state, a, b) || wantsFight(state, b, a)) return [a, b];
