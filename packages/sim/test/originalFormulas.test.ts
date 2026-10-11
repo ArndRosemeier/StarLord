@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CREW, Rng, buyPrice, crewLevel, crewTick, getRace, growthPerTurn, missileSpeed, newGame, raceMaxPopulation,
-  computeOutput, resolveCombat, spyCountBonus, troopUnit, WEAPONS_BY_ID, type Colony, type Fleet, type GameState,
+  computeOutput, planetDefense, resolveCombat, spyCountBonus, troopUnit, WEAPONS_BY_ID, type Colony, type Fleet, type GameState,
 } from "@starlord/sim";
 
 /** Numbers recovered from the original program; each case was worked out by hand from the decoded formulas. */
@@ -144,5 +144,19 @@ describe("original crews and space combat", () => {
       checked++;
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it("arms planets with a stellar converter and a fighter garrison", () => {
+    const s = twoEmpires();
+    const star = s.players[1]!.homeStarId;
+    const colony = Object.values(s.colonies).find((c) => c.ownerId === 1)!;
+    colony.buildings = ["planetaryStellarConverter", "fighterGarrison"];
+    expect(planetDefense(colony).installations).toEqual(["stellarConverter", "fighterGarrison"]);
+    const a = addFleet(s, 0, star, [{ designId: "frigate", count: 6 }], "attack");
+    const out = resolveCombat(s, new Rng({ s: 5 }), star, { ownerId: 0, fleets: [a], attacksPlanet: true }, { ownerId: 1, fleets: [], attacksPlanet: false, colony }, "cb");
+    const planetKey = `planet:${colony.id}`;
+    const events = out.report.rounds.flat().filter((e) => e.ship === planetKey);
+    expect(events.some((e) => e.weapon === "stellarConverter")).toBe(true);
+    expect(events.some((e) => e.kind === "launch" && e.weapon === "fighterBays")).toBe(true);
   });
 });

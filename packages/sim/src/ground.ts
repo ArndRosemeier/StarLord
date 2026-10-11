@@ -3,7 +3,7 @@ import { MILITIA_PER_POP } from "./data/economy.js";
 import { DIFFICULTY_ORDER } from "./data/galaxy.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import {
-  BASE_EQUIPMENT, BATTLEOID_HITS, BOMB_BUILDING_CHANCE, SPECIAL_UNIT_RATING, BOMB_DAMAGE_PER_POP, BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE,
+  BASE_EQUIPMENT, BATTLEOID_HITS, BOMB_DAMAGE_PER_HIT, SPECIAL_UNIT_RATING, CAPTURE_TECH_CHANCE,
   POWERED_ARMOR_HITS, RATING_PER_LEVEL, SPORE_DEFENSE, SPORE_KILL_CHANCE_PER_POINT, TROOPS, type TroopKind,
 } from "./data/ground.js";
 import { hullIndex } from "./data/components.js";
@@ -12,7 +12,7 @@ import { getRace, hasTrait } from "./data/races.js";
 import { commandoBonusAt } from "./leaders.js";
 import { raceGroundBonus, troopHits } from "./raceEffects.js";
 import { TIER_OF_TECH } from "./data/techs.js";
-import { bombardment } from "./combat.js";
+import { bombardment, planetDefense } from "./combat.js";
 import { raidRaze } from "./raiders.js";
 import type { TurnContext } from "./context.js";
 import { designStats, findDesign } from "./designs.js";
@@ -99,15 +99,48 @@ export function troopUnit(
 }
 
 /** Bomb damage first kills ground units: tanks, then marines, then militia (who are colonists). */
-function bombTroops(colony: Colony, kills: number): number {
-  let left = kills;
-  const a = Math.min(colony.tanksTrained ?? 0, left);
-  if (a > 0) colony.tanksTrained = (colony.tanksTrained ?? 0) - a;
-  left -= a;
-  const m = Math.min(colony.marinesTrained ?? 0, left);
-  if (m > 0) colony.marinesTrained = (colony.marinesTrained ?? 0) - m;
-  left -= m;
-  return left;
+/**
+ * Spends bomb hits on a colony: each lands at random on a building (not its
+ * defenses or capitol), a trained marine or tank (which needs as many hits as
+ * it can take) or a colonist. Returns the colonists killed.
+ */
+function bombHits(ctx: TurnContext, colony: Colony, hits: number): number {
+  const { state, rng } = ctx;
+  const starId = state.planets[colony.planetId]!.starId;
+  const cost = (kind: "marines" | "armor") => troopUnit(state, colony.ownerId, colony.raceId, kind, true, starId).hits;
+  let left = hits;
+  let kills = 0;
+  while (left > 0) {
+    const wreckable = destructibleBuildings(colony).filter((b) => {
+      const d = BUILDINGS_BY_ID[b]?.effects.defense;
+      return !d?.station && !d?.installation && !d?.fighters;
+    });
+    const marines = colony.marinesTrained ?? 0;
+    const tanks = colony.tanksTrained ?? 0;
+    const pop = Math.max(0, population(colony) - kills);
+    const total = wreckable.length + marines + tanks + pop;
+    if (total === 0) break;
+    let r = rng.int(1, total);
+    if (r <= wreckable.length) {
+      colony.buildings.splice(colony.buildings.indexOf(wreckable[r - 1]!), 1);
+      left--;
+      continue;
+    }
+    r -= wreckable.length;
+    if (r <= marines + tanks) {
+      const kind = r <= marines ? "marines" : "armor";
+      const need = cost(kind);
+      // A unit tougher than the hits left survives, and the bombing stops there.
+      if (need > left) break;
+      if (kind === "marines") colony.marinesTrained = marines - 1;
+      else colony.tanksTrained = tanks - 1;
+      left -= need;
+      continue;
+    }
+    kills++;
+    left--;
+  }
+  return kills;
 }
 
 /** Colonies whose orbital defenses are down this turn. */
@@ -174,14 +207,10 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
         }
         continue;
       }
-      const { bombs, spores } = bombardment(state, f);
+      const { bombs, spores } = bombardment(state, f, planetDefense(c).shield);
       if (bombs <= 0 && spores <= 0) continue;
       let kills = 0;
-      if (bombs > 0) {
-        const troopKills = Math.floor(bombs / BOMB_DAMAGE_PER_TROOP + rng.next());
-        bombTroops(c, troopKills);
-        kills += Math.floor(bombs / BOMB_DAMAGE_PER_POP + rng.next());
-      }
+      if (bombs > 0) kills += bombHits(ctx, c, Math.floor(bombs / BOMB_DAMAGE_PER_HIT + rng.next()));
       // Biological weapons can't get through a barrier shield.
       if (spores > 0 && !blocksInvasion(c)) {
         sporeUsers.add(f.ownerId);
@@ -190,12 +219,6 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
         for (let i = 0; i < spores; i++) if (rng.chance(SPORE_KILL_CHANCE_PER_POINT * mult)) kills++;
       }
       raze(ctx, c, kills);
-      const wreckable = state.colonies[c.id] ? destructibleBuildings(c) : [];
-      if (bombs > 0 && wreckable.length > 0 && rng.chance(Math.min(BOMB_BUILDING_CHANCE.max, bombs * BOMB_BUILDING_CHANCE.perDamage))) {
-        const hit = wreckable[rng.int(0, wreckable.length - 1)]!;
-        c.buildings.splice(c.buildings.indexOf(hit), 1);
-
-      }
     }
   }
   for (const user of sporeUsers) bioWeaponOutrage(state, user);

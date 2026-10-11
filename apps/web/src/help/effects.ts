@@ -13,6 +13,7 @@ const STATION_NAMES = { starBase: "star base", battlestation: "battlestation", s
 const INSTALLATION_NAMES = {
   groundBatteries: "ground batteries: 300 space of your best beam weapon on the planet",
   missileBase: "missile base: 300 space of your best missile, never out of ammunition",
+  stellarConverter: "stellar converter: 400 damage to every shield of a ship in orbit each combat turn",
 } as const;
 
 const PLANET_DEFENSE: Explain<PlanetDefense> = {

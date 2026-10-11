@@ -1,4 +1,5 @@
-import { BUILDINGS_BY_ID } from "./data/buildings.js";
+import { BUILDINGS_BY_ID, FIGHTER_GARRISON } from "./data/buildings.js";
+import { fighterGarrison } from "./economy.js";
 import {
   ARCS, HULLS_BY_ID, MOD_EFFECTS, SCANNER_ECCM, SPECIALS_BY_ID, STATION_HULLS, UNHITTABLE_SPECIALS, WEAPONS,
   hullIndex, type FiringArc, type HullDef, type StationHull, type WeaponDef, type WeaponModId, type WeaponTrait,
@@ -115,6 +116,8 @@ interface Mount {
   rearm: number;
   /** Planet weapons belong to an installation. */
   installation?: number;
+  /** A Fighter Garrison's craft per launch; its losses are replaced every few combat turns. */
+  garrison?: number;
   firedThisRound: boolean;
 }
 
@@ -390,7 +393,7 @@ function computerBonus(id: string): number {
 
 export interface ColonyDefense {
   station: StationHull | null;
-  installations: ("groundBatteries" | "missileBase")[];
+  installations: ("groundBatteries" | "missileBase" | "stellarConverter" | "fighterGarrison")[];
   mines: boolean;
   shield: number;
 }
@@ -405,6 +408,7 @@ export function planetDefense(colony: Colony): ColonyDefense {
       if (rank(def.station) > rank(d.station)) d.station = def.station;
     }
     if (def.installation && !d.installations.includes(def.installation)) d.installations.push(def.installation);
+    if (def.fighters && !d.installations.includes("fighterGarrison")) d.installations.push("fighterGarrison");
     if (def.mines) d.mines = true;
     d.shield = Math.max(d.shield, def.shield ?? 0);
   }
@@ -467,10 +471,25 @@ function planetUnit(player: Player, colony: Colony, d: ColonyDefense, sideIdx: 0
   const bonus = empireBonus(player);
   const mounts: Mount[] = [];
   const installations: Installation[] = [];
+  const weapons: WeaponMount[] = [];
   for (const inst of d.installations) {
-    const weapons = inst === "groundBatteries" ? groundBatteryWeapons(player) : missileBaseWeapons(player);
-    mounts.push(...makeMounts(player, weapons, true, true, installations.length));
-    installations.push({ name: BUILDINGS_BY_ID[inst]?.name ?? inst, alive: true });
+    const id = installations.length;
+    if (inst === "fighterGarrison") {
+      const g = fighterGarrison(player, colony);
+      if (!g) continue;
+      const bay = ALL_WEAPONS[g.kind === "heavyFighter" ? "heavyFighterBays" : g.kind === "bomber" ? "bomberBays" : "fighterBays"]!;
+      const m = makeMounts(player, [{ weaponId: bay.id, count: 1 }], true, true, id)[0]!;
+      m.garrison = g.count;
+      mounts.push(m);
+      installations.push({ name: BUILDINGS_BY_ID.fighterGarrison?.name ?? inst, alive: true });
+      continue;
+    }
+    const w = inst === "groundBatteries" ? groundBatteryWeapons(player)
+      : inst === "missileBase" ? missileBaseWeapons(player)
+      : [{ weaponId: "stellarConverter", count: 1 }];
+    weapons.push(...w);
+    mounts.push(...makeMounts(player, w, true, true, id));
+    installations.push({ name: BUILDINGS_BY_ID[inst === "stellarConverter" ? "planetaryStellarConverter" : inst]?.name ?? inst, alive: true });
   }
   const computer = bestComputer(player);
   const installationHP = PLANET_INSTALLATION_HP + armorClass(player) * PLANET_INSTALLATION_ARMOR_STEP;
@@ -500,7 +519,7 @@ function planetUnit(player: Player, colony: Colony, d: ColonyDefense, sideIdx: 0
     strength: 0,
   };
   u.strength = strengthOf({
-    weapons: [...(d.installations.includes("groundBatteries") ? groundBatteryWeapons(player) : []), ...(d.installations.includes("missileBase") ? missileBaseWeapons(player) : [])],
+    weapons,
     attack: attackBase + (computer?.attack ?? 0), defense: 0, hits: Math.max(1, hp), shield: d.shield, shieldStrength: 0, missileEvasion: 0,
   });
   return u;
@@ -998,8 +1017,10 @@ class Battle {
         if (kind === "missile" && u.fx.fastRacks) u.fastRackRest = !u.fastRackRest;
         m.firedThisRound = true;
       } else if (kind === "bay") {
-        if (m.out || m.rearm > 0 || !active(primary)) return;
-        if (this.launchCraft(u, mi, m, primary)) did = true;
+        if (m.out || m.rearm > 0) return;
+        // Craft go after the next enemy when the first target is already gone.
+        const target = active(primary) ? primary : this.chooseTarget(u);
+        if (target && this.launchCraft(u, mi, m, target)) did = true;
       } else if (kind === "special") {
         if (this.fireSpecial(u, m, primary)) did = true;
       }
@@ -1137,7 +1158,7 @@ class Battle {
     const hp = Math.floor((CRAFT[craft].hp * (100 + CRAFT_ARMOR_STEP * armorClass(u.player))) / 100);
     this.projectiles.push({
       owner: u, mount: mi, weapon: m.def, mods: new Set(), target, x: u.x, y: u.y, speed, defense: speed * MISSILE_DEFENSE_PER_SPEED,
-      count: SQUADRON_SIZE * m.count, hp, frontDamage: 0, damage: 0, travelled: 0, craft,
+      count: m.garrison ?? SQUADRON_SIZE * m.count, hp, frontDamage: 0, damage: 0, travelled: 0, craft,
     });
     this.log.push({ kind: "launch", ship: u.key, target: target.key, weapon: m.def.id });
     return true;
@@ -1184,7 +1205,8 @@ class Battle {
       const m = p.owner.mounts[p.mount];
       if (m) {
         m.out = false;
-        m.rearm = CRAFT.rearm;
+        // A garrison launches fresh craft every few combat turns; a carrier's bays need a short rearm.
+        m.rearm = m.garrison ? FIGHTER_GARRISON.replenishRounds - (this.round % FIGHTER_GARRISON.replenishRounds) : CRAFT.rearm;
       }
     }
   }
@@ -1622,8 +1644,11 @@ class Battle {
   }
 }
 
-/** Planet bombardment power of an attack-stance fleet against an undefended colony in one turn. */
-export function bombardment(state: GameState, fleet: Fleet): { bombs: number; spores: number } {
+/**
+ * Planet bombardment power of an attack-stance fleet against an undefended colony in one turn.
+ * Each bomb loses the planetary shield's worth of damage.
+ */
+export function bombardment(state: GameState, fleet: Fleet, shield = 0): { bombs: number; spores: number } {
   const player = state.players[fleet.ownerId]!;
   let bombs = 0;
   let spores = 0;
@@ -1635,10 +1660,10 @@ export function bombardment(state: GameState, fleet: Fleet): { bombs: number; sp
     for (const m of stats.weapons) {
       const w = ALL_WEAPONS[m.weaponId];
       if (!w) continue;
-      if (w.kind === "bomb") bombs += ((w.damageMin + w.damageMax) / 2) * m.count * s.count;
+      if (w.kind === "bomb") bombs += Math.max(0, (w.damageMin + w.damageMax) / 2 - shield) * m.count * s.count;
       if (w.kind === "spores") spores += w.damageMax * m.count * s.count;
       // Bomber squadrons carry one bomb per craft.
-      if (w.effect === "bombers" && bestBomb) bombs += ((bestBomb.damageMin + bestBomb.damageMax) / 2) * SQUADRON_SIZE * m.count * s.count;
+      if (w.effect === "bombers" && bestBomb) bombs += Math.max(0, (bestBomb.damageMin + bestBomb.damageMax) / 2 - shield) * SQUADRON_SIZE * m.count * s.count;
     }
   }
   return { bombs, spores };

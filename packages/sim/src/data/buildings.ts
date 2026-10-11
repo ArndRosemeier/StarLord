@@ -71,8 +71,8 @@ export interface TroopTraining {
 export interface PlanetDefense {
   /** Orbital station that fights as its own unit, fitted with the owner's best weapons. */
   station?: "starBase" | "battlestation" | "starFortress";
-  /** Ground installation on the planet unit: 300 space of the best beams or missiles. */
-  installation?: "groundBatteries" | "missileBase";
+  /** Ground installation on the planet unit: 300 space of the best beams or missiles, or a stellar converter. */
+  installation?: "groundBatteries" | "missileBase" | "stellarConverter";
   /** Space mines that strike attacking ships as a battle opens. */
   mines?: boolean;
   /** Damage taken off every hit on the planet. */
@@ -133,6 +133,8 @@ export const BUILDINGS: BuildingDef[] = [
     effects: { defense: { installation: "missileBase" } }, description: "300 space of your best missiles on the planet, never out of ammunition." },
   { id: "groundBatteries", name: "Ground Batteries", cost: 200, maintenance: 2, requires: "groundBatteries",
     effects: { defense: { installation: "groundBatteries" } }, description: "300 space of heavy-mount and point-defense versions of your best beam on the planet." },
+  { id: "planetaryStellarConverter", name: "Planetary Stellar Converter", cost: 1000, maintenance: 6, requires: "stellarConverter",
+    effects: { defense: { installation: "stellarConverter" } }, description: "A stellar converter on the planet: 400 damage to every shield of a ship in orbit each combat turn, at any range." },
   { id: "fighterGarrison", name: "Fighter Garrison", cost: 150, maintenance: 2, requires: "fighterGarrison",
     effects: { defense: { fighters: FIGHTER_GARRISON.interceptors } },
     description: "Planet-based squadrons: 10 interceptors, or 6 bombers or 4 heavy fighters once those are known. Losses are replaced during long battles." },
