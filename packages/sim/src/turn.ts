@@ -1042,6 +1042,18 @@ function advanceResearch(ctx: TurnContext, playerId: PlayerId, points: number): 
   r.progress = Math.max(0, r.progress + points);
   const tier = TIERS_BY_ID[r.tierId]!;
   if (!ctx.rng.chance(breakthroughChance(r.progress, researchCost(player, tier)))) return;
+  completeResearch(ctx, playerId);
+}
+
+/**
+ * Completes the field being researched: its application is learned (or every
+ * one, for races that learn whole fields) and the stored points are lost.
+ */
+export function completeResearch(ctx: TurnContext, playerId: PlayerId): void {
+  const player = ctx.state.players[playerId]!;
+  const r = player.research;
+  if (!r.tierId) return;
+  const tier = TIERS_BY_ID[r.tierId]!;
   // Points past the cost are lost with the breakthrough.
   r.progress = 0;
   r.tierId = null;
