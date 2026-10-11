@@ -6,6 +6,9 @@ import { colonyScanBonus, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
 import type { Fleet, GameState, PlayerId } from "./types.js";
 
+/** What an empire calls a system it has not explored yet. */
+export const UNKNOWN_STAR_NAME = "Unknown system";
+
 export type PlayerView = GameState & { viewer: PlayerId };
 
 /**
@@ -79,11 +82,13 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
   const proposals = state.proposals.filter((p) => p.from === viewer || p.to === viewer);
   const combats = state.combats.filter((c) => c.sides.includes(viewer));
   const events = state.events.filter((e) => e.playerId === viewer);
-  // One-time finds (pirate caches, wrecks, stranded heroes) are only known once a system is explored.
+  // Unexplored systems keep their names to themselves, and one-time finds
+  // (pirate caches, wrecks, stranded heroes) are only known once a system is explored.
   const shownStars = stars.map((s) => {
-    if (!s.feature || s.feature === "wormhole" || explored.has(s.id)) return s;
-    const { feature: _hidden, ...rest } = s;
-    return rest;
+    // The raiders' home is only shown once a portal leads there, and the portal tells you its name.
+    if (explored.has(s.id) || s.special === "raiderHome") return s;
+    const { feature, ...rest } = s;
+    return { ...rest, name: UNKNOWN_STAR_NAME, ...(feature === "wormhole" ? { feature } : {}) };
   });
   return structuredClone({
     ...state,

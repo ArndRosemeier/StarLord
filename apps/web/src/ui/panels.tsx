@@ -50,7 +50,7 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
       <div className="row">
         <h3 style={{ margin: 0 }}>{star.name}</h3>
         <span className="muted">{words(star.color)} star</span>
-        {star.special === "orion" && <span className="chip warn">Orion</span>}
+        {explored && star.special === "orion" && <span className="chip warn">Orion</span>}
         {star.special === "raiderHome" && <span className="chip bad">Raider home</span>}
       </div>
       {!explored && <div className="muted">Unexplored. Send a ship to learn what orbits here.</div>}
