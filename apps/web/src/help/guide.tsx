@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ALL_DOMAINS, DOMAIN_INFO } from "@starlord/ai";
+import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES } from "@starlord/ai";
 import {
   ANDROIDS, ASSIMILATION, AUDIENCE_ITEMS, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PRODUCTION, BOMB_DAMAGE_PER_POP,
   BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE, CAPTURE_THRESHOLD, COMMAND_OVERAGE_COST, COUNCIL, COUNCIL_FIRST,
@@ -521,8 +521,18 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         still step in at any time.
       </P>
       <Ul>
-        {ALL_DOMAINS.map((d) => <li key={d}><b>{DOMAIN_INFO[d].name}</b>: {DOMAIN_INFO[d].description}</li>)}
+        {ALL_DOMAINS.map((d) => (
+          <li key={d}>
+            <b>{DOMAIN_INFO[d].name}</b>: {DOMAIN_INFO[d].description}{" "}
+            Strategies: {STRATEGIES[d].map((s) => s.name).join(", ")}.
+          </li>
+        ))}
       </Ul>
+      <P>
+        Every area follows a strategy you pick next to its switch. <b>Balanced</b> is the default and plays exactly like the
+        computer empires; the others lean one way, for example a Research jobs strategy that makes most colonists
+        scientists, or a Defensive military that never goes on the attack. The <b>All balanced</b> button resets them all.
+      </P>
       <P>With everything automated you can watch the game play itself, or start a new game as a spectator.</P>
     </>
   ),

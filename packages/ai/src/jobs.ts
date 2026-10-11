@@ -1,7 +1,11 @@
 import {
   FREIGHTERS, canFarm, computeOutput, isBlockaded, population, type Colony, type ColonyOutput, type Command, type PlayerView,
 } from "@starlord/sim";
+import { strategyOf } from "./strategies.js";
 import { me, myColonies, personality } from "./util.js";
+
+/** Share of non-farmers put on research by each jobs strategy; balanced follows the empire's personality. */
+const SCIENCE_SHARE: Record<string, number> = { industry: 0.1, research: 0.75 };
 
 /** Food is worth this much industry or research where it is eaten... */
 const FOOD_WORTH_LOCAL = 3;
@@ -13,12 +17,12 @@ const FOOD_WORTH_SHIPPED = FOOD_WORTH_LOCAL - 2 * FREIGHTERS.upkeepInUse;
  * where the food gained is worth most against the industry and research lost,
  * then splits the rest between industry and research. Food only moves by
  * freighter, so hungry colonies farm for themselves when the empire lacks the
- * freighters to feed them.
+ * freighters to feed them. The strategy sets the research share.
  */
 export function jobOrders(view: PlayerView): Command[] {
   const player = me(view);
   const colonies = myColonies(view).filter((c) => !c.outpost);
-  const share = personality(view).science;
+  const share = SCIENCE_SHARE[strategyOf(view, "jobs")] ?? personality(view).science;
   const plan = new Map<string, Colony>();
   for (const c of colonies) {
     // Natives only ever farm.

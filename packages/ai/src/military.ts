@@ -1,7 +1,18 @@
 import {
   blocksInvasion, canMindControl, canReach, colonyDefenseStrength, distance, isHostile, portalStars, RAIDER_CITADEL_ID, RAIDER_ERAS, raiderDesignId, relation, type Command, type Fleet, type PlayerView,
 } from "@starlord/sim";
+import { strategyOf } from "./strategies.js";
 import { colonyStar, fleetRoles, fleetStrength, hostileFleetsNear, me, myColonies, myFleets, personality, starById } from "./util.js";
+
+/**
+ * How each military strategy fights: retreat threshold (null keeps the personality's),
+ * the strength edge it wants over a target, and whether it goes on the attack at all.
+ */
+const POSTURE: Record<string, { retreatBelow: number | null; edge: number; lairEdge: number; attacks: boolean }> = {
+  balanced: { retreatBelow: null, edge: 1.5, lairEdge: 2, attacks: true },
+  defensive: { retreatBelow: 0.6, edge: 1.5, lairEdge: 2, attacks: false },
+  aggressive: { retreatBelow: 0.15, edge: 1.15, lairEdge: 1.3, attacks: true },
+};
 
 function rallyStar(view: PlayerView): string | null {
   const player = me(view);
@@ -18,12 +29,14 @@ function rallyStar(view: PlayerView): string | null {
  * Gathers warships at a rally point, defends threatened colonies, and when at
  * war sends a strike force (with troop transports) against the nearest enemy
  * colony it can beat. In peacetime the strike force clears monster lairs.
+ * The defensive strategy only ever does the defending.
  */
 export function militaryOrders(view: PlayerView): Command[] {
   const player = me(view);
   const out: Command[] = [];
   const pers = personality(view);
-  const wantDoctrine = pers.aggression > 0.6 ? 0.3 : 0.55;
+  const posture = POSTURE[strategyOf(view, "military")] ?? POSTURE.balanced!;
+  const wantDoctrine = posture.retreatBelow ?? (pers.aggression > 0.6 ? 0.3 : 0.55);
   if (Math.abs(player.doctrine.retreatBelow - wantDoctrine) > 0.01) {
     out.push({ type: "setDoctrine", doctrine: { retreatBelow: wantDoctrine, focus: "nearest" } });
   }
@@ -82,7 +95,7 @@ export function militaryOrders(view: PlayerView): Command[] {
     if (f.stance === "attack" && invadeOrStay(view, f, out)) continue;
     if (f.starId !== rally && canReach(view, view.viewer, f, rally)) out.push({ type: "moveFleet", fleetId: f.id, destStarId: rally });
   }
-  if (!main || busy.has(main.id)) return out;
+  if (!main || busy.has(main.id) || !posture.attacks) return out;
   const power = strengthAt(rally);
 
   const enemies = player.contacts.filter((id) => relation(view, view.viewer, id).status === "war");
@@ -92,7 +105,7 @@ export function militaryOrders(view: PlayerView): Command[] {
       .map((c) => {
         const star = colonyStar(view, c);
         const guard = hostileFleetsNear(view, star, 1).reduce((s, f) => s + fleetStrength(view, f), 0);
-        return { c, star, need: (colonyDefenseStrength(view, c) + guard) * 1.5 + 5 };
+        return { c, star, need: (colonyDefenseStrength(view, c) + guard) * posture.edge + 5 };
       })
       .filter((t) => t.need <= power && canReach(view, view.viewer, main, t.star.id))
       .sort((a, b) => distance(rallyPos, a.star) - distance(rallyPos, b.star));
@@ -109,7 +122,7 @@ export function militaryOrders(view: PlayerView): Command[] {
     (f) => view.players[f.ownerId]!.kind === "monsters" && f.starId && isHostile(view, view.viewer, f.ownerId),
   );
   const lair = monsters
-    .filter((m) => fleetStrength(view, m) * 2 < power && canReach(view, view.viewer, main, m.starId!))
+    .filter((m) => fleetStrength(view, m) * posture.lairEdge < power && canReach(view, view.viewer, main, m.starId!))
     .sort((a, b) => distance(rallyPos, a) - distance(rallyPos, b))[0];
   if (lair && fleetRoles(view, main).has("warship")) {
     out.push({ type: "moveFleet", fleetId: main.id, destStarId: lair.starId! });
@@ -119,7 +132,7 @@ export function militaryOrders(view: PlayerView): Command[] {
   // Endgame: strike the raiders' home through the portal.
   const raiderHome = view.galaxy.stars.find((s) => s.special === "raiderHome");
   if (raiderHome && player.hasPortal && canReach(view, view.viewer, main, raiderHome.id)) {
-    if (power > raiderHomeStrength(view, raiderHome.id) * 1.3) out.push({ type: "moveFleet", fleetId: main.id, destStarId: raiderHome.id });
+    if (power > raiderHomeStrength(view, raiderHome.id) * Math.min(1.3, posture.edge)) out.push({ type: "moveFleet", fleetId: main.id, destStarId: raiderHome.id });
   }
   return out;
 }

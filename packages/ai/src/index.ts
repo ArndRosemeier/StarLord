@@ -9,6 +9,7 @@ import { leaderOrders } from "./leaders.js";
 import { militaryOrders } from "./military.js";
 import { productionOrders } from "./production.js";
 import { researchOrders } from "./research.js";
+import type { AutomationDomain } from "./strategies.js";
 
 /**
  * Anything that issues orders for a player: the AI, the player's own
@@ -18,14 +19,6 @@ import { researchOrders } from "./research.js";
 export interface Controller {
   orders(view: PlayerView): Command[];
 }
-
-/**
- * Areas of play that can be handed to the computer. The AI is simply every
- * area switched on; a human player switches on only the ones they find dull.
- */
-export type AutomationDomain =
-  | "jobs" | "production" | "research" | "exploration" | "colonization" | "design" | "military"
-  | "diplomacy" | "espionage" | "leaders";
 
 export const DOMAIN_INFO: Record<AutomationDomain, { name: string; description: string }> = {
   jobs: { name: "Jobs", description: "Balance farmers, workers and scientists on every colony." },
@@ -72,5 +65,6 @@ export function automationOrders(view: PlayerView): Command[] {
   return createController(domains).orders(view);
 }
 
+export { STRATEGIES, strategyOf, type AutomationDomain, type StrategyInfo } from "./strategies.js";
 export { colonizationTargets, outpostTargets } from "./colonization.js";
 export { bestWarship } from "./design.js";

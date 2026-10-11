@@ -1,4 +1,4 @@
-import { ALL_DOMAINS, DOMAIN_INFO } from "@starlord/ai";
+import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES, type AutomationDomain } from "@starlord/ai";
 import { TAX_STEPS, empireIncome, empireTotals, empires, foodPlan, getRace, government, score } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, pct, signed } from "../ui/format";
@@ -14,6 +14,9 @@ export function EmpireScreen() {
   const starving = Object.keys(food.shortfall).length;
   const on = new Set(me.automation);
   const setAuto = (domains: string[]) => session.issue({ type: "setAutomation", domains });
+  const strategyOf = (d: AutomationDomain) => me.automationStrategies?.[d] ?? "balanced";
+  const setStrategy = (domain: AutomationDomain, strategy: string) => session.issue({ type: "setAutomationStrategy", domain, strategy });
+  const allBalanced = ALL_DOMAINS.every((d) => strategyOf(d) === "balanced");
   const still = useReducedMotion();
 
   return (
@@ -91,22 +94,42 @@ export function EmpireScreen() {
           <span className="spacer" />
           <button className="small" disabled={readOnly} onClick={() => setAuto([...ALL_DOMAINS])}>Automate everything</button>
           <button className="small" disabled={readOnly} onClick={() => setAuto([])}>Nothing</button>
+          <button className="small" disabled={readOnly || allBalanced} title="Set every area's strategy to Balanced"
+            onClick={() => session.issue(...ALL_DOMAINS.filter((d) => strategyOf(d) !== "balanced").map((domain) => ({ type: "setAutomationStrategy" as const, domain, strategy: "balanced" })))}>
+            All balanced
+          </button>
         </div>
         <div className="muted">
           Hand any part of running your empire to the same advisors the computer empires use.
           Automated areas are played for you when you end the turn; you can still step in at any time.
+          Each area follows a strategy; Balanced plays like the computer empires.
         </div>
-        {ALL_DOMAINS.map((d) => (
-          <label key={d} className="row" style={{ alignItems: "flex-start", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
-            <input type="checkbox" className="switch" checked={on.has(d)} disabled={readOnly}
-              onChange={(e) => setAuto(e.target.checked ? [...me.automation, d] : me.automation.filter((x) => x !== d))} />
-            <span>
-              <b>{DOMAIN_INFO[d].name}</b>
-              <br />
-              <small className="muted">{DOMAIN_INFO[d].description}</small>
-            </span>
-          </label>
-        ))}
+        {ALL_DOMAINS.map((d) => {
+          const strategy = STRATEGIES[d].find((s) => s.id === strategyOf(d)) ?? STRATEGIES[d][0]!;
+          return (
+            <div key={d} className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+              <label className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap", flex: 1, minWidth: 0 }}>
+                <input type="checkbox" className="switch" checked={on.has(d)} disabled={readOnly}
+                  onChange={(e) => setAuto(e.target.checked ? [...me.automation, d] : me.automation.filter((x) => x !== d))} />
+                <span>
+                  <b>{DOMAIN_INFO[d].name}</b>
+                  <br />
+                  <small className="muted">{DOMAIN_INFO[d].description}</small>
+                  {strategy.id !== "balanced" && (
+                    <>
+                      <br />
+                      <small><b>{strategy.name}:</b> {strategy.description}</small>
+                    </>
+                  )}
+                </span>
+              </label>
+              <select value={strategy.id} disabled={readOnly} aria-label={`${DOMAIN_INFO[d].name} strategy`}
+                title={strategy.description} onChange={(e) => setStrategy(d, e.target.value)}>
+                {STRATEGIES[d].map((s) => <option key={s.id} value={s.id} title={s.description}>{s.name}</option>)}
+              </select>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import {
   TIER_OF_TECH, attitude, canSign, empireBonus, empireTotals, isDemand, monsterDemands, relation, type Command, type PlayerView,
   type Proposal, type ProposalKind, type ProposalTerms,
 } from "@starlord/sim";
+import { strategyOf } from "./strategies.js";
 import { fleetStrength, me, myFleets, personality } from "./util.js";
 
 function militaryPower(view: PlayerView, playerId: number): number {
@@ -45,24 +46,31 @@ function acceptDemand(view: PlayerView, p: Proposal, feel: number, myPower: numb
  * Answers proposals and demands, offers treaties and tech swaps to friendly
  * neighbors, leans on weak ones for tribute, sues for peace when a war drags
  * on, declares war on disliked weaker neighbors when its personality is
- * aggressive, and pays off monsters that threaten its systems.
+ * aggressive, and pays off monsters that threaten its systems. The peaceful
+ * strategy never starts a war or makes demands and settles wars quickly; the
+ * aggressive one plays with the most warlike temperament.
  */
 export function diplomacyOrders(view: PlayerView): Command[] {
   const player = me(view);
   const out: Command[] = [];
-  const pers = personality(view);
+  const strategy = strategyOf(view, "diplomacy");
+  const peaceful = strategy === "peaceful";
+  const base = personality(view);
+  const pers = strategy === "aggressive" ? { ...base, aggression: Math.max(base.aggression, 0.9) } : base;
+  // A peaceful empire takes treaties it would otherwise turn down.
+  const warmth = peaceful ? 15 : 0;
   const myPower = myFleets(view).reduce((s, f) => s + fleetStrength(view, f), 0);
   const myPop = empireTotals(view, view.viewer).population;
 
   for (const p of view.proposals.filter((x) => x.to === view.viewer)) {
     // Xeno Psychology, telepathy, charisma and Diplomat leaders make every deal the proposer offers more appealing.
     const proposer = view.players[p.from]!;
-    const feel = attitude(view, view.viewer, p.from) + empireBonus(proposer).diplomacy + (proposer.diplomacyBonus ?? 0);
+    const feel = attitude(view, view.viewer, p.from) + empireBonus(proposer).diplomacy + (proposer.diplomacyBonus ?? 0) + warmth;
     const r = relation(view, view.viewer, p.from);
     let accept = false;
     if (p.kind === "peace" || p.kind === "ceasefire") {
       const theirPower = militaryPower(view, p.from);
-      accept = view.turn - r.since > 15 && (feel > -50 || theirPower > myPower);
+      accept = peaceful ? view.turn - r.since > 5 : view.turn - r.since > 15 && (feel > -50 || theirPower > myPower);
     } else if (p.kind === "trade" || p.kind === "research") accept = feel > -15;
     else if (p.kind === "nonAggression") accept = feel > 0;
     else if (p.kind === "alliance") accept = feel > 40;
@@ -86,7 +94,8 @@ export function diplomacyOrders(view: PlayerView): Command[] {
     const offer = (kind: ProposalKind, terms: ProposalTerms = {}) =>
       !canSign(view, view.viewer, other, kind, terms) && !view.proposals.some((p) => p.from === view.viewer && p.to === other && p.kind === kind);
     if (r.status === "war") {
-      if (view.turn - r.since > 30 && militaryPower(view, other) >= myPower * 0.8 && offer("peace")) {
+      const tired = peaceful ? view.turn - r.since > 10 : view.turn - r.since > 30 && militaryPower(view, other) >= myPower * 0.8;
+      if (tired && offer("peace")) {
         out.push({ type: "propose", to: other, kind: "peace" });
         return out;
       }
@@ -123,7 +132,7 @@ export function diplomacyOrders(view: PlayerView): Command[] {
     // Lean on a much weaker neighbor we dislike for tribute.
     const theirPower = militaryPower(view, other);
     if (
-      pers.aggression > 0.5 && feel < 0 && (view.turn + other) % 20 === 3 && myPower > Math.max(50, theirPower * 3) &&
+      !peaceful && pers.aggression > 0.5 && feel < 0 && (view.turn + other) % 20 === 3 && myPower > Math.max(50, theirPower * 3) &&
       offer("demandTribute", { percent: 5 })
     ) {
       out.push({ type: "propose", to: other, kind: "demandTribute", percent: 5 });
@@ -133,7 +142,7 @@ export function diplomacyOrders(view: PlayerView): Command[] {
     const wars = player.contacts.filter((id) => relation(view, view.viewer, id).status === "war").length;
     const theirPop = empireTotals(view, other).population;
     if (
-      wars === 0 && view.turn > 60 && r.status !== "alliance" &&
+      !peaceful && wars === 0 && view.turn > (strategy === "aggressive" ? 40 : 60) && r.status !== "alliance" &&
       feel < 20 - pers.aggression * 60 && myPower > Math.max(20, theirPower * (2.2 - pers.aggression)) && myPop > theirPop * 0.7
     ) {
       out.push({ type: "declareWar", target: other });

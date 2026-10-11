@@ -2,6 +2,7 @@ import {
   CLIMATES, canFarm, canReach, distance, distanceToNearestColony, fleetRange, getRace, gravityMultiplier, guarded,
   hasTrait, knows, maxPopulation, type Command, type Planet, type PlayerView,
 } from "@starlord/sim";
+import { strategyOf } from "./strategies.js";
 import { isOnly, me, myFleets, starById } from "./util.js";
 
 export interface Target {
@@ -12,6 +13,8 @@ export interface Target {
 const MINERAL_VALUE = { ultraPoor: 0.7, poor: 0.85, abundant: 1, rich: 1.2, ultraRich: 1.4 } as const;
 /** Colonies smaller than this cost more in food and upkeep than they return. */
 const MIN_COLONY_POP = 3;
+/** Parsecs from the nearest colony that halve a planet's appeal, by colonization strategy. */
+const DISTANCE_HALVES: Record<string, number> = { balanced: 6, bestWorlds: 15, compact: 2.5 };
 
 /** Known free planets in range that a colony ship could settle, best first. */
 export function colonizationTargets(view: PlayerView): Target[] {
@@ -20,6 +23,7 @@ export function colonizationTargets(view: PlayerView): Target[] {
   const range = fleetRange(player);
   const eats = !hasTrait(race, "lithovore");
   const ownFood = knows(player, "hydroponicFarm");
+  const halves = DISTANCE_HALVES[strategyOf(view, "colonization")] ?? DISTANCE_HALVES.balanced!;
   const targets: Target[] = [];
   for (const planet of Object.values(view.planets)) {
     if (planet.colonyId) continue;
@@ -33,7 +37,7 @@ export function colonizationTargets(view: PlayerView): Target[] {
     const special = planet.special === "none" ? 1 : 1.3;
     targets.push({
       planet,
-      value: (pop * gravityMultiplier(race, planet.gravity) * MINERAL_VALUE[planet.minerals] * special * food) / (1 + d / 6),
+      value: (pop * gravityMultiplier(race, planet.gravity) * MINERAL_VALUE[planet.minerals] * special * food) / (1 + d / halves),
     });
   }
   return targets.sort((a, b) => b.value - a.value);

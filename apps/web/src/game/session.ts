@@ -181,6 +181,8 @@ function commandKey(cmd: Command): string | null {
       return `${cmd.type}:${cmd.fleetId}`;
     case "setSpies":
       return `setSpies:${cmd.target}`;
+    case "setAutomationStrategy":
+      return `setAutomationStrategy:${cmd.domain}`;
     case "assignLeader":
       return `assignLeader:${cmd.leaderId}`;
     case "respond":

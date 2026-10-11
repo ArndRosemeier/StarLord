@@ -310,6 +310,14 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "setAutomation":
       player.automation = [...cmd.domains];
       break;
+    case "setAutomationStrategy": {
+      const strategies = { ...player.automationStrategies };
+      if (cmd.strategy === "balanced") delete strategies[cmd.domain];
+      else strategies[cmd.domain] = cmd.strategy;
+      if (Object.keys(strategies).length > 0) player.automationStrategies = strategies;
+      else delete player.automationStrategies;
+      break;
+    }
   }
 }
 

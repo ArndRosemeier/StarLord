@@ -73,7 +73,9 @@ export type Command =
   | { type: "assignLeader"; leaderId: Id; targetId: Id | null }
   | { type: "dismissLeader"; leaderId: Id }
   | { type: "setCouncilVote"; vote: PlayerId | "abstain" | "auto" }
-  | { type: "setAutomation"; domains: string[] };
+  | { type: "setAutomation"; domains: string[] }
+  /** Picks the strategy an automated area follows; "balanced" is the default. */
+  | { type: "setAutomationStrategy"; domain: string; strategy: string };
 
 export type CommandType = Command["type"];
 
@@ -333,6 +335,10 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       return state.players[cmd.vote]?.kind === "empire" ? OK : fail("no such empire");
     case "setAutomation":
       return Array.isArray(cmd.domains) ? OK : fail("bad automation list");
+    case "setAutomationStrategy":
+      return typeof cmd.domain === "string" && /^[a-zA-Z]{1,32}$/.test(cmd.domain) && typeof cmd.strategy === "string" && /^[a-zA-Z]{1,32}$/.test(cmd.strategy)
+        ? OK
+        : fail("bad automation strategy");
   }
 }
 
