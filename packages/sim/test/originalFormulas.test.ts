@@ -53,6 +53,22 @@ describe("original colony formulas", () => {
     expect(taxed.taxes).toBe(Math.floor(untaxed.industry * 0.5));
     expect(taxed.bc).toBe(untaxed.bc + taxed.taxes);
   });
+  it("gives computer players a flat bonus per worker and scientist by difficulty", () => {
+    const s = newGame({ seed: "ai-bonus", races: ["terran", "felhari"], monsters: false, raiders: false, council: false });
+    const player = s.players[1]!;
+    const home = Object.values(s.colonies).find((c) => c.ownerId === 1)!;
+    const colony: Colony = { ...home, farmers: 0, workers: 4, scientists: 4 };
+    const planet = s.planets[colony.planetId]!;
+    player.isHuman = true;
+    const human = computeOutput(planet, player, colony, { turn: 1, difficulty: "hard" });
+    player.isHuman = false;
+    const hard = computeOutput(planet, player, colony, { turn: 1, difficulty: "hard" });
+    const impossible = computeOutput(planet, player, colony, { turn: 1, difficulty: "impossible" });
+    // Hard: +1 a unit; Impossible: +2 a unit, added before rounding and not scaled by any percentage.
+    expect(hard.research - human.research).toBe(4);
+    expect(impossible.research - human.research).toBe(8);
+    expect(impossible.industryGross - human.industryGross).toBe(8);
+  });
 });
 
 describe("original turn rules", () => {

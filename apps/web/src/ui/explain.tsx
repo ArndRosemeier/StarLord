@@ -201,7 +201,7 @@ export function crewTip(level: number, xp: number): TipCard {
 export function difficultyText(d: keyof typeof DIFFICULTIES): string {
   const x = DIFFICULTIES[d];
   const parts = [
-    x.aiOutputPercent ? `computer empires produce ${signed(x.aiOutputPercent)}%` : "computer empires produce normally",
+    x.aiOutputPerUnit ? `computer empires make ${signed(x.aiOutputPerUnit)} industry or research per worker and scientist (${signed(x.aiOutputPerUnit / 2)} food per farmer)` : "computer empires produce normally",
     x.aiGrowthPercent ? `grow ${signed(x.aiGrowthPercent)}% faster` : "",
     x.aiBcPerPop ? `earn ${signed(x.aiBcPerPop)} BC per population` : "",
     x.aiAttitudeToHumans ? `feel ${signed(x.aiAttitudeToHumans)} toward you` : "",

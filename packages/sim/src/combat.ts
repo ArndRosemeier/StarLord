@@ -769,10 +769,18 @@ class Battle {
         if (m.cooldown > 0) m.cooldown--;
         if (!m.out && m.rearm > 0) m.rearm--;
       }
-      // Shields recover a share of their strength every turn.
+      // Shields recover a share of one facing's strength every turn, handed out a point at a time over the weakened facings.
       if (this.shieldWorks(u)) {
-        const regen = u.shieldMax * (SHIELD_REGEN + u.fx.shieldRegen);
-        for (let f = 0; f < SHIELD_FACINGS; f++) u.shields[f] = Math.min(u.shieldMax, u.shields[f]! + regen);
+        let pool = Math.floor(u.shieldMax * Math.min(1, SHIELD_REGEN + u.fx.shieldRegen));
+        for (let gave = true; pool > 0 && gave;) {
+          gave = false;
+          for (let f = 0; f < SHIELD_FACINGS && pool > 0; f++) {
+            if (u.shields[f]! >= u.shieldMax) continue;
+            u.shields[f] = Math.min(u.shieldMax, u.shields[f]! + 1);
+            pool--;
+            gave = true;
+          }
+        }
       }
       if (u.fx.repair > 0) {
         const total = u.maxArmor + u.maxStructure;

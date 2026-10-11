@@ -295,11 +295,14 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   const lithovore = hasTrait(race, "lithovore");
   const cyber = hasTrait(race, "cybernetic");
   const aiLevel = player.isHuman ? null : DIFFICULTIES[ctx.difficulty ?? "average"];
-  const aiPct = aiLevel?.aiOutputPercent ?? 0;
+  const aiFlat = aiLevel?.aiOutputPerUnit ?? 0;
   const blockadePct = ctx.blockaded ? -BLOCKADE_PENALTY : 0;
-  /** Output of `n` units making `raw` each at 100% plus `pct`, aliens losing their share; never negative. */
-  const units = (n: number, nAliens: number, raw: number, pct: number) =>
-    Math.max(0, (n - nAliens) * raw * pct / 100) + Math.max(0, nAliens * raw * (pct - ASSIMILATION.alienPenalty) / 100);
+  /**
+   * Output of `n` units making `raw` each at 100% plus `pct`, plus `flat` each (the computer players' bonus),
+   * aliens losing their share; no unit makes less than nothing.
+   */
+  const units = (n: number, nAliens: number, raw: number, pct: number, flat = 0) =>
+    (n - nAliens) * Math.max(0, raw * pct / 100 + flat) + nAliens * Math.max(0, raw * (pct - ASSIMILATION.alienPenalty) / 100 + flat);
   // Unassimilated units are spread over the jobs by their share of the population.
   const alienShare = pop > 0 ? aliens / pop : 0;
 
@@ -315,24 +318,24 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   const perFarmer = farmable ? Math.max(MIN_FOOD_PER_FARMER, landFood + race.picks.farming) : 0;
   const androidLand = climate.foodPerFarmer + bonus.foodPerFarmer + farmBuildings;
   const androidFood = (climate.foodPerFarmer > 0 || bonus.hostileFarming > 0 ? Math.max(0, androidLand) : 0) + ANDROIDS.bonus;
-  const foodPct = 100 + gravPct + (lead.food ?? 0) + morale + (gov.foodMult - 1) * 100 + blockadePct + aiPct;
-  const androidFoodPct = 100 + androidGravPct + (lead.food ?? 0) + (gov.foodMult - 1) * 100 + blockadePct + aiPct;
+  const foodPct = 100 + gravPct + (lead.food ?? 0) + morale + (gov.foodMult - 1) * 100 + blockadePct;
+  const androidFoodPct = 100 + androidGravPct + (lead.food ?? 0) + (gov.foodMult - 1) * 100 + blockadePct;
   // Native farmers grow extra food on top of the normal rate.
   const nativeFarmers = Math.min(colony.farmers, colony.natives ?? 0);
   const foodProduced =
-    Math.round(2 * (units(colony.farmers, colony.farmers * alienShare, perFarmer, foodPct) +
-      units(andr.farmers, 0, androidFood, androidFoodPct))) / 2 +
+    Math.round(2 * (units(colony.farmers, colony.farmers * alienShare, perFarmer, foodPct, farmable ? aiFlat / 2 : 0) +
+      units(andr.farmers, 0, androidFood, androidFoodPct, androidFood > 0 ? aiFlat / 2 : 0))) / 2 +
     nativeFarmers * NATIVE_FOOD_BONUS + sumEffect(b, "foodFlat");
   const foodEaten = lithovore ? 0 : (cyber ? CYBERNETIC_FOOD : FOOD_PER_POP) * pop;
 
   // Industry
   const landIndustry = INDUSTRY_PER_WORKER[planet.minerals] + bonus.industryPerWorker + sumEffect(b, "industryPerWorker");
   const perWorker = Math.max(MIN_OUTPUT_PER_UNIT, landIndustry + race.picks.industry);
-  const industryPct = 100 + gravPct + (lead.industry ?? 0) + morale + (gov.industryMult - 1) * 100 + blockadePct + aiPct;
-  const androidIndustryPct = 100 + androidGravPct + (lead.industry ?? 0) + morale + (gov.industryMult - 1) * 100 + blockadePct + aiPct;
+  const industryPct = 100 + gravPct + (lead.industry ?? 0) + morale + (gov.industryMult - 1) * 100 + blockadePct;
+  const androidIndustryPct = 100 + androidGravPct + (lead.industry ?? 0) + morale + (gov.industryMult - 1) * 100 + blockadePct;
   const byWorkers = Math.round(
-    units(colony.workers, colony.workers * alienShare, perWorker, industryPct) +
-    units(andr.workers, 0, Math.max(0, landIndustry) + ANDROIDS.bonus, androidIndustryPct),
+    units(colony.workers, colony.workers * alienShare, perWorker, industryPct, aiFlat) +
+    units(andr.workers, 0, Math.max(0, landIndustry) + ANDROIDS.bonus, androidIndustryPct, aiFlat),
   );
   // Factory flats and recycling are added unscaled.
   const byMinerals = b.reduce((sum, id) => sum + (BUILDINGS_BY_ID[id]?.effects.industryByMinerals?.[planet.minerals] ?? 0), 0);
@@ -362,11 +365,11 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   const artifacts = planet.special === "artifacts" ? ARTIFACTS_RESEARCH : 0;
   const landResearch = RESEARCH_PER_SCIENTIST + bonus.researchPerScientist + sumEffect(b, "researchPerScientist") + artifacts;
   const perScientist = Math.max(MIN_OUTPUT_PER_UNIT, landResearch + race.picks.science);
-  const researchPct = 100 + gravPct + (lead.research ?? 0) + morale + (gov.researchMult - 1) * 100 + aiPct;
-  const androidResearchPct = 100 + androidGravPct + (lead.research ?? 0) + (gov.researchMult - 1) * 100 + aiPct;
+  const researchPct = 100 + gravPct + (lead.research ?? 0) + morale + (gov.researchMult - 1) * 100;
+  const androidResearchPct = 100 + androidGravPct + (lead.research ?? 0) + (gov.researchMult - 1) * 100;
   const research =
-    Math.round(units(colony.scientists, colony.scientists * alienShare, perScientist, researchPct) +
-      units(andr.scientists, 0, Math.max(0, landResearch) + ANDROIDS.bonus, androidResearchPct)) +
+    Math.round(units(colony.scientists, colony.scientists * alienShare, perScientist, researchPct, aiFlat) +
+      units(andr.scientists, 0, Math.max(0, landResearch) + ANDROIDS.bonus, androidResearchPct, aiFlat)) +
     sumEffect(b, "researchFlat");
 
   // Money: androids pay no tax. Morale touches only the population tax; every bonus is a share of tax plus deposits.
