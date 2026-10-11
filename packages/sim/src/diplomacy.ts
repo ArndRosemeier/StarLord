@@ -407,33 +407,49 @@ export function giveGift(state: GameState, from: PlayerId, to: PlayerId, gift: G
   emit?.({ kind: "diplomacy", playerId: to, other: from, what: "sent you a gift" });
 }
 
-/** Baseline attitude a feels towards b before drift. */
-export function attitudeBaseline(state: GameState, a: PlayerId, b: PlayerId): number {
+/** One reason for how a feels about b, with its weight in attitude points. */
+export interface AttitudePart {
+  why: string;
+  value: number;
+}
+
+/** What a's baseline attitude toward b is made of; attitude drifts toward its sum. */
+export function attitudeParts(state: GameState, a: PlayerId, b: PlayerId): AttitudePart[] {
   const r = relation(state, a, b);
   const pa = state.players[a]!;
   const pb = state.players[b]!;
   const raceB = getRace(pb.raceId);
   const raceA = getRace(pa.raceId);
-  let base = 0;
-  if (hasTrait(raceB, "charismatic")) base += ATTITUDE.charismatic;
-  if (hasTrait(raceB, "repulsive")) base += ATTITUDE.repulsive;
-  if (raceA.id === raceB.id) base += ATTITUDE.sameRace;
+  const parts: AttitudePart[] = [];
+  const add = (why: string, value: number) => {
+    if (value !== 0) parts.push({ why, value });
+  };
+  if (hasTrait(raceB, "charismatic")) add("charismatic race", ATTITUDE.charismatic);
+  if (hasTrait(raceB, "repulsive")) add("repulsive race", ATTITUDE.repulsive);
+  if (raceA.id === raceB.id) add("same race", ATTITUDE.sameRace);
   const held = Math.floor(Math.max(0, state.turn - r.since) / ATTITUDE.pactWarmthTurns);
-  if (r.status === "war") base += ATTITUDE.war;
-  if (r.status === "alliance") base += ATTITUDE.alliance + Math.min(ATTITUDE.allianceWarmthCap, held);
-  if (r.status === "nonAggression") base += ATTITUDE.nonAggression + Math.min(ATTITUDE.nonAggressionWarmthCap, held);
-  if (r.status === "peace") base += ATTITUDE.peace;
-  if (r.trade) base += ATTITUDE.treaty;
-  if (r.research) base += ATTITUDE.treaty;
-  if ((state.tributes ?? []).some((t) => t.from === b && t.to === a)) base += ATTITUDE.tributePaid;
-  if (bordersTouch(state, a, b)) base += ATTITUDE.borders;
+  if (r.status === "war") add("at war", ATTITUDE.war);
+  if (r.status === "alliance") add("alliance", ATTITUDE.alliance + Math.min(ATTITUDE.allianceWarmthCap, held));
+  if (r.status === "nonAggression") add("non-aggression pact", ATTITUDE.nonAggression + Math.min(ATTITUDE.nonAggressionWarmthCap, held));
+  if (r.status === "peace") add("peace treaty", ATTITUDE.peace);
+  if (r.trade) add("trade treaty", ATTITUDE.treaty);
+  if (r.research) add("research treaty", ATTITUDE.treaty);
+  if ((state.tributes ?? []).some((t) => t.from === b && t.to === a)) add("tribute paid to them", ATTITUDE.tributePaid);
+  if (bordersTouch(state, a, b)) add("shared border", ATTITUDE.borders);
+  let shared = 0;
   for (const c of empires(state)) {
     if (c.id === a || c.id === b || !c.alive) continue;
-    if (relation(state, a, c.id).status === "war" && relation(state, b, c.id).status === "war") base += ATTITUDE.sharedEnemy;
+    if (relation(state, a, c.id).status === "war" && relation(state, b, c.id).status === "war") shared += ATTITUDE.sharedEnemy;
   }
+  add("common enemies", shared);
   // Difficulty: computer empires are friendlier (or hostile) toward human players.
-  if (!pa.isHuman && pb.isHuman) base += DIFFICULTIES[state.settings.difficulty ?? "average"].aiAttitudeToHumans;
-  return base;
+  if (!pa.isHuman && pb.isHuman) add("difficulty level", DIFFICULTIES[state.settings.difficulty ?? "average"].aiAttitudeToHumans);
+  return parts;
+}
+
+/** Baseline attitude a feels towards b before drift. */
+export function attitudeBaseline(state: GameState, a: PlayerId, b: PlayerId): number {
+  return attitudeParts(state, a, b).reduce((sum, p) => sum + p.value, 0);
 }
 
 function bordersTouch(state: GameState, a: PlayerId, b: PlayerId): boolean {
@@ -539,25 +555,49 @@ export function treatyIncome(
   totals: Map<PlayerId, { population: number; research: number }>,
 ): TreatyIncome {
   const out: TreatyIncome = { bc: 0, research: 0 };
-  const me = totals.get(playerId);
-  if (!me) return out;
-  // Pirate activity (a random event) chokes off trade income.
-  const pirated = (state.activeEvents ?? []).some((e) => e.kind === "pirates" && e.playerId === playerId);
-  // Fantastic traders earn 25% more from trade treaties, Trader leaders their skill in % on top.
-  const traders = treatyIncomeMult(getRace(state.players[playerId]!.raceId)) + leaderTradeBonus(state, playerId) / 100;
   for (const other of empires(state)) {
     if (other.id === playerId || !other.alive) continue;
-    const r = relation(state, playerId, other.id);
-    const them = totals.get(other.id);
-    if (!them) continue;
-    const pop = Math.min(me.population, them.population);
-    if (r.trade) {
-      const k = treatyRamp(state, r.tradeSince ?? r.since, "trade");
-      out.bc += TREATY_YIELD.trade.perPop * pop * k * (k > 0 ? (pirated ? 0 : traders) : 1);
-    }
-    if (r.research) out.research += TREATY_YIELD.research.perPop * pop * treatyRamp(state, r.researchSince ?? r.since, "research");
+    const y = treatyYield(state, playerId, other.id, totals);
+    out.bc += y.bc;
+    out.research += y.research;
   }
   return out;
+}
+
+/** What a's trade and research treaties with b yield a this turn. */
+export function treatyYield(
+  state: GameState,
+  playerId: PlayerId,
+  other: PlayerId,
+  totals: Map<PlayerId, { population: number; research: number }>,
+): TreatyIncome {
+  const out: TreatyIncome = { bc: 0, research: 0 };
+  const me = totals.get(playerId);
+  const them = totals.get(other);
+  if (!me || !them) return out;
+  const r = relation(state, playerId, other);
+  const pop = Math.min(me.population, them.population);
+  if (r.trade) {
+    const k = treatyRamp(state, r.tradeSince ?? r.since, "trade");
+    out.bc += TREATY_YIELD.trade.perPop * pop * k * (k > 0 ? tradeMult(state, playerId) : 1);
+  }
+  if (r.research) out.research += TREATY_YIELD.research.perPop * pop * treatyRamp(state, r.researchSince ?? r.since, "research");
+  return out;
+}
+
+/**
+ * Pirates (a random event) choke off trade income; fantastic traders earn 25%
+ * more from trade treaties, Trader leaders their skill in % on top.
+ */
+function tradeMult(state: GameState, playerId: PlayerId): number {
+  const pirated = (state.activeEvents ?? []).some((e) => e.kind === "pirates" && e.playerId === playerId);
+  return pirated ? 0 : treatyIncomeMult(getRace(state.players[playerId]!.raceId)) + leaderTradeBonus(state, playerId) / 100;
+}
+
+/** What a new trade or research treaty between a and b would yield a each turn once at full strength. */
+export function treatyPotential(state: GameState, a: PlayerId, b: PlayerId, kind: "trade" | "research"): number {
+  const pop = Math.min(empireTotals(state, a).population, empireTotals(state, b).population);
+  return TREATY_YIELD[kind].perPop * pop * (kind === "trade" ? tradeMult(state, a) : 1);
 }
 
 /**

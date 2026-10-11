@@ -9,6 +9,10 @@ import { Envoy } from "../ui/panels";
 import { audio } from "../audio/sound";
 import { speak, type Moment } from "../diplomacy/voices";
 import { describeProposal, techName, tradableTechs } from "../diplomacy/terms";
+import { GIFT_EFFECT, SURRENDER_EFFECT, endTreatyEffect, incomingEffect, proposalEffect, warEffect } from "../diplomacy/effects";
+
+/** What an option does, under it. */
+const Effect = ({ children }: { children: string }) => <small className="audience-effect">{children}</small>;
 
 /** Why an audience opens: the player asked for it, or the other empire came with news. */
 export type AudienceOpening =
@@ -152,6 +156,15 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
           {incoming && (
             <div className="audience-terms">
               The {them.name} {describeProposal(view, incoming)}.
+              {(() => {
+                const fx = incomingEffect(view, incoming);
+                return (
+                  <ul className="audience-outcomes">
+                    <li><b>{isDemand(incoming.kind) ? "If you give in:" : "If you accept:"}</b> {fx.accept}</li>
+                    <li><b>{isDemand(incoming.kind) ? "If you refuse:" : "If you decline:"}</b> {fx.refuse}</li>
+                  </ul>
+                );
+              })()}
             </div>
           )}
 
@@ -187,16 +200,18 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
                 {BREAKABLE.some((b) => hasTreaty(view, me.id, them.id, b.treaty)) && <button onClick={() => setMenu("end")}>End a treaty</button>}
                 {!atWar && (
                   <button className="danger" onClick={() => {
-                    if (!confirm(`Declare war on the ${them.name}? Breaking a treaty angers everyone.`)) return;
+                    if (!confirm(`Declare war on the ${them.name}?\n\n${warEffect(view, me.id, them.id)}`)) return;
                     session.issue({ type: "declareWar", target: them.id });
                     say("warReply");
                   }}>Declare war</button>
                 )}
+                {!atWar && <Effect>{warEffect(view, me.id, them.id)}</Effect>}
                 <button className="danger" onClick={() => {
                   if (!confirm(`Surrender your whole empire to the ${them.name}? You will leave the game.`)) return;
                   session.issue({ type: "surrender", to: them.id });
                   onClose();
                 }}>Surrender</button>
+                <Effect>{SURRENDER_EFFECT}</Effect>
                 <button className="primary" onClick={leave}>Good day</button>
               </>
             ) : (
@@ -231,7 +246,14 @@ function SubMenu({ menu, them, onPropose, onSay, onBack }: {
       <>
         {options.map(({ kind, label }) => {
           const why = sent.has(kind) ? "already proposed this turn" : canSign(view, me.id, them.id, kind);
-          return <button key={kind} disabled={!!why} title={why ?? undefined} onClick={() => onPropose({ type: "propose", to: them.id, kind })}>{label}</button>;
+          return (
+            <div key={kind} className="col" style={{ gap: 2 }}>
+              <button disabled={!!why} title={why ?? undefined} onClick={() => onPropose({ type: "propose", to: them.id, kind })}>
+                {label}{why ? ` (${why})` : ""}
+              </button>
+              <Effect>{proposalEffect(view, me.id, them.id, kind)}</Effect>
+            </div>
+          );
         })}
         {back}
       </>
@@ -253,6 +275,7 @@ function SubMenu({ menu, them, onPropose, onSay, onBack }: {
         </select>
         <button className="primary" disabled={!!why} title={why ?? undefined}
           onClick={() => onPropose({ type: "propose", to: them.id, kind: "techExchange", ...terms })}>Propose</button>
+        <Effect>{proposalEffect(view, me.id, them.id, "techExchange")}</Effect>
         {back}
       </>
     );
@@ -306,6 +329,9 @@ function SubMenu({ menu, them, onPropose, onSay, onBack }: {
         )}
         <button className="primary" disabled={!!why} title={why ?? undefined}
           onClick={() => onPropose({ type: "propose", to: them.id, kind: demand, ...terms })}>Demand</button>
+        <Effect>{demand === "demandTribute"
+          ? `${proposalEffect(view, me.id, them.id, demand)} ${Number(param) || TRIBUTE_PERCENTS[0]}% of their income is about ${fmt(tributeAmount(view, them.id, Number(param) || TRIBUTE_PERCENTS[0]), 1)} BC a turn.`
+          : proposalEffect(view, me.id, them.id, demand)}</Effect>
         {back}
       </>
     );
@@ -324,6 +350,7 @@ function SubMenu({ menu, them, onPropose, onSay, onBack }: {
           <input type="number" min={1} step={10} value={bc} style={{ width: 90 }} onChange={(e) => setBc(Number(e.target.value))} />
           <button disabled={!!bcWhy} title={bcWhy ?? undefined} onClick={() => gift({ type: "gift", to: them.id, bc })}>Give BC</button>
         </div>
+        <Effect>{GIFT_EFFECT.bc}</Effect>
         <div className="row" style={{ gap: 6 }}>
           <select value={give} onChange={(e) => setGive(e.target.value)}>
             <option value="">Technology…</option>
@@ -331,6 +358,7 @@ function SubMenu({ menu, them, onPropose, onSay, onBack }: {
           </select>
           <button disabled={!give} onClick={() => gift({ type: "gift", to: them.id, techId: give })}>Give tech</button>
         </div>
+        <Effect>{GIFT_EFFECT.tech}</Effect>
         <div className="row" style={{ gap: 6 }}>
           <select value={param} onChange={(e) => setParam(e.target.value)}>
             <option value="">System…</option>
@@ -340,12 +368,14 @@ function SubMenu({ menu, them, onPropose, onSay, onBack }: {
             if (confirm(`Give the ${starName(view, param)} system to the ${them.name}?`)) gift({ type: "gift", to: them.id, starId: param });
           }}>Give system</button>
         </div>
+        <Effect>{GIFT_EFFECT.system}</Effect>
         <div className="row" style={{ gap: 6 }}>
           {TRIBUTE_PERCENTS.map((p) => (
-            <button key={p} disabled={hasTreaty(view, me.id, them.id, "tribute")} title={`About ${fmt(tributeAmount(view, me.id, p))} BC a turn`}
-              onClick={() => gift({ type: "gift", to: them.id, tribute: p })}>Pay {p}% tribute</button>
+            <button key={p} disabled={hasTreaty(view, me.id, them.id, "tribute")} 
+              onClick={() => gift({ type: "gift", to: them.id, tribute: p })}>Pay {p}% tribute (about {fmt(tributeAmount(view, me.id, p), 1)} BC a turn)</button>
           ))}
         </div>
+        <Effect>{GIFT_EFFECT.tribute}</Effect>
         {back}
       </>
     );
@@ -361,6 +391,9 @@ function SubMenu({ menu, them, onPropose, onSay, onBack }: {
           onSay("broken");
           onBack();
         }}>End {b.label}</button>
+      ))}
+      {BREAKABLE.filter((b) => hasTreaty(view, me.id, them.id, b.treaty)).map((b) => (
+        <Effect key={`fx-${b.treaty}`}>{`Ending the ${b.label}: ${endTreatyEffect(view, me.id, them.id, b.treaty)}`}</Effect>
       ))}
       {back}
     </>
