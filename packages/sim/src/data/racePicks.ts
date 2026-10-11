@@ -103,6 +103,8 @@ export const TRAIT_EFFECTS = {
   warlordCommandPerColony: 2,
   /** Crew experience levels warlord crews start above normal. */
   warlordCrewLevels: 1,
+  /** Warlord barracks train this much faster and hold this many times the troops. */
+  warlordTroopMult: 2,
   /** Spy roll points a telepathic race adds to every one of its spy actions, offensive and defensive. */
   telepathicSpy: 10,
   /** Diplomatic points added to deals by telepaths and charismatic races (+25% / +50% acceptance in the original). */

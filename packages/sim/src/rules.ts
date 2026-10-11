@@ -170,13 +170,19 @@ export function hasStarDock(colony: Colony): boolean {
   return colony.buildings.some((b) => !!BUILDINGS_BY_ID[b]?.effects.defense?.station);
 }
 
+/** Whether a colony trains marines, which troop ships need. */
+export function hasMarineBarracks(colony: Colony): boolean {
+  return colony.buildings.includes("marineBarracks");
+}
+
 /**
  * Whether a colony can build ships at all, or a given design: cruisers and
- * larger warships need an orbital station. Support ships (colony, outpost and
- * troop ships) can be built anywhere.
+ * larger warships need an orbital station, troop ships a Marine Barracks.
+ * Colony and outpost ships can be built anywhere.
  */
 export function canBuildShips(colony: Colony, design?: ShipDesign): boolean {
   if (colony.outpost || population(colony) < 1) return false;
+  if (design?.module === "transport") return hasMarineBarracks(colony);
   if (!design || design.module) return true;
   return !STATION_DOCK_HULLS.includes(design.hull) || hasStarDock(colony);
 }

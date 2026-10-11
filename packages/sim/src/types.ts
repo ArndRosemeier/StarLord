@@ -334,7 +334,8 @@ export interface LeaderAbility {
 }
 
 /** Where a hero stands: waiting to be offered, offered to one empire, in an empire's service. */
-export type LeaderStatus = "pool" | "offered" | "hired";
+/** "dead": killed with their ship; they never come back. */
+export type LeaderStatus = "pool" | "offered" | "hired" | "dead";
 
 export interface Leader {
   id: Id;

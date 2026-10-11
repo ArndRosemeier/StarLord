@@ -89,6 +89,8 @@ export const SPY = {
   /** Separate roll (with this penalty, removed when the spies only hide): this high kills a defender, this low an agent. */
   killPenalty: 20,
   killThreshold: 80,
+  /** A framed empire loses rnd(first) + rnd(second) attitude with the victim. */
+  blameDrop: [15, 5] as const,
 } as const;
 
 /** What a number of spies adds to the roll: 2 each up to 5, 1 each up to 10, half each beyond. */

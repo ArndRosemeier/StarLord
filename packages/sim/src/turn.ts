@@ -4,12 +4,14 @@ import { FREIGHTERS, GROWTH, MILITIA_PER_POP, TRADE_GOODS_RATE } from "./data/ec
 import { GOVERNMENTS } from "./data/governments.js";
 import type { PlanetType } from "./data/planets.js";
 import { getRace, hasTrait, registerRaces } from "./data/races.js";
+import { TRAIT_EFFECTS } from "./data/racePicks.js";
 import { RESEARCH, TECHS, TIERS_BY_ID, emptyHyperLevels, researchCost } from "./data/techs.js";
 import { colonyDefenseStrength, hasArmedDefenses, resolveCombat, type CombatSide } from "./combat.js";
 import { buyCost, termsOf, validateCommand, type Command } from "./commands.js";
 import { newId, type TurnContext } from "./context.js";
 import { councilTick } from "./council.js";
 import { designStats, findDesign } from "./designs.js";
+import { SCOUT_LAB_RESEARCH, hullIndex } from "./data/components.js";
 import {
   acceptProposal, breakTreaty, declareWar, diplomacyTick, giveGift, isHostile, rejectProposal, surrenderEmpire, treatyIncome,
 } from "./diplomacy.js";
@@ -24,7 +26,7 @@ import { builtCrewXp, crewTick } from "./crew.js";
 import { captureColony, destroyColony, exterminate, groundPhase, troopUnit, type Silenced } from "./ground.js";
 import { assignDefaultJobs, newUnitJob, removePopulation } from "./jobs.js";
 import {
-  assignLeader, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
+  assignLeader, captainLost, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
 } from "./leaders.js";
 import { moveFleet } from "./movement.js";
 import { tradeGoodsMult } from "./raceEffects.js";
@@ -487,6 +489,8 @@ function applyCombat(
     const before = f.ships.reduce((n, s) => n + s.count, 0);
     f.ships = ships;
     if (ships.length === 0) {
+      const rescued = [...outcome.survivors].some(([id, list]) => id !== fleetId && state.fleets[id]?.ownerId === f.ownerId && list.length > 0);
+      captainLost(state, fleetId, rescued, ctx.emit);
       deleteFleet(state, fleetId);
       const owner = state.players[f.ownerId]!;
       const killer = sides.find((s) => s.ownerId !== f.ownerId)!.ownerId;
@@ -590,7 +594,7 @@ function runEconomy(ctx: TurnContext): void {
       grow(ctx, colony, out, food.shortfall[colony.id] ?? 0);
     }
     const treaties = treatyIncome(state, player.id, totals);
-    research += treaties.research + leaderResearch(state, player.id);
+    research += treaties.research + leaderResearch(state, player.id) + scoutLabResearch(state, player.id);
     bc += treaties.bc;
     bc -= salaries(state, player.id);
     const over = commandPointsUsed(state, player.id) - commandPointsAvailable(state, player.id);
@@ -636,14 +640,17 @@ function arriveColonists(ctx: TurnContext, playerId: PlayerId): void {
 /** Barracks train new marines and tanks over time, up to a share of the planet's maximum population. */
 function trainTroops(state: GameState, c: Colony): void {
   const planet = state.planets[c.planetId]!;
-  const max = maxPopulation(planet, getRace(c.raceId), c.buildings, state.players[c.ownerId]);
+  const owner = state.players[c.ownerId];
+  const max = maxPopulation(planet, getRace(c.raceId), c.buildings, owner);
+  // Warlike races train twice as fast and keep twice as many.
+  const mult = owner && hasTrait(getRace(owner.raceId), "warlord") ? TRAIT_EFFECTS.warlordTroopMult : 1;
   for (const id of c.buildings) {
     const e = BUILDINGS_BY_ID[id]?.effects;
     const tr = e?.training;
-    if (!tr || state.turn % tr.every !== 0) continue;
+    if (!tr || state.turn % Math.max(1, Math.round(tr.every / mult)) !== 0) continue;
     const key = tr.kind === "marines" ? "marinesTrained" : "tanksTrained";
     const have = (e.troops ?? 0) + (c[key] ?? 0);
-    if (have < Math.floor(max * tr.capOfMaxPop)) c[key] = (c[key] ?? 0) + 1;
+    if (have < Math.floor(max * tr.capOfMaxPop * mult)) c[key] = (c[key] ?? 0) + 1;
   }
 }
 
@@ -1010,4 +1017,18 @@ function checkElimination(ctx: TurnContext): void {
   }
   const alive = state.players.filter((p) => p.alive && p.kind === "empire");
   if (alive.length === 1 && state.players.filter((p) => p.kind === "empire").length > 1) endGame(ctx, alive[0]!.id, "conquest");
+}
+
+/** Research from Scout Labs aboard an empire's ships, by hull size. */
+function scoutLabResearch(state: GameState, playerId: PlayerId): number {
+  const player = state.players[playerId]!;
+  let rp = 0;
+  for (const f of Object.values(state.fleets)) {
+    if (f.ownerId !== playerId) continue;
+    for (const s of f.ships) {
+      const d = findDesign(player, s.designId);
+      if (d && !d.fixed && designStats(player, d).effects.scoutLab) rp += (SCOUT_LAB_RESEARCH[hullIndex(d.hull)] ?? 0) * s.count;
+    }
+  }
+  return rp;
 }

@@ -59,6 +59,8 @@ export interface EmpireBonus {
   spying?: number;
   scanRange?: number;
   bcPerPop?: number;
+  /** Percent more BC at every colony (a share of taxes and deposits, like a Spaceport). */
+  incomePercent?: number;
   morale?: number;
   shipAttack?: number;
   shipDefense?: number;
@@ -249,7 +251,7 @@ const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> 
   starBase: { description: "Orbital base: defends the colony and adds command points." },
   marineBarracks: { description: "Trains marines to defend the colony." },
   fighterGarrison: { description: "Colonies can build a Fighter Garrison housing planet-based fighter squadrons." },
-  survivalPods: { description: "Lets leaders escape when their ship is destroyed." },
+  survivalPods: { description: "Captains escape when their ship is destroyed, if another of your ships comes through the battle; without them they die." },
   fastMissileRacks: { description: "Ships can fire two missile volleys in one turn." },
   heavyFighterBays: { description: "Carriers launch heavy fighters armed with beams and bombs." },
   titanHull: { name: "Titan Construction", description: "Allows Titan hulls." },
@@ -296,7 +298,7 @@ const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> 
   federation: { description: "Turns a democracy into a Federation.", government: "federation" },
   galacticUnification: { description: "Turns a unification into Galactic Unification.", government: "galacticUnification" },
   imperium: { description: "Turns a dictatorship into an Imperium.", government: "imperium" },
-  galacticCurrencyExchange: { description: "Colonies can build a Galactic Currency Exchange: +50% BC from every source." },
+  galacticCurrencyExchange: { description: "+50% BC at every colony; no building needed.", bonus: { incomePercent: 50 } },
   // Computers
   neuralScanner: { description: "+10 on all spy rolls.", bonus: { spying: 1 } },
   cyberSecurityLink: { name: "Cyber-Security Link", description: "+10 on all spy rolls.", bonus: { spying: 1 } },

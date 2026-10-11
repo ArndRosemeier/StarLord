@@ -36,7 +36,7 @@ const bonusCache = new Map<string, Required<EmpireBonus>>();
 const ZERO_BONUS: Required<EmpireBonus> = {
   foodPerFarmer: 0, industryPerWorker: 0, researchPerScientist: 0, maxPopPerSize: 0, growth: 0,
   groundCombat: 0, spying: 0, scanRange: 0, bcPerPop: 0, morale: 0, shipAttack: 0, shipDefense: 0,
-  commandPoints: 0, commandPointsPerBase: 0, pollutionTolerance: 0, maxPopFlat: 0, hostileFarming: 0, security: 0, diplomacy: 0,
+  commandPoints: 0, commandPointsPerBase: 0, pollutionTolerance: 0, maxPopFlat: 0, hostileFarming: 0, security: 0, diplomacy: 0, incomePercent: 0,
 };
 
 /**

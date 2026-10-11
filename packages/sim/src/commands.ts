@@ -128,7 +128,9 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
           seen.add(item.id);
         }
         if (item.kind === "ship" && !designs.has(item.designId)) return fail(`design ${item.designId} not available`);
-        if (item.kind === "ship" && !canBuildShips(c, findDesign(player, item.designId))) return fail("ships larger than destroyers need an orbital station here");
+        if (item.kind === "ship" && !canBuildShips(c, findDesign(player, item.designId))) {
+          return fail(findDesign(player, item.designId)?.module === "transport" ? "troop ships need a Marine Barracks here" : "ships larger than destroyers need an orbital station here");
+        }
         // A one-off project already queued here stays valid when the queue is reordered.
         const alreadyHere = item.kind === "project" && c.queue.some((q) => q.kind === "project" && q.id === item.id);
         if (item.kind === "project" && !projects.has(item.id) && !alreadyHere) return fail(`project ${item.id} not available`);

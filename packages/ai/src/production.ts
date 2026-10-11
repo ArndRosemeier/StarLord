@@ -1,6 +1,6 @@
 import {
   BUILDINGS_BY_ID, availableBuildings, availableDesigns, availableProjects, buyCost, colonyOutput, commandPointsAvailable,
-  commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasStarDock, queuedAnywhere, relation,
+  commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasMarineBarracks, hasStarDock, queuedAnywhere, relation,
   type BuildItem, type Colony, type Command, type PlayerView,
 } from "@starlord/sim";
 import { colonizationTargets, outpostTargets } from "./colonization.js";
@@ -12,7 +12,7 @@ const ECONOMY_BUILDINGS = [
   "automatedFactory", "hydroponicFarm", "researchLab", "biospheres", "spacePort", "soilEnrichment", "cloningCenter",
   "roboMinerPlant", "pollutionProcessor", "supercomputer", "planetaryStockExchange", "holoSimulator", "subterraneanFarms",
   "astroUniversity", "roboticFactory", "deepCoreMining", "atmosphericRenewer", "recyclotron", "autolab",
-  "galacticCybernet", "galacticCurrencyExchange", "weatherController", "gravityGenerator", "pleasureDome",
+  "galacticCybernet", "weatherController", "gravityGenerator", "pleasureDome",
   "coreWasteDumps", "alienManagementCenter",
 ];
 /** Buildings that pay for themselves in industry, built even when upkeep is tight. */
@@ -254,8 +254,12 @@ function chooseItem(
     return ship(warship);
   }
   if (war && wants.transports > 0 && rank < 2 && designs.has("transport")) {
-    wants.transports--;
-    return ship("transport");
+    // Troop ships are built where marines train.
+    if (hasMarineBarracks(c)) {
+      wants.transports--;
+      return ship("transport");
+    }
+    if (buildable.has("marineBarracks")) return { kind: "building", id: "marineBarracks" };
   }
   // Expansion grows young colonies before anything else.
   if (wants.strategy === "expansion" && pop < 4) return { kind: "project", id: "housing" };

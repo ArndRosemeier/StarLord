@@ -462,7 +462,7 @@ export const SPECIALS: SpecialDef[] = [
   { id: "phasingCloak", name: "Phasing Cloak", space: S_15, cost: C_22, effects: { phasing: 10, cloakDefense: 80 }, excludes: ["cloakingDevice"], requires: "phasingCloak" },
   { id: "quantumDetonator", name: "Quantum Detonator", space: [2, 3, 7, 15, 30, 75], cost: [3, 5, 10, 22, 45, 100], effects: { detonator: 3 }, requires: "quantumDetonator" },
   { id: "rangemasterUnit", name: "Rangemaster Unit", space: S_10, cost: S_10, effects: { rangeDivisor: 3 }, requires: "rangemasterUnit" },
-  { id: "reflectionField", name: "Reflection Field", space: S_10, cost: C_15, effects: { reflection: 10 }, requires: "reflectionField" },
+  { id: "reflectionField", name: "Reflection Field", space: S_10, cost: C_15, effects: { reflection: 15 }, requires: "reflectionField" },
   { id: "reinforcedHull", name: "Reinforced Hull", space: S_10, cost: C_5, effects: { structureMult: 3 }, requires: "reinforcedHull" },
   { id: "scoutLab", name: "Scout Lab", space: [12, 20, 40, 75, 150, 375], cost: [7, 12, 20, 37, 75, 180], effects: { scoutLab: true, monsterAttackPerSize: 10 }, requires: "scoutLab" },
   { id: "securityStations", name: "Security Stations", space: [5, 7, 12, 25, 50, 125], cost: [2, 3, 6, 12, 25, 70], effects: { boardingDefense: 20 }, requires: "securityStations" },
@@ -488,6 +488,9 @@ export const SHIELDS_BY_ID: Record<string, ShieldDef> = Object.fromEntries(SHIEL
 export const COMPUTERS_BY_ID: Record<string, ComputerDef> = Object.fromEntries(COMPUTERS.map((c) => [c.id, c]));
 export const SPECIALS_BY_ID: Record<string, SpecialDef> = Object.fromEntries(SPECIALS.map((s) => [s.id, s]));
 
+/** Research points a Scout Lab makes each turn, by hull (frigate … doom star). */
+export const SCOUT_LAB_RESEARCH = [1, 2, 4, 8, 16, 32] as const;
+
 /** Index into the per-hull tables (frigate 0 … doom star 5); stations use the doom star column. */
 export function hullIndex(hull: HullId): number {
   const i = HULLS.findIndex((h) => h.id === hull);
@@ -504,7 +507,7 @@ export function hullIndex(hull: HullId): number {
 export const MODULES: Record<"colony" | "outpost" | "transport", { name: string; space: number; cost: number; minHull: HullSize; troops: number }> = {
   colony: { name: "Colony Module", space: 90, cost: 120, minHull: "cruiser", troops: 0 },
   outpost: { name: "Outpost Module", space: 40, cost: 30, minHull: "destroyer", troops: 0 },
-  transport: { name: "Troop Module", space: 40, cost: 15, minHull: "destroyer", troops: 2 },
+  transport: { name: "Troop Module", space: 40, cost: 15, minHull: "destroyer", troops: 4 },
 };
 export const SUPPORT_HULL_COST_SHARE = 0.25;
 export const SUPPORT_SHIP_COMMAND_POINTS = 1;

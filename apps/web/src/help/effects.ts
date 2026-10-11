@@ -68,6 +68,7 @@ const BONUS: Explain<EmpireBonus> = {
   spying: (v) => `${signed(v, 1)} spying`,
   scanRange: (v) => `${signed(v)} parsec scanner range`,
   bcPerPop: (v) => `${signed(v, 1)} BC per population`,
+  incomePercent: (v) => `+${v}% BC at every colony`,
   morale: (v) => `${signed(v)}% morale on every colony`,
   shipAttack: (v) => `${signed(v)} ship attack`,
   shipDefense: (v) => `${signed(v)} ship defense`,
