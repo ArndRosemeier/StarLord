@@ -1,5 +1,5 @@
 import {
-  canReach, colonyDefenseStrength, distance, isHostile, relation, type Command, type Fleet, type PlayerView,
+  blocksInvasion, canMindControl, canReach, colonyDefenseStrength, distance, isHostile, relation, type Command, type Fleet, type PlayerView,
 } from "@starlord/sim";
 import { colonyStar, fleetRoles, fleetStrength, hostileFleetsNear, me, myColonies, myFleets, personality, starById } from "./util.js";
 
@@ -128,6 +128,7 @@ function invadeOrStay(view: PlayerView, f: Fleet, out: Command[]): boolean {
     (c) => view.planets[c.planetId]!.starId === f.starId && isHostile(view, view.viewer, c.ownerId),
   );
   if (!enemyColony) return false;
-  if (fleetRoles(view, f).has("transport")) out.push({ type: "invade", fleetId: f.id, colonyId: enemyColony.id });
+  // Telepaths take the colony by mind control with any cruiser or larger in orbit.
+  if (!blocksInvasion(enemyColony) && (fleetRoles(view, f).has("transport") || canMindControl(view, f, enemyColony))) out.push({ type: "invade", fleetId: f.id, colonyId: enemyColony.id });
   return true;
 }

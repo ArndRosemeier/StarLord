@@ -83,8 +83,6 @@ export const SPLINTER_POP: [number, number] = [2, 4];
 export const NATIVES_FRACTION = 0.5;
 /** Extra food each native farmer grows (the economy reads Colony.natives). */
 export const NATIVE_FOOD_BONUS = 2;
-/** Level range of a marooned hero. */
-export const HERO_LEVEL: [number, number] = [2, 4];
 
 /** Starting civilization. */
 export interface TechLevelDef {

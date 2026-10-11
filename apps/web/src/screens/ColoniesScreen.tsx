@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  exterminateProblem,
   BUILDINGS_BY_ID, MAX_QUEUE, PROJECTS_BY_ID, availableBuildings, availableDesigns, availableProjects, buyCost,
   FREIGHTERS, androids, colonyOutput, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
   type BuildItem, type Colony,
@@ -116,6 +117,14 @@ function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar: (sta
                 <tr><td><span className="stat-label"><Icon name="population" />Population</span></td><td>{population(colony)} / {o.maxPopulation} <small className="muted">(+{fmt(o.growthK)}k per turn, {fmt(colony.growthK)}k toward next)</small>
                   {o.androids > 0 && <div><small className="muted">Androids: {andr.farmers} farming, {andr.workers} working, {andr.scientists} researching</small></div>}
                   {o.aliens > 0 && <div><small className="bad">{o.aliens} not yet assimilated: they work at half rate and may revolt</small></div>}
+                  {(o.aliens > 0 || (colony.natives ?? 0) > 0) && (() => {
+                    const why = exterminateProblem(view, me.id, colony.id);
+                    return (
+                      <div><button className="small danger" disabled={readOnly || !!why} title={why ?? "Kill every alien and native here. Other empires will hate you for it."}
+                        onClick={() => { if (confirm(`Exterminate the alien population of ${colony.name}?`)) session.issue({ type: "exterminate", colonyId: colony.id }); }}>
+                        Exterminate aliens</button></div>
+                    );
+                  })()}
                 </td></tr>
                 <tr><td className="food"><span className="stat-label"><Icon name="food" />Food</span></td><td>{fmt(o.foodProduced, 1)} produced, {fmt(o.foodEaten)} eaten <b className={o.foodNet < 0 ? "bad" : "good"}>{signed(o.foodNet, 1)}</b>
                   {o.foodReplicated > 0 && <small className="muted"> ({fmt(o.foodReplicated, 1)} replicated)</small>}

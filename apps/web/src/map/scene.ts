@@ -19,6 +19,10 @@ export interface MapScene {
   reachable: Set<string>;
   /** Where the selected fleet could be sent, keyed by star; empty unless it is the viewer's to order. */
   routes: Map<string, Route>;
+  /** Nebula clouds: they slow ships and switch off shields. */
+  nebulae: { x: number; y: number; r: number }[];
+  /** Wormhole pairs, drawn as links between their stars. */
+  wormholes: { x1: number; y1: number; x2: number; y2: number }[];
 }
 
 /** Whether a fleet can be sent to a star, and how long it would take or why not. */
@@ -133,10 +137,17 @@ export function buildScene(
       if (route.ok) reachable.add(s.id);
     }
   }
+  const wormholes: MapScene["wormholes"] = [];
+  for (const s of view.galaxy.stars) {
+    const other = s.wormholeTo ? starById.get(s.wormholeTo) : undefined;
+    if (other && s.id < other.id) wormholes.push({ x1: s.x, y1: s.y, x2: other.x, y2: other.y });
+  }
   return {
     width: view.galaxy.width,
     height: view.galaxy.height,
     stars, fleets, selectedStarId, selectedFleetId, reachable, routes,
+    nebulae: (view.nebulae ?? []).map((n) => ({ x: n.x, y: n.y, r: n.r })),
+    wormholes,
   };
 }
 

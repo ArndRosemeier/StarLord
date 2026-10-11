@@ -89,7 +89,6 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
     ...state,
     players,
     galaxy: { ...state.galaxy, stars: shownStars },
-
     planets, colonies, fleets, leaders, proposals, combats, events, viewer,
   });
 }
