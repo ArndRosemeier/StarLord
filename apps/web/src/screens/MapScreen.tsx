@@ -7,11 +7,14 @@ import { useGame } from "../ui/hooks";
 import { FleetPanel, StarPanel, fleetShips, plural } from "../ui/panels";
 import { SystemView } from "./system/SystemView";
 import type { ColonizeOption } from "../game/colonize";
+import { LastTurnPanel } from "../ui/LastTurnPanel";
 
-export function MapScreen({ focusStar, onFocused, onOpenColony }: {
+export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, onOpenReports }: {
   focusStar: string | null;
   onFocused: () => void;
   onOpenColony: (colonyId: string) => void;
+  onOpenResearch: () => void;
+  onOpenReports: () => void;
 }) {
   const { session, view, me, readOnly } = useGame();
   const host = useRef<HTMLDivElement>(null);
@@ -130,6 +133,14 @@ export function MapScreen({ focusStar, onFocused, onOpenColony }: {
     if (fleetIds.some((id) => !view.fleets[id])) setFleetIds(fleetIds.filter((id) => view.fleets[id]));
   }, [view, fleetIds]);
 
+  const showStar = (id: string) => {
+    const s = view.galaxy.stars.find((x) => x.id === id);
+    if (!s) return;
+    setStarId(id);
+    setFleetIds([]);
+    renderer.current?.focus(s.x, s.y);
+  };
+
   const ordering = readOnly ? [] : fleetIds.map((id) => view.fleets[id]).filter((f): f is Fleet => !!f && f.ownerId === me.id);
 
   return (
@@ -146,6 +157,12 @@ export function MapScreen({ focusStar, onFocused, onOpenColony }: {
         {notice && <div key={notice.at} className={`map-notice${notice.bad ? " bad" : ""}`}>{notice.text}</div>}
       </div>
       <aside className="side">
+        <LastTurnPanel onTarget={(t) => {
+          if (t.kind === "colony") onOpenColony(t.colonyId);
+          else if (t.kind === "star") showStar(t.starId);
+          else if (t.kind === "research") onOpenResearch();
+          else onOpenReports();
+        }} />
         {fleetIds.length > 1 && (
           <div className="panel"><SelectionPanel fleetIds={fleetIds} onPick={pickFleet} onFocus={(id) => setFleetIds([...fleetIds.filter((x) => x !== id), id])} onClear={() => setFleetIds([])} /></div>
         )}
