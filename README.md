@@ -29,6 +29,7 @@ pnpm sim --turns 200                  # one all-AI game with status tables
 pnpm sim --games 100 --turns 150      # batch run, race win rates
 pnpm sim:events --games 8             # what happens in a game: wars, invasions, spies, rejected commands
 pnpm balance --games 20               # balance report: empire growth over time, endings, race scores
+pnpm soak --seeds 2                   # games across galaxy sizes x empire counts, checked every turn for crashes and broken rules
 pnpm sim --turns 200 --record runs/g.json && pnpm replay runs/g.json   # record a game and verify its replay
 ```
 

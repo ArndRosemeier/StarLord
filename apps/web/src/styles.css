@@ -345,3 +345,16 @@ kbd { background: var(--panel-2); border: 1px solid var(--line); border-bottom-w
 
 /* Automation strategy pickers line up in one column at one width. */
 select.strategy-select { flex: 0 0 150px; width: 150px; margin-left: auto; align-self: center; }
+.modal.sim-modal { max-width: 980px; }
+.simulator .sim-settings { border: 0; padding: 0; margin: 0; }
+.simulator .sim-check { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; }
+.simulator .sim-summary { margin: 10px 0; display: grid; gap: 4px; }
+.simulator .sim-table-wrap { overflow-x: auto; }
+.simulator .sim-table td, .simulator .sim-table th { font-size: 13px; padding: 4px 8px; text-align: left; white-space: nowrap; }
+.simulator .sim-table tbody tr { cursor: pointer; }
+.simulator .sim-table tbody tr:hover, .simulator .sim-table tr.sim-picked { background: rgba(255,255,255,0.06); }
+.simulator .sim-detail { margin-top: 10px; }
+.simulator .sim-detail h3 { margin-top: 0; }
+.simulator .sim-problems { margin: 0; padding-left: 18px; font-size: 13px; }
+.simulator .sim-problems code { white-space: pre-wrap; word-break: break-word; }
+.simulator .sim-events { font-size: 13px; }

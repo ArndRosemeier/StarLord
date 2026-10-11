@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { DEBUG, EVENTS, population, type DebugAction, type EventId } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt } from "../ui/format";
+import { Simulator } from "./Simulator";
 
 const words = (id: string) => id.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 
@@ -23,6 +24,7 @@ export function DebugMenu({ onClose }: { onClose: () => void }) {
   const [colonyId, setColonyId] = useState(myColonies[0]?.id ?? "");
   const [pop, setPop] = useState(10);
   const [event, setEvent] = useState<EventId>(events[0]!);
+  const [simulator, setSimulator] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -32,6 +34,23 @@ export function DebugMenu({ onClose }: { onClose: () => void }) {
 
   const run = (action: DebugAction) => session.issue({ type: "debug", action });
   const colony = view.colonies[colonyId];
+
+  if (simulator) {
+    return (
+      <div className="modal-back" onClick={onClose}>
+        <div className="modal debug-menu sim-modal" role="dialog" aria-label="Game simulator" onClick={(e) => e.stopPropagation()}>
+          <div className="whats-new-head">
+            <h2>Game simulator</h2>
+            <div className="row">
+              <button onClick={() => setSimulator(false)}>Back</button>
+              <button onClick={onClose} aria-label="Close">Close</button>
+            </div>
+          </div>
+          <Simulator />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-back" onClick={onClose}>
@@ -44,6 +63,14 @@ export function DebugMenu({ onClose }: { onClose: () => void }) {
         {session.rejected.some((r) => r.startsWith("debug")) && (
           <div className="panel bad">{session.rejected.filter((r) => r.startsWith("debug")).join("; ")}</div>
         )}
+
+        <section>
+          <h3>Simulator</h3>
+          <div className="row debug-row">
+            <button className="primary" onClick={() => setSimulator(true)}>Open the game simulator</button>
+            <small className="muted">plays whole computer-only games in the background and reports how they ended and anything that broke; your game is untouched</small>
+          </div>
+        </section>
 
         <section>
           <h3>Technology</h3>
