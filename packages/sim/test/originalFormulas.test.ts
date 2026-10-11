@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CREW, Rng, buyPrice, crewLevel, crewTick, getRace, growthPerTurn, missileSpeed, newGame, raceMaxPopulation,
-  canBuildShips, computeOutput, findDesign, fleetFuelRange, fleetRange, levelFromXp, planetDefense, resolveCombat, spyCountBonus, troopUnit, WEAPONS_BY_ID, type Colony, type Fleet, type GameState,
+  canBuildShips, computeOutput, fireEvent, processTurn, findDesign, fleetFuelRange, fleetRange, levelFromXp, planetDefense, resolveCombat, spyCountBonus, troopUnit, WEAPONS_BY_ID, type Colony, type Fleet, type GameState,
 } from "@starlord/sim";
 
 /** Numbers recovered from the original program; each case was worked out by hand from the decoded formulas. */
@@ -186,5 +186,60 @@ describe("original details", () => {
     p.designs.push({ ...findDesign(p, "scout")!, id: "longScout", specials: ["extendedFuelTanks"] });
     f.ships = [{ designId: "longScout", count: 1 }];
     expect(fleetFuelRange(s, f)).toBe(fleetRange(p) * 1.5);
+  });
+});
+
+describe("original random events", () => {
+  const setup = () => {
+    const s = newGame({ seed: "ev", races: ["terran", "felhari"], monsters: false, raiders: false, council: false, randomEvents: false });
+    const events: unknown[] = [];
+    return { s, ctx: { state: s, rng: new Rng({ s: 7 }), emit: (e: unknown) => events.push(e) } as Parameters<typeof fireEvent>[0] };
+  };
+
+  it("grows donations with the turn", () => {
+    const { s, ctx } = setup();
+    s.turn = 65;
+    const before = s.players[0]!.bc;
+    fireEvent(ctx, "donation", s.players[0]!);
+    expect(s.players[0]!.bc - before).toBe(100 + 100 * 3);
+  });
+
+  it("needs 10 stored research for a virus and takes at most 100", () => {
+    const { s, ctx } = setup();
+    const p = s.players[0]!;
+    p.research.progress = 9;
+    expect(fireEvent(ctx, "computerVirus", p)).toBe(false);
+    p.research.progress = 500;
+    fireEvent(ctx, "computerVirus", p);
+    expect(p.research.progress).toBeGreaterThanOrEqual(400);
+    expect(p.research.progress).toBeLessThanOrEqual(449);
+  });
+
+  it("lets pirates take 30 to 50 percent of a treasury of at least 100 BC", () => {
+    const { s, ctx } = setup();
+    const p = s.players[0]!;
+    p.bc = 99;
+    expect(fireEvent(ctx, "pirates", p)).toBe(false);
+    p.bc = 1000;
+    fireEvent(ctx, "pirates", p);
+    expect(p.bc).toBeGreaterThanOrEqual(500);
+    expect(p.bc).toBeLessThanOrEqual(700);
+  });
+
+  it("spares tolerant races industrial accidents", () => {
+    const s = newGame({ seed: "ev", races: ["petrani", "terran"], monsters: false, raiders: false, council: false, randomEvents: false });
+    const ctx = { state: s, rng: new Rng({ s: 7 }), emit: () => {} };
+    expect(fireEvent(ctx, "industrialAccident", s.players[0]!)).toBe(false);
+    expect(fireEvent(ctx, "industrialAccident", s.players[1]!)).toBe(true);
+  });
+
+  it("ends lasting events by 20 turns", () => {
+    let { s, ctx } = setup();
+    fireEvent(ctx, "hyperspaceFlux");
+    expect(s.activeEvents!.some((e) => e.kind === "hyperspaceFlux")).toBe(true);
+    for (let i = 0; i < 4; i++) s = processTurn(s, {});
+    expect(s.activeEvents!.some((e) => e.kind === "hyperspaceFlux")).toBe(true);
+    for (let i = 0; i < 17; i++) s = processTurn(s, {});
+    expect(s.activeEvents!.some((e) => e.kind === "hyperspaceFlux")).toBe(false);
   });
 });
