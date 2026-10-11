@@ -81,7 +81,7 @@ export const DEBRIS_BC: [number, number] = [25, 75];
 export const SPLINTER_POP: [number, number] = [2, 4];
 /** Native population as a fraction of the planet's maximum for a normal race, at least 2. */
 export const NATIVES_FRACTION = 0.5;
-/** Extra food each native farmer grows (the economy reads Colony.natives). */
+/** Extra food each native farmer grows on top of the normal farming rate. */
 export const NATIVE_FOOD_BONUS = 2;
 
 /** Starting civilization. */

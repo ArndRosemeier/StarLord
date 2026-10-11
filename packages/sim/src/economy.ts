@@ -5,6 +5,7 @@ import {
   TAX_PER_POP,
 } from "./data/economy.js";
 import { ASSIMILATION } from "./data/governments.js";
+import { NATIVE_FOOD_BONUS } from "./data/galaxy.js";
 import {
   CLIMATES, INDUSTRY_PER_WORKER, POLLUTION_PER_EXCESS, POLLUTION_TOLERANCE_PER_SIZE, SIZE_FACTOR, SOILLESS, type Gravity,
   type PlanetType,
@@ -262,8 +263,10 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   const perFarmer = farmable ? unit(landFood + race.picks.farming, grav) : 0;
   const androidLand = climate.foodPerFarmer + bonus.foodPerFarmer + farmBuildings;
   const androidFood = (climate.foodPerFarmer > 0 || bonus.hostileFarming > 0 ? Math.max(0, androidLand) * androidGrav : 0) + ANDROIDS.bonus;
+  // Native farmers grow extra food on top of the normal rate.
+  const nativeFarmers = Math.min(colony.farmers, colony.natives ?? 0);
   const foodProduced =
-    (colony.farmers * perFarmer * effort + sumEffect(b, "foodFlat")) * gov.foodMult * moraleMult * (1 + (lead.food ?? 0) / 100) +
+    (colony.farmers * perFarmer * effort + nativeFarmers * NATIVE_FOOD_BONUS + sumEffect(b, "foodFlat")) * gov.foodMult * moraleMult * (1 + (lead.food ?? 0) / 100) +
     andr.farmers * androidFood * gov.foodMult;
   const foodEaten = lithovore ? 0 : (cyber ? CYBERNETIC_FOOD : FOOD_PER_POP) * pop;
 
