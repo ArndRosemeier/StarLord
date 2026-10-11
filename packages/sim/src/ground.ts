@@ -15,7 +15,8 @@ import { TIER_OF_TECH } from "./data/techs.js";
 import { bombardment, planetDefense } from "./combat.js";
 import type { TurnContext } from "./context.js";
 import { designStats, findDesign } from "./designs.js";
-import { bioWeaponOutrage, exterminationOutrage, isHostile } from "./diplomacy.js";
+import { isHostile } from "./diplomacy.js";
+import { destructionOutrage, rngRoll } from "./relations.js";
 import { blocksInvasion } from "./commands.js";
 import { destructibleBuildings, population } from "./economy.js";
 import { empireBonus, grantTech, knows } from "./empire.js";
@@ -210,7 +211,7 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
       raze(ctx, c, kills);
     }
   }
-  for (const user of sporeUsers) bioWeaponOutrage(state, user);
+  for (const user of sporeUsers) destructionOutrage(state, user, rngRoll(rng));
 }
 
 /** Kills colonists; a colony with nobody left is gone and the planet is free again. */
@@ -363,7 +364,7 @@ export function exterminateProblem(state: GameState, playerId: PlayerId, colonyI
 
 /**
  * Exterminates the alien population of a colony. If nobody of your race is
- * left, the colony is lost. Every other empire is appalled.
+ * left, the colony is lost. Every computer empire in contact is appalled (-d10 relation).
  */
 export function exterminate(ctx: TurnContext, playerId: PlayerId, colonyId: Id): void {
   const { state } = ctx;
@@ -380,5 +381,5 @@ export function exterminate(ctx: TurnContext, playerId: PlayerId, colonyId: Id):
     c.natives = 0;
     if (population(c) === 0) destroyColony(state, c);
   }
-  exterminationOutrage(state, playerId);
+  destructionOutrage(state, playerId, rngRoll(ctx.rng));
 }

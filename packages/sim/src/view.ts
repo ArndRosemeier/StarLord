@@ -1,4 +1,4 @@
-import { relation } from "./diplomacy.js";
+import { relation, treatyPopulation } from "./diplomacy.js";
 import { empireTotals } from "./economy.js";
 import { BATTLE_SCANNER_RANGE, TRANSIT_DETECTION_PER_SIZE } from "./data/movement.js";
 import { getRace, registerRaces } from "./data/races.js";
@@ -15,6 +15,8 @@ export type PlayerView = GameState & {
   viewer: PlayerId;
   /** Population of each empire the viewer has a trade or research treaty with: the treaty's yield depends on it. */
   knownPopulation?: Record<PlayerId, number>;
+  /** The same partners' population as treaties count it (see treatyPopulation). */
+  knownTreatyPop?: Record<PlayerId, { trade: number; research: number }>;
 };
 
 /**
@@ -97,14 +99,18 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
     return { ...rest, name: UNKNOWN_STAR_NAME, ...(feature === "wormhole" ? { feature } : {}) };
   });
   const knownPopulation: Record<PlayerId, number> = {};
+  const knownTreatyPop: Record<PlayerId, { trade: number; research: number }> = {};
   for (const p of state.players) {
     if (p.id === viewer || p.kind !== "empire" || !p.alive) continue;
     const r = relation(state, viewer, p.id);
-    if (r.trade || r.research) knownPopulation[p.id] = empireTotals(state, p.id).population;
+    if (!r.trade && !r.research) continue;
+    knownPopulation[p.id] = empireTotals(state, p.id).population;
+    knownTreatyPop[p.id] = { trade: treatyPopulation(state, p.id, "trade"), research: treatyPopulation(state, p.id, "research") };
   }
   return structuredClone({
     ...state,
     knownPopulation,
+    knownTreatyPop,
     players,
     galaxy: { ...state.galaxy, stars: shownStars },
     planets, colonies, fleets, leaders, proposals, combats, events, viewer,

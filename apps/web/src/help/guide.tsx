@@ -8,7 +8,7 @@ import {
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
   SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
-  TRADE_GOODS_RATE, TRAIT_EFFECTS, TREATY_YIELD, TROOPS, abilityValue, type HeroSkill, type HeroSkillGroup,
+  TRADE_GOODS_RATE, TRAIT_EFFECTS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, abilityValue, type HeroSkill, type HeroSkillGroup,
 } from "@starlord/sim";
 import { fmt, pct } from "../ui/format";
 import type { GuideSlug } from "./entries";
@@ -89,7 +89,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li>Space battles are fought wherever hostile fleets or armed planets meet (<HelpLink to="guide:combat" />).</li>
         <li>Bombing and invasions of colonies whose defenses are down (<HelpLink to="guide:invasion" />).</li>
         <li>Colonies produce food, industry, research and BC; queues advance, populations grow, research completes.</li>
-        <li>Spies act, diplomatic attitudes drift, leaders offer their services, the council may vote.</li>
+        <li>Spies act, diplomatic relations drift, leaders offer their services, the council may vote.</li>
         <li>Random events, then empires with no colonies or colony ships left are eliminated.</li>
       </ol>
     </>
@@ -450,25 +450,26 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         {PROPOSAL_LIFETIME} turns.
       </P>
       <Ul>
-        <li><b>War</b>: your ships and theirs fight on sight. Declaring war on someone you had a treaty with angers everyone, and their allies join in. Breaking a peace treaty within {PEACE_TREATY_TURNS} turns is an outrage.</li>
-        <li><b>Peace</b>: ends a war.</li>
-        <li><b>Non-aggression pact</b>: a promise not to attack; relations warm over time. Not while at war.</li>
-        <li><b>Alliance</b>: allies share fuel range and warm faster. Only from a non-aggression pact, and only with an empire whose attitude toward you is at least {TREATY_ANSWER.allianceMinAttitude}.</li>
-        <li><b>Trade treaty</b>: both sides earn {TREATY_YIELD.trade.perPop} BC per population of the smaller partner.</li>
-        <li><b>Research treaty</b>: both sides gain {TREATY_YIELD.research.perPop} research per population of the smaller partner.</li>
+        <li><b>War</b>: your ships and theirs fight on sight. Relations fall to {RELATION_EVENTS.declareWar.set} minus a d{RELATION_EVENTS.declareWar.roll} and stay at {RELATION.warCeiling} or below. Declaring war on someone you had a treaty with costs their trust and your reputation with everyone, and their computer allies may join in over the next turns.</li>
+        <li><b>Peace</b>: ends a war. Relations rise by {RELATION_EVENTS.peace.gain} but no higher than {RELATION_EVENTS.peace.max}, and neither side may declare war for {PEACE_TREATY_TURNS} turns; then the treaty lapses.</li>
+        <li><b>Non-aggression pact</b>: a promise not to attack; each turn relations may rise by 1 to {TREATY_WARMTH.nonAggression}. Not while at war.</li>
+        <li><b>Alliance</b>: allies share fuel range, relations rise by 1 to {TREATY_WARMTH.alliance} every turn, and computer allies join each other's wars. Only from a non-aggression pact, and only with an empire whose relation with you is at least {TREATY_ANSWER.allianceMinAttitude}.</li>
+        <li><b>Trade treaty</b>: each side earns BC equal to half the smaller partner's population, times its government's BC rate.</li>
+        <li><b>Research treaty</b>: each side gains research equal to half the smaller partner's population, times its government's research rate.</li>
         <li><b>Technology exchange</b>, <b>gifts</b> of BC, techs or systems, and a standing <b>tribute</b> of 5% or 10% of your income.</li>
-        <li><b>Demands</b>: tribute, a tech, a system, war on or peace with a third empire, breaking an alliance, recalling spies or fleets. Refusing angers the demander; giving in sours them less than you might fear.</li>
+        <li><b>Demands</b>: tribute, a tech, a system, war on or peace with a third empire, breaking an alliance, recalling spies or fleets. A computer ruler rolls a d200 plus how your fleets, size and technology compare to its own, plus its patience and temperament, minus what the demand costs it: high, it gives in; lower, it refuses, warns you, ends your treaties or declares war.</li>
         <li><b>Surrender</b>: hand your whole empire to another ruler.</li>
       </Ul>
       <P>
-        Treaty income runs at a loss for the first {TREATY_YIELD.trade.breakEven} turns and only reaches full value after{" "}
-        {TREATY_YIELD.trade.full}. <HelpLink to="trait:fantasticTraders" /> earn 25% more from trade treaties; <HelpLink to="trait:repulsive" /> races
+        A new treaty starts at minus half the smaller population and climbs by 1/{TREATY_YIELD.rampSteps} of its full value each
+        turn, so it runs at a loss for about {TREATY_YIELD.rampSteps} turns and reaches full value after about {2 * TREATY_YIELD.rampSteps}; a
+        research treaty's setup is paid in BC. Pirates halve trade. <HelpLink to="trait:fantasticTraders" /> earn {TREATY_YIELD.traderPoints}% more from trade treaties; <HelpLink to="trait:repulsive" /> races
 
         can only make peace or war.
       </P>
       <h3>How computer rulers answer</h3>
       <P>
-        A computer ruler accepts a treaty when its attitude toward you, plus a d100, minus what the treaty asks of it
+        A computer ruler accepts a treaty when its relation with you, plus a d100, minus what the treaty asks of it
         ({TREATY_ANSWER.need.nonAggression} for a non-aggression pact, {TREATY_ANSWER.need.alliance} for an alliance,{" "}
         {TREATY_ANSWER.need.trade} for trade, {TREATY_ANSWER.need.research} for research), plus its temperament and
         your diplomatic bonuses, comes to 0 or more. Temperaments: {Object.values(TEMPERAMENTS).map((t) => `${t.name} ${t.treaty >= 0 ? "+" : ""}${t.treaty}`).join(", ")}.
@@ -480,9 +481,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         treaty is signed.
       </P>
       <P>
-        Peace comes only after {TREATY_ANSWER.peaceMinWarTurns} turns of war, and attitude does not count: the longer the
-        war, the more other wars they fight, the stronger you are and the more of their systems your ships hold, the
-        likelier they agree. Their ships in your systems make them bolder.
+        Peace comes only after {TREATY_ANSWER.peaceMinWarTurns} turns of war, and relations do not count: the longer the
+        war, the more other wars they fight, the stronger you are, the more ships they have lost and the more of their
+        systems your ships hold, the likelier they agree. Their strength counts half for every other war they fight; their
+        ships in your systems make them bolder. Computer rulers also offer peace themselves once a war has run ten turns.
       </P>
       <P>
         Every proposal wears down their patience: {PATIENCE.perAsk} points, and {PATIENCE.firstAsk} to{" "}
@@ -490,13 +492,24 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         answers. Asking for the same kind of thing again and again, or making demands, soon has them refuse to see you.
         Patience comes back by {PATIENCE.recovery} a turn; breaking a treaty exhausts it.
       </P>
-      <h3>Attitude</h3>
+      <h3>Relations</h3>
       <P>
-        Every empire has an attitude toward every other, drifting toward a baseline: treaties, alliances and common
-        enemies raise it; war, shared borders, caught spies and repulsiveness lower it. Good turns done by a{" "}
-        <HelpLink to="trait:charismatic" /> race count double and bad ones half. Charisma (+50), telepathy (+25),
-        Xeno Psychology and Diplomat leaders add diplomatic points to every deal an empire offers. Computer empires use it to
-        decide what to accept and whom to attack, and how to vote in the council.
+        Every pair of empires shares one relation, from -100 to 100. It starts where the two races' history puts it and
+        drifts back toward that level: on a quiet turn, with chance ({RELATION.driftDie} minus how far it is from 0) /{" "}
+        {RELATION.driftDie} × 1/{2 * RELATION.driftOneIn}, it moves one step. Treaties warm it a little every turn; without an alliance it
+        stops at {RELATION.capWithoutAlliance}. Events move it at once: a technology exchange +{RELATION_EVENTS.techExchange}, agreeing
+        to a computer ruler's request +{RELATION_EVENTS.agreedToRequest[0]} to +{RELATION_EVENTS.agreedToRequest[1]}, gifts, council
+        votes, caught spies, armed fleets near their colonies, and wiping out a population (-d{RELATION_EVENTS.destruction} with every
+        computer empire). Gains count double while relations are below 0 and less and less the better they get; losses
+        count double while they are good. Honorable rulers take offence twice as hard. Good turns done by a{" "}
+        <HelpLink to="trait:charismatic" /> race count double and bad ones half. On Hard and Impossible, computer
+        empires you have no treaty with grow jealous of your treaties with others.
+      </P>
+      <P>
+        A computer ruler you hurt (spying, threats, refused demands) may count strikes against you: the first is a
+        warning, a second ends your treaties or asks for compensation, and a third means war when its fleets can stand
+        up to yours. Computer rulers also make treaties and wars among themselves. Charisma (+50), telepathy (+25),
+        Xeno Psychology and Diplomat leaders add diplomatic points to every deal an empire offers.
       </P>
     </>
   ),
@@ -564,12 +577,16 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         If the council is enabled, it first convenes once {pct(COUNCIL.settledShare)} of the galaxy's systems are
         owned (not before turn {COUNCIL_FIRST}, and only while at least {COUNCIL.minEmpires} empires live), then every{" "}
         {COUNCIL_INTERVAL} turns while at least {COUNCIL.minEmpires} empires remain. The two most populous empires stand
-        as candidates and every empire gets one vote per {COUNCIL.popPerVote} population.
+        as candidates and every empire gets one vote per {COUNCIL.popPerVote} population, rounded up (no population, no
+        vote).
       </P>
       <P>
         A candidate with {pct(COUNCIL_MAJORITY)} of all votes is elected. Candidates vote for themselves; you can set
-        your vote on the Diplomacy screen. Computer empires only back a candidate they clearly like. You may refuse
-        another ruler's election on the next turn, but then you are at war with every empire that accepted it.
+        your vote on the Diplomacy screen. Computer empires only back a candidate they clearly like, and lean +{COUNCIL_VOTE.sameAsLastTime}{" "}
+        toward the one they backed last time. Voting for an empire pleases it; voting against it, or abstaining, does
+        not. You may refuse another ruler's election on the next turn: if the winner is a computer empire, every other
+        computer empire joins it and the united empire goes to war with you; if it is a human, you are at war with every
+        empire that accepted it.
       </P>
     </>
   ),
@@ -604,7 +621,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>
         Galaxy sizes: {(Object.keys(STAR_COUNTS) as (keyof typeof STAR_COUNTS)[]).map((k) => `${k} ${STAR_COUNTS[k]} stars on ${Math.round(mapSize(k).width)} × ${Math.round(mapSize(k).height)} parsecs`).join(", ")}. Monsters, raiders,
         random events and the council can each be switched off when starting a game. Difficulty sets how fast computer
-        empires produce and research and how warmly they treat you; galaxy age changes the mix of star colors, which
+        empires produce and research, how often they come to you with offers and sign treaties among themselves, and
+        (on Hard and Impossible) how jealous they grow of your treaties; galaxy age changes the mix of star colors, which
         orbits fill up and, in old galaxies, makes middle orbits more fertile;
         the tech level starts everyone pre-warp, average or advanced.
 

@@ -107,9 +107,6 @@ export function surplusFoodBc(race: RaceDef): number {
 }
 
 /** Multiplier on trade treaty income (fantastic traders +25%). */
-export function treatyIncomeMult(race: RaceDef): number {
-  return 1 + (hasTrait(race, "fantasticTraders") ? TRAIT_EFFECTS.traderTreatyBonus : 0);
-}
 
 /** Multiplier on BC from trade goods (fantastic traders double). */
 export function tradeGoodsMult(race: RaceDef): number {

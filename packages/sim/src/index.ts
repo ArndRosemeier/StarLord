@@ -10,6 +10,7 @@ export * from "./combat.js";
 export * from "./crew.js";
 export * from "./repair.js";
 export * from "./diplomacy.js";
+export * from "./relations.js";
 export * from "./espionage.js";
 export * from "./leaders.js";
 export * from "./raceEffects.js";

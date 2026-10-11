@@ -45,7 +45,7 @@ export const GUIDE_TOPICS = [
   { slug: "fleets", title: "Fleets, movement & command", keywords: "fleet move speed fuel range parsec scanner command points stance attack defend" },
   { slug: "combat", title: "Space combat", keywords: "battle combat hit chance damage shield missile torpedo beam retreat doctrine planet defense replay" },
   { slug: "invasion", title: "Bombing & invasion", keywords: "bomb bombard invade troops ground combat capture marines" },
-  { slug: "diplomacy", title: "Diplomacy", keywords: "war peace alliance trade treaty research treaty attitude proposal contact" },
+  { slug: "diplomacy", title: "Diplomacy", keywords: "war peace alliance trade treaty research treaty attitude relation proposal contact council strike" },
   { slug: "espionage", title: "Espionage", keywords: "spy spies steal sabotage security telepathic" },
   { slug: "leaders", title: "Leaders", keywords: "leader administrator captain hire salary skill" },
   { slug: "council", title: "Galactic council", keywords: "council vote election victory" },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  attitude,
   DRAGON_BRIBE_PER_POP, EVENT_NUMBERS, EVENT_START, MINERAL_STEPS, RESEARCH, Rng, TIERS_BY_ID, absorbResearch, bribeProblem, fireEvent, monsterDemands,
   newGame, payBribe, piratesActive, population, randomEventTick, researchCost, systemFrozen, type ActiveEvent, type Colony, type Fleet,
   type GameEvent, type GameState,
@@ -143,7 +144,7 @@ describe("windfalls", () => {
     expect(fireEvent(ctx, "diplomaticMarriage", s.players[0]!)).toBe(false);
     s.players[0]!.contacts = [1];
     s.players[1]!.contacts = [0];
-    const feel = () => [s.attitude[0]?.[1] ?? 0, s.attitude[1]?.[0] ?? 0];
+    const feel = () => [attitude(s, 0, 1), attitude(s, 1, 0)];
     const before = feel();
     fireEvent(ctx, "diplomaticMarriage", s.players[0]!);
     expect(feel().map((x, i) => x - before[i]!)).toEqual([EVENT_NUMBERS.attitudeShift, EVENT_NUMBERS.attitudeShift]);

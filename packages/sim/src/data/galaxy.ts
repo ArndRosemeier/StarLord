@@ -17,23 +17,20 @@ export interface DifficultyDef {
   aiGrowthPercent: number;
   /** Extra BC per population computer players collect. */
   aiBcPerPop: number;
-  /** Attitude every computer empire starts with, and drifts toward, for each human empire. */
-  aiAttitudeToHumans: number;
   /** Custom races are not allowed on the two easiest levels. */
   customRaces: boolean;
 }
 
 /**
  * Difficulty levels. The AI output, growth and money bonuses are the original
- * program's tables; the attitude toward humans is StarLord's estimate of the
- * manual's "more friendly" and "all hate you".
+ * program's tables; how difficulty shapes diplomacy lives in data/diplomacy.
  */
 export const DIFFICULTIES: Record<Difficulty, DifficultyDef> = {
-  tutor: { name: "Tutor", aiOutputPerUnit: -0.5, aiGrowthPercent: 0, aiBcPerPop: 0, aiAttitudeToHumans: 30, customRaces: false },
-  easy: { name: "Easy", aiOutputPerUnit: 0, aiGrowthPercent: 1, aiBcPerPop: 0, aiAttitudeToHumans: 15, customRaces: false },
-  average: { name: "Average", aiOutputPerUnit: 0.5, aiGrowthPercent: 2, aiBcPerPop: 0.25, aiAttitudeToHumans: 0, customRaces: true },
-  hard: { name: "Hard", aiOutputPerUnit: 1, aiGrowthPercent: 3, aiBcPerPop: 0.5, aiAttitudeToHumans: -10, customRaces: true },
-  impossible: { name: "Impossible", aiOutputPerUnit: 2, aiGrowthPercent: 4, aiBcPerPop: 0.75, aiAttitudeToHumans: -60, customRaces: true },
+  tutor: { name: "Tutor", aiOutputPerUnit: -0.5, aiGrowthPercent: 0, aiBcPerPop: 0, customRaces: false },
+  easy: { name: "Easy", aiOutputPerUnit: 0, aiGrowthPercent: 1, aiBcPerPop: 0, customRaces: false },
+  average: { name: "Average", aiOutputPerUnit: 0.5, aiGrowthPercent: 2, aiBcPerPop: 0.25, customRaces: true },
+  hard: { name: "Hard", aiOutputPerUnit: 1, aiGrowthPercent: 3, aiBcPerPop: 0.5, customRaces: true },
+  impossible: { name: "Impossible", aiOutputPerUnit: 2, aiGrowthPercent: 4, aiBcPerPop: 0.75, customRaces: true },
 };
 
 export const DIFFICULTY_ORDER: Difficulty[] = ["tutor", "easy", "average", "hard", "impossible"];

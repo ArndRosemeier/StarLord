@@ -1,6 +1,7 @@
 import {
   COUNCIL_VOTE, councilCandidates, councilVotes, voteChance,
-  ATTITUDE, COUNCIL, COUNCIL_INTERVAL, COUNCIL_MAJORITY, attitude, attitudeParts, audienceTired, canSign, getRace, government, nextCouncilTurn, relation,
+  COUNCIL, COUNCIL_INTERVAL, COUNCIL_MAJORITY, RELATION, TREATY_WARMTH, attitude, audienceTired, baselineOf, canSign, getRace, government, nextCouncilTurn,
+  noWarTurns, relation, strikesOf,
   settledShare,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -10,23 +11,43 @@ import { describeProposal } from "../diplomacy/terms";
 import { mood, type AudienceRequest } from "./Audience";
 import { activeEffects, incomingEffect, TIRED_TEXT, temperamentText } from "../diplomacy/effects";
 
-/** How they feel about you, why, and where it is heading. */
+/** Your relation with them, where it drifts, and what holds it up or down. */
 function AttitudeBreakdown({ them }: { them: number }) {
   const { view, me } = useGame();
   const now = attitude(view, them, me.id);
-  const parts = attitudeParts(view, them, me.id);
-  const target = parts.reduce((s, x) => s + x.value, 0);
+  const base = baselineOf(view, them, me.id);
+  const r = relation(view, me.id, them);
+  const drift = now === base || r.status === "war" ? 0 : ((RELATION.driftDie - Math.abs(now)) / RELATION.driftDie) / (2 * RELATION.driftOneIn);
+  const warmth = r.status === "alliance" ? TREATY_WARMTH.alliance
+    : Math.max(r.status === "nonAggression" ? TREATY_WARMTH.nonAggression : 0, r.trade ? TREATY_WARMTH.trade : 0, r.research ? TREATY_WARMTH.research : 0);
+  const strikes = view.players[them]?.isHuman ? 0 : strikesOf(view, them, me.id);
+  const calm = noWarTurns(view, them, me.id);
   return (
     <details className="attitude-breakdown">
       <summary>
-        Attitude {signed(now)}{target !== now ? `, drifting ${ATTITUDE.driftPerTurn} a turn toward ${signed(target)}` : ""}
+        Relation {signed(now)}{now !== base && r.status !== "war" ? `, drifting toward ${signed(base)}` : ""}
       </summary>
       <ul className="effect-list">
-        {parts.length === 0 && <li className="muted">Nothing pushes their feelings either way.</li>}
-        {parts.map((x) => <li key={x.why}><span className={x.value > 0 ? "good" : "bad"}>{signed(x.value)}</span> {x.why}</li>)}
+        <li>
+          Baseline {signed(base)}: where your races' history, wars, gifts and broken treaties have left it.
+          {drift > 0 && ` On a quiet turn it moves a step toward it with chance ${pct(drift)}.`}
+        </li>
+        {r.status === "war" && <li className="bad">At war it stays at {RELATION.warCeiling} or below.</li>}
+        {warmth > 0 && (
+          <li className="good">
+            Your treaties add 1 to {warmth} a turn{r.status === "alliance" ? "" : ` with chance ${100 - Math.max(0, now)}%`}.
+          </li>
+        )}
+        {r.status !== "alliance" && <li className="muted">Without an alliance it cannot rise above {RELATION.capWithoutAlliance}.</li>}
+        {strikes > 0 && (
+          <li className="bad">
+            {strikes} strike{strikes === 1 ? "" : "s"} against you: {strikes >= 2 ? "one more grievance may mean war" : "a warning"}.
+          </li>
+        )}
+        {calm > 0 && r.status !== "war" && <li className="muted">They will not start a war with you for {calm} more turn{calm === 1 ? "" : "s"}.</li>}
         <li className="muted">
-          Events shift it at once (gifts, accepted or refused deals, wars, spies caught) and then it drifts back. Computer empires accept
-          treaties more readily the higher it is.
+          Events shift it at once (gifts, deals, council votes, spies, fleets near their colonies); gains count for less the better
+          it is. Computer empires accept treaties more readily the higher it is.
         </li>
       </ul>
     </details>
@@ -51,8 +72,10 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
         <div className="panel col incoming">
           <h3>The council has spoken</h3>
           <div>
-            The council elected <b>{playerName(view, pending.winner)}</b> ruler of the galaxy. Accept the verdict, or refuse it and
-            stand at war with every empire that does.
+            The council elected <b>{playerName(view, pending.winner)}</b> ruler of the galaxy. Accept the verdict, or refuse it
+            {view.players[pending.winner]?.isHuman
+              ? " and stand at war with every empire that does."
+              : ": every other computer empire then joins the winner, and the united empire goes to war with you."}
           </div>
           <div className="row">
             {myAnswer ? <span className="muted">{myAnswer.type === "councilResponse" && myAnswer.accept ? "You accept." : "You refuse."}</span> : (
@@ -105,7 +128,7 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row"><span className="dot" style={{ background: p.color }} /><b>{p.name}</b></div>
                   <div className="muted">{race.plural} · {government(p).name}{temperamentText(view, p.id) && <> · <span className="explained" title={temperamentText(view, p.id)!.text}>{temperamentText(view, p.id)!.name}</span></>}</div>
-                  <div className="mood-meter" style={{ marginTop: 10 }} title={`Attitude toward you: ${feel.text}`}>
+                  <div className="mood-meter" style={{ marginTop: 10 }} title={`Relation with you: ${feel.text}`}>
                     <span style={{ left: `${(attitude(view, p.id, me.id) + 100) / 2}%` }} />
                   </div>
                 </div>
@@ -146,8 +169,8 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
           <h3>Galactic council</h3>
           <div className="muted">
             The council first convenes once {pct(COUNCIL.settledShare)} of the galaxy's systems are owned (not before turn {COUNCIL.earliestTurn}),
-            then every {COUNCIL_INTERVAL} turns. The two empires with the most votes (one per {COUNCIL.popPerVote} population) stand; {pct(COUNCIL_MAJORITY)} of all votes elects one.
-            Computer empires back a candidate on a d{COUNCIL_VOTE.die} against attitude + trust + 2 × reputation, +{COUNCIL_VOTE.nonAggression} for a non-aggression pact,
+            then every {COUNCIL_INTERVAL} turns. The two empires with the most votes (one per {COUNCIL.popPerVote} population, rounded up) stand; {pct(COUNCIL_MAJORITY)} of all votes elects one.
+            Computer empires back a candidate on a d{COUNCIL_VOTE.die} against relation + trust + 2 × reputation, +{COUNCIL_VOTE.sameAsLastTime} for the one it backed last time, +{COUNCIL_VOTE.nonAggression} for a non-aggression pact,
             +{COUNCIL_VOTE.trade} each for trade and research treaties, +{COUNCIL_VOTE.charismatic} for a charismatic candidate, +{COUNCIL_VOTE.holdsOrion} for one holding Orion,
             +{COUNCIL_VOTE.xenoPsychology} for Xeno Psychology, +{COUNCIL_VOTE.atWarWithRival} if at war with the other candidate, {COUNCIL_VOTE.repulsive} for a repulsive one;
             always for an ally, never for an enemy, and they abstain unless exactly one candidate passes.{" "}

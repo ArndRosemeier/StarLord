@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  attitude, RELATION_EVENTS,
   BATTLEOID_HITS, BOMB_DAMAGE_PER_HIT, CAPTURE_TECH_CHANCE, MILITIA_PER_POP, POWERED_ARMOR_HITS, Rng, SPECIAL_UNIT_RATING, TROOPS,
   canMindControl, captureColony, defendingTroops, exterminate, exterminateProblem, garrisonOf, groundPhase, invade, newGame, population, raze,
   troopUnit, type Colony, type Fleet, type GameEvent, type GameState,
@@ -200,14 +201,19 @@ describe("razing and extermination", () => {
   });
 
   it("wipes out a conquered alien colony and appalls the other empires", () => {
-    const { s, ctx } = game();
+    const { s, ctx } = game(["terran", "felhari", "kordex"]);
     s.players[0]!.government = "dictatorship";
     const c = homeColony(s, 1);
     captureColony(ctx, c, 0);
-    const before = s.attitude[1]?.[0] ?? 0;
+    s.players[0]!.contacts = [1, 2];
+    s.players[2]!.contacts = [0];
+    const before = attitude(s, 2, 0);
     exterminate(ctx, 0, c.id);
     expect(s.colonies[c.id]).toBeUndefined();
-    expect(s.attitude[1]![0]!).toBeLessThan(before);
+    // Every computer empire in contact and not at war loses d10 toward the exterminator (scaled: the relation starts at 0).
+    expect(attitude(s, 2, 0)).toBeLessThan(before);
+    expect(attitude(s, 2, 0)).toBeGreaterThanOrEqual(before - RELATION_EVENTS.destruction);
+    expect(attitude(s, 0, 2)).toBe(attitude(s, 2, 0));
   });
 });
 

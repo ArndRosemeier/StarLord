@@ -11,7 +11,8 @@ import { buyCost, termsOf, validateCommand, type Command } from "./commands.js";
 import { newId, type TurnContext } from "./context.js";
 import { councilTick } from "./council.js";
 import { designStats, findDesign } from "./designs.js";
-import { SCOUT_LAB_RESEARCH, hullIndex } from "./data/components.js";
+import { SCOUT_LAB_RESEARCH, hullIndex, type HullId } from "./data/components.js";
+import { recordShipLosses } from "./relations.js";
 import {
   acceptProposal, breakTreaty, chargePatience, declareWar, diplomacyTick, giveGift, isHostile, proposalId, rejectProposal, surrenderEmpire, treatyIncome,
 } from "./diplomacy.js";
@@ -75,7 +76,7 @@ export function processTurn(prev: GameState, orders: TurnOrders): GameState {
   syncPortals(state);
   runEconomy(ctx);
   espionageTick(state, rng, ctx.emit);
-  diplomacyTick(state, ctx.emit);
+  diplomacyTick(state, rng, ctx.emit);
   leaderTick(state, rng, ctx.emit);
   crewTick(state);
   const elected = councilTick(state, ctx.emit);
@@ -285,7 +286,7 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
         acceptProposal(state, p, ctx.emit);
         ctx.emit({ kind: "diplomacy", playerId: p.from, other: p.to, what: `accepted ${p.kind}` });
       } else {
-        rejectProposal(state, p);
+        rejectProposal(state, p, ctx.emit);
         ctx.emit({ kind: "diplomacy", playerId: p.from, other: p.to, what: `rejected ${p.kind}` });
       }
       break;
@@ -524,6 +525,24 @@ function applyCombat(
     for (const id of fleetIds) for (const s of outcome.survivors.get(id)!) s.xp = (s.xp ?? 0) + amount;
     combatXp(state, fleetIds, amount, ctx.emit);
   }
+  // Ship losses count toward the peace terms (the original's tally: 2 to the power of hull size + 1 per ship).
+  const [sa, sb] = sides;
+  for (const side of sides) {
+    const other = side === sa ? sb : sa;
+    const owner = state.players[side.ownerId]!;
+    if (owner.kind !== "empire" || state.players[other.ownerId]!.kind !== "empire") continue;
+    const lost: { hull: HullId; count: number }[] = [];
+    for (const f of side.fleets) {
+      const after = outcome.survivors.get(f.id);
+      if (!after) continue;
+      for (const st of f.ships) {
+        const left = after.find((x) => x.designId === st.designId)?.count ?? 0;
+        const d = findDesign(owner, st.designId);
+        if (d && st.count > left) lost.push({ hull: d.hull, count: st.count - left });
+      }
+    }
+    recordShipLosses(state, side.ownerId, other.ownerId, lost);
+  }
   for (const [fleetId, ships] of outcome.survivors) {
     const f = state.fleets[fleetId];
     if (!f) continue;
@@ -633,16 +652,11 @@ function runEconomy(ctx: TurnContext): void {
   for (const player of state.players) if (player.kind === "empire" && player.alive) arriveColonists(ctx, player.id);
 
   const byPlayer = new Map<PlayerId, { colony: Colony; out: ColonyOutput }[]>();
-  const totals = new Map<PlayerId, { population: number; research: number }>();
   for (const c of Object.values(state.colonies)) {
     const list = byPlayer.get(c.ownerId) ?? [];
     const out = colonyOutput(state, c);
     list.push({ colony: c, out });
     byPlayer.set(c.ownerId, list);
-    const t = totals.get(c.ownerId) ?? { population: 0, research: 0 };
-    t.population += out.population;
-    t.research += out.research;
-    totals.set(c.ownerId, t);
   }
 
   for (const player of state.players) {
@@ -666,13 +680,15 @@ function runEconomy(ctx: TurnContext): void {
       }
       grow(ctx, colony, out, food.shortfall[colony.id] ?? 0);
     }
-    const treaties = treatyIncome(state, player.id, totals);
+    const treaties = treatyIncome(state, player.id);
     research += treaties.research + extraResearch(state, player.id);
     bc += treaties.bc;
     bc -= salaries(state, player.id);
     const over = commandPointsUsed(state, player.id) - commandPointsAvailable(state, player.id);
     if (over > 0) bc -= over * COMMAND_OVERAGE_COST;
     player.bc = Math.round((player.bc + bc) * 10) / 10;
+    // Turns in a row the treasury shrank: a computer empire short of money looks for a war.
+    state.deficitTurns = { ...(state.deficitTurns ?? {}), [player.id]: bc < 0 ? (state.deficitTurns?.[player.id] ?? 0) + 1 : 0 };
     if (player.bc < 0) bankrupt(ctx, player.id);
     advanceResearch(ctx, player.id, research);
     upgradeGovernment(player);

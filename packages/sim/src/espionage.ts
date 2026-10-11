@@ -1,9 +1,9 @@
 import { BUILDINGS_BY_ID } from "./data/buildings.js";
-import { ATTITUDE_EVENTS, SPY, spyCountBonus } from "./data/diplomacy.js";
+import { SPY, spyCountBonus } from "./data/diplomacy.js";
 import { DIFFICULTY_ORDER } from "./data/galaxy.js";
 import { PICK_VALUES } from "./data/racePicks.js";
 import { TIER_OF_TECH } from "./data/techs.js";
-import { adjustAttitude } from "./diplomacy.js";
+import { REASON, relationEvent } from "./relations.js";
 import { grantTech, securityLevel, spyingLevel } from "./empire.js";
 import { destructibleBuildings } from "./economy.js";
 import { leaderAssassinChance } from "./leaders.js";
@@ -59,8 +59,12 @@ export function espionageTick(state: GameState, rng: Rng, emit: Emit): void {
         if (x >= need || die === 100) {
           const scapegoat = x >= SPY.blame || die === 100 ? blameTarget(state, rng, spyMaster.id, targetId) : null;
           const done = cell.mission === "steal" ? steal(state, rng, spyMaster.id, targetId, emit) : sabotage(state, rng, spyMaster.id, targetId, emit);
-          // A framed empire takes a bigger, random hit than a caught culprit.
-          if (done) adjustAttitude(state, targetId, scapegoat ?? spyMaster.id, scapegoat !== null ? -(rng.int(1, SPY.blameDrop[0]) + rng.int(1, SPY.blameDrop[1])) : ATTITUDE_EVENTS.spyNoticed);
+          // The victim blames the thief, or whoever was framed: -(d15 + d5), as in the original.
+          if (done) {
+            const steal = cell.mission === "steal";
+            const reason = scapegoat !== null ? (steal ? REASON.framedSteal : REASON.framedSabotage) : steal ? REASON.stole : REASON.sabotage;
+            relationEvent(state, -(rng.int(1, SPY.blameDrop[0]) + rng.int(1, SPY.blameDrop[1])), scapegoat ?? spyMaster.id, targetId, reason);
+          }
         }
       }
 
@@ -73,7 +77,6 @@ export function espionageTick(state: GameState, rng: Rng, emit: Emit): void {
         emit({ kind: "spy", playerId: targetId, other: spyMaster.id, what: "lost a counter-agent to an enemy spy" });
       } else if (y <= -SPY.killThreshold || dieB === 100) {
         cell.count--;
-        adjustAttitude(state, targetId, spyMaster.id, ATTITUDE_EVENTS.spyCaught);
         emit({ kind: "spy", playerId: targetId, other: spyMaster.id, what: "caught an enemy spy" });
         emit({ kind: "spy", playerId: spyMaster.id, other: targetId, what: "lost a spy" });
       }
