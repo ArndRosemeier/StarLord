@@ -94,11 +94,12 @@ describe("leaders", () => {
     expect(o).toBeDefined();
     expect(playerView(s, 1).players[0]!.leaderOffers).toHaveLength(0);
     s.players[0]!.bc = 10000;
+    const idle = processTurn(s, {});
     s = processTurn(s, { 0: [{ type: "hireLeader", leaderId: o.id }] });
     const l = s.leaders[o.id]!;
     expect(l.status).toBe("hired");
     expect(l.ownerId).toBe(0);
-    expect(s.players[0]!.bc).toBeLessThan(10000);
+    expect(s.players[0]!.bc).toBeLessThan(idle.players[0]!.bc);
     s = processTurn(s, { 0: [{ type: "dismissLeader", leaderId: o.id }] });
     expect(s.leaders[o.id]!.status).toBe("pool");
   });

@@ -35,6 +35,7 @@ export const CLIMATES: Record<PlanetType, ClimateInfo> = {
   barren: { popPercent: 25, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
   radiated: { popPercent: 25, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.25 },
   toxic: { popPercent: 25, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.5 },
+  // Never generated (the original has no inferno worlds); kept so old saves still load.
   inferno: { popPercent: 25, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
   asteroids: { popPercent: 0, foodPerFarmer: 0, habitable: false, hostile: true, maintenancePenalty: 0 },
   gasGiant: { popPercent: 0, foodPerFarmer: 0, habitable: false, hostile: true, maintenancePenalty: 0 },
@@ -68,43 +69,98 @@ export const POLLUTION_TOLERANCE: Record<PlanetSize, number> = {
 /** Each point of polluting industry above the tolerance makes this much pollution (rounded up), and each costs 1 industry. */
 export const POLLUTION_PER_EXCESS = 0.5;
 
+/**
+ * Gravity by minerals and size, as the original rolls it: rich worlds are dense,
+ * small poor ones light. Rows ultra poor..ultra rich, columns tiny..huge.
+ */
+export const GRAVITY_TABLE: Record<Minerals, [Gravity, Gravity, Gravity, Gravity, Gravity]> = {
+  ultraPoor: ["low", "low", "low", "normal", "normal"],
+  poor: ["low", "low", "normal", "normal", "normal"],
+  abundant: ["low", "normal", "normal", "normal", "heavy"],
+  rich: ["normal", "normal", "normal", "heavy", "heavy"],
+  ultraRich: ["normal", "normal", "heavy", "heavy", "heavy"],
+};
+
+export const PLANET_SIZES: PlanetSize[] = ["tiny", "small", "medium", "large", "huge"];
+
 export function gravityOf(size: PlanetSize, minerals: Minerals): Gravity {
-  const heavyMinerals = minerals === "rich" || minerals === "ultraRich";
-  if (size === "tiny" || size === "small") return heavyMinerals ? "normal" : "low";
-  if (size === "huge") return "heavy";
-  return heavyMinerals && size === "large" ? "heavy" : "normal";
+  return GRAVITY_TABLE[minerals][PLANET_SIZES.indexOf(size)]!;
 }
 
-/** Relative frequency of star colors. */
-export const STAR_COLOR_WEIGHTS: Record<StarColor, number> = {
-  blue: 6, white: 10, yellow: 20, orange: 22, red: 34, brown: 3, blackHole: 5,
+/**
+ * Planets per star: a d10 roll by star colour (rolls 1..10). Black holes have
+ * none; brown dwarfs have one planet 30% of the time.
+ */
+export const PLANETS_PER_STAR_D10: Record<StarColor, number[]> = {
+  blue: [0, 1, 1, 2, 3, 3, 4, 4, 5, 5],
+  white: [0, 1, 1, 1, 2, 2, 3, 3, 4, 4],
+  yellow: [1, 2, 2, 2, 3, 3, 4, 4, 5, 5],
+  orange: [2, 2, 2, 3, 3, 4, 4, 5, 5, 5],
+  red: [0, 1, 1, 1, 2, 2, 2, 3, 3, 4],
+  brown: [0, 0, 0, 0, 0, 0, 0, 1, 1, 1],
+  blackHole: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 };
 
-/** Planet type weights by star color: hotter stars skew hostile, yellow skews temperate. */
-export const PLANET_TYPE_WEIGHTS: Record<StarColor, Partial<Record<PlanetType, number>>> = {
-  blue: { inferno: 18, radiated: 18, barren: 14, toxic: 12, asteroids: 14, gasGiant: 16, desert: 6, arid: 2 },
-  white: { inferno: 10, radiated: 12, barren: 12, toxic: 10, asteroids: 12, gasGiant: 14, desert: 10, arid: 8, tundra: 6, ocean: 3, terran: 3 },
-  yellow: { barren: 8, toxic: 8, radiated: 5, inferno: 5, asteroids: 10, gasGiant: 12, desert: 10, arid: 10, tundra: 8, swamp: 8, ocean: 7, terran: 7, gaia: 2 },
-  orange: { barren: 10, toxic: 10, radiated: 6, inferno: 4, asteroids: 10, gasGiant: 12, desert: 10, arid: 8, tundra: 10, swamp: 8, ocean: 6, terran: 5, gaia: 1 },
-  red: { barren: 16, toxic: 12, radiated: 6, inferno: 4, asteroids: 12, gasGiant: 12, tundra: 14, desert: 8, swamp: 6, arid: 4, ocean: 3, terran: 3 },
-  brown: { barren: 24, toxic: 14, radiated: 12, asteroids: 18, gasGiant: 14, tundra: 12, desert: 6 },
-  blackHole: {},
+/** Bodies orbiting a star: asteroid belts, gas giants and real planets. */
+export type BodyKind = "asteroids" | "gasGiant" | "planet";
+
+/** Which body an orbit holds: a d10 roll per orbit (orbits 1..5). Gas giants never form in orbit 1. */
+export const BODY_BY_ORBIT_D10: BodyKind[][] = [
+  ["asteroids", "asteroids", "planet", "planet", "planet", "planet", "planet", "planet", "planet", "planet"],
+  ["asteroids", "asteroids", "gasGiant", "planet", "planet", "planet", "planet", "planet", "planet", "planet"],
+  ["asteroids", "asteroids", "asteroids", "gasGiant", "gasGiant", "planet", "planet", "planet", "planet", "planet"],
+  ["asteroids", "asteroids", "gasGiant", "gasGiant", "gasGiant", "planet", "planet", "planet", "planet", "planet"],
+  ["asteroids", "gasGiant", "gasGiant", "gasGiant", "gasGiant", "gasGiant", "planet", "planet", "planet", "planet"],
+];
+
+/**
+ * Orbital zone of each orbit by star colour (0 scorched .. 3 frozen), which
+ * picks the climate table. Index 0 is the innermost orbit.
+ */
+export const ORBIT_ZONES: Record<StarColor, number[]> = {
+  blue: [0, 0, 0, 0, 1],
+  white: [0, 0, 1, 2, 3],
+  yellow: [0, 1, 2, 2, 3],
+  orange: [1, 2, 2, 2, 3],
+  red: [1, 2, 3, 3, 3],
+  brown: [0, 0, 1, 2, 3],
+  blackHole: [0, 0, 0, 0, 0],
 };
 
+/** The climates a real planet can be born with (the original has no inferno worlds). */
+export type NaturalClimate = "toxic" | "radiated" | "barren" | "desert" | "tundra" | "ocean" | "swamp" | "arid" | "terran" | "gaia";
+
+/**
+ * Climate weights by zone (0..3). Young and average galaxies share one table,
+ * old ("organic rich") galaxies have more habitable middle orbits.
+ */
+export const CLIMATE_BY_ZONE: { normal: Record<NaturalClimate, number>[]; organic: Record<NaturalClimate, number>[] } = {
+  normal: [
+    { toxic: 15, radiated: 55, barren: 25, desert: 5, tundra: 0, ocean: 0, swamp: 0, arid: 0, terran: 0, gaia: 0 },
+    { toxic: 15, radiated: 50, barren: 25, desert: 10, tundra: 5, ocean: 0, swamp: 0, arid: 0, terran: 0, gaia: 0 },
+    { toxic: 10, radiated: 15, barren: 10, desert: 10, tundra: 10, ocean: 10, swamp: 11, arid: 11, terran: 11, gaia: 2 },
+    { toxic: 20, radiated: 0, barren: 70, desert: 0, tundra: 8, ocean: 2, swamp: 0, arid: 0, terran: 0, gaia: 0 },
+  ],
+  organic: [
+    { toxic: 15, radiated: 40, barren: 20, desert: 25, tundra: 0, ocean: 0, swamp: 0, arid: 0, terran: 0, gaia: 0 },
+    { toxic: 5, radiated: 30, barren: 20, desert: 25, tundra: 20, ocean: 0, swamp: 0, arid: 0, terran: 0, gaia: 0 },
+    { toxic: 5, radiated: 8, barren: 8, desert: 13, tundra: 13, ocean: 13, swamp: 13, arid: 13, terran: 10, gaia: 4 },
+    { toxic: 20, radiated: 0, barren: 50, desert: 0, tundra: 30, ocean: 0, swamp: 0, arid: 0, terran: 0, gaia: 0 },
+  ],
+};
+
+/** Planet size weights, the same for every star. */
 export const PLANET_SIZE_WEIGHTS: Record<PlanetSize, number> = {
-  tiny: 12, small: 24, medium: 32, large: 22, huge: 10,
+  tiny: 10, small: 20, medium: 40, large: 20, huge: 10,
 };
 
+/** Minerals by star colour alone (in percent); galaxy age and nebulae do not change them. */
 export const MINERAL_WEIGHTS_BY_STAR: Record<StarColor, Partial<Record<Minerals, number>>> = {
-  blue: { poor: 10, abundant: 30, rich: 35, ultraRich: 25 },
-  white: { poor: 15, abundant: 40, rich: 30, ultraRich: 15 },
-  yellow: { ultraPoor: 10, poor: 25, abundant: 45, rich: 15, ultraRich: 5 },
-  orange: { ultraPoor: 10, poor: 30, abundant: 45, rich: 12, ultraRich: 3 },
-  red: { ultraPoor: 20, poor: 40, abundant: 35, rich: 5 },
-  brown: { ultraPoor: 35, poor: 40, abundant: 25 },
+  blue: { abundant: 40, rich: 40, ultraRich: 20 },
+  white: { poor: 20, abundant: 40, rich: 30, ultraRich: 10 },
+  yellow: { poor: 30, abundant: 40, rich: 20, ultraRich: 10 },
+  orange: { ultraPoor: 10, poor: 40, abundant: 40, rich: 10 },
+  red: { ultraPoor: 20, poor: 40, abundant: 40 },
+  brown: { poor: 10, abundant: 50, rich: 30, ultraRich: 10 },
   blackHole: {},
-};
-
-export const PLANETS_PER_STAR: Record<StarColor, [number, number]> = {
-  blue: [1, 4], white: [1, 5], yellow: [1, 5], orange: [1, 5], red: [0, 4], brown: [0, 0], blackHole: [0, 0],
 };

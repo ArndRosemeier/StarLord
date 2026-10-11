@@ -5,7 +5,7 @@ import type { Minerals } from "./planets.js";
 export interface BuildingEffects {
   foodFlat?: number;
   foodPerFarmer?: number;
-  /** The per-farmer bonus needs real soil: no effect on barren, radiated, toxic or inferno worlds. */
+  /** The per-farmer bonus needs real soil: no effect on barren, radiated or toxic worlds. */
   needsSoil?: boolean;
   industryFlat?: number;
   industryPerWorker?: number;
@@ -157,7 +157,7 @@ export const BUILDINGS: BuildingDef[] = [
   { id: "subterraneanFarms", name: "Subterranean Farms", cost: 150, maintenance: 4, requires: "subterraneanFarms",
     effects: { foodFlat: 4 }, description: "+4 food." },
   { id: "soilEnrichment", name: "Soil Enrichment", cost: 120, maintenance: 0, requires: "soilEnrichment",
-    effects: { foodPerFarmer: 1, needsSoil: true }, description: "+1 food per farmer. Useless on barren, radiated, toxic and inferno worlds." },
+    effects: { foodPerFarmer: 1, needsSoil: true }, description: "+1 food per farmer. Useless on barren, radiated and toxic worlds." },
   { id: "weatherController", name: "Weather Controller", cost: 200, maintenance: 3, requires: "weatherControl",
     effects: { foodPerFarmer: 2 }, description: "+2 food per farmer." },
   { id: "foodReplicators", name: "Food Replicators", cost: 200, maintenance: 10, requires: "foodReplicators",

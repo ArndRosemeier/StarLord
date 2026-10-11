@@ -1,14 +1,14 @@
-import { GUARDIAN_RANDOM_XENON, LAIR_MONSTERS, MONSTER_DESIGNS } from "./data/monsters.js";
+import { GUARDIAN_RANDOM_XENON, LAIR_MONSTERS, LAIR_PLANET_UPGRADE, MONSTER_DESIGNS } from "./data/monsters.js";
+import { LAIR_PLACEMENT_TRIES } from "./data/galaxy.js";
+import { gravityOf } from "./data/planets.js";
 import { TIER_OF_TECH, XENON_FIELD_TECHS, emptyHyperLevels } from "./data/techs.js";
 import { grantTech } from "./empire.js";
 import { newId, type TurnContext } from "./context.js";
-import { distance } from "./galaxy.js";
-import { maxPopulation } from "./economy.js";
-import { getRace } from "./data/races.js";
+import { atLeastMinerals, atLeastSize, distance, isRealPlanet, rollPlanet } from "./galaxy.js";
 import { heroJoins } from "./leaders.js";
 import { setupRaiders } from "./raiders.js";
 import type { Rng } from "./rng.js";
-import type { Fleet, GameState, Player, Star } from "./types.js";
+import type { Fleet, GalaxyAge, GameState, Id, Planet, Player, Star } from "./types.js";
 
 /** Monsters, Orion's guardian and the raiders from another dimension. */
 
@@ -60,54 +60,57 @@ export function raidersId(state: GameState): number | null {
   return state.players.find((p) => p.kind === "raiders")?.id ?? null;
 }
 
-/** Adds NPC players, Orion, monster lairs and the raiders' hidden home. */
-export function setupNpcs(state: GameState, rng: Rng): void {
+/**
+ * Adds NPC players, the Guardian at Orion (placed during setup), the
+ * monster lairs and the raiders' hidden home. Lairs go to random stars with
+ * planets that are not homes, Orion, black holes, colonised or in `avoid`,
+ * spread at least sqrt((W^2 + H^2) / (2 k)) apart for k lairs; each holds a
+ * random monster and keeps its star's own special. Returns the lair stars.
+ */
+export function setupNpcs(state: GameState, rng: Rng, lairs = 0, avoid: Set<Id> = new Set()): Set<Id> {
   const homes = state.players.filter((p) => p.kind === "empire").map((p) => state.galaxy.stars.find((s) => s.id === p.homeStarId)!);
-  const nearHome = (s: Star, r: number) => homes.some((h) => distance(h, s) < r);
+  const placed: Star[] = [];
 
   if (state.settings.monsters) {
     const monsters = npcPlayer(state.players.length, "monsters");
     state.players.push(monsters);
+    const orion = state.galaxy.stars.find((s) => s.special === "orion");
+    if (orion) spawn(state, monsters.id, orion, [{ designId: "guardian", count: 1 }], "The Guardian");
 
-    // Orion: the star nearest the galaxy's center that isn't someone's home.
-    const center = { x: state.galaxy.width / 2, y: state.galaxy.height / 2 };
-    const orion = state.galaxy.stars
-      .filter((s) => !homes.includes(s))
-      .sort((a, b) => distance(a, center) - distance(b, center))[0];
-    if (orion) {
-      orion.special = "orion";
-      orion.name = "Orion";
-      orion.color = "white";
-      orion.nebula = false;
-      for (const pid of orion.planetIds) delete state.planets[pid];
-      const p = {
-        id: newId(state, "p"), starId: orion.id, orbit: 3, type: "gaia" as const, size: "huge" as const,
-        minerals: "ultraRich" as const, gravity: "heavy" as const, special: "artifacts" as const, colonyId: null,
-      };
-      state.planets[p.id] = p;
-      orion.planetIds = [p.id];
-      spawn(state, monsters.id, orion, [{ designId: "guardian", count: 1 }], "The Guardian");
-    }
-
-    const terran = getRace("terran");
-    const maxHome = Math.max(...state.galaxy.stars.map((s) => Math.min(...homes.map((h) => distance(h, s)))));
-    for (const star of state.galaxy.stars) {
-      if (star.special || star.color === "blackHole" || homes.includes(star) || nearHome(star, 5)) continue;
-      const value = star.planetIds.reduce((sum, id) => sum + maxPopulation(state.planets[id]!, terran), 0);
-      if (value < 8 || !rng.chance(0.25)) continue;
-      const depth = Math.min(...homes.map((h) => distance(h, star))) / maxHome;
-      const idx = Math.min(LAIR_MONSTERS.length - 1, Math.floor(depth * LAIR_MONSTERS.length + rng.next() * 1.5 - 0.5));
-      const designId = LAIR_MONSTERS[Math.max(0, idx)]!;
+    const candidates = state.galaxy.stars.filter((s) => !s.special && s.color !== "blackHole" && !homes.includes(s) && !avoid.has(s.id)
+      && s.planetIds.length > 0 && !s.planetIds.some((id) => state.planets[id]!.colonyId));
+    const spacing = Math.sqrt((state.galaxy.width ** 2 + state.galaxy.height ** 2) / (2 * Math.max(1, lairs)));
+    const age = state.settings.galaxyAge ?? "average";
+    for (let n = 0; n < lairs && candidates.length > 0; n++) {
+      let star: Star | null = null;
+      for (let t = 0; t < LAIR_PLACEMENT_TRIES && !star; t++) {
+        const s = rng.pick(candidates);
+        if (!placed.includes(s) && placed.every((o) => distance(o, s) >= spacing)) star = s;
+      }
+      if (!star) continue;
+      placed.push(star);
+      const designId = rng.pick(LAIR_MONSTERS);
       const design = MONSTER_DESIGNS.find((d) => d.id === designId)!;
       spawn(state, monsters.id, star, [{ designId, count: 1 }], design.name);
-      // Lairs guard treasure: a monster system always has a second special.
-      const best = star.planetIds.map((id) => state.planets[id]!).find((p) => p.special === "none" && !p.colonyId);
-      if (best) best.special = rng.pick(["gold", "gems", "artifacts"] as const);
-
+      upgradeLairPlanet(state, rng, star, designId, age);
     }
   }
 
   if (state.settings.raiders) setupRaiders(state, rng);
+  return new Set(placed.map((s) => s.id));
+}
+
+/** The planet a monster guards is raised as LAIR_PLANET_UPGRADE says. */
+function upgradeLairPlanet(state: GameState, rng: Rng, star: Star, designId: string, age: GalaxyAge): void {
+  const up = LAIR_PLANET_UPGRADE[designId];
+  if (!up) return;
+  const old = state.planets[rng.pick(star.planetIds)]!;
+  const p: Planet = isRealPlanet(old) ? { ...old } : { ...rollPlanet(rng, star, old.orbit, old.id, age, "planet"), special: old.special };
+  p.size = atLeastSize(p.size, up.size);
+  p.minerals = atLeastMinerals(p.minerals, up.minerals);
+  if (up.climate && !(up.climate === "terran" && p.type === "gaia")) p.type = up.climate;
+  p.gravity = gravityOf(p.size, p.minerals);
+  state.planets[p.id] = p;
 }
 
 /**

@@ -62,8 +62,10 @@ describe("research rules", () => {
     let s = game();
     s.players[0]!.research.progress = 1000;
     s = processTurn(s, { 0: [{ type: "setResearch", tierId: "astroBiology", techId: "biospheres" }] });
+    // Far past twice the cost: a sure breakthrough, and the points are spent.
     expect(s.players[0]!.tiers).toContain("astroBiology");
-    expect(s.players[0]!.research.progress).toBe(1000);
+    expect(s.players[0]!.techs).toContain("biospheres");
+    expect(s.players[0]!.research.progress).toBe(0);
   });
 
   it("loses the points of a turn with no field chosen", () => {

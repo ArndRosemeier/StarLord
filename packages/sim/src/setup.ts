@@ -1,10 +1,14 @@
-import { STARTING_SHIPS, STARTING_STATION, TECH_LEVELS } from "./data/galaxy.js";
+import {
+  ADVANCED_START, FIRST_FIELDS, HOME_GALAXY_TRIES, STARTING_SHIPS, STARTING_STATION, TECH_LEVELS,
+} from "./data/galaxy.js";
 import { GOVERNMENTS } from "./data/governments.js";
-import { gravityOf, type Minerals, type PlanetSize, type PlanetType } from "./data/planets.js";
-import { RACES, getRace, hasTrait } from "./data/races.js";
-import { STARTING_TECH_APPS, TECH_TIERS, emptyHyperLevels, type TechTier } from "./data/techs.js";
+import { RACES, getRace, hasTrait, type RaceDef } from "./data/races.js";
+import { STARTING_TECH_APPS, TECH_TIERS, TIERS_BY_ID, emptyHyperLevels, type TechTier } from "./data/techs.js";
 import { startingDesigns } from "./designs.js";
-import { distance, generateGalaxy, pickHomeStars, placeNebulae, placeSpecials } from "./galaxy.js";
+import {
+  buildHomeSystem, distance, generateGalaxy, guaranteeNeighbours, linkWormholes, pickHomeStars, placeNebulae, placeOrion,
+  type GeneratedGalaxy,
+} from "./galaxy.js";
 import { assignDefaultJobs } from "./jobs.js";
 import { buildCustomRace, type CustomRaceSpec } from "./customRace.js";
 import { createRoster } from "./leaders.js";
@@ -14,7 +18,7 @@ import { maxPopulation } from "./economy.js";
 import { learnsWholeField, researchOptions } from "./rules.js";
 import { Rng, seedRng } from "./rng.js";
 import type {
-  Colony, Difficulty, Fleet, GalaxyAge, GameSettings, GameState, Id, Planet, Player, PlayerId, TechLevel,
+  Colony, Difficulty, Fleet, GalaxyAge, GameSettings, GameState, Id, Planet, Player, PlayerId, Star, TechLevel,
 } from "./types.js";
 
 export interface NewGameOptions {
@@ -46,6 +50,9 @@ export const HOMEWORLD_POP = 8;
 export const STARTING_BC = 50;
 export const HOMEWORLD_BUILDINGS = [STARTING_STATION, ...TECH_LEVELS.average.buildings];
 
+/** Galaxies rolled before giving up (only reachable with a broken setup). */
+const MAX_GALAXY_TRIES = 1000;
+
 export function newGame(opts: NewGameOptions): GameState {
   const seed = String(opts.seed);
   const rngState = seedRng(seed);
@@ -75,10 +82,28 @@ export function newGame(opts: NewGameOptions): GameState {
   if (opts.debug) settings.debug = true;
   if (customRaces.length > 0) settings.customRaces = customRaces;
   const level = TECH_LEVELS[settings.techLevel!];
+  const size = settings.galaxySize;
+  const age = settings.galaxyAge!;
 
-  const galaxy = generateGalaxy(rng, settings.galaxySize, newId, settings.galaxyAge);
-  const homes = pickHomeStars(rng, galaxy.stars, playerCount);
-  const nebulae = placeNebulae(rng, settings.galaxySize, galaxy.width, galaxy.height, galaxy.stars, galaxy.planets, homes);
+  // Roll galaxies until the stars fit and the homes can be spread out, as the original does.
+  let galaxy: GeneratedGalaxy | null = null;
+  let picked: Star[] | null = null;
+  const firstId = nextId;
+  for (let attempt = 0; !picked; attempt++) {
+    if (attempt >= MAX_GALAXY_TRIES) throw new Error("could not generate a galaxy");
+    nextId = firstId;
+    galaxy = generateGalaxy(rng, size, newId, age, settings.difficulty);
+    if (galaxy) picked = pickHomeStars(rng, galaxy.stars, playerCount, size, galaxy.width, galaxy.height, attempt >= HOME_GALAXY_TRIES);
+  }
+  const g = galaxy!;
+  const homes = picked!;
+  const raceDefs = races.map(getRace);
+  const homeworlds = raceDefs.map((race, i) => buildHomeSystem(rng, homes[i]!, g.planets, race, age, newId));
+  const guaranteed = guaranteeNeighbours(
+    rng, size, g.stars, g.planets, homes, homeworlds, raceDefs.map((r) => !hasTrait(r, "lithovore")), age, newId,
+  );
+  const orion = settings.monsters ? placeOrion(rng, g.stars, g.planets, homes, guaranteed, g.width, g.height, newId) : null;
+  const nebulae = placeNebulae(rng, size, g.width, g.height, g.stars, g.planets, orion ? [...homes, orion] : homes, age, newId);
 
   const state: GameState = {
     version: 2,
@@ -86,8 +111,8 @@ export function newGame(opts: NewGameOptions): GameState {
     rng: rngState,
     turn: 1,
     settings,
-    galaxy: { width: galaxy.width, height: galaxy.height, stars: galaxy.stars },
-    planets: galaxy.planets,
+    galaxy: { width: g.width, height: g.height, stars: g.stars },
+    planets: g.planets,
     colonies: {},
     fleets: {},
     players: [],
@@ -109,28 +134,9 @@ export function newGame(opts: NewGameOptions): GameState {
   };
 
   races.forEach((raceId, i) => {
-    const race = getRace(raceId);
+    const race = raceDefs[i]!;
     const home = homes[i]!;
-    home.color = "yellow";
-    home.nebula = false;
-
-    // Replace a middle orbit with the homeworld so every start is comparable.
-    const size: PlanetSize = hasTrait(race, "largeHomeworld") ? "large" : "medium";
-    const minerals: Minerals = hasTrait(race, "richHomeworld") ? "rich" : hasTrait(race, "poorHomeworld") ? "poor" : "abundant";
-    const type: PlanetType = hasTrait(race, "aquatic") ? "ocean" : "terran";
-    const hw: Planet = {
-      id: newId("p"), starId: home.id, orbit: 3, type, size, minerals,
-      // Home gravity always suits the race.
-      gravity: hasTrait(race, "lowG") ? "low" : hasTrait(race, "highG") ? "heavy" : gravityOf("medium", "abundant"),
-      special: hasTrait(race, "artifactsHomeworld") ? "artifacts" : "none",
-      colonyId: null,
-    };
-    if (hw.special === "artifacts") hw.artifactsClaimed = true;
-    for (const pid of home.planetIds) {
-      if (state.planets[pid]!.orbit === 3) delete state.planets[pid];
-    }
-    home.planetIds = home.planetIds.filter((pid) => state.planets[pid]).concat(hw.id);
-    state.planets[hw.id] = hw;
+    const hw = homeworlds[i]!;
 
     const player: Player = {
       id: i,
@@ -141,7 +147,7 @@ export function newGame(opts: NewGameOptions): GameState {
       isHuman: settings.humanPlayers.includes(i),
       alive: true,
       government: race.picks.government,
-      bc: level.bc,
+      bc: level.bc ?? advancedBc(race),
       taxRate: 0,
       techs: [...STARTING_TECH_APPS],
       tiers: [],
@@ -169,7 +175,7 @@ export function newGame(opts: NewGameOptions): GameState {
 
     const colony: Colony = {
       id: newId("c"), planetId: hw.id, ownerId: i, raceId, name: home.name, outpost: false,
-      farmers: 0, workers: HOMEWORLD_POP, scientists: 0, growthK: 0,
+      farmers: 0, workers: level.advancedPop ? advancedHomePop(hw, race) : HOMEWORLD_POP, scientists: 0, growthK: 0,
       // Unified governments neither have nor need a capital.
       buildings: [...(needsCapitol ? ["capitol"] : []), STARTING_STATION, ...level.buildings], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
     };
@@ -197,7 +203,7 @@ export function newGame(opts: NewGameOptions): GameState {
     for (let n = 0; n < level.extraColonies; n++) {
       const race = getRace(player.raceId);
       const options = state.galaxy.stars
-        .filter((s) => distance(s, home) <= 6 && !homes.some((h) => h !== home && distance(h, s) < distance(home, s)))
+        .filter((s) => s.special !== "orion" && distance(s, home) <= 6 && !homes.some((h) => h !== home && distance(h, s) < distance(home, s)))
         .flatMap((s) => s.planetIds.map((id) => state.planets[id]!))
         .filter((p) => !p.colonyId && p.special !== "natives" && p.special !== "splinter" && maxPopulation(p, race) >= level.extraColonyPop)
         .sort((a, b) => maxPopulation(b, race) - maxPopulation(a, race) || (a.id < b.id ? -1 : 1));
@@ -217,8 +223,8 @@ export function newGame(opts: NewGameOptions): GameState {
   }
 
   state.nextId = nextId;
-  setupNpcs(state, rng);
-  placeSpecials(rng, state.galaxy.stars, state.planets, homes);
+  const lairs = setupNpcs(state, rng, g.lairs, guaranteed);
+  linkWormholes(rng, size, state.galaxy.stars, state.planets, homes, g.wormholes, lairs);
   createRoster(state, rng);
   for (const p of state.players) {
     if (p.kind === "empire" && hasTrait(getRace(p.raceId), "omniscient")) {
@@ -228,30 +234,40 @@ export function newGame(opts: NewGameOptions): GameState {
   return state;
 }
 
+/** Advanced start BC: (money pick level + 2) x 100, the levels being -1, 0, 1 and 2 for -1/2, 0, +1/2 and +1 BC. */
+export function advancedBc(race: RaceDef): number {
+  return (Math.round(race.picks.money * 2) + ADVANCED_START.moneyLevelOffset) * ADVANCED_START.bcPerMoneyLevel;
+}
+
+/** Advanced start homeworld population (see ADVANCED_START). */
+export function advancedHomePop(hw: Planet, race: RaceDef): number {
+  const max = maxPopulation(hw, race);
+  let pop = Math.floor((race.picks.growth * 100 + ADVANCED_START.popBase) * max * ADVANCED_START.popScale);
+  if (max < ADVANCED_START.smallMax) pop = Math.floor((pop + max) / 2);
+  return Math.max(ADVANCED_START.minPop, pop);
+}
+
 /**
- * Researched fields at the start. Pre-warp knows only the starting
- * applications; average adds every general field plus a few random extras;
- * advanced adds every field up to a tech level. Non-general fields teach the
- * race's usual share: all for creative races, otherwise one random application.
+ * Researched fields at the start: the first FIRST_FIELDS (Engineering only
+ * pre-warp, all six otherwise) with every application, then for advanced
+ * starts further fields picked cheapest first (ties at random), each with one
+ * random application or all of them for creative races.
  */
 export function grantStartingTechs(rng: Rng, player: Player, techLevel: TechLevel): void {
   const def = TECH_LEVELS[techLevel];
-  const learn = (tier: TechTier) => {
+  const learn = (tier: TechTier, whole: boolean) => {
     if (player.tiers.includes(tier.id)) return;
     player.tiers.push(tier.id);
     const options = researchOptions(player, tier);
-    const apps = learnsWholeField(player, tier) ? options : options.length ? [rng.pick(options)] : [];
+    const apps = whole ? options : options.length ? [rng.pick(options)] : [];
     for (const t of apps) if (!player.techs.includes(t)) player.techs.push(t);
   };
-  for (const tier of TECH_TIERS) {
-    if (tier.hyper) continue;
-    if ((def.generalFields && tier.general) || tier.level <= def.maxFieldLevel) learn(tier);
-  }
-  for (let i = 0; i < def.extraFields; i++) {
-    const next = TECH_TIERS.filter(
-      (t) => !t.hyper && !player.tiers.includes(t.id) && t.level <= def.extraMaxLevel && (t.prev === null || player.tiers.includes(t.prev)),
-    );
+  for (const id of FIRST_FIELDS.slice(0, def.firstFields)) learn(TIERS_BY_ID[id]!, true);
+  for (let i = 0; i < def.pickedFields; i++) {
+    const next = TECH_TIERS.filter((t) => !t.hyper && !player.tiers.includes(t.id) && (t.prev === null || player.tiers.includes(t.prev)));
     if (next.length === 0) break;
-    learn(rng.pick(next));
+    const cheapest = Math.min(...next.map((t) => t.cost));
+    const tier = rng.pick(next.filter((t) => t.cost === cheapest));
+    learn(tier, learnsWholeField(player, tier));
   }
 }

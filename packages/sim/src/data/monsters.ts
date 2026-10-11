@@ -1,5 +1,6 @@
 import type { ShipDesign } from "../types.js";
 import type { WeaponDef } from "./components.js";
+import type { Minerals, PlanetSize, PlanetType } from "./planets.js";
 
 /**
  * Space monsters guard rich systems and Orion's guardian holds the best planet
@@ -31,8 +32,22 @@ export const NPC_WEAPONS: WeaponDef[] = [
   { id: "monsterFire", name: "Stellar Breath", kind: "beam", damageMin: 15, damageMax: 45, space: 0, cost: 0, traits: ["doubleRangePenalty"], mods: [], requires: "never" },
 ];
 
-/** Monster mix by how deep into the galaxy (0..1 of max home distance) a lair is. */
+/** Monsters that guard lairs; each lair gets one at random. */
 export const LAIR_MONSTERS = ["voidAmoeba", "latticeCrystal", "ionEel", "starHydra", "starWyrm"];
+
+/**
+ * What a lair's guarded planet is raised to (an asteroid belt or gas giant
+ * there becomes a real planet first). The original raises size to medium or
+ * large and minerals to rich or ultra rich, and some monsters' planets to a
+ * terran or Gaia climate; which monster gets which is our reading.
+ */
+export const LAIR_PLANET_UPGRADE: Record<string, { size: PlanetSize; minerals: Minerals; climate?: PlanetType }> = {
+  voidAmoeba: { size: "medium", minerals: "rich" },
+  latticeCrystal: { size: "medium", minerals: "ultraRich" },
+  ionEel: { size: "medium", minerals: "rich", climate: "terran" },
+  starHydra: { size: "large", minerals: "rich", climate: "terran" },
+  starWyrm: { size: "large", minerals: "ultraRich", climate: "gaia" },
+};
 
 /**
  * Slaying the Guardian: Loknar's ship carries the Death Ray plus up to this many

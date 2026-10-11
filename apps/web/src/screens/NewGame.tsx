@@ -3,7 +3,7 @@ import { difficultyText, galaxyAgeText, governmentTip, pickText, techLevelText, 
 import { COUNCIL, RAID_GRACE_TURNS, type NumericPick } from "@starlord/sim";
 import { useMemo, useState } from "react";
 import {
-  DIFFICULTIES, DIFFICULTY_ORDER, RACES, STAR_COUNTS, TRAIT_COSTS, getRace, type CustomRaceSpec, type Difficulty, type GalaxyAge, type GalaxySize,
+  DIFFICULTIES, DIFFICULTY_ORDER, RACES, STAR_COUNTS, mapSize, TRAIT_COSTS, getRace, type CustomRaceSpec, type Difficulty, type GalaxyAge, type GalaxySize,
   type TechLevel,
 } from "@starlord/sim";
 import { customRaceDefs, loadCustomRaces, saveCustomRaces } from "../game/customRaces";
@@ -156,7 +156,7 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
           <div className="panel col" style={{ marginTop: 8 }}>
             <div className="row">
               <label>Galaxy size <select value={galaxy} onChange={(e) => setGalaxy(e.target.value as GalaxySize)}>
-                {(["small", "medium", "large", "huge"] as const).map((g) => <option key={g} value={g}>{words(g)} · {STAR_COUNTS[g]} stars</option>)}
+                {(["small", "medium", "large", "huge"] as const).map((g) => <option key={g} value={g}>{words(g)} · {STAR_COUNTS[g]} stars · {Math.round(mapSize(g).width)}×{Math.round(mapSize(g).height)} pc</option>)}
               </select></label>
               <label>Galaxy age <select value={galaxyAge} onChange={(e) => setGalaxyAge(e.target.value as GalaxyAge)}>
                 {(["young", "average", "old"] as const).map((a) => <option key={a} value={a}>{words(a)}</option>)}

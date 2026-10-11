@@ -31,7 +31,7 @@ const BUILDING: Explain<BuildingEffects> = {
   industryPerWorker: (v) => `${signed(v)} industry per worker`,
   researchFlat: (v) => `${signed(v)} research`,
   researchPerScientist: (v) => `${signed(v)} research per scientist`,
-  needsSoil: () => "only on worlds with soil (not barren, radiated, toxic or inferno)",
+  needsSoil: () => "only on worlds with soil (not barren, radiated or toxic)",
   industryByMinerals: (v) => `industry by minerals: ${Object.values(v).map((x) => signed(x)).join(" / ")} (ultra poor to ultra rich)`,
   industryPerPop: (v) => `${signed(v)} industry per population unit, whatever its job; it never pollutes`,
   maxPopFlat: (v) => `${signed(v)} max population`,
