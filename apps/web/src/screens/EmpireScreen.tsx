@@ -53,6 +53,7 @@ export function EmpireScreen() {
                 </td>
               </tr>
               <tr><td>Colony income</td><td className="bc">{signed(income.colonies, 1)} BC</td></tr>
+              {income.treaties !== 0 && <tr><td>Trade treaties</td><td className={income.treaties < 0 ? "bad" : "bc"}>{signed(income.treaties, 1)} BC</td></tr>}
               {income.foodSales > 0 && <tr><td>Surplus food sold</td><td className="bc">{signed(income.foodSales, 1)} BC</td></tr>}
               <tr><td>Building upkeep</td><td>{signed(-income.maintenance, 1)} BC</td></tr>
               {income.freighters > 0 && <tr><td>Freighters in use</td><td>{signed(-income.freighters, 1)} BC</td></tr>}

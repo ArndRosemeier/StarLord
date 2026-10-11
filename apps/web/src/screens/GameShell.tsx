@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  availableTiers, commandPointsAvailable, commandPointsUsed, empireIncome, empireTotals, empires, treatyIncome,
+  availableTiers, commandPointsAvailable, commandPointsUsed, empireIncome, empireTotals, empires, treatyIncome, treatyTotals,
   TIERS_BY_ID, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -52,7 +52,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 
 /** Research points per turn including treaty bonuses. */
 export function researchPerTurn(view: PlayerView): number {
-  const totals = new Map(empires(view).map((p) => [p.id, empireTotals(view, p.id)]));
+  const totals = treatyTotals(view);
   return (totals.get(view.viewer)?.research ?? 0) + treatyIncome(view, view.viewer, totals).research;
 }
 

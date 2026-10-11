@@ -594,9 +594,23 @@ function tradeMult(state: GameState, playerId: PlayerId): number {
   return pirated ? 0 : treatyIncomeMult(getRace(state.players[playerId]!.raceId)) + leaderTradeBonus(state, playerId) / 100;
 }
 
+/**
+ * Population and research of every empire as `state` knows them, for treaty
+ * yields. In a player's view, a treaty partner's population comes from
+ * `knownPopulation`, since their colonies may be out of sight.
+ */
+export function treatyTotals(state: GameState): Map<PlayerId, { population: number; research: number }> {
+  const known = (state as { knownPopulation?: Record<PlayerId, number> }).knownPopulation ?? {};
+  return new Map(empires(state).map((p) => {
+    const t = empireTotals(state, p.id);
+    return [p.id, { population: known[p.id] ?? t.population, research: t.research }];
+  }));
+}
+
 /** What a new trade or research treaty between a and b would yield a each turn once at full strength. */
 export function treatyPotential(state: GameState, a: PlayerId, b: PlayerId, kind: "trade" | "research"): number {
-  const pop = Math.min(empireTotals(state, a).population, empireTotals(state, b).population);
+  const totals = treatyTotals(state);
+  const pop = Math.min(totals.get(a)?.population ?? 0, totals.get(b)?.population ?? 0);
   return TREATY_YIELD[kind].perPop * pop * (kind === "trade" ? tradeMult(state, a) : 1);
 }
 

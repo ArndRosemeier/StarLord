@@ -1,5 +1,5 @@
 import {
-  ATTITUDE, ATTITUDE_EVENTS, PEACE_TREATY_TURNS, TREATY_YIELD, empireTotals, empires, isDemand, relation, treatyPotential,
+  ATTITUDE, ATTITUDE_EVENTS, PEACE_TREATY_TURNS, TREATY_YIELD, empireTotals, empires, isDemand, relation, treatyPotential, treatyTotals,
   treatyYield, tributeAmount, type PlayerView, type Proposal, type ProposalKind, type TreatyName,
 } from "@starlord/sim";
 import { fmt, playerName, signed, starName } from "../ui/format";
@@ -95,7 +95,7 @@ export function incomingEffect(view: PlayerView, p: Proposal): { accept: string;
 
 /** Whether the viewer has seen any of their colonies, so their population is known. */
 function theirPopKnown(view: PlayerView, them: number): boolean {
-  return Object.values(view.colonies).some((c) => c.ownerId === them);
+  return view.knownPopulation?.[them] !== undefined || Object.values(view.colonies).some((c) => c.ownerId === them);
 }
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -120,7 +120,7 @@ export function warEffect(view: PlayerView, me: number, them: number): string {
 
 /** What ending one of your treaties with them costs. */
 export function endTreatyEffect(view: PlayerView, me: number, them: number, treaty: TreatyName): string {
-  const totals = new Map(empires(view).map((p) => [p.id, empireTotals(view, p.id)]));
+  const totals = treatyTotals(view);
   const y = treatyYield(view, me, them, totals);
   switch (treaty) {
     case "trade":
@@ -151,7 +151,7 @@ export const SURRENDER_EFFECT = "All your colonies, ships, leaders and treasury 
 export function activeEffects(view: PlayerView, me: number, them: number): { label: string; text: string; tone?: "good" | "bad" }[] {
   const r = relation(view, me, them);
   const out: { label: string; text: string; tone?: "good" | "bad" }[] = [];
-  const totals = new Map(empires(view).map((p) => [p.id, empireTotals(view, p.id)]));
+  const totals = treatyTotals(view);
   const y = treatyYield(view, me, them, totals);
   const ramp = (since: number, kind: "trade" | "research") => {
     const left = TREATY_YIELD[kind].full - (view.turn - since);
