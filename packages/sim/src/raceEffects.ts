@@ -1,4 +1,4 @@
-import { CLIMATES, SIZE_FACTOR, type PlanetSize, type PlanetType } from "./data/planets.js";
+import { CLIMATES, SIZE_FACTOR, climatePopulation, type PlanetSize, type PlanetType } from "./data/planets.js";
 import { PICK_VALUES, TRAIT_EFFECTS } from "./data/racePicks.js";
 import { hasTrait, type RaceDef } from "./data/races.js";
 
@@ -43,22 +43,19 @@ export function raceClimate(race: RaceDef, type: PlanetType): PlanetType {
 }
 
 /**
- * Max population per size class for a race on a planet type, before
- * buildings and techs: aquatic climate shift, tolerant races treat every
- * habitable climate at least as terran, subterranean add 2 per size class.
+ * Racial max population of a planet before buildings and techs: the climate's
+ * share of the size's full population, rounded half up. Aquatic races shift
+ * the climate, tolerant races add 25 points (at most 100), subterranean races
+ * add 2 per size class.
  */
-export function racePopPerSize(race: RaceDef, type: PlanetType): number {
+export function raceMaxPopulation(race: RaceDef, type: PlanetType, size: PlanetSize): number {
   const climate = CLIMATES[raceClimate(race, type)];
   if (!climate.habitable) return 0;
-  let per = climate.popPerSize;
-  if (hasTrait(race, "tolerant")) per = Math.max(per, CLIMATES.terran.popPerSize);
-  if (hasTrait(race, "subterranean")) per += TRAIT_EFFECTS.subterraneanPopPerSize;
-  return per;
-}
-
-/** Racial max population of a planet before buildings and techs. */
-export function raceMaxPopulation(race: RaceDef, type: PlanetType, size: PlanetSize): number {
-  return racePopPerSize(race, type) * SIZE_FACTOR[size];
+  let percent = climate.popPercent;
+  if (hasTrait(race, "tolerant")) percent = Math.min(100, percent + TRAIT_EFFECTS.tolerantPopPercent);
+  let pop = climatePopulation(percent, size);
+  if (hasTrait(race, "subterranean")) pop += TRAIT_EFFECTS.subterraneanPopPerSize * SIZE_FACTOR[size];
+  return pop;
 }
 
 /** Base food per farmer for a race on a planet type, with the aquatic climate shift (racial farming pick not included). */

@@ -12,8 +12,8 @@ function play(state: GameState, onTurn?: (s: GameState) => void): GameState {
   return state;
 }
 
-/** Rejections that come from two empires acting in the same turn, not from bad AI logic. */
-const CONTESTED = ["already colonized", "no longer possible"];
+/** Rejections that come from two empires acting in the same turn (both proposing the same treaty), not from bad AI logic. */
+const CONTESTED = ["already colonized", "no longer possible", "already sharing research", "already pledged"];
 
 describe("AI", () => {
   it("rarely issues commands the sim rejects", () => {

@@ -1,5 +1,5 @@
 import { BUILDINGS_BY_ID } from "./data/buildings.js";
-import { FREIGHTERS, TAX_STEPS } from "./data/economy.js";
+import { BUY_PRICE_PER_POINT, FREIGHTERS, TAX_STEPS } from "./data/economy.js";
 import { CLIMATES } from "./data/planets.js";
 import { TIERS_BY_ID } from "./data/techs.js";
 import { hullIndex } from "./data/components.js";
@@ -382,10 +382,26 @@ export function termsOf(x: ProposalTerms): ProposalTerms {
 }
 
 
-/** MoO2 buy price: double the remaining cost, quadruple if nothing has been spent yet. */
+/**
+ * MoO2 buy price for the rest of the current item: each missing point costs
+ * 2 BC in the item's last half, 5 BC between 10% and half done, and 10 BC
+ * below 10%, so buying from scratch costs about four times the item.
+ */
 export function buyCost(state: GameState, colony: Colony): number {
   const head = colony.queue[0];
   if (!head) return Infinity;
-  const remaining = Math.max(0, itemCost(state, colony.ownerId, head, colony) - colony.progress);
-  return Math.ceil(remaining * (colony.progress > 0 ? 2 : 4));
+  const cost = itemCost(state, colony.ownerId, head, colony);
+  if (!Number.isFinite(cost)) return Infinity;
+  return buyPrice(cost, colony.progress);
+}
+
+export function buyPrice(cost: number, progress: number): number {
+  const p = Math.floor(progress);
+  if (p >= cost) return 0;
+  const half = Math.trunc(cost / 2);
+  const tenth = Math.trunc(cost / 10);
+  const [late, mid, early] = BUY_PRICE_PER_POINT;
+  if (p >= half) return late * (cost - p);
+  if (p >= tenth) return late * (cost - half) + mid * (half - p);
+  return late * (cost - half) + mid * (half - tenth) + early * (tenth - p);
 }

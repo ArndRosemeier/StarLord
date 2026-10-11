@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES } from "@starlord/ai";
 import {
-  ANDROIDS, ASSIMILATION, AUDIENCE_ITEMS, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PRODUCTION, BOMB_DAMAGE_PER_POP,
+  ANDROIDS, ASSIMILATION, AUDIENCE_ITEMS, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_POP,
   BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE, CAPTURE_THRESHOLD, COMMAND_OVERAGE_COST, COUNCIL, COUNCIL_FIRST,
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, EVENT_CHANCE, EVENT_START, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP,
@@ -109,8 +109,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Industry, after pollution and taxes, goes into the colony's build queue (up to {MAX_QUEUE} items). A colony
         finishes at most one item per turn; extra production carries into the next. With an empty queue, or with
         Trade Goods first, production becomes BC at {pct(TRADE_GOODS_RATE)}. Housing turns production into population
-        growth instead. <b>Buy</b> completes the first item for BC: twice the remaining cost, or four times if nothing
-        has been spent on it yet. While an enemy fleet blockades the system, production there is halved.
+        growth instead. <b>Buy</b> completes the first item for BC: each missing point costs {BUY_PRICE_PER_POINT[0]} BC in the
+        item's last half, {BUY_PRICE_PER_POINT[1]} BC from 10% to half done and {BUY_PRICE_PER_POINT[2]} BC below 10%,
+        so buying from scratch costs about four times the item. Upgrading a station or planetary shield costs only the
+        difference to the one it replaces.
       </P>
       <P>See <HelpLink to="page:buildings" /> and <HelpLink to="page:projects" />.</P>
       <h3>Growth</h3>
@@ -157,11 +159,12 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
     <>
       <h3>BC income</h3>
       <P>
-        Each population pays {fmt(TAX_PER_POP, 1)} BC a turn before race and morale bonuses. The tax rate on the Empire
-        screen ({TAX_STEPS.map(pct).join(", ")}) takes that share of every colony's industry and pays{" "}
-        {fmt(TAX_BC_PER_INDUSTRY, 1)} BC for each point, just like Trade Goods. Gold and gem deposits pay extra, and trade
-        treaties add more (<HelpLink to="guide:diplomacy" />). Democracy, Federation, the Spaceport, Stock Exchange and
-        Galactic Currency Exchange raise all of a colony's income, including its trade goods.
+        Each population pays {fmt(TAX_PER_POP, 1)} BC a turn before race picks; morale raises or lowers that tax. The tax
+        rate on the Empire screen ({TAX_STEPS.map(pct).join(", ")}) takes that share of every colony's industry and pays{" "}
+        {fmt(TAX_BC_PER_INDUSTRY, 1)} BC for each point. Gold and gem deposits pay {SPECIAL_INCOME.gold} and {SPECIAL_INCOME.gems}{" "}
+        BC, and trade treaties add more (<HelpLink to="guide:diplomacy" />). Democracy, Federation, the Spaceport, Stock
+        Exchange and Galactic Currency Exchange each add a share of a colony's population tax and deposits. Trade Goods pay
+        half the production, rounded up, whatever the bonuses.
       </P>
       <h3>Costs</h3>
       <Ul>
@@ -179,7 +182,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Each population eats 1 food (cybernetic races half, lithovores and androids none). Food doesn't move by itself:
         a Freighter Fleet ({PROJECT_COSTS.freighterFleet} production) adds {FREIGHTERS.perFleet} freighters, and each
         carries {FREIGHTERS.foodPerShip} food a turn from colonies with a surplus to hungry ones. A colony whose need is not
-        met loses {FREIGHTERS.starvationPerTurn} population a turn. Food nobody needs is sold for {fmt(TRAIT_EFFECTS.normalFoodBc, 1)}{" "}
+        met loses {GROWTH.starvationK}k population a turn for each food it lacks, workers and scientists first. Food nobody needs is sold for {fmt(TRAIT_EFFECTS.normalFoodBc, 1)}{" "}
         BC a unit ({fmt(TRAIT_EFFECTS.traderFoodBc, 1)} for fantastic traders). A blockaded system can neither send nor receive.
       </P>
       <P>
@@ -270,7 +273,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Blockades</h3>
       <P>
         An enemy warship over one of your colonies, with none of yours or your allies' to oppose it, blockades it: the
-        colony works at {pct(BLOCKADE_PRODUCTION)} industry.
+        colony's farmers and workers lose {BLOCKADE_PENALTY}% of their output, and freighters can't get through.
       </P>
       <h3>Command points</h3>
       <P>

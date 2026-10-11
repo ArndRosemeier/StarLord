@@ -4,7 +4,7 @@ import {
   DRIVES, EXCLUSIVE_TRAITS, FIELD_NAMES, FUEL_RANGES, GOVERNMENTS, GOVERNMENT_COSTS, HULLS, HULLS_BY_ID, INDUSTRY_PER_WORKER,
   LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
   PLANETS_PER_STAR, PLANET_SIZE_WEIGHTS, PLANET_TYPE_WEIGHTS, PROJECTS, PROJECTS_BY_ID, PROJECT_COSTS, RACES, RACES_BY_ID,
-  RAIDER_ERAS, RAIDER_SHIP_NAMES, RAID_DIFFICULTY_SHIFT, RAID_FIRST_TURN, SCRAP_TECH_CHANCE, SHIELDS, SHIELDS_BY_ID, SIZE_FACTOR, SPECIALS, SPECIALS_BY_ID,
+  RAIDER_ERAS, RAIDER_SHIP_NAMES, RAID_DIFFICULTY_SHIFT, RAID_FIRST_TURN, SCRAP_TECH_CHANCE, SHIELDS, SHIELDS_BY_ID, POLLUTION_TOLERANCE, SIZE_FACTOR, SIZE_POP_BASE, SPECIALS, SPECIALS_BY_ID, climatePopulation,
   RESEARCH, STARTING_TECH_APPS, STARTING_TIERS, STAR_COLOR_WEIGHTS, TECHS, TECH_FIELDS, TECH_TIERS, TERRAFORM_STEP,
   TIERS_BY_ID, TRAIT_COSTS, WEAPONS, WEAPONS_BY_ID, nextTier, previousTier, ARCS, MISSILE_RACKS, STATION_HULLS,
   WEAPON_MODS, WEAPON_MODS_BY_ID, SHIELD_SPACE_BY_HULL, SHIELD_COST_BY_HULL, COMPUTER_COST_BY_HULL,
@@ -686,18 +686,18 @@ function PlanetsPage() {
       <p>
         Climate decides how many people a planet holds per size step and how much food each farmer grows. Hostile
         worlds hold few people. Asteroids and gas giants can't be settled at all, not even by outposts, until an{" "}
-        <HelpLink to="project:artificialPlanet" /> turns them into barren planets. Max population is population per size
-        step × the size factor (tiny 1 to huge 5), plus race traits, buildings and techs.
+        <HelpLink to="project:artificialPlanet" /> turns them into barren planets. Max population is the climate's share of
+        the size's full population (tiny 5 to huge 25), rounded, plus race traits, buildings and techs.
       </p>
       <table className="help-table">
-        <thead><tr><th>Type</th><th>Pop per size</th><th>Food per farmer</th><th>Max pop tiny → huge</th><th>Notes</th></tr></thead>
+        <thead><tr><th>Type</th><th>Climate %</th><th>Food per farmer</th><th>Max pop tiny → huge</th><th>Notes</th></tr></thead>
         <tbody>
           {(Object.keys(CLIMATES) as PlanetType[]).map((t) => {
             const c = CLIMATES[t];
             return (
               <tr key={t}>
-                <td><HelpLink to={`climate:${t}`} /></td><td>{c.popPerSize}</td><td>{c.foodPerFarmer}</td>
-                <td>{c.habitable ? SIZES.map((s) => c.popPerSize * SIZE_FACTOR[s]).join(" / ") : "–"}</td>
+                <td><HelpLink to={`climate:${t}`} /></td><td>{c.popPercent}%</td><td>{c.foodPerFarmer}</td>
+                <td>{c.habitable ? SIZES.map((s) => climatePopulation(c.popPercent, s)).join(" / ") : "–"}</td>
                 <td>{!c.habitable ? "Needs Artificial Planet" : c.hostile ? "Hostile" : ""}</td>
               </tr>
             );
@@ -717,9 +717,9 @@ function ClimatePage({ type }: { type: PlanetType }) {
       <Facts rows={[
         ["Habitable", c.habitable ? "Yes" : "No: not even outposts, until an Artificial Planet converts it"],
         ["Hostile", c.hostile ? "Yes" : "No"],
-        ["Population per size step", c.popPerSize],
+        ["Population share", `${c.popPercent}% of a Gaia world`],
         ["Food per farmer", c.foodPerFarmer],
-        ...(c.habitable ? [["Max population", SIZES.map((s) => `${words(s)} ${c.popPerSize * SIZE_FACTOR[s]}`).join(", ")] as [string, ReactNode]] : []),
+        ...(c.habitable ? [["Max population", SIZES.map((s) => `${words(s)} ${climatePopulation(c.popPercent, s)}`).join(", ")] as [string, ReactNode]] : []),
         ...(to ? [["Terraforms into", <Links ids={to.map((t) => `climate:${t}`)} />] as [string, ReactNode]] : []),
         ["Building upkeep", c.maintenancePenalty ? `+${Math.round(c.maintenancePenalty * 100)}%` : "normal"],
         ...(from.length ? [["Terraformed from", <Links ids={from} />] as [string, ReactNode]] : []),
@@ -743,10 +743,10 @@ function PlanetTraitsPage() {
   return (
     <div className="col">
       <h3>Size</h3>
-      <p>Size multiplies the population a planet holds. Industry above 4 × the size factor causes pollution (half the excess is lost) unless cleaned up.</p>
+      <p>Size sets the population a planet holds and how much polluting industry it absorbs; half the excess, rounded up, is lost unless cleaned up. Nano Disassemblers double the tolerance.</p>
       <table className="help-table">
-        <thead><tr><th>Size</th><th>Size factor</th><th>Pollution-free industry</th><th>Frequency</th></tr></thead>
-        <tbody>{SIZES.map((s) => <tr key={s}><td>{words(s)}</td><td>{SIZE_FACTOR[s]}</td><td>{SIZE_FACTOR[s] * 4}</td><td>{pct(share(PLANET_SIZE_WEIGHTS, s))}</td></tr>)}</tbody>
+        <thead><tr><th>Size</th><th>Full population (Gaia)</th><th>Pollution-free industry</th><th>Frequency</th></tr></thead>
+        <tbody>{SIZES.map((s) => <tr key={s}><td>{words(s)}</td><td>{SIZE_POP_BASE[s]}</td><td>{POLLUTION_TOLERANCE[s]}</td><td>{pct(share(PLANET_SIZE_WEIGHTS, s))}</td></tr>)}</tbody>
       </table>
       <h3>Minerals</h3>
       <p>Minerals set the base industry of each worker.</p>

@@ -117,7 +117,7 @@ export function productionOrders(view: PlayerView): Command[] {
   // Command points over the limit cost BC every turn; go over only while untaxed income can carry it.
   const taxBc = colonies.reduce((n, c) => {
     const o = colonyOutput(view, c);
-    return n + o.taxes * TAX_BC_PER_INDUSTRY * o.incomeMult;
+    return n + o.taxes * TAX_BC_PER_INDUSTRY;
   }, 0);
   const untaxed = income.net - taxBc;
   const overBudget = player.bc > 200 ? Math.max(0, Math.floor((untaxed - 10) / COMMAND_OVERAGE_COST)) : 0;

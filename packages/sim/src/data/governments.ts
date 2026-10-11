@@ -51,7 +51,7 @@ export const GOVERNMENTS: Record<Government | AdvancedGovernment, GovernmentDef>
     security: 1.5, advanced: "galacticUnification",
   },
   confederation: {
-    name: "Confederation", foodMult: 1, industryMult: 1, researchMult: 0.5, bcMult: 1, shipCostMult: 1 / 3, commandPointsMult: 1,
+    name: "Confederation", foodMult: 1, industryMult: 1, researchMult: 0.75, bcMult: 1, shipCostMult: 1 / 3, commandPointsMult: 1,
     morale: 0, ungarrisonedPenalty: 20, noMorale: false, capitalLossMorale: 50, assimilationTurns: 4, assimilatesInstantly: false,
     security: 0, advanced: null,
   },
@@ -62,7 +62,7 @@ export const GOVERNMENTS: Record<Government | AdvancedGovernment, GovernmentDef>
   },
   federation: {
     name: "Federation", foodMult: 1, industryMult: 1, researchMult: 1.75, bcMult: 1.75, shipCostMult: 1, commandPointsMult: 1,
-    morale: 0, ungarrisonedPenalty: 0, noMorale: false, capitalLossMorale: 35, assimilationTurns: 2, assimilatesInstantly: false,
+    morale: 0, ungarrisonedPenalty: 0, noMorale: false, capitalLossMorale: 20, assimilationTurns: 2, assimilatesInstantly: false,
     security: -1, advanced: null,
   },
   galacticUnification: {
@@ -74,8 +74,8 @@ export const GOVERNMENTS: Record<Government | AdvancedGovernment, GovernmentDef>
 
 /** Conquest and assimilation numbers. */
 export const ASSIMILATION = {
-  /** Unassimilated population produces this share of its normal output. */
-  alienOutput: 0.5,
+  /** Percent unassimilated population loses from its output. */
+  alienPenalty: 25,
   /** Morale penalty on a colony of another race than its ruler's, unless it has an Alien Management Center. */
   multiRacePenalty: 20,
   /** Charismatic rulers assimilate twice as fast, repulsive ones half as fast. */

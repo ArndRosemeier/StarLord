@@ -1,21 +1,21 @@
 import { BUILDINGS_BY_ID, FIGHTER_GARRISON, type BuildingEffects } from "./data/buildings.js";
 import {
-  ANDROIDS, ARTIFACTS_RESEARCH, BLOCKADE_PRODUCTION, CYBERNETIC_FOOD, CYBERNETIC_INDUSTRY, FOOD_PER_POP, FREIGHTERS,
-  MILITIA_PER_POP, MIN_OUTPUT_PER_UNIT, MORALE_FLOOR, RESEARCH_PER_SCIENTIST, SPECIAL_INCOME, TAX_BC_PER_INDUSTRY,
-  TAX_PER_POP,
+  ANDROIDS, ARTIFACTS_RESEARCH, BLOCKADE_PENALTY, CYBERNETIC_FOOD, CYBERNETIC_INDUSTRY, FOOD_PER_POP, FREIGHTERS, GROWTH,
+  MILITIA_PER_POP, MIN_FOOD_PER_FARMER, MIN_OUTPUT_PER_UNIT, MORALE_FLOOR, REPLICATED_FOOD_UPKEEP, RESEARCH_PER_SCIENTIST,
+  SPECIAL_INCOME, TAX_BC_PER_INDUSTRY, TAX_PER_POP,
 } from "./data/economy.js";
 import { ASSIMILATION } from "./data/governments.js";
-import { NATIVE_FOOD_BONUS } from "./data/galaxy.js";
+import { DIFFICULTIES, NATIVE_FOOD_BONUS } from "./data/galaxy.js";
 import {
-  CLIMATES, INDUSTRY_PER_WORKER, POLLUTION_PER_EXCESS, POLLUTION_TOLERANCE_PER_SIZE, SIZE_FACTOR, SOILLESS, type Gravity,
+  CLIMATES, INDUSTRY_PER_WORKER, POLLUTION_PER_EXCESS, POLLUTION_TOLERANCE, SIZE_FACTOR, SOILLESS, type Gravity,
   type PlanetType,
 } from "./data/planets.js";
 import { getRace, hasTrait, type RaceDef } from "./data/races.js";
 import { findDesign } from "./designs.js";
 import { isHostile } from "./diplomacy.js";
-import { raceFoodPerFarmer, racePopPerSize, surplusFoodBc } from "./raceEffects.js";
+import { raceFoodPerFarmer, raceMaxPopulation, surplusFoodBc } from "./raceEffects.js";
 import { empireBonus, government, knows } from "./empire.js";
-import type { AndroidCounts, Colony, GameState, LeaderSkills, Planet, Player, PlayerId } from "./types.js";
+import type { AndroidCounts, Colony, Difficulty, GameState, LeaderSkills, Planet, Player, PlayerId } from "./types.js";
 
 /** Pure economy formulas. Nothing here mutates state, so the UI can preview changes. */
 
@@ -61,16 +61,13 @@ function hasEffect(buildings: string[], key: keyof BuildingEffects): boolean {
 export function maxPopulation(planet: Planet, race: RaceDef, buildings: string[] = [], player?: Player): number {
   const climate = CLIMATES[planet.type];
   if (!climate.habitable) return 0;
-  const size = SIZE_FACTOR[planet.size];
   // Aquatic, tolerant and subterranean races live as the race hooks say.
-  let perSize = racePopPerSize(race, planet.type);
-  let flat = sumEffect(buildings, "maxPopFlat");
+  let pop = raceMaxPopulation(race, planet.type, planet.size) + sumEffect(buildings, "maxPopFlat");
   if (player) {
     const bonus = empireBonus(player);
-    perSize += bonus.maxPopPerSize;
-    flat += bonus.maxPopFlat;
+    pop += bonus.maxPopPerSize * SIZE_FACTOR[planet.size] + bonus.maxPopFlat;
   }
-  return Math.max(1, Math.floor(perSize * size + flat));
+  return Math.max(1, Math.floor(pop));
 }
 
 /** Productivity multiplier for a race living at a gravity. */
@@ -90,19 +87,36 @@ export function canFarm(planet: Planet, player?: Player, race?: RaceDef): boolea
   return !!player && empireBonus(player).hostileFarming > 0;
 }
 
-/** Industry the planet absorbs before it pollutes; tolerant races never pollute. */
-export function pollutionTolerance(planet: Planet, race: RaceDef, player?: Player): number {
-  if (hasTrait(race, "tolerant")) return Infinity;
+/** Industry the planet absorbs before it pollutes; Nano Disassemblers double it. */
+export function pollutionTolerance(planet: Planet, player?: Player): number {
   const boost = player ? empireBonus(player).pollutionTolerance : 0;
-  return SIZE_FACTOR[planet.size] * POLLUTION_TOLERANCE_PER_SIZE * (1 + boost);
+  return POLLUTION_TOLERANCE[planet.size] * (1 + boost);
 }
 
-/** Share of industry that counts toward pollution: each cleanup building multiplies it. */
-export function pollutionFactor(buildings: string[]): number {
+/**
+ * Pollution from the industry workers and the Robotic Factory make. Each
+ * cleanup building cuts the polluting industry in turn (rounded up), an
+ * Environmentalist administrator by his percent, and half the excess over
+ * the tolerance (rounded up) is lost. Tolerant people and androids don't
+ * pollute: the result shrinks with their share of the population.
+ */
+export function colonyPollution(
+  planet: Planet, race: RaceDef, player: Player, buildings: string[], polluting: number, pop: number, nAndroids: number,
+  cleanupPercent = 0,
+): number {
   if (hasEffect(buildings, "noPollution")) return 0;
-  let f = 1;
-  for (const id of buildings) f *= BUILDINGS_BY_ID[id]?.effects.pollutionFactor ?? 1;
-  return f;
+  let x = polluting;
+  for (const id of buildings) {
+    const f = BUILDINGS_BY_ID[id]?.effects.pollutionFactor;
+    if (f) x = Math.ceil(x * f);
+  }
+  x = Math.trunc(x * Math.max(0, 1 - cleanupPercent / 100));
+  const tolerance = pollutionTolerance(planet, player);
+  let pollution = x > tolerance ? Math.ceil((x - tolerance) * POLLUTION_PER_EXCESS) : 0;
+  const total = pop + nAndroids;
+  const exempt = nAndroids + (hasTrait(race, "tolerant") ? pop : 0);
+  if (exempt > 0 && total > 0) pollution = Math.trunc((total / 2 + pollution * (total - exempt)) / total);
+  return pollution < 1 ? 0 : pollution;
 }
 
 /** True while the empire's Capitol is lost and its government suffers for it. */
@@ -155,8 +169,6 @@ export interface ColonyOutput {
   research: number;
   /** BC this colony earns: population tax, industry tax and deposits, with every multiplier. */
   bc: number;
-  /** Multiplier on BC from this colony, also applied to its trade goods. */
-  incomeMult: number;
   maintenance: number;
   growthK: number;
   troops: number;
@@ -168,6 +180,10 @@ export interface OutputContext {
   turn: number;
   leader?: LeaderSkills;
   blockaded?: boolean;
+  /** Game difficulty: computer players get its output, growth and BC bonuses. */
+  difficulty?: Difficulty;
+  /** Growth percent from events (population boom, plague). */
+  growthPercent?: number;
 }
 
 export function colonyOutput(state: GameState, colony: Colony): ColonyOutput {
@@ -177,6 +193,8 @@ export function colonyOutput(state: GameState, colony: Colony): ColonyOutput {
     turn: state.turn,
     leader: administratorSkills(state, planet.starId, colony.ownerId),
     blockaded: isBlockaded(state, colony),
+    difficulty: state.settings.difficulty,
+    growthPercent: eventGrowthPercent(state, colony.id),
   });
 }
 
@@ -233,87 +251,103 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   if (colony.outpost) {
     return {
       population: 0, androids: 0, maxPopulation: 0, morale: 0, aliens: 0, foodProduced: 0, foodEaten: 0, foodReplicated: 0,
-      foodNet: 0, industryGross: 0, pollution: 0, industry: 0, taxes: 0, research: 0, bc: 0, incomeMult: 1, maintenance: 0,
+      foodNet: 0, industryGross: 0, pollution: 0, industry: 0, taxes: 0, research: 0, bc: 0, maintenance: 0,
       growthK: 0, troops, blockaded: false,
     };
   }
 
   const climate = CLIMATES[planet.type];
-  const grav = hasEffect(b, "gravityFix") ? 1 : gravityMultiplier(race, planet.gravity);
+  // Every output modifier is a percentage added to the same 100%, per unit, as in the original.
+  const gravPct = (hasEffect(b, "gravityFix") ? 1 : gravityMultiplier(race, planet.gravity)) * 100 - 100;
   // Androids have no race, so a normal race's gravity applies to them.
-  const androidGrav = hasEffect(b, "gravityFix") ? 1 : gravityMultiplier(null, planet.gravity);
+  const androidGravPct = (hasEffect(b, "gravityFix") ? 1 : gravityMultiplier(null, planet.gravity)) * 100 - 100;
   const morale = colonyMorale(player, colony, ctx.turn, lead);
-  const moraleMult = Math.max(0, 1 + morale / 100);
   const aliens = Math.min(colony.aliens ?? 0, pop);
-  // Each unassimilated unit works at half its normal rate.
-  const effort = pop > 0 ? 1 - (aliens / pop) * (1 - ASSIMILATION.alienOutput) : 1;
   const lithovore = hasTrait(race, "lithovore");
   const cyber = hasTrait(race, "cybernetic");
-  const unit = (v: number, g: number) => Math.max(MIN_OUTPUT_PER_UNIT, v * g);
+  const aiLevel = player.isHuman ? null : DIFFICULTIES[ctx.difficulty ?? "average"];
+  const aiPct = aiLevel?.aiOutputPercent ?? 0;
+  const blockadePct = ctx.blockaded ? -BLOCKADE_PENALTY : 0;
+  /** Output of `n` units making `raw` each at 100% plus `pct`, aliens losing their share; never negative. */
+  const units = (n: number, nAliens: number, raw: number, pct: number) =>
+    Math.max(0, (n - nAliens) * raw * pct / 100) + Math.max(0, nAliens * raw * (pct - ASSIMILATION.alienPenalty) / 100);
+  // Unassimilated units are spread over the jobs by their share of the population.
+  const alienShare = pop > 0 ? aliens / pop : 0;
 
-  // Food
+  // Food, worked out in half units like the original.
   const farmable = canFarm(planet, player, race);
   const soil = !SOILLESS.includes(planet.type);
-  const farmBuildings = b.reduce((s, id) => {
+  const farmBuildings = b.reduce((sum, id) => {
     const e = BUILDINGS_BY_ID[id]?.effects;
-    return s + (e?.foodPerFarmer && (soil || !e.needsSoil) ? e.foodPerFarmer : 0);
+    return sum + (e?.foodPerFarmer && (soil || !e.needsSoil) ? e.foodPerFarmer : 0);
   }, 0);
   // Aquatic races farm tundra and swamp as terran, ocean and terran as gaia; androids see the plain climate.
   const landFood = raceFoodPerFarmer(race, planet.type) + bonus.foodPerFarmer + farmBuildings;
-  const perFarmer = farmable ? unit(landFood + race.picks.farming, grav) : 0;
+  const perFarmer = farmable ? Math.max(MIN_FOOD_PER_FARMER, landFood + race.picks.farming) : 0;
   const androidLand = climate.foodPerFarmer + bonus.foodPerFarmer + farmBuildings;
-  const androidFood = (climate.foodPerFarmer > 0 || bonus.hostileFarming > 0 ? Math.max(0, androidLand) * androidGrav : 0) + ANDROIDS.bonus;
+  const androidFood = (climate.foodPerFarmer > 0 || bonus.hostileFarming > 0 ? Math.max(0, androidLand) : 0) + ANDROIDS.bonus;
+  const foodPct = 100 + gravPct + (lead.food ?? 0) + morale + (gov.foodMult - 1) * 100 + blockadePct + aiPct;
+  const androidFoodPct = 100 + androidGravPct + (lead.food ?? 0) + (gov.foodMult - 1) * 100 + blockadePct + aiPct;
   // Native farmers grow extra food on top of the normal rate.
   const nativeFarmers = Math.min(colony.farmers, colony.natives ?? 0);
   const foodProduced =
-    (colony.farmers * perFarmer * effort + nativeFarmers * NATIVE_FOOD_BONUS + sumEffect(b, "foodFlat")) * gov.foodMult * moraleMult * (1 + (lead.food ?? 0) / 100) +
-    andr.farmers * androidFood * gov.foodMult;
+    Math.round(2 * (units(colony.farmers, colony.farmers * alienShare, perFarmer, foodPct) +
+      units(andr.farmers, 0, androidFood, androidFoodPct))) / 2 +
+    nativeFarmers * NATIVE_FOOD_BONUS + sumEffect(b, "foodFlat");
   const foodEaten = lithovore ? 0 : (cyber ? CYBERNETIC_FOOD : FOOD_PER_POP) * pop;
 
   // Industry
   const landIndustry = INDUSTRY_PER_WORKER[planet.minerals] + bonus.industryPerWorker + sumEffect(b, "industryPerWorker");
-  const perWorker = unit(landIndustry + race.picks.industry, grav);
-  const byMinerals = b.reduce((s, id) => s + (BUILDINGS_BY_ID[id]?.effects.industryByMinerals?.[planet.minerals] ?? 0), 0);
-  const blockade = ctx.blockaded ? BLOCKADE_PRODUCTION : 1;
-  const leadIndustry = 1 + (lead.industry ?? 0) / 100;
-  const industryGross =
-    ((colony.workers * perWorker * effort + sumEffect(b, "industryFlat") + byMinerals) * gov.industryMult * moraleMult * leadIndustry +
-      andr.workers * (Math.max(0, landIndustry) * androidGrav + ANDROIDS.bonus) * gov.industryMult) * blockade;
-  // Recycled industry never pollutes.
-  const recycled = (pop + nAndroids) * sumEffect(b, "industryPerPop") * gov.industryMult * moraleMult * leadIndustry * blockade;
-  const tolerance = pollutionTolerance(planet, race, player);
-  const polluting = industryGross * pollutionFactor(b);
-  // An Environmentalist administrator cuts the system's pollution.
-  const cleaner = Math.max(0, 1 - (lead.pollution ?? 0) / 100);
-  const pollution = Math.min(industryGross, Math.max(0, polluting - tolerance) * POLLUTION_PER_EXCESS * cleaner);
-  const upkeep = (cyber ? pop * CYBERNETIC_INDUSTRY : 0) + nAndroids * ANDROIDS.industryUpkeep;
+  const perWorker = Math.max(MIN_OUTPUT_PER_UNIT, landIndustry + race.picks.industry);
+  const industryPct = 100 + gravPct + (lead.industry ?? 0) + morale + (gov.industryMult - 1) * 100 + blockadePct + aiPct;
+  const androidIndustryPct = 100 + androidGravPct + (lead.industry ?? 0) + morale + (gov.industryMult - 1) * 100 + blockadePct + aiPct;
+  const byWorkers = Math.round(
+    units(colony.workers, colony.workers * alienShare, perWorker, industryPct) +
+    units(andr.workers, 0, Math.max(0, landIndustry) + ANDROIDS.bonus, androidIndustryPct),
+  );
+  // Factory flats and recycling are added unscaled.
+  const byMinerals = b.reduce((sum, id) => sum + (BUILDINGS_BY_ID[id]?.effects.industryByMinerals?.[planet.minerals] ?? 0), 0);
+  const recycled = (pop + nAndroids) * sumEffect(b, "industryPerPop");
+  const industryGross = byWorkers + byMinerals + sumEffect(b, "industryFlat");
+  const pollution = colonyPollution(planet, race, player, b, byWorkers + byMinerals, pop, nAndroids, lead.pollution ?? 0);
+  const upkeep = Math.ceil((cyber ? pop * CYBERNETIC_INDUSTRY : 0) + nAndroids * ANDROIDS.industryUpkeep);
   let net = Math.max(0, industryGross + recycled - pollution - upkeep);
+  const production = net;
 
   // Food Replicators cover the colony's own shortfall from its industry.
   let foodReplicated = 0;
   const replicator = sumEffect(b, "foodReplicator");
   if (replicator > 0 && foodProduced < foodEaten) {
-    foodReplicated = Math.min(foodEaten - foodProduced, net / replicator);
+    foodReplicated = Math.min(foodEaten - foodProduced, Math.floor(net / replicator));
     net -= foodReplicated * replicator;
   }
-  const taxes = net * player.taxRate;
+  const taxes = Math.floor(net * player.taxRate);
   const industry = net - taxes;
 
   // Research
   const artifacts = planet.special === "artifacts" ? ARTIFACTS_RESEARCH : 0;
   const landResearch = RESEARCH_PER_SCIENTIST + bonus.researchPerScientist + sumEffect(b, "researchPerScientist") + artifacts;
-  const perScientist = unit(landResearch + race.picks.science, grav);
+  const perScientist = Math.max(MIN_OUTPUT_PER_UNIT, landResearch + race.picks.science);
+  const researchPct = 100 + gravPct + (lead.research ?? 0) + morale + (gov.researchMult - 1) * 100 + aiPct;
+  const androidResearchPct = 100 + androidGravPct + (lead.research ?? 0) + (gov.researchMult - 1) * 100 + aiPct;
   const research =
-    (colony.scientists * perScientist * effort + sumEffect(b, "researchFlat")) * gov.researchMult * moraleMult * (1 + (lead.research ?? 0) / 100) +
-    andr.scientists * (Math.max(0, landResearch) * androidGrav + ANDROIDS.bonus) * gov.researchMult;
+    Math.round(units(colony.scientists, colony.scientists * alienShare, perScientist, researchPct) +
+      units(andr.scientists, 0, Math.max(0, landResearch) + ANDROIDS.bonus, androidResearchPct)) +
+    sumEffect(b, "researchFlat");
 
-  // Money: androids pay no tax; morale scales what people pay, industry taxes already carry it.
+  // Money: androids pay no tax. Morale touches only the population tax; every bonus is a share of tax plus deposits.
   const special = planet.special === "gold" ? SPECIAL_INCOME.gold : planet.special === "gems" ? SPECIAL_INCOME.gems : 0;
-  const perPop = Math.max(0, TAX_PER_POP + race.picks.money + bonus.bcPerPop);
-  const incomeMult = gov.bcMult * (1 + sumEffect(b, "bcMult")) * (1 + (lead.bc ?? 0) / 100);
-  const bc = ((pop * effort * perPop + sumEffect(b, "bcFlat") + special) * moraleMult + taxes * TAX_BC_PER_INDUSTRY) * incomeMult;
-  const maintenance = colonyMaintenance(planet, b);
-  const bioMax = Math.max(0, max - nAndroids);
+  const perPop = Math.max(0, TAX_PER_POP + race.picks.money + bonus.bcPerPop + (aiLevel?.aiBcPerPop ?? 0));
+  const popTax = Math.round(pop * perPop);
+  const moraleTax = gov.noMorale ? 0 : Math.round((popTax * morale) / 100);
+  const incomeShare = (gov.bcMult - 1) + sumEffect(b, "bcMult") + (lead.bc ?? 0) / 100;
+  const bc = popTax + moraleTax + special + Math.trunc((popTax + special) * incomeShare) + taxes * TAX_BC_PER_INDUSTRY;
+  const maintenance = colonyMaintenance(planet, b, foodReplicated * REPLICATED_FOOD_UPKEEP);
+
+  // Growth: housing turns production per colonist into growth percent.
+  const housing = colony.queue[0]?.kind === "project" && colony.queue[0].id === "housing";
+  const growthPct = (lead.growth ?? 0) + (aiLevel?.aiGrowthPercent ?? 0) + (ctx.growthPercent ?? 0) +
+    (housing && pop + nAndroids > 0 ? Math.floor((GROWTH.housingPercent * production) / (pop + nAndroids)) : 0);
 
   return {
     population: pop,
@@ -331,27 +365,50 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
     taxes,
     research,
     bc,
-    incomeMult,
     maintenance,
-    // A Medicine administrator speeds growth in the system.
-    growthK: Math.floor(growthPerTurn(pop, bioMax, race, b, bonus.growth) * (1 + (lead.growth ?? 0) / 100)),
+    growthK: growthPerTurn(pop, pop + nAndroids, max, race, b, bonus.growth * 100 + growthPct),
     troops,
     blockaded: !!ctx.blockaded,
   };
 }
 
-/** Building upkeep, raised on harsh climates. */
-export function colonyMaintenance(planet: Planet, buildings: string[]): number {
-  const base = buildings.reduce((sum, id) => sum + (BUILDINGS_BY_ID[id]?.maintenance ?? 0), 0);
-  return base * (1 + CLIMATES[planet.type].maintenancePenalty);
+/** Building upkeep (plus any other upkeep, like replicated food), raised on harsh climates and rounded. */
+export function colonyMaintenance(planet: Planet, buildings: string[], extra = 0): number {
+  const base = buildings.reduce((sum, id) => sum + (BUILDINGS_BY_ID[id]?.maintenance ?? 0), 0) + extra;
+  return Math.round(base * (1 + CLIMATES[planet.type].maintenancePenalty));
 }
 
-/** MoO2-style logistic growth in thousands per turn. */
-export function growthPerTurn(pop: number, max: number, race: RaceDef, buildings: string[], techGrowth = 0): number {
-  if (pop <= 0 || pop >= max) return 0;
-  const base = Math.sqrt((2000 * pop * (max - pop)) / max);
-  const mult = Math.max(0.25, 1 + race.picks.growth + techGrowth);
-  return Math.floor(base * mult + sumEffect(buildings, "growthK"));
+/** Growth percent from a population boom or a plague on the colony. */
+export function eventGrowthPercent(state: GameState, colonyId: string): number {
+  let pct = 0;
+  for (const e of state.activeEvents ?? []) {
+    if (e.colonyId !== colonyId) continue;
+    if (e.kind === "populationBoom") pct += GROWTH.boomPercent;
+    if (e.kind === "plague") pct += GROWTH.plaguePercent;
+  }
+  return pct;
+}
+
+/** Integer square root, rounded down. */
+function isqrt(n: number): number {
+  let r = Math.floor(Math.sqrt(n));
+  while (r * r > n) r--;
+  while ((r + 1) * (r + 1) <= n) r++;
+  return r;
+}
+
+/**
+ * Growth in thousands per turn, as the original works it out: the integer
+ * square root of 2000 × people × room / max, scaled by 100% plus the race
+ * pick and every other growth percent (which may turn it negative), plus a
+ * Cloning Center's share. `total` counts androids, who take room but never grow.
+ */
+export function growthPerTurn(pop: number, total: number, max: number, race: RaceDef, buildings: string[], extraPercent = 0): number {
+  if (pop <= 0 || total >= max) return 0;
+  const base = isqrt(Math.floor((GROWTH.scale * pop * (max - total)) / max));
+  const percent = 100 + race.picks.growth * 100 + extraPercent;
+  const cloning = Math.floor((sumEffect(buildings, "growthK") * pop) / total);
+  return cloning + Math.trunc((base * percent) / 100);
 }
 
 /** Fighters a colony's garrison launches: the best type the owner knows. */

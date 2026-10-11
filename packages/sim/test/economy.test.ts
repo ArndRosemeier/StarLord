@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ASSIMILATION, FREIGHTERS, GOVERNMENTS, availableBuildings, colonyMorale, commandPointsAvailable, computeOutput, foodPlan,
-  itemCost, newGame, pollutionFactor, population, processTurn, surplusFoodBc, getRace, validateCommand,
+  colonyPollution, itemCost, newGame, population, processTurn, surplusFoodBc, getRace, validateCommand,
   type Colony, type Fleet, type GameState,
 } from "@starlord/sim";
 
@@ -76,10 +76,20 @@ describe("food and freighters", () => {
 });
 
 describe("colony production", () => {
-  it("multiplies pollution cleanup and removes it with core waste dumps", () => {
-    expect(pollutionFactor(["pollutionProcessor"])).toBe(0.5);
-    expect(pollutionFactor(["pollutionProcessor", "atmosphericRenewer"])).toBe(0.125);
-    expect(pollutionFactor(["coreWasteDumps", "pollutionProcessor"])).toBe(0);
+  it("works pollution out like the original: cleanup rounds up, half the excess is lost", () => {
+    const s = game();
+    const h = home(s);
+    const planet = { ...s.planets[h.planetId]!, size: "medium" as const };
+    const p = s.players[0]!;
+    const race = getRace("terran");
+    // Medium tolerance is 6: 20 polluting industry loses ceil(14 / 2) = 7.
+    expect(colonyPollution(planet, race, p, [], 20, 8, 0)).toBe(7);
+    // The processor halves to 10 (2 lost), the renewer quarters that to 3 (none lost).
+    expect(colonyPollution(planet, race, p, ["pollutionProcessor"], 20, 8, 0)).toBe(2);
+    expect(colonyPollution(planet, race, p, ["pollutionProcessor", "atmosphericRenewer"], 20, 8, 0)).toBe(0);
+    expect(colonyPollution(planet, race, p, ["coreWasteDumps"], 20, 8, 0)).toBe(0);
+    // Androids don't pollute: half the people here are androids.
+    expect(colonyPollution(planet, race, p, [], 20, 4, 4)).toBe(4);
   });
 
   it("gives the robotic factory more on richer worlds", () => {
@@ -179,12 +189,12 @@ describe("conquest", () => {
     return { s, colony: s.colonies[victim.id]! };
   }
 
-  it("leaves conquered people as aliens who work at half rate", () => {
+  it("leaves conquered people as aliens who work at a penalty", () => {
     const { colony } = invasion(false);
     expect(colony.ownerId).toBe(0);
     expect(colony.aliens).toBe(population(colony));
     expect(colony.formerOwnerId).toBe(1);
-    expect(ASSIMILATION.alienOutput).toBe(0.5);
+    expect(ASSIMILATION.alienPenalty).toBe(25);
   });
 
   it("can't invade through a barrier shield", () => {
