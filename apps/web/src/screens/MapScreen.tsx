@@ -6,6 +6,7 @@ import { buildScene, routeTo, toggleFleetSelection } from "../map/scene";
 import { useGame } from "../ui/hooks";
 import { FleetPanel, StarPanel, fleetShips, plural } from "../ui/panels";
 import { SystemView } from "./system/SystemView";
+import type { ColonizeOption } from "../game/colonize";
 
 export function MapScreen({ focusStar, onFocused, onOpenColony }: {
   focusStar: string | null;
@@ -22,6 +23,8 @@ export function MapScreen({ focusStar, onFocused, onOpenColony }: {
   const setFleetId = (id: string | null) => setFleetIds(id ? [id] : []);
   /** Star shown up close in the 3D system view, if open. */
   const [systemStar, setSystemStar] = useState<string | null>(null);
+  /** Colonize pressed in the side panel: the system view opens and plays the landing. */
+  const [colonizeOnOpen, setColonizeOnOpen] = useState<{ planetId: string; settle: ColonizeOption } | null>(null);
   const [notice, setNotice] = useState<{ text: string; bad: boolean; at: number } | null>(null);
   // The renderer calls back with the latest selection, so keep it in a ref.
   const sel = useRef({ fleetIds, readOnly });
@@ -87,7 +90,10 @@ export function MapScreen({ focusStar, onFocused, onOpenColony }: {
         setStarId(id);
         setFleetIds([]);
         // A plain click with no fleet to order opens the system up close.
-        if (action === "select") setSystemStar(id);
+        if (action === "select") {
+          setColonizeOnOpen(null);
+          setSystemStar(id);
+        }
       },
       onFleet(id, additive) {
         pickFleet(id, additive);
@@ -144,7 +150,13 @@ export function MapScreen({ focusStar, onFocused, onOpenColony }: {
           <div className="panel"><SelectionPanel fleetIds={fleetIds} onPick={pickFleet} onFocus={(id) => setFleetIds([...fleetIds.filter((x) => x !== id), id])} onClear={() => setFleetIds([])} /></div>
         )}
         {fleetId && <div className="panel"><FleetPanel fleetId={fleetId} onSelectFleet={setFleetId} /></div>}
-        {starId && <div className="panel"><StarPanel starId={starId} fleetId={fleetId} selectedFleetIds={fleetIds} onSelectFleet={pickFleet} /></div>}
+        {starId && <div className="panel"><StarPanel
+          starId={starId} fleetId={fleetId} selectedFleetIds={fleetIds} onSelectFleet={pickFleet}
+          onColonize={(planetId, settle) => {
+            setColonizeOnOpen({ planetId, settle });
+            setSystemStar(starId);
+          }}
+        /></div>}
         {!readOnly && session.rejected.length > 0 && (
           <div className="panel bad">Some orders are invalid: {session.rejected.join("; ")}</div>
         )}
@@ -153,11 +165,18 @@ export function MapScreen({ focusStar, onFocused, onOpenColony }: {
             starId={systemStar}
             fleetId={fleetId}
             selectedFleetIds={fleetIds}
-            onClose={() => setSystemStar(null)}
+            colonizeOnOpen={colonizeOnOpen}
+            onClose={() => {
+              setSystemStar(null);
+              setColonizeOnOpen(null);
+            }}
             onSelectFleet={(id, additive) => {
               pickFleet(id, additive);
               // A shift-click keeps the view open to gather more fleets.
-              if (!additive) setSystemStar(null);
+              if (!additive) {
+                setSystemStar(null);
+                setColonizeOnOpen(null);
+              }
             }}
           />
         )}
