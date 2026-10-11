@@ -22,12 +22,12 @@ export const RATING_PER_LEVEL = 10;
 export const POWERED_ARMOR_HITS = 1;
 export const BATTLEOID_HITS = 1;
 
-/** Every 100 points of bomb damage that lands kills one ground unit, before colonists. */
-export const BOMB_DAMAGE_PER_TROOP = 100;
-/** One colonist dies per this much bomb damage (plus a random fraction). */
-export const BOMB_DAMAGE_PER_POP = 15;
-/** Chance per bomb damage point to wreck a building, capped. */
-export const BOMB_BUILDING_CHANCE = { perDamage: 1 / 200, max: 0.5 };
+/**
+ * Bombing: every this much damage past the planetary shield is one hit. Each
+ * hit falls at random on a building, a trained ground unit or a colonist (one
+ * pick per thing there); a ground unit needs as many hits as it can take.
+ */
+export const BOMB_DAMAGE_PER_HIT = 100;
 
 /**
  * Biological weapons: each Death Spores launch has a 10% chance to kill a

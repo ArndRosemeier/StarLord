@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES } from "@starlord/ai";
 import {
-  ANDROIDS, ASSIMILATION, AUDIENCE_ITEMS, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_POP,
-  BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST,
-  COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
+  ANDROIDS, ASSIMILATION, AUDIENCE_ITEMS, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_HIT,
+  CAPTURE_TECH_CHANCE, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST,
+  COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
   SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
@@ -342,7 +342,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         building is lost.
       </P>
       <P>
-        The planet itself is a separate target with its own ground batteries and missile base, protected by planetary
+        The planet itself is a separate target with its own ground batteries, missile base, stellar converter and fighter
+        garrison (which sends up fresh craft every {FIGHTER_GARRISON.replenishRounds} combat turns), protected by planetary
         shields (<HelpLink to="page:buildings" />). Ship beams do only half damage to it. Every
         {" "}{PLANET_INSTALLATION_HP} damage that gets through (more with better armor) knocks out one installation at random. Stations are fair game in any
         battle, but only fleets set to attack fire on the planet, and only once no defending ships or station remain.
@@ -358,8 +359,9 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Bombing</h3>
       <P>
-        Fleets on <b>Attack</b> stance bomb open colonies every turn. Each {BOMB_DAMAGE_PER_TROOP} points of bomb damage
-        kill a defending troop, each {BOMB_DAMAGE_PER_POP} kill about one population, and bombs may destroy buildings.
+        Fleets on <b>Attack</b> stance bomb open colonies every turn. Each bomb loses the planetary shield's worth of
+        damage, and every {BOMB_DAMAGE_PER_HIT} points that get through are one hit. A hit lands at random on a building
+        (not the colony's defenses), a trained marine or tank, or a colonist; a tank needs at least two hits.
         Death spores and the bio-terminator kill population with a {pct(SPORE_KILL_CHANCE_PER_POINT)} chance per point
         of damage, which every other empire resents. A colony bombed to zero is destroyed.
       </P>
