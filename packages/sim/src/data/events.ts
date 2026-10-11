@@ -77,31 +77,45 @@ export const EVENT_TIMING = {
 
 /** Event magnitudes. Ranges are inclusive [min, max]. */
 export const EVENT_NUMBERS = {
-  donationBc: [50, 200] as [number, number],
+  /** Donation: base + step × floor(turn / perTurns) BC, so it grows with the game. */
+  donation: { base: 100, step: 100, perTurns: 20 },
   derelictMaxCost: 1500,
-  /** Comet: hit points, turns until impact; each armed ship in orbit does its size class in damage per turn. */
-  cometStrength: [20, 40] as [number, number],
-  cometTurns: [8, 12] as [number, number],
-  cometDamagePerSize: 2,
-  /** Share of current research progress a computer virus wipes out. */
-  virusLoss: [0.5, 1] as [number, number],
+  /**
+   * Comet: hit points (rnd(5) + 10 + difficulty) × 10 and impact in
+   * rnd(5) + 10 − difficulty turns, as in the original. Each armed ship in orbit
+   * does its size class times cometDamagePerSize per turn (ours).
+   */
+  cometHp: { die: 5, base: 10, mult: 10 },
+  cometTurns: { die: 5, base: 10 },
+  cometDamagePerSize: 10,
+  /** Computer virus: needs this much stored research and wipes min(base + rnd(die), stored). */
+  virus: { minStored: 10, base: 50, die: 50 },
   attitudeShift: 20,
   earthquakeKills: [0, 2] as [number, number],
   earthquakeBuildings: [1, 2] as [number, number],
-  fluxTurns: [3, 6] as [number, number],
-  /** Pirates: lasting turns, chance per turn of a raid and the BC stolen; ended by armed ships of this total size class in the system. */
-  pirateTurns: [10, 20] as [number, number],
-  pirateRaidChance: 0.5,
-  pirateLoot: [10, 40] as [number, number],
+  /**
+   * Pirates need this much BC in the treasury and steal (base + rnd(die))% of
+   * it when they strike; then their base chokes trade until armed ships of
+   * this total size class come to the system or they move on.
+   */
+  pirateMinBc: 100,
+  pirateLootPercent: { base: 29, die: 21 },
   pirateHunterSize: 6,
   /** Plague: research points to cure, a colonist dies with this chance each turn, and the outbreak burns out after the timeout. */
   plagueStrength: [100, 300] as [number, number],
   plagueTimeout: 40,
   boomTurns: [10, 20] as [number, number],
   supernovaStrength: [200, 500] as [number, number],
-  supernovaTurns: [10, 15] as [number, number],
-  anomalyTurns: [5, 10] as [number, number],
-  warpBeastTurns: [10, 20] as [number, number],
+  /** Turns until the star explodes: rnd(5) + 10 − difficulty. */
+  supernovaTurns: { die: 5, base: 10 },
+  /**
+   * Lasting events (hyperspace flux, time-space anomaly, pirates, warp beast)
+   * end with a 1 in `endDie` chance each turn once they are `minTurns` old,
+   * and always after `maxTurns`.
+   */
+  lasting: { minTurns: 5, maxTurns: 20, endDie: 20 },
+  /** Mineral deposits raise a planet's richness this many steps. */
+  depositSteps: 2,
   /** Chance per turn the warp beast eats a ship from a fleet in hyperspace. */
   warpBeastStrike: 0.4,
   funnelTurns: [3, 6] as [number, number],

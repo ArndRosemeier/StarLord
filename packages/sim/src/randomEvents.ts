@@ -35,7 +35,7 @@ export function randomEventTick(ctx: TurnContext): void {
   const on = state.settings.randomEvents !== false;
   luckyWindfalls(ctx, on);
   if (!on || state.turn < EVENT_START || state.turn - clock.last <= EVENT_TIMING.cooldown) return;
-  const d = DIFFICULTY_ORDER.indexOf(state.settings.difficulty ?? "average");
+  const d = difficulty(state);
   const quiet = Math.floor(((state.turn - clock.last) * (d + 1)) / (d + 2));
   if (rng.int(1, EVENT_TIMING.dieSides) > quiet) return;
   const ids = Object.keys(EVENTS) as EventId[];
@@ -45,6 +45,12 @@ export function randomEventTick(ctx: TurnContext): void {
       return;
     }
   }
+}
+
+/** Fires one event at a chosen empire (or the galaxy), skipping the dice; false if it can't happen now. */
+export function fireEvent(ctx: TurnContext, kind: EventId, victim?: Player): boolean {
+  ctx.state.activeEvents ??= [];
+  return EVENTS[kind].global ? HANDLERS[kind](ctx, null) : HANDLERS[kind](ctx, victim ?? null);
 }
 
 /** Tries one event; false if it can't happen now. */
@@ -114,6 +120,17 @@ function luckyWindfalls(ctx: TurnContext, eventsOn: boolean): void {
     }
   }
 }
+
+function difficulty(state: GameState): number {
+  return DIFFICULTY_ORDER.indexOf(state.settings.difficulty ?? "average");
+}
+
+/** Last turn of a lasting event started now; it may end sooner (see tickActive). */
+function lastingUntil(state: GameState): number {
+  return state.turn + N.lasting.maxTurns;
+}
+
+const LASTING = new Set(["hyperspaceFlux", "timeSpaceAnomaly", "pirates", "warpBeast"]);
 
 function lucky(p: Player): boolean {
   return hasTrait(getRace(p.raceId), "lucky");
@@ -210,13 +227,13 @@ const HANDLERS: Record<EventId, Handler> = {
     return true;
   },
   donation(ctx, p) {
-    const bc = range(ctx, N.donationBc);
+    const bc = N.donation.base + N.donation.step * Math.floor(ctx.state.turn / N.donation.perTurns);
     p!.bc += bc;
     news(ctx, p!.id, `Wealthy patrons donated ${bc} BC to the treasury.`);
     return true;
   },
   mineralDeposit(ctx, p) {
-    return shiftMinerals(ctx, p!, +1);
+    return shiftMinerals(ctx, p!, N.depositSteps);
   },
   mineralDepletion(ctx, p) {
     return shiftMinerals(ctx, p!, -1);
@@ -246,17 +263,19 @@ const HANDLERS: Record<EventId, Handler> = {
     const list = coloniesOf(ctx.state, p!.id);
     if (list.length === 0) return false;
     const c = ctx.rng.pick(list);
-    const turns = range(ctx, N.cometTurns);
+    const d = difficulty(ctx.state);
+    const turns = ctx.rng.int(1, N.cometTurns.die) + N.cometTurns.base - d;
+    const hp = (ctx.rng.int(1, N.cometHp.die) + N.cometHp.base + d) * N.cometHp.mult;
     addEvent(ctx.state, {
       kind: "comet", playerId: p!.id, colonyId: c.id, starId: starOfColony(ctx.state, c),
-      until: ctx.state.turn + turns, strength: range(ctx, N.cometStrength),
+      until: ctx.state.turn + turns, strength: hp,
     });
     news(ctx, p!.id, `A comet will strike ${c.name} in ${turns} turns. Warships in orbit can break it up.`, starOfColony(ctx.state, c));
     return true;
   },
   computerVirus(ctx, p) {
-    if (p!.research.progress <= 0) return false;
-    const lost = Math.round(p!.research.progress * range(ctx, N.virusLoss));
+    if (p!.research.progress < N.virus.minStored) return false;
+    const lost = Math.min(N.virus.base + ctx.rng.int(1, N.virus.die), Math.floor(p!.research.progress));
     p!.research.progress -= lost;
     news(ctx, p!.id, `A computer virus wiped ${lost} research points from your laboratories.`);
     return true;
@@ -289,12 +308,12 @@ const HANDLERS: Record<EventId, Handler> = {
     return true;
   },
   hyperspaceFlux(ctx) {
-    const turns = range(ctx, N.fluxTurns);
-    addEvent(ctx.state, { kind: "hyperspaceFlux", until: ctx.state.turn + turns });
-    newsAll(ctx, `Hyperspace flux: no ship can move for ${turns} turns.`);
+    addEvent(ctx.state, { kind: "hyperspaceFlux", until: lastingUntil(ctx.state) });
+    newsAll(ctx, `Hyperspace flux: no ship can move until it subsides.`);
     return true;
   },
   industrialAccident(ctx, p) {
+    if (hasTrait(getRace(p!.raceId), "tolerant")) return false;
     const list = coloniesOf(ctx.state, p!.id, (c) => {
       const t = ctx.state.planets[c.planetId]!.type;
       return t !== "radiated" && t !== "gasGiant" && t !== "asteroids";
@@ -328,12 +347,15 @@ const HANDLERS: Record<EventId, Handler> = {
     return true;
   },
   pirates(ctx, p) {
+    if (p!.bc < N.pirateMinBc) return false;
     const list = coloniesOf(ctx.state, p!.id);
     if (list.length === 0) return false;
     const c = ctx.rng.pick(list);
     const star = starOfColony(ctx.state, c);
-    addEvent(ctx.state, { kind: "pirates", playerId: p!.id, starId: star, until: ctx.state.turn + range(ctx, N.pirateTurns) });
-    news(ctx, p!.id, `Pirates operate from the ${c.name} system, choking your trade. Send warships there to root them out.`, star);
+    const loot = Math.floor((p!.bc * (N.pirateLootPercent.base + ctx.rng.int(1, N.pirateLootPercent.die))) / 100);
+    p!.bc -= loot;
+    addEvent(ctx.state, { kind: "pirates", playerId: p!.id, starId: star, until: lastingUntil(ctx.state) });
+    news(ctx, p!.id, `Pirates raided your treasury for ${loot} BC and now operate from the ${c.name} system, choking your trade. Send warships there to root them out.`, star);
     return true;
   },
   plague(ctx, p) {
@@ -353,7 +375,7 @@ const HANDLERS: Record<EventId, Handler> = {
     const c = ctx.rng.pick(list);
     const starId = starOfColony(ctx.state, c);
     if (ctx.state.activeEvents!.some((e) => e.kind === "supernova" && e.starId === starId)) return false;
-    const turns = range(ctx, N.supernovaTurns);
+    const turns = ctx.rng.int(1, N.supernovaTurns.die) + N.supernovaTurns.base - difficulty(ctx.state);
     addEvent(ctx.state, { kind: "supernova", playerId: p!.id, starId, until: ctx.state.turn + turns, strength: range(ctx, N.supernovaStrength), progress: 0 });
     news(ctx, p!.id, `The star of ${c.name} is going nova in ${turns} turns. Its colonies' research is devoted to stopping it.`, starId);
     return true;
@@ -363,15 +385,13 @@ const HANDLERS: Record<EventId, Handler> = {
     if (list.length === 0) return false;
     const c = ctx.rng.pick(list);
     const starId = starOfColony(ctx.state, c);
-    const turns = range(ctx, N.anomalyTurns);
-    addEvent(ctx.state, { kind: "timeSpaceAnomaly", playerId: p!.id, starId, until: ctx.state.turn + turns });
-    news(ctx, p!.id, `A time-space anomaly engulfed the ${c.name} system: nothing can be built or fought there for ${turns} turns.`, starId);
+    addEvent(ctx.state, { kind: "timeSpaceAnomaly", playerId: p!.id, starId, until: lastingUntil(ctx.state) });
+    news(ctx, p!.id, `A time-space anomaly engulfed the ${c.name} system: nothing can be built or fought there until it passes.`, starId);
     return true;
   },
   warpBeast(ctx) {
-    const turns = range(ctx, N.warpBeastTurns);
-    addEvent(ctx.state, { kind: "warpBeast", until: ctx.state.turn + turns });
-    newsAll(ctx, `A warp beast hunts in hyperspace; ships in flight are at risk for ${turns} turns.`);
+    addEvent(ctx.state, { kind: "warpBeast", until: lastingUntil(ctx.state) });
+    newsAll(ctx, `A warp beast hunts in hyperspace; ships in flight are at risk until it leaves.`);
     return true;
   },
   warpFunnel(ctx, p) {
@@ -405,15 +425,18 @@ const HANDLERS: Record<EventId, Handler> = {
   hydra: (ctx, p) => invasion(ctx, p!, "hydra"),
 };
 
-function shiftMinerals(ctx: TurnContext, p: Player, step: 1 | -1): boolean {
+/** Moves a colony's mineral richness by `step`, stopping at the ends of the scale. */
+function shiftMinerals(ctx: TurnContext, p: Player, step: number): boolean {
+  const last = MINERAL_STEPS.length - 1;
   const list = coloniesOf(ctx.state, p.id, (c) => {
     const i = MINERAL_STEPS.indexOf(ctx.state.planets[c.planetId]!.minerals);
-    return i + step >= 0 && i + step < MINERAL_STEPS.length;
+    return step > 0 ? i < last : i > 0;
   });
   if (list.length === 0) return false;
   const c = ctx.rng.pick(list);
   const planet = ctx.state.planets[c.planetId]!;
-  planet.minerals = MINERAL_STEPS[MINERAL_STEPS.indexOf(planet.minerals) + step]!;
+  const i = MINERAL_STEPS.indexOf(planet.minerals) + step;
+  planet.minerals = MINERAL_STEPS[Math.max(0, Math.min(last, i))]!;
   news(ctx, p.id, step > 0 ? `Surveyors found new mineral deposits on ${c.name}.` : `The richest mineral veins of ${c.name} have run out.`, planet.starId);
   return true;
 }
@@ -467,7 +490,9 @@ function tickActive(ctx: TurnContext): void {
   const { state } = ctx;
   for (const ev of [...(state.activeEvents ?? [])]) {
     const done = TICKS[ev.kind]?.(ctx, ev) ?? false;
-    if (done || state.turn >= ev.until) {
+    const age = state.turn - (ev.until - N.lasting.maxTurns);
+    const fades = LASTING.has(ev.kind) && age >= N.lasting.minTurns && ctx.rng.int(1, N.lasting.endDie) === 1;
+    if (done || fades || state.turn >= ev.until) {
       if (!done) EXPIRE[ev.kind]?.(ctx, ev);
       endEvent(state, ev);
     }
@@ -490,13 +515,6 @@ const TICKS: Record<string, (ctx: TurnContext, ev: ActiveEvent) => boolean> = {
     if (armedSizeAt(ctx.state, p.id, ev.starId!) >= N.pirateHunterSize) {
       news(ctx, p.id, `Your warships destroyed the pirate base.`, ev.starId);
       return true;
-    }
-    if (ctx.rng.chance(N.pirateRaidChance)) {
-      const loot = Math.floor(Math.min(p.bc, range(ctx, N.pirateLoot)));
-      if (loot > 0) {
-        p.bc -= loot;
-        news(ctx, p.id, `Pirates raided your shipping and stole ${loot} BC.`, ev.starId);
-      }
     }
     return false;
   },
