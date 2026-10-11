@@ -87,3 +87,4 @@ export { STRATEGIES, strategyOf, type AutomationDomain, type StrategyInfo } from
 export { colonizationTargets, outpostTargets } from "./colonization.js";
 export { bestWarship } from "./design.js";
 export { answerOrders, answerProposal, audienceAnswer } from "./diplomacy.js";
+export * from "./simulate.js";
