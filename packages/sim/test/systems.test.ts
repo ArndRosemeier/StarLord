@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  Rng, designStats, findDesign, newGame, processTurn, relation, resolveCombat, startingDesigns, validateDesign,
+  RACES, RACE_SHIP_STYLE, SHIP_STYLES, Rng, designStats, designStyle, findDesign, newGame, processTurn, relation, resolveCombat, startingDesigns, validateDesign,
   type Fleet, type GameState, type ShipDesign,
 } from "@starlord/sim";
 
@@ -19,6 +19,21 @@ function addFleet(s: GameState, ownerId: number, starId: string, ships: Fleet["s
   s.fleets[f.id] = f;
   return f;
 }
+
+describe("ship styles", () => {
+  it("gives every race its own style and lets a design pick any style", () => {
+    const styles = RACES.map((r) => RACE_SHIP_STYLE[r.id]);
+    expect(styles.every((x) => SHIP_STYLES.some((s) => s.id === x))).toBe(true);
+    expect(new Set(styles).size).toBe(RACES.length);
+    const s = twoEmpires();
+    const p = s.players[1]!;
+    const d = startingDesigns()[1]!;
+    expect(designStyle(p, d)).toBe(RACE_SHIP_STYLE[p.raceId]);
+    expect(designStyle(p, { ...d, style: "shard" })).toBe("shard");
+    expect(validateDesign(p, { ...d, style: "shard" })).toBe(null);
+    expect(validateDesign(p, { ...d, style: "nope" })).toBe("unknown ship style");
+  });
+});
 
 describe("ship design", () => {
   it("accepts the starting designs and rejects overfull ones", () => {

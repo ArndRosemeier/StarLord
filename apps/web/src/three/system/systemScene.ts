@@ -338,7 +338,7 @@ export class SystemScene {
     const scale = 1.5 / Math.max(1, SHIP_LENGTH[cls]);
     const out: UnitModel[] = [];
     for (let k = 0; k < count; k++) {
-      const m = buildShip(this.kit, cls, f.color);
+      const m = buildShip(this.kit, cls, f.color, f.style);
       m.root.scale.setScalar(scale * (k === 0 ? 1.1 : 0.85));
       // A small wedge: leader in front, wingmen behind and to the sides.
       const side = k === 0 ? 0 : k === 1 ? -1 : 1;

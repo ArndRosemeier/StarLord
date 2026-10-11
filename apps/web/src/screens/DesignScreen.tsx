@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   ARCS, ARMORS, COMPUTERS, HULLS, HULLS_BY_ID, MISSILE_RACKS, MODULES, SHIELDS, SPECIALS, WEAPONS, WEAPON_MODS,
-  DEFAULT_MISSILE_SHOTS, designStats, knows, refinement, validateDesign, weaponUnitCost,
+  DEFAULT_MISSILE_SHOTS, SHIP_STYLES, designStats, designStyle, raceShipStyle, knows, refinement, validateDesign, weaponUnitCost,
   type DesignModule, type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponModId, type WeaponMount,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -9,7 +9,7 @@ import { fmt, pct, words } from "../ui/format";
 import { ShipModelView, ShipThumb } from "../ui/ShipModel";
 import { Tip, tipText } from "../ui/Tip";
 import {
-  arcTip, armorTip, computerTip, designTip, hullTip, modTip, moduleTip, rackTip, shieldTip, spaceTip, specialTip, statTip, weaponTip,
+  arcTip, armorTip, computerTip, designTip, styleTip, hullTip, modTip, moduleTip, rackTip, shieldTip, spaceTip, specialTip, statTip, weaponTip,
 } from "./designTips";
 
 export function DesignScreen() {
@@ -32,6 +32,12 @@ export function DesignScreen() {
   const modules = (Object.keys(MODULES) as DesignModule[]).filter((m) => m !== "outpost" || knows(me, "outpostShip"));
 
   const stats = useMemo(() => designStats(me, draft), [me, draft]);
+  const style = designStyle(me, draft);
+  const ownStyle = raceShipStyle(me.raceId);
+  const stepStyle = (dir: number) => {
+    const i = SHIP_STYLES.findIndex((s) => s.id === style);
+    update({ style: SHIP_STYLES[(i + dir + SHIP_STYLES.length) % SHIP_STYLES.length]!.id });
+  };
   const error = validateDesign(me, draft);
   const update = (patch: Partial<ShipDesign>) => setDraft({ ...draft, ...patch });
   // Mounts are edited by position: the same weapon may sit in several mounts with different mods or arcs.
@@ -63,7 +69,14 @@ export function DesignScreen() {
         </div>
         <div className="blueprint">
           <span className="blueprint-label">Schematic · {draft.name || "unnamed"}</span>
-          <ShipModelView className="blueprint-model" hull={draft.hull} color={me.color} />
+          <ShipModelView className="blueprint-model" hull={draft.hull} color={me.color} style={style} />
+          <Tip card={{ title: "Previous style", text: ["Show this design in the previous ship style."] }}>
+            <button className="small blueprint-step left" onClick={() => stepStyle(-1)}>‹</button>
+          </Tip>
+          <Tip card={{ title: "Next style", text: ["Show this design in the next ship style."] }}>
+            <button className="small blueprint-step right" onClick={() => stepStyle(1)}>›</button>
+          </Tip>
+          <span className="blueprint-style">{SHIP_STYLES.find((s) => s.id === style)?.name} style</span>
           <span className="blueprint-hull">{HULLS_BY_ID[draft.hull]?.name} · {words(stats.role)}</span>
         </div>
         <Tip block card={{ title: "Design name", text: ["Shown in build lists and fleets. Saving again adds a new Mk number, so older ships keep their design."] }}>
@@ -94,6 +107,13 @@ export function DesignScreen() {
             <label>Computer <select value={draft.computer ?? ""} onChange={(e) => update({ computer: e.target.value || null })}>
               <option value="">None</option>
               {computers.map((c) => <option key={c.id} value={c.id} title={tipText(computerTip(me, draft, c.id))}>{c.name}</option>)}
+            </select></label>
+          </Tip>
+          <Tip card={() => styleTip(style, ownStyle)}>
+            <label>Style <select value={style} onChange={(e) => update({ style: e.target.value })}>
+              {SHIP_STYLES.map((s) => (
+                <option key={s.id} value={s.id} title={tipText(styleTip(s.id, ownStyle))}>{s.name}{s.id === ownStyle ? " (your race)" : ""}</option>
+              ))}
             </select></label>
           </Tip>
           <Tip card={() => moduleTip(me, draft, draft.module)}>
@@ -159,7 +179,7 @@ export function DesignScreen() {
           const valid = validateDesign(me, d) === null;
           return (
             <div key={d.id} className="row design-row" style={{ opacity: d.obsolete ? 0.5 : 1, borderBottom: "1px solid var(--line)", paddingBottom: 6 }}>
-              <ShipThumb hull={d.hull} color={me.color} size={64} />
+              <ShipThumb hull={d.hull} color={me.color} style={designStyle(me, d)} size={64} />
               <Tip block card={() => designTip(me, d)}>
               <div style={{ flex: 1 }}>
                 <b>{d.name}</b> <span className="muted">{HULLS_BY_ID[d.hull]?.name} · {words(s.role)}</span>

@@ -9,18 +9,18 @@ import { useReducedMotion } from "./fx";
  */
 
 /** A still picture of the hull's battle model in the owner's colour. */
-export function ShipThumb({ hull, color, size = 48 }: { hull: HullSize; color: string; size?: number }) {
+export function ShipThumb({ hull, color, style, size = 48 }: { hull: HullSize; color: string; style: string; size?: number }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     import("../three/shipPortrait")
-      .then((m) => m.shipPortrait(hull, color, size))
+      .then((m) => m.shipPortrait(hull, color, size, style))
       .then((url) => live && setSrc(url))
       .catch(() => undefined);
     return () => {
       live = false;
     };
-  }, [hull, color, size]);
+  }, [hull, color, style, size]);
   return (
     <span className="ship-thumb" style={{ width: size, height: size }}>
       {src && <img src={src} alt="" width={size} height={size} />}
@@ -29,11 +29,11 @@ export function ShipThumb({ hull, color, size = 48 }: { hull: HullSize; color: s
 }
 
 /** The hull's battle model on a turntable; drag to turn it, wheel to zoom, double-click to reset. */
-export function ShipModelView({ hull, color, className }: { hull: HullSize; color: string; className?: string }) {
+export function ShipModelView({ hull, color, style, className }: { hull: HullSize; color: string; style: string; className?: string }) {
   const host = useRef<HTMLDivElement>(null);
   const viewer = useRef<ShipViewer | null>(null);
-  const latest = useRef({ hull, color });
-  latest.current = { hull, color };
+  const latest = useRef({ hull, color, style });
+  latest.current = { hull, color, style };
   const reduced = useReducedMotion();
 
   useEffect(() => {
@@ -41,7 +41,7 @@ export function ShipModelView({ hull, color, className }: { hull: HullSize; colo
     import("../three/shipPortrait")
       .then((m) => {
         if (!live || !host.current) return;
-        viewer.current = new m.ShipViewer(host.current, latest.current.hull, latest.current.color, reduced);
+        viewer.current = new m.ShipViewer(host.current, latest.current.hull, latest.current.color, latest.current.style, reduced);
       })
       .catch(() => undefined);
     return () => {
@@ -52,8 +52,8 @@ export function ShipModelView({ hull, color, className }: { hull: HullSize; colo
   }, [reduced]);
 
   useEffect(() => {
-    viewer.current?.setShip(hull, color);
-  }, [hull, color]);
+    viewer.current?.setShip(hull, color, style);
+  }, [hull, color, style]);
 
   return <div ref={host} className={className} title="Drag to turn · wheel to zoom · double-click to reset" />;
 }

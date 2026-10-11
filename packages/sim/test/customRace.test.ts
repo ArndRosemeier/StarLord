@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildCustomRace, getRace, newGame, newRecord, playerView, processTurn, raceCost, recordTurn, replayRecord,
+  buildCustomRace, getRace, raceShipStyle, newGame, newRecord, playerView, processTurn, raceCost, recordTurn, replayRecord,
   stateHash, validateCustomRace, type CustomRaceSpec,
 } from "@starlord/sim";
 
@@ -24,6 +24,12 @@ describe("custom races", () => {
     expect(validateCustomRace({ ...spec(), assetKey: "nobody" })).toMatch(/appearance/);
     // Drawbacks pay for strengths, up to the limit.
     expect(validateCustomRace(spec({ government: "feudal", traits: ["creative"], industry: 0, science: 0, growth: -0.5 }))).toBeNull();
+  });
+
+  it("pick their own default ship style", () => {
+    expect(raceShipStyle(buildCustomRace(spec()).id)).toBe("bulwark");
+    expect(raceShipStyle(buildCustomRace({ ...spec(), shipStyle: "manta" }).id)).toBe("manta");
+    expect(validateCustomRace({ ...spec(), shipStyle: "nope" })).toMatch(/ship style/);
   });
 
   it("get a stable id from their contents", () => {

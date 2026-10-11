@@ -1,6 +1,6 @@
 import {
   ARCS, ARMORS_BY_ID, COMPUTERS_BY_ID, HULLS_BY_ID, MISSILE_RACKS, MOD_EFFECTS, MODULES, SHIELDS_BY_ID,
-  SPECIALS_BY_ID, WEAPON_MODS_BY_ID, WEAPONS_BY_ID, bestDrive, designStats, refinement, weaponUnitCost,
+  SHIP_STYLES_BY_ID, SPECIALS_BY_ID, WEAPON_MODS_BY_ID, WEAPONS_BY_ID, bestDrive, designStats, refinement, weaponUnitCost,
   type DesignModule, type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponDef, type WeaponEffect,
   type WeaponKind, type WeaponModId, type WeaponMount, type WeaponTrait,
 } from "@starlord/sim";
@@ -244,6 +244,14 @@ export function specialTip(player: Player, draft: ShipDesign, id: string): TipCa
     rows: spaceRow(d, draft.hull),
     text: specialEffects(s.effects).map((t) => t[0]!.toUpperCase() + t.slice(1) + "."),
     note: clash.length ? `Cannot share a ship with ${clash.join(", ")}.` : s.excludes?.length ? `Excludes ${s.excludes.map((x) => SPECIALS_BY_ID[x]?.name ?? words(x)).join(", ")}.` : undefined,
+  };
+}
+
+export function styleTip(style: string, own: string): TipCard {
+  const s = SHIP_STYLES_BY_ID[style as keyof typeof SHIP_STYLES_BY_ID];
+  return {
+    title: `${s?.name ?? style} style`, kind: style === own ? "Ship style · your race" : "Ship style",
+    text: [s?.text ?? "", "Only changes how ships of this design look, in your empire's colour. Each race has its own style; new designs start in yours."],
   };
 }
 
