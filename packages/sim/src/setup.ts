@@ -5,7 +5,7 @@ import { RACES, getRace, hasTrait } from "./data/races.js";
 import { STARTING_TECH_APPS, TECH_TIERS, emptyHyperLevels, type TechTier } from "./data/techs.js";
 import { startingDesigns } from "./designs.js";
 import { distance, generateGalaxy, pickHomeStars, placeNebulae, placeSpecials } from "./galaxy.js";
-import { assignJobsForFood } from "./jobs.js";
+import { assignDefaultJobs } from "./jobs.js";
 import { buildCustomRace, type CustomRaceSpec } from "./customRace.js";
 import { createRoster } from "./leaders.js";
 import { setupNpcs } from "./npc.js";
@@ -169,7 +169,7 @@ export function newGame(opts: NewGameOptions): GameState {
     };
     hw.colonyId = colony.id;
     state.colonies[colony.id] = colony;
-    assignJobsForFood(state, colony);
+    assignDefaultJobs(state, colony);
 
     for (const s of STARTING_SHIPS) {
       const f: Fleet = {
@@ -205,7 +205,7 @@ export function newGame(opts: NewGameOptions): GameState {
       };
       planet.colonyId = c.id;
       state.colonies[c.id] = c;
-      assignJobsForFood(state, c);
+      assignDefaultJobs(state, c);
       if (!player.explored.includes(star.id)) player.explored.push(star.id);
     }
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { newGame } from "@starlord/sim";
+import { computeOutput, newGame, newUnitJob, type Colony } from "@starlord/sim";
 
 describe("start conditions", () => {
   for (const techLevel of ["preWarp", "average", "advanced"] as const) {
@@ -19,4 +19,23 @@ describe("start conditions", () => {
       }
     });
   }
+});
+
+describe("default jobs", () => {
+  it("homeworlds start fed, with research staffed as well as industry", () => {
+    const s = newGame({ seed: "default-jobs", races: ["terran", "felhari", "terran", "felhari"] });
+    for (const c of Object.values(s.colonies)) {
+      const p = s.players[c.ownerId]!;
+      expect(computeOutput(s.planets[c.planetId]!, p, c).foodNet).toBeGreaterThanOrEqual(0);
+      expect(c.scientists).toBeGreaterThan(0);
+      expect(c.workers - c.scientists).toBeGreaterThanOrEqual(0);
+      expect(c.workers - c.scientists).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("grown units keep industry and research even", () => {
+    const c = { workers: 3, scientists: 3 } as Colony;
+    expect(newUnitJob(c)).toBe("workers");
+    expect(newUnitJob({ ...c, workers: 4 })).toBe("scientists");
+  });
 });

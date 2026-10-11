@@ -6,6 +6,12 @@ export const TAX_PER_POP = 0.5;
 export const TRADE_GOODS_RATE = 0.5;
 /** BC per point of industry taken by the tax rate; the original calls taxes exactly like Trade Goods. */
 export const TAX_BC_PER_INDUSTRY = 0.5;
+/**
+ * Share of a new colony's non-farmers that start as scientists, so empires
+ * that never touch their jobs still research as hard as they build. The
+ * original leaves job assignment to the player; this is StarLord's default.
+ */
+export const DEFAULT_RESEARCH_SHARE = 0.5;
 /** Tax rates the player may choose. */
 export const TAX_STEPS = [0, 0.1, 0.2, 0.3, 0.4, 0.5];
 
