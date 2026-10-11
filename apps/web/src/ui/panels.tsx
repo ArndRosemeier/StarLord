@@ -20,10 +20,14 @@ export function fleetShips(f: Fleet) {
 }
 
 /** Planets of a star with colonies, plus colonize/invade buttons for the selected fleet. */
-export function StarPanel({ starId, fleetId, onSelectFleet, selectedPlanetId, onSelectPlanet }: {
+export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, selectedPlanetId, onSelectPlanet }: {
   starId: string;
+  /** The fleet colonize and invade act with. */
   fleetId: string | null;
-  onSelectFleet: (id: string) => void;
+  /** Every selected fleet, highlighted in the list; defaults to just `fleetId`. */
+  selectedFleetIds?: readonly string[];
+  /** `additive` is set on a shift-click, to add the fleet to the selection or take it out. */
+  onSelectFleet: (id: string, additive: boolean) => void;
   /** Planet to highlight, e.g. the one picked in the 3D system view. */
   selectedPlanetId?: string | null;
   onSelectPlanet?: (id: string) => void;
@@ -103,7 +107,7 @@ export function StarPanel({ starId, fleetId, onSelectFleet, selectedPlanetId, on
         <div className="col" style={{ gap: 4 }}>
           <h4>Fleets here</h4>
           {fleets.map((f) => (
-            <button key={f.id} className={f.id === fleetId ? "active" : ""} style={{ textAlign: "left" }} onClick={() => onSelectFleet(f.id)}>
+            <button key={f.id} className={(selectedFleetIds ?? [fleetId]).includes(f.id) ? "active" : ""} style={{ textAlign: "left" }} onClick={(e) => onSelectFleet(f.id, e.shiftKey)}>
               <span className="dot" style={{ background: view.players[f.ownerId]!.color, marginRight: 6 }} />
               {f.ownerId === me.id ? f.name : view.players[f.ownerId]!.name} <span className="muted">· {plural(fleetShips(f), "ship")}</span>
             </button>

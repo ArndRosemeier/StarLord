@@ -6,7 +6,7 @@ export interface SystemView3DProps {
   model: SystemModel;
   selected: SystemPick | null;
   reduced: boolean;
-  onPick: (pick: SystemPick | null) => void;
+  onPick: (pick: SystemPick | null, additive: boolean) => void;
   onFail: (error: unknown) => void;
 }
 
@@ -25,7 +25,7 @@ export default function SystemView3D({ model, selected, reduced, onPick, onFail 
   useEffect(() => {
     if (!host.current) return;
     try {
-      scene.current = new SystemScene(host.current, model, { reduced, onPick: (p) => pick.current(p) });
+      scene.current = new SystemScene(host.current, model, { reduced, onPick: (p, additive) => pick.current(p, additive) });
       shown.current = model;
     } catch (e) {
       onFail(e);

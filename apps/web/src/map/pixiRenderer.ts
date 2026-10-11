@@ -313,7 +313,7 @@ export class PixiMapRenderer implements MapRenderer {
 
     for (const f of scene.fleets) {
       if (!f.dest) continue;
-      const selected = f.id === scene.selectedFleetId;
+      const selected = scene.selectedFleetIds.has(f.id);
       this.trailList.push({ x1: f.x * UNIT, y1: f.y * UNIT, x2: f.dest.x * UNIT, y2: f.dest.y * UNIT, color: hex(f.color), selected });
       if (selected && f.eta !== null) {
         const t = label(`arrives in ${turns(f.eta)}`, 0xffffff);
@@ -464,7 +464,7 @@ export class PixiMapRenderer implements MapRenderer {
       }
       node.addChild(body);
       if (f.starId) this.pulses.push({ obj: body, base: 1, amp: 0.06, speed: 2, phase: rand(f.id) * 6, prop: "scale" });
-      if (f.id === scene.selectedFleetId) {
+      if (scene.selectedFleetIds.has(f.id)) {
         const sel = dashedRing(new Graphics(), 10, 8, 0.6).stroke({ width: 1.5, color: 0xffffff });
         node.addChild(sel);
         this.spins.push({ obj: sel, speed: 1.4 });
@@ -475,7 +475,7 @@ export class PixiMapRenderer implements MapRenderer {
       node.on("pointertap", (e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
-        this.input.onFleet(f.id);
+        this.input.onFleet(f.id, e.shiftKey);
       });
       node.on("pointerdown", (e) => {
         if (e.button !== 2 || !f.starId) return;
@@ -487,24 +487,33 @@ export class PixiMapRenderer implements MapRenderer {
     this.drawHover();
   }
 
-  /** While one of your fleets is selected, show the route to the star under the cursor. */
+  /** While your fleets are selected, show each one's route to the star under the cursor. */
   private drawHover(): void {
     for (const child of this.hover.removeChildren()) child.destroy({ children: true });
     const scene = this.scene;
     const route = scene && this.hoverStarId ? scene.routes.get(this.hoverStarId) : undefined;
     if (!scene || !route) return;
-    const fleet = scene.fleets.find((f) => f.id === scene.selectedFleetId);
     const star = scene.stars.find((s) => s.id === this.hoverStarId);
-    if (!fleet || !star || (fleet.starId === star.id && !fleet.dest)) return;
-    // The current destination already carries its own arrival label.
-    if (fleet.dest && fleet.dest.x === star.x && fleet.dest.y === star.y) return;
+    if (!star) return;
+    const fleets = scene.fleets.filter((f) => scene.fleetRoutes.has(f.id));
+    // Fleets idle at this star stay put, and a current destination already carries its own arrival label.
+    const going = fleets.filter((f) => !(f.starId === star.id && !f.dest) && !(f.dest && f.dest.x === star.x && f.dest.y === star.y));
+    if (going.length === 0) return;
+    let inRange = 0;
+    for (const f of going) {
+      const r = scene.fleetRoutes.get(f.id)!.get(star.id);
+      if (r?.ok) inRange++;
+      const g = dashTo(new Graphics(), f.x * UNIT, f.y * UNIT, star.x * UNIT, star.y * UNIT);
+      g.stroke({ width: 2, color: r?.ok ? ROUTE_OK : ROUTE_BAD, alpha: 0.9 });
+      this.hover.addChild(g);
+    }
     const color = route.ok ? ROUTE_OK : ROUTE_BAD;
-    const g = dashTo(new Graphics(), fleet.x * UNIT, fleet.y * UNIT, star.x * UNIT, star.y * UNIT);
-    g.stroke({ width: 2, color, alpha: 0.9 });
-    const text = fleet.starId === star.id ? "stay here" : route.ok ? turns(route.turns) : "out of range";
+    const only = going.length === 1 ? going[0]! : null;
+    let text = only && only.starId === star.id ? "stay here" : route.ok ? turns(route.turns) : "out of range";
+    if (going.length > 1 && route.ok && inRange < going.length) text = `${inRange} of ${going.length} in range · ${text}`;
     const t = label(text, color, 13);
     t.position.set(star.x * UNIT, star.y * UNIT - 22);
-    this.hover.addChild(g, t);
+    this.hover.addChild(t);
   }
 
   destroy(): void {

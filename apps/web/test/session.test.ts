@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TIERS_BY_ID, availableTiers } from "@starlord/sim";
 import { GameSession } from "../src/game/session";
-import { buildScene } from "../src/map/scene";
+import { buildScene, combineRoutes, toggleFleetSelection } from "../src/map/scene";
 
 const opts = { seed: "ui", galaxySize: "small" as const, races: ["terran", "kordex", "zhrikk"] };
 
@@ -83,5 +83,31 @@ describe("map routes", () => {
       s.endTurn();
     }
     expect(s.state.fleets[fleet.id]!.starId).toBe(destId);
+  });
+});
+
+describe("fleet multi-selection", () => {
+  it("shift-click adds and removes your own fleets; a plain click or a foreign fleet selects alone", () => {
+    const s = GameSession.create(opts, 0);
+    const mine = Object.values(s.view.fleets).filter((f) => f.ownerId === 0).map((f) => f.id);
+    expect(mine.length).toBeGreaterThan(1);
+    const [a, b] = [mine[0]!, mine[1]!];
+    expect(toggleFleetSelection(s.view, [], a, true)).toEqual([a]);
+    expect(toggleFleetSelection(s.view, [a], b, true)).toEqual([a, b]);
+    expect(toggleFleetSelection(s.view, [a, b], a, true)).toEqual([b]);
+    expect(toggleFleetSelection(s.view, [a, b], a, false)).toEqual([a]);
+    const foreign = Object.values(s.view.fleets).find((f) => f.ownerId !== 0);
+    if (foreign) expect(toggleFleetSelection(s.view, [a], foreign.id, true)).toEqual([foreign.id]);
+  });
+
+  it("routes a selection to a star if any fleet gets there, as slow as the slowest", () => {
+    expect(combineRoutes([{ ok: true, turns: 2 }, { ok: false, reason: "far" }, { ok: true, turns: 5 }])).toEqual({ ok: true, turns: 5 });
+    expect(combineRoutes([{ ok: false, reason: "far" }])).toEqual({ ok: false, reason: "far" });
+    const s = GameSession.create(opts, 0);
+    const mine = Object.values(s.view.fleets).filter((f) => f.ownerId === 0).map((f) => f.id);
+    const scene = buildScene(s.view, null, mine, true);
+    expect([...scene.selectedFleetIds]).toEqual(mine);
+    expect(scene.fleetRoutes.size).toBe(mine.length);
+    expect(scene.reachable.size).toBeGreaterThan(0);
   });
 });

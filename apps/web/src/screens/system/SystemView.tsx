@@ -14,12 +14,13 @@ const SystemView3D = lazy(() => import("./SystemView3D"));
  * system's details (colonize, invade, fleets) beside it. Without WebGL the
  * details still show. Esc, the close button or a click outside closes it.
  */
-export function SystemView({ starId, fleetId, onClose, onSelectFleet }: {
+export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelectFleet }: {
   starId: string;
   fleetId: string | null;
+  selectedFleetIds?: readonly string[];
   onClose: () => void;
-  /** Picking a fleet closes the view so the fleet can be ordered on the map. */
-  onSelectFleet: (id: string) => void;
+  /** Picking a fleet closes the view so the fleet can be ordered on the map; a shift-click (`additive`) adds it to the selection. */
+  onSelectFleet: (id: string, additive: boolean) => void;
 }) {
   const { session, view, readOnly } = useGame();
   const reduced = useReducedMotion();
@@ -59,9 +60,9 @@ export function SystemView({ starId, fleetId, onClose, onSelectFleet }: {
                   selected={selected}
                   reduced={reduced}
                   onFail={() => setFailed(true)}
-                  onPick={(p) => {
+                  onPick={(p, additive) => {
                     setSelected(p);
-                    if (p?.kind === "fleet") onSelectFleet(p.id);
+                    if (p?.kind === "fleet") onSelectFleet(p.id, additive);
                   }}
                 />
               </Suspense>
@@ -112,6 +113,7 @@ export function SystemView({ starId, fleetId, onClose, onSelectFleet }: {
           <StarPanel
             starId={starId}
             fleetId={fleetId}
+            selectedFleetIds={selectedFleetIds}
             selectedPlanetId={planetId}
             onSelectPlanet={(id) => setSelected({ kind: "planet", id })}
             onSelectFleet={onSelectFleet}

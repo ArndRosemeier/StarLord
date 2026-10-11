@@ -3,7 +3,8 @@ import type { MapScene } from "./scene";
 export interface MapInput {
   /** A left or right click on a star; the screen decides whether that selects it or sends the selected fleet. */
   onStar(starId: string, action: "select" | "order"): void;
-  onFleet(fleetId: string): void;
+  /** A click on a fleet; `additive` (shift held) adds it to the selection or takes it out. */
+  onFleet(fleetId: string, additive: boolean): void;
   onBackground(): void;
 }
 

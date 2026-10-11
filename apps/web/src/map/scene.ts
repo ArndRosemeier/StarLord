@@ -14,11 +14,14 @@ export interface MapScene {
   fleets: SceneFleet[];
   /** Range rings around the selected fleet and the empire's reach. */
   selectedStarId: string | null;
-  selectedFleetId: string | null;
-  /** Stars the selected fleet can reach this order. */
+  /** Every selected fleet; shift-click adds to or removes from the selection. */
+  selectedFleetIds: Set<string>;
+  /** Stars at least one selected fleet can reach this order. */
   reachable: Set<string>;
-  /** Where the selected fleet could be sent, keyed by star; empty unless it is the viewer's to order. */
+  /** Where the selection could be sent, keyed by star; empty unless it holds fleets the viewer can order. */
   routes: Map<string, Route>;
+  /** The same per selected fleet the viewer can order, keyed by fleet then star. */
+  fleetRoutes: Map<string, Map<string, Route>>;
   /** Nebula clouds: they slow ships and switch off shields. */
   nebulae: { x: number; y: number; r: number }[];
   /** Wormhole pairs, drawn as links between their stars. */
@@ -41,6 +44,32 @@ export function routeTo(view: PlayerView, fleet: Fleet, starId: string): Route {
     ok: false,
     reason: `${dest.name} is out of range: ${d.toFixed(1)} parsecs from your nearest colony, but your fuel range is ${fleetRange(player)}.`,
   };
+}
+
+/**
+ * Several fleets sent to one star: it can be ordered if any of them gets there, and the
+ * combined trip takes as long as the slowest of those. With none, the first reason stands.
+ */
+export function combineRoutes(routes: Route[]): Route {
+  const ok = routes.filter((r): r is Extract<Route, { ok: true }> => r.ok);
+  if (ok.length > 0) return { ok: true, turns: Math.max(...ok.map((r) => r.turns)) };
+  return routes[0] ?? { ok: false, reason: "No fleet selected." };
+}
+
+/**
+ * A click on a fleet: a plain click selects only it; a shift-click adds it to the
+ * selection, or takes it out if it was already in. Only your own fleets are gathered
+ * this way, since only those take orders; anything else is selected on its own.
+ */
+export function toggleFleetSelection(
+  view: PlayerView,
+  selected: readonly string[],
+  fleetId: string,
+  additive: boolean,
+): string[] {
+  const mine = (id: string) => view.fleets[id]?.ownerId === view.viewer;
+  if (!additive || !mine(fleetId) || !selected.every(mine)) return [fleetId];
+  return selected.includes(fleetId) ? selected.filter((id) => id !== fleetId) : [...selected, fleetId];
 }
 
 export interface SceneStar {
@@ -80,7 +109,7 @@ export const STAR_COLORS: Record<string, string> = {
 export function buildScene(
   view: PlayerView,
   selectedStarId: string | null,
-  selectedFleetId: string | null,
+  selectedFleetIds: string | readonly string[] | null,
   canOrder = false,
 ): MapScene {
   const me = view.players[view.viewer]!;
@@ -127,12 +156,19 @@ export function buildScene(
       kind: owner.kind,
     };
   });
+  const selected = new Set(selectedFleetIds === null ? [] : typeof selectedFleetIds === "string" ? [selectedFleetIds] : selectedFleetIds);
   const reachable = new Set<string>();
   const routes = new Map<string, Route>();
-  const sel = selectedFleetId ? view.fleets[selectedFleetId] : undefined;
-  if (sel && sel.ownerId === view.viewer && canOrder) {
+  const fleetRoutes = new Map<string, Map<string, Route>>();
+  const orderable = canOrder
+    ? [...selected].map((id) => view.fleets[id]).filter((f): f is Fleet => !!f && f.ownerId === view.viewer)
+    : [];
+  for (const f of orderable) {
+    fleetRoutes.set(f.id, new Map(view.galaxy.stars.map((s) => [s.id, routeTo(view, f, s.id)])));
+  }
+  if (orderable.length > 0) {
     for (const s of view.galaxy.stars) {
-      const route = routeTo(view, sel, s.id);
+      const route = combineRoutes(orderable.map((f) => fleetRoutes.get(f.id)!.get(s.id)!));
       routes.set(s.id, route);
       if (route.ok) reachable.add(s.id);
     }
@@ -145,7 +181,7 @@ export function buildScene(
   return {
     width: view.galaxy.width,
     height: view.galaxy.height,
-    stars, fleets, selectedStarId, selectedFleetId, reachable, routes,
+    stars, fleets, selectedStarId, selectedFleetIds: selected, reachable, routes, fleetRoutes,
     nebulae: (view.nebulae ?? []).map((n) => ({ x: n.x, y: n.y, r: n.r })),
     wormholes,
   };
