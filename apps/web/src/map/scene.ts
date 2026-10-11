@@ -1,6 +1,6 @@
 import {
-  canReach, distance, distanceToNearestColony, fleetFuelRange, travelTurns,
-  type Fleet, type PlayerView, type Star,
+  canReach, distance, distanceToNearestColony, findDesign, fleetFuelRange, travelTurns,
+  type Fleet, type HullSize, type Player, type PlayerView, type Star,
 } from "@starlord/sim";
 
 /**
@@ -98,6 +98,31 @@ export interface SceneFleet {
   eta: number | null;
   starId: string | null;
   kind: "empire" | "monsters" | "raiders";
+  /** The fleet's most significant ship, which picks its icon: the biggest warship, else its civilian role. */
+  look: FleetLook;
+}
+
+export type ShipRole = "scout" | "warship" | "colony" | "outpost" | "transport";
+export interface FleetLook { role: ShipRole; hull: HullSize }
+
+const HULL_ORDER: HullSize[] = ["frigate", "destroyer", "cruiser", "battleship", "titan", "doomStar"];
+/** Civilian roles rank below every warship; a colony ship outranks an outpost ship, and so on down to scouts. */
+const CIVIL_RANK: Record<Exclude<ShipRole, "warship">, number> = { scout: 0, transport: 1, outpost: 2, colony: 3 };
+
+export function fleetLook(owner: Player, fleet: Fleet): FleetLook {
+  let best: FleetLook | null = null;
+  let bestRank = -1;
+  for (const s of fleet.ships) {
+    const d = findDesign(owner, s.designId);
+    if (!d) continue;
+    const role: ShipRole = d.module ?? (d.weapons.length === 0 && !d.fixed ? "scout" : "warship");
+    const rank = role === "warship" ? 10 + HULL_ORDER.indexOf(d.hull) : CIVIL_RANK[role];
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = { role, hull: d.hull };
+    }
+  }
+  return best ?? { role: "warship", hull: "frigate" };
 }
 
 export const STAR_COLORS: Record<string, string> = {
@@ -153,6 +178,7 @@ export function buildScene(
       eta: dest && f.ownerId === view.viewer ? travelTurns(view, f, dest.id) : null,
       starId: f.starId,
       kind: owner.kind,
+      look: fleetLook(owner, f),
     };
   });
   const selected = new Set(selectedFleetIds === null ? [] : typeof selectedFleetIds === "string" ? [selectedFleetIds] : selectedFleetIds);
