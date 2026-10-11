@@ -94,9 +94,8 @@ export interface TechLevelDef {
   /** Random extra fields (level <= extraMaxLevel) on top. */
   extraFields: number;
   extraMaxLevel: number;
-  /** Homeworld buildings and ships at the start. */
+  /** Homeworld buildings at the start (the star base is always added, see STARTING_STATION). */
   buildings: string[];
-  ships: { name: string; designId: string; count: number }[];
   /** Extra colonies founded near the homeworld, each with this population. */
   extraColonies: number;
   extraColonyPop: number;
@@ -105,34 +104,34 @@ export interface TechLevelDef {
   bc: number;
 }
 
+/**
+ * Every empire starts with exactly these ships and a star base over its
+ * homeworld, whatever the tech level (pre-warp ships wait at home until a
+ * drive is researched).
+ */
+export const STARTING_SHIPS: { name: string; designId: string; count: number }[] = [
+  { name: "Scout I", designId: "scout", count: 1 },
+  { name: "Scout II", designId: "scout", count: 1 },
+  { name: "Colony Fleet", designId: "colonyShip", count: 1 },
+];
+export const STARTING_STATION = "starBase";
+
 export const TECH_LEVELS: Record<TechLevel, TechLevelDef> = {
   // Pre-warp: only the homeworld and the starting applications; no ship can leave until a drive is researched.
   preWarp: {
     name: "Pre-Warp", maxFieldLevel: 0, generalFields: false, extraFields: 0, extraMaxLevel: 0,
-    buildings: [], ships: [], extraColonies: 0, extraColonyPop: 0, exploredRadius: 0, bc: 50,
+    buildings: [], extraColonies: 0, extraColonyPop: 0, exploredRadius: 0, bc: 50,
   },
-  // Average: all FTL basics (the general fields) plus a few random extras, a small fleet and one colony ship.
+  // Average: all FTL basics (the general fields) plus a few random extras.
   average: {
     name: "Average", maxFieldLevel: 0, generalFields: true, extraFields: 2, extraMaxLevel: 3,
-    buildings: ["marineBarracks", "starBase"],
-    ships: [
-      { name: "Scout I", designId: "scout", count: 1 },
-      { name: "Scout II", designId: "scout", count: 1 },
-      { name: "Colony Fleet", designId: "colonyShip", count: 1 },
-      { name: "Home Guard", designId: "frigate", count: 2 },
-    ],
+    buildings: ["marineBarracks"],
     extraColonies: 0, extraColonyPop: 0, exploredRadius: 0, bc: 50,
   },
-  // Advanced: many techs, several colonies, much of the neighbourhood explored and a larger fleet.
+  // Advanced: many techs, several colonies and much of the neighbourhood explored.
   advanced: {
     name: "Advanced", maxFieldLevel: 5, generalFields: true, extraFields: 2, extraMaxLevel: 6,
-    buildings: ["marineBarracks", "starBase", "automatedFactory", "hydroponicFarm"],
-    ships: [
-      { name: "Scout I", designId: "scout", count: 1 },
-      { name: "Scout II", designId: "scout", count: 1 },
-      { name: "Colony Fleet", designId: "colonyShip", count: 1 },
-      { name: "Home Guard", designId: "frigate", count: 4 },
-    ],
+    buildings: ["marineBarracks", "automatedFactory", "hydroponicFarm"],
     extraColonies: 2, extraColonyPop: 3, exploredRadius: 8, bc: 200,
   },
 };

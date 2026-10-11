@@ -22,8 +22,10 @@ describe("GameSession", () => {
     const s = GameSession.create(opts, 0);
     s.issue({ type: "setTaxRate", rate: 0.2 }, { type: "setTaxRate", rate: 0.3 });
     expect(s.pending).toHaveLength(1);
-    const guard = Object.values(s.state.fleets).find((f) => f.ownerId === 0 && f.ships.some((x) => x.designId === "frigate" && x.count === 2))!;
-    s.issue({ type: "splitFleet", fleetId: guard.id, ships: [{ designId: "frigate", count: 1 }] });
+    const scouts = Object.values(s.state.fleets).filter((f) => f.ownerId === 0 && f.ships.some((x) => x.designId === "scout"));
+    s.issue({ type: "mergeFleets", fleetIds: scouts.map((f) => f.id) });
+    const guard = Object.values(s.view.fleets).find((f) => f.ownerId === 0 && f.ships.some((x) => x.designId === "scout" && x.count === 2))!;
+    s.issue({ type: "splitFleet", fleetId: guard.id, ships: [{ designId: "scout", count: 1 }] });
     const split = Object.values(s.view.fleets).find((f) => f.id !== guard.id && f.id.startsWith(guard.id))!;
     const dest = s.view.galaxy.stars.find((st) => st.id !== guard.starId && Math.hypot(st.x - guard.x, st.y - guard.y) < 4)!;
     s.issue({ type: "moveFleet", fleetId: split.id, destStarId: dest.id });
