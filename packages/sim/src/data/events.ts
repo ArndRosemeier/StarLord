@@ -77,10 +77,8 @@ export const EVENT_NUMBERS = {
   pirateHunterSize: 6,
   /** Plague: research points to cure, a colonist dies with this chance each turn, and the outbreak burns out after the timeout. */
   plagueStrength: [100, 300] as [number, number],
-  plagueKillChance: 0.5,
   plagueTimeout: 40,
   boomTurns: [10, 20] as [number, number],
-  boomGrowthMult: 2,
   supernovaStrength: [200, 500] as [number, number],
   supernovaTurns: [10, 15] as [number, number],
   anomalyTurns: [5, 10] as [number, number],

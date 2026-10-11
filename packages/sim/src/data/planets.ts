@@ -13,8 +13,8 @@ export type Minerals = "ultraPoor" | "poor" | "abundant" | "rich" | "ultraRich";
 export type Gravity = "low" | "normal" | "heavy";
 
 export interface ClimateInfo {
-  /** Max population per size step (tiny=1 .. huge=5). */
-  popPerSize: number;
+  /** Share of the size's full population this climate holds, in percent (Gaia 100). */
+  popPercent: number;
   foodPerFarmer: number;
   /** Asteroids and gas giants can't be settled, not even by outposts, until an Artificial Planet turns them into barren planets. */
   habitable: boolean;
@@ -24,30 +24,34 @@ export interface ClimateInfo {
 }
 
 /** Farming is impossible where the base food per farmer is 0, unless Biomorphic Fungi are known. */
-/**
- * Hostile worlds hold a quarter of a Gaia world. With max population rounded
- * down this gives the original's 1 / 2 / 4 / 5 / 6 for tiny to huge.
- */
-export const HOSTILE_POP = 4 / 3 + 0.001;
-
 export const CLIMATES: Record<PlanetType, ClimateInfo> = {
-  gaia: { popPerSize: 5, foodPerFarmer: 3, habitable: true, hostile: false, maintenancePenalty: 0 },
-  terran: { popPerSize: 4, foodPerFarmer: 2, habitable: true, hostile: false, maintenancePenalty: 0 },
-  ocean: { popPerSize: 4, foodPerFarmer: 2, habitable: true, hostile: false, maintenancePenalty: 0 },
-  swamp: { popPerSize: 3, foodPerFarmer: 2, habitable: true, hostile: false, maintenancePenalty: 0 },
-  arid: { popPerSize: 3, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0 },
-  tundra: { popPerSize: 2, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0 },
-  desert: { popPerSize: 2, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0.25 },
-  barren: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
-  radiated: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.25 },
-  toxic: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.5 },
-  inferno: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
-  asteroids: { popPerSize: 0, foodPerFarmer: 0, habitable: false, hostile: true, maintenancePenalty: 0 },
-  gasGiant: { popPerSize: 0, foodPerFarmer: 0, habitable: false, hostile: true, maintenancePenalty: 0 },
+  gaia: { popPercent: 100, foodPerFarmer: 3, habitable: true, hostile: false, maintenancePenalty: 0 },
+  terran: { popPercent: 80, foodPerFarmer: 2, habitable: true, hostile: false, maintenancePenalty: 0 },
+  ocean: { popPercent: 25, foodPerFarmer: 2, habitable: true, hostile: false, maintenancePenalty: 0 },
+  swamp: { popPercent: 40, foodPerFarmer: 2, habitable: true, hostile: false, maintenancePenalty: 0 },
+  arid: { popPercent: 60, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0 },
+  tundra: { popPercent: 25, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0 },
+  desert: { popPercent: 25, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0.25 },
+  barren: { popPercent: 25, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
+  radiated: { popPercent: 25, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.25 },
+  toxic: { popPercent: 25, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.5 },
+  inferno: { popPercent: 25, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
+  asteroids: { popPercent: 0, foodPerFarmer: 0, habitable: false, hostile: true, maintenancePenalty: 0 },
+  gasGiant: { popPercent: 0, foodPerFarmer: 0, habitable: false, hostile: true, maintenancePenalty: 0 },
 };
 
 /** Climates without soil: farming is impossible and soil buildings do nothing. */
 export const SOILLESS: PlanetType[] = ["barren", "radiated", "toxic", "inferno", "asteroids", "gasGiant"];
+
+/** Population a planet of each size holds at 100% climate (Gaia). */
+export const SIZE_POP_BASE: Record<PlanetSize, number> = {
+  tiny: 5, small: 10, medium: 15, large: 20, huge: 25,
+};
+
+/** Max population a climate holds on a planet size: its share of the full size, rounded half up. */
+export function climatePopulation(percent: number, size: PlanetSize): number {
+  return Math.floor((percent * SIZE_POP_BASE[size] + 50) / 100);
+}
 
 export const SIZE_FACTOR: Record<PlanetSize, number> = {
   tiny: 1, small: 2, medium: 3, large: 4, huge: 5,
@@ -57,12 +61,11 @@ export const INDUSTRY_PER_WORKER: Record<Minerals, number> = {
   ultraPoor: 1, poor: 2, abundant: 3, rich: 5, ultraRich: 8,
 };
 
-/**
- * Industry a planet absorbs without pollution, per size factor. The original
- * scales tolerance with size but its numbers are not in our references.
- */
-export const POLLUTION_TOLERANCE_PER_SIZE = 4;
-/** Each point of industry above the tolerance makes this much pollution, and each pollution point costs 1 industry. */
+/** Industry a planet absorbs without pollution, by size; Nano Disassemblers double it. */
+export const POLLUTION_TOLERANCE: Record<PlanetSize, number> = {
+  tiny: 2, small: 4, medium: 6, large: 8, huge: 10,
+};
+/** Each point of polluting industry above the tolerance makes this much pollution (rounded up), and each costs 1 industry. */
 export const POLLUTION_PER_EXCESS = 0.5;
 
 export function gravityOf(size: PlanetSize, minerals: Minerals): Gravity {

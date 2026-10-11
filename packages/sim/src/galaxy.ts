@@ -4,7 +4,7 @@ import {
 } from "./data/galaxy.js";
 import { STAR_NAMES } from "./data/names.js";
 import {
-  CLIMATES, MINERAL_WEIGHTS_BY_STAR, PLANET_SIZE_WEIGHTS, PLANET_TYPE_WEIGHTS, PLANETS_PER_STAR, SIZE_FACTOR,
+  CLIMATES, MINERAL_WEIGHTS_BY_STAR, PLANET_SIZE_WEIGHTS, PLANET_TYPE_WEIGHTS, PLANETS_PER_STAR, SIZE_FACTOR, climatePopulation,
   gravityOf, type Minerals, type PlanetSize, type PlanetType,
 } from "./data/planets.js";
 import { Rng } from "./rng.js";
@@ -198,7 +198,7 @@ export function placeSpecials(rng: Rng, stars: Star[], planets: Record<Id, Plane
       case "natives": {
         const p = rng.pick(fertile);
         p.special = "natives";
-        p.natives = Math.max(2, Math.floor(CLIMATES[p.type].popPerSize * SIZE_FACTOR[p.size] * NATIVES_FRACTION));
+        p.natives = Math.max(2, Math.floor(climatePopulation(CLIMATES[p.type].popPercent, p.size) * NATIVES_FRACTION));
         break;
       }
       case "wormhole": {

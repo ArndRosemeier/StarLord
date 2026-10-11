@@ -9,8 +9,12 @@ import type { Minerals, StarColor } from "./planets.js";
 export interface DifficultyDef {
   name: string;
   /** Multiplier on computer empires' industry and research. */
-  aiProduction: number;
-  aiResearch: number;
+  /** Percent computer players add to every farmer's, worker's and scientist's output. */
+  aiOutputPercent: number;
+  /** Growth percent computer players add. */
+  aiGrowthPercent: number;
+  /** Extra BC per population computer players collect. */
+  aiBcPerPop: number;
   /** Attitude every computer empire starts with, and drifts toward, for each human empire. */
   aiAttitudeToHumans: number;
   /** Custom races are not allowed on the two easiest levels. */
@@ -23,11 +27,11 @@ export interface DifficultyDef {
  * hate you"; the exact factors are ours.
  */
 export const DIFFICULTIES: Record<Difficulty, DifficultyDef> = {
-  tutor: { name: "Tutor", aiProduction: 0.75, aiResearch: 0.75, aiAttitudeToHumans: 30, customRaces: false },
-  easy: { name: "Easy", aiProduction: 0.875, aiResearch: 0.875, aiAttitudeToHumans: 15, customRaces: false },
-  average: { name: "Average", aiProduction: 1, aiResearch: 1, aiAttitudeToHumans: 0, customRaces: true },
-  hard: { name: "Hard", aiProduction: 1.25, aiResearch: 1.25, aiAttitudeToHumans: -10, customRaces: true },
-  impossible: { name: "Impossible", aiProduction: 1.5, aiResearch: 1.5, aiAttitudeToHumans: -60, customRaces: true },
+  tutor: { name: "Tutor", aiOutputPercent: -50, aiGrowthPercent: 0, aiBcPerPop: 0, aiAttitudeToHumans: 30, customRaces: false },
+  easy: { name: "Easy", aiOutputPercent: 0, aiGrowthPercent: 1, aiBcPerPop: 0, aiAttitudeToHumans: 15, customRaces: false },
+  average: { name: "Average", aiOutputPercent: 50, aiGrowthPercent: 2, aiBcPerPop: 0.25, aiAttitudeToHumans: 0, customRaces: true },
+  hard: { name: "Hard", aiOutputPercent: 100, aiGrowthPercent: 3, aiBcPerPop: 0.5, aiAttitudeToHumans: -10, customRaces: true },
+  impossible: { name: "Impossible", aiOutputPercent: 200, aiGrowthPercent: 4, aiBcPerPop: 0.75, aiAttitudeToHumans: -60, customRaces: true },
 };
 
 export const DIFFICULTY_ORDER: Difficulty[] = ["tutor", "easy", "average", "hard", "impossible"];

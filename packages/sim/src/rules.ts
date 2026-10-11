@@ -121,8 +121,13 @@ export function availableDesigns(state: GameState, playerId: PlayerId): string[]
 export function itemCost(state: GameState, playerId: PlayerId, item: BuildItem, colony?: Colony): number {
   const player = state.players[playerId]!;
   switch (item.kind) {
-    case "building":
-      return BUILDINGS_BY_ID[item.id]?.cost ?? Infinity;
+    case "building": {
+      const def = BUILDINGS_BY_ID[item.id];
+      if (!def) return Infinity;
+      // An upgrade costs only the difference to the building it replaces.
+      const replaced = (def.replaces ?? []).filter((id) => colony?.buildings.includes(id)).map((id) => BUILDINGS_BY_ID[id]?.cost ?? 0);
+      return def.cost - Math.max(0, ...replaced);
+    }
     case "ship": {
       const d = player.designs.find((x) => x.id === item.designId);
       return d ? designStats(player, d).cost : Infinity;

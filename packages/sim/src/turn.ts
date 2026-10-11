@@ -1,6 +1,6 @@
 import { ANDROID_PROJECTS, ARTIFICIAL_PLANET, BUILDINGS_BY_ID, PROJECT_UPKEEP, TERRAFORM_STEP } from "./data/buildings.js";
 import { DIFFICULTIES } from "./data/galaxy.js";
-import { FREIGHTERS, MILITIA_PER_POP, TRADE_GOODS_RATE } from "./data/economy.js";
+import { FREIGHTERS, GROWTH, MILITIA_PER_POP, TRADE_GOODS_RATE } from "./data/economy.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import type { PlanetType } from "./data/planets.js";
 import { getRace, hasTrait, registerRaces } from "./data/races.js";
@@ -29,7 +29,7 @@ import { moveFleet } from "./movement.js";
 import { tradeGoodsMult } from "./raceEffects.js";
 import { guardianSlain } from "./npc.js";
 import { raidTick, returnThroughPortal, salvageTech, syncPortals } from "./raiders.js";
-import { absorbResearch, growthMultiplier, payBribe, randomEventTick, systemFrozen } from "./randomEvents.js";
+import { absorbResearch, payBribe, randomEventTick, systemFrozen } from "./randomEvents.js";
 import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
 import { colonyRoom, freePlanetsInSystem, isContinuous, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
@@ -561,23 +561,18 @@ function runEconomy(ctx: TurnContext): void {
 
     // Freighters carry food from fed colonies to hungry ones; the rest is sold.
     const food = foodPlan(state, player.id, list);
-    for (const { colony } of list) if (food.shortfall[colony.id]) starve(ctx, colony);
 
-    // Computer players get the difficulty level's production and research handicap.
-    const level = DIFFICULTIES[state.settings.difficulty ?? "average"];
-    const aiProd = player.isHuman ? 1 : level.aiProduction;
-    const aiResearch = player.isHuman ? 1 : level.aiResearch;
     let research = 0;
     let bc = food.saleBC - food.upkeep - list.filter((x) => x.colony.portal).length * PROJECT_UPKEEP.dimensionalPortal;
     for (const { colony, out } of list) {
       // A plague or a threatened supernova claims the colony's research.
-      research += absorbResearch(state, colony, out.research * aiResearch);
+      research += absorbResearch(state, colony, out.research);
       bc += out.bc - out.maintenance;
       // A time-space anomaly stops all building in the system.
       if (!systemFrozen(state, state.planets[colony.planetId]!.starId)) {
-        bc += produce(ctx, colony, out.industry * aiProd, traders * out.incomeMult);
+        bc += produce(ctx, colony, out.industry, traders);
       }
-      grow(colony, { ...out, growthK: out.growthK * growthMultiplier(state, colony.id) });
+      grow(ctx, colony, out, food.shortfall[colony.id] ?? 0);
     }
     const treaties = treatyIncome(state, player.id, totals);
     research += treaties.research + leaderResearch(state, player.id);
@@ -743,14 +738,6 @@ function upgradeGovernment(player: GameState["players"][number]): void {
   if (next && player.techs.some((t) => TECHS[t]?.government === next)) player.government = next;
 }
 
-/** A colony whose food need isn't met loses people, but never its last one. */
-function starve(ctx: TurnContext, colony: Colony): void {
-  if (population(colony) <= 1) return;
-  removePopulation(colony, FREIGHTERS.starvationPerTurn);
-  colony.growthK = 0;
-  ctx.emit({ kind: "starvation", playerId: colony.ownerId, colonyId: colony.id });
-}
-
 /** Spends industry on the build queue. Returns BC earned from trade goods. */
 function produce(ctx: TurnContext, colony: Colony, industry: number, tradeMult: number): number {
   const { state } = ctx;
@@ -760,12 +747,10 @@ function produce(ctx: TurnContext, colony: Colony, industry: number, tradeMult: 
     // An empty queue converts output to BC rather than wasting it.
     const total = industry + colony.progress;
     colony.progress = 0;
-    return total * TRADE_GOODS_RATE * tradeMult;
+    return tradeGoods(total, tradeMult);
   }
-  if (head.kind === "project" && head.id === "housing") {
-    colony.growthK += industry * 3;
-    return 0;
-  }
+  // Housing turns the production into growth (economy.ts), nothing is built.
+  if (head.kind === "project" && head.id === "housing") return 0;
   const cost = itemCost(state, colony.ownerId, head, colony);
   colony.progress += industry;
   if (!Number.isFinite(cost)) {
@@ -780,10 +765,14 @@ function produce(ctx: TurnContext, colony: Colony, industry: number, tradeMult: 
   if (colony.queue.length === 0 || isContinuous(colony.queue[0]!)) {
     const left = colony.progress;
     colony.progress = 0;
-    if (colony.queue[0]?.kind === "project") colony.growthK += left * 3;
-    else return left * TRADE_GOODS_RATE * tradeMult;
+    if (colony.queue[0]?.kind !== "project") return tradeGoods(left, tradeMult);
   }
   return 0;
+}
+
+/** BC from production sold as Trade Goods: half, rounded up, or all of it for fantastic traders. No other bonus applies. */
+function tradeGoods(industry: number, traderMult: number): number {
+  return traderMult > 1 ? industry : Math.ceil(industry * TRADE_GOODS_RATE);
 }
 
 function completeItem(ctx: TurnContext, colony: Colony, item: BuildItem): void {
@@ -879,17 +868,37 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
   }
 }
 
-function grow(colony: Colony, out: ColonyOutput): void {
+/**
+ * Adds the turn's growth. Each food the colony is short costs 50k; a full
+ * thousand gained adds a colonist, a thousand lost kills one (workers and
+ * scientists before farmers, never the last colonist). A full colony keeps
+ * its growth just short of a new colonist.
+ */
+function grow(ctx: TurnContext, colony: Colony, out: ColonyOutput, foodShort: number): void {
   if (colony.outpost) return;
   const room = out.maxPopulation - out.androids;
-  if (out.population >= room) {
-    colony.growthK = 0;
+  if (out.population > room && population(colony) > 1) {
     // Terraforming can shrink a planet's capacity; extra people leave.
-    if (population(colony) > room && population(colony) > 1) removePopulation(colony, Math.min(population(colony) - 1, population(colony) - room));
+    removePopulation(colony, Math.min(population(colony) - 1, population(colony) - room));
+    colony.growthK = 0;
     return;
   }
-  colony.growthK += out.growthK;
-  if (colony.growthK >= 1000) {
+  const starving = Math.ceil(foodShort * 2 - 1e-9) * (GROWTH.starvationK / 2);
+  if (starving > 0) ctx.emit({ kind: "starvation", playerId: colony.ownerId, colonyId: colony.id });
+  colony.growthK += out.growthK - starving;
+  while (colony.growthK < 0) {
+    if (population(colony) <= 1) {
+      colony.growthK = 0;
+      break;
+    }
+    removePopulation(colony, 1);
+    colony.growthK += 1000;
+  }
+  while (colony.growthK >= 1000) {
+    if (population(colony) + out.androids >= out.maxPopulation) {
+      colony.growthK = 999;
+      break;
+    }
     colony.growthK -= 1000;
     // New colonists farm if the colony is short of food, otherwise they keep industry and research even.
     if (out.foodNet < 0) colony.farmers++;

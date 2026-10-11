@@ -69,7 +69,7 @@ export const TRAIT_COSTS: Record<RaceTrait, { cost: number; text: string; name?:
   highG: { name: "High-G world", cost: 6, text: "Full output on normal and heavy planets; troops take one extra hit." },
   aquatic: { cost: 5, text: "Tundra and swamp count as terran, ocean and terran as gaia, for food and population. Ocean homeworld." },
   subterranean: { cost: 6, text: "Max population +2 per planet size class; troops +10 when defending their colonies." },
-  tolerant: { cost: 10, text: "Every climate counts as terran for max population; no pollution." },
+  tolerant: { cost: 10, text: "+25% max population on every climate (at most Gaia level); no pollution." },
   largeHomeworld: { cost: 1, text: "Starts on a large homeworld." },
   richHomeworld: { cost: 2, text: "Homeworld has rich minerals." },
   poorHomeworld: { cost: -1, text: "Homeworld has poor minerals." },
@@ -96,6 +96,8 @@ export const TRAIT_EFFECTS = {
   subterraneanDefense: 10,
   /** Max population per planet size class for subterranean races. */
   subterraneanPopPerSize: 2,
+  /** Climate percentage points tolerant races add to max population, capped at 100. */
+  tolerantPopPercent: 25,
   /** Extra hits each high-G troop takes before it dies. */
   highGTroopHits: 1,
   transDimensionalSpeed: 2,

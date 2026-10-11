@@ -166,7 +166,7 @@ const HANDLERS: Record<EventId, Handler> = {
     if (list.length === 0) return false;
     const c = ctx.rng.pick(list);
     addEvent(ctx.state, { kind: "populationBoom", playerId: p!.id, colonyId: c.id, until: ctx.state.turn + range(ctx, N.boomTurns) });
-    news(ctx, p!.id, `A population boom is under way at ${c.name}: growth is doubled for a while.`, starOfColony(ctx.state, c));
+    news(ctx, p!.id, `A population boom is under way at ${c.name}: growth is much faster for a while.`, starOfColony(ctx.state, c));
     return true;
   },
   breakthrough(ctx, p) {
@@ -447,7 +447,7 @@ const TICKS: Record<string, (ctx: TurnContext, ev: ActiveEvent) => boolean> = {
       news(ctx, c.ownerId, `A cure for the plague on ${c.name} was found.`, starOfColony(ctx.state, c));
       return true;
     }
-    if (population(c) > 1 && ctx.rng.chance(N.plagueKillChance)) removePopulation(c, 1);
+    // The plague itself works through growth: -200% while it lasts (economy.ts eventGrowthPercent).
     return false;
   },
   supernova(ctx, ev) {
@@ -620,11 +620,6 @@ export function monsterDemands(state: GameState, playerId: PlayerId): ActiveEven
       ROAMING_MONSTERS[e.kind]?.effect === "pillage" && e.progress === 1 &&
       Object.values(state.colonies).some((c) => c.ownerId === playerId && starOfColony(state, c) === e.starId),
   );
-}
-
-/** Growth multiplier from a population boom. */
-export function growthMultiplier(state: GameState, colonyId: Id): number {
-  return activeAt(state, "populationBoom", colonyId) ? N.boomGrowthMult : 1;
 }
 
 /** A time-space anomaly stops building and fighting in a system. */

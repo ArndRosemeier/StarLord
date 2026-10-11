@@ -117,7 +117,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
           <>
             <table>
               <tbody>
-                <tr><td><span className="stat-label"><Icon name="population" />Population</span></td><td>{population(colony)} / {o.maxPopulation} <small className="muted">(+{fmt(o.growthK)}k per turn, {fmt(colony.growthK)}k toward next)</small>
+                <tr><td><span className="stat-label"><Icon name="population" />Population</span></td><td>{population(colony)} / {o.maxPopulation} <small className="muted">({o.growthK >= 0 ? "+" : ""}{fmt(o.growthK)}k per turn, {fmt(colony.growthK)}k toward next)</small>
                   {o.androids > 0 && <div><small className="muted">Androids: {andr.farmers} farming, {andr.workers} working, {andr.scientists} researching</small></div>}
                   {o.aliens > 0 && <div><small className="bad">{o.aliens} not yet assimilated: they work at half rate and may revolt</small></div>}
                   {(o.aliens > 0 || (colony.natives ?? 0) > 0) && (() => {
