@@ -74,13 +74,18 @@ export function militaryOrders(view: PlayerView): Command[] {
   const busy = new Set<string>();
   for (const c of myColonies(view)) {
     const star = colonyStar(view, c);
-    const threats = hostileFleetsNear(view, star, 3);
+    // Fleets parked at another system (Orion's guardian, a monster lair, an enemy's home guard) threaten nobody;
+    // only those already here or on the move nearby do.
+    const threats = hostileFleetsNear(view, star, 3).filter((f) => f.starId === star.id || f.starId === null || f.destStarId === star.id);
     if (threats.length === 0) continue;
     const threat = threats.reduce((s, f) => s + fleetStrength(view, f), 0);
     const responder = forces
       .filter((f) => !busy.has(f.id) && f.starId && fleetStrength(view, f) > threat * 1.2)
       .sort((a, b) => distance(a, star) - distance(b, star))[0];
-    if (responder && responder.starId !== star.id && canReach(view, view.viewer, responder, star.id)) {
+    if (responder?.starId === star.id) {
+      // Already guarding it: stay rather than drift back to the rally point.
+      busy.add(responder.id);
+    } else if (responder && canReach(view, view.viewer, responder, star.id)) {
       busy.add(responder.id);
       out.push({ type: "moveFleet", fleetId: responder.id, destStarId: star.id });
     }
@@ -91,8 +96,10 @@ export function militaryOrders(view: PlayerView): Command[] {
     .filter((f) => f.starId === rally && !f.destStarId)
     .sort((a, b) => fleetStrength(view, b) - fleetStrength(view, a))[0];
   for (const f of forces) {
-    if (busy.has(f.id) || f.destStarId || !f.starId || f === main) continue;
+    if (busy.has(f.id) || f.destStarId || !f.starId) continue;
+    // The strike force too lands its troops when it stands over an enemy colony (even one in its own rally system).
     if (f.stance === "attack" && invadeOrStay(view, f, out)) continue;
+    if (f === main) continue;
     if (f.starId !== rally && canReach(view, view.viewer, f, rally)) out.push({ type: "moveFleet", fleetId: f.id, destStarId: rally });
   }
   if (!main || busy.has(main.id) || !posture.attacks) return out;

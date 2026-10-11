@@ -1,5 +1,5 @@
 import {
-  TIER_OF_TECH, attitude, audienceTired, isScoredTreaty, patience, treatyAnswer, type Price, canSign, empireBonus, empireTotals, isDemand, monsterDemands, relation, type Command, type PlayerView,
+  AI_WAR, NO_WAR_MULT, TEMPERAMENTS, TIER_OF_TECH, attitude, settledShare, temperament, audienceTired, isScoredTreaty, patience, treatyAnswer, type Price, canSign, empireBonus, empireTotals, isDemand, monsterDemands, relation, type Command, type PlayerView,
   type Proposal, type ProposalKind, type ProposalTerms,
 } from "@starlord/sim";
 import { strategyOf } from "./strategies.js";
@@ -102,6 +102,17 @@ export function diplomacyOrders(view: PlayerView): Command[] {
   const pers = strategy === "aggressive" ? { ...base, aggression: Math.max(base.aggression, 0.9) } : base;
   const myPower = myFleets(view).reduce((s, f) => s + fleetStrength(view, f), 0);
   const myPop = empireTotals(view, view.viewer).population;
+  const temper = temperament(view, view.viewer);
+  const noWar = temper ? TEMPERAMENTS[temper].noWar : 0;
+  const lust = strategy === "aggressive" ? Math.max(0.9, pers.aggression) : temper ? (pers.aggression + TEMPERAMENTS[temper].warLust) / 2 : pers.aggression;
+  const crowded = settledShare(view) >= AI_WAR.crowdedShare || view.turn >= AI_WAR.crowdedTurn;
+  /** First turn a treaty with them no longer stops us declaring war. */
+  const bound = (r: ReturnType<typeof relation>) => Math.max(
+    r.status === "nonAggression" ? r.since + noWar * NO_WAR_MULT.nonAggression : 0,
+    r.trade ? (r.tradeSince ?? r.since) + noWar * NO_WAR_MULT.trade : 0,
+    r.research ? (r.researchSince ?? r.since) + noWar * NO_WAR_MULT.research : 0,
+    r.peaceUntil ?? 0,
+  );
 
   for (const p of view.proposals.filter((x) => x.to === view.viewer)) out.push(...answerOrders(view, p));
 
@@ -165,12 +176,15 @@ export function diplomacyOrders(view: PlayerView): Command[] {
       out.push({ type: "propose", to: other, kind: "demandTribute", percent: 5 });
       return out;
     }
-    // War: dislike plus a clear military edge, scaled by temperament. Never two wars at once.
+    // War: dislike plus a clear military edge, or any neighbor it doesn't love once the galaxy is crowded,
+    // scaled by temperament. Never two wars at once, and never while a treaty still binds (the original's NOWAR).
     const wars = player.contacts.filter((id) => relation(view, view.viewer, id).status === "war").length;
     const theirPop = empireTotals(view, other).population;
+    const edge = (x: number) => myPower > Math.max(AI_WAR.minPower, theirPower * (x - lust));
+    const wanted = feel < AI_WAR.dislike - lust * AI_WAR.dislikeSpan ? edge(AI_WAR.edge) : crowded && feel < AI_WAR.crowdedMaxAttitude && edge(AI_WAR.crowdedEdge);
     if (
-      !peaceful && wars === 0 && view.turn > (strategy === "aggressive" ? 40 : 60) && r.status !== "alliance" &&
-      feel < 20 - pers.aggression * 60 && myPower > Math.max(20, theirPower * (2.2 - pers.aggression)) && myPop > theirPop * 0.7
+      !peaceful && wars === 0 && view.turn > (strategy === "aggressive" ? AI_WAR.earliestTurnAggressive : AI_WAR.earliestTurn) &&
+      r.status !== "alliance" && view.turn >= bound(r) && myPop > theirPop * AI_WAR.minPopShare && wanted
     ) {
       out.push({ type: "declareWar", target: other });
       return out;
