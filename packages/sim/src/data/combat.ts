@@ -116,8 +116,12 @@ export const PLANET_INSTALLATION_ARMOR_STEP = 50;
 /** Ground batteries and missile bases each hold this much space of weapons. */
 export const PLANET_WEAPON_SPACE = 300;
 
-/** Artemis System Net mines: chance per size class to strike an attacking ship, and damage per size class. */
-export const ARTEMIS = { chancePerSize: 0.2, damagePerSize: 100 } as const;
+/**
+ * Artemis System Net mines, from the original's help: the chance (%) to strike
+ * an attacking ship by hull (frigate … doom star), and damage rolled in this
+ * range before shields.
+ */
+export const ARTEMIS = { chanceByHull: [20, 30, 40, 50, 80, 100], damage: [100, 500] } as const;
 
 /**
  * Ship damage stays between battles. Advanced Damage Control (and a cybernetic

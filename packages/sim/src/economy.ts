@@ -177,6 +177,13 @@ export interface ColonyOutput {
   troops: number;
   /** An enemy fleet sits unopposed in the system: production is halved and freighters can't get through. */
   blockaded: boolean;
+  /**
+   * Upkeep the colony's industry can't cover, in half units: first its own
+   * cybernetic colonists (they starve like hungry ones), then androids (each
+   * uncovered one shuts down).
+   */
+  cyberShortHalf: number;
+  androidsUnfed: number;
 }
 
 export interface OutputContext {
@@ -255,7 +262,7 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
     return {
       population: 0, androids: 0, maxPopulation: 0, morale: 0, aliens: 0, foodProduced: 0, foodEaten: 0, foodReplicated: 0,
       foodNet: 0, industryGross: 0, pollution: 0, industry: 0, taxes: 0, research: 0, bc: 0, maintenance: 0,
-      growthK: 0, troops, blockaded: false,
+      growthK: 0, troops, blockaded: false, cyberShortHalf: 0, androidsUnfed: 0,
     };
   }
 
@@ -315,6 +322,11 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   const pollution = colonyPollution(planet, race, player, b, byWorkers + byMinerals, pop, nAndroids, lead.pollution ?? 0);
   const upkeep = Math.ceil((cyber ? pop * CYBERNETIC_INDUSTRY : 0) + nAndroids * ANDROIDS.industryUpkeep);
   let net = Math.max(0, industryGross + recycled - pollution - upkeep);
+  // Industry goes to the colony's cybernetic colonists first (half a unit each), then to androids (one each).
+  const halves = Math.floor(2 * Math.max(0, industryGross + recycled - pollution) + 1e-9);
+  const cyberNeed = cyber ? Math.ceil(2 * pop * CYBERNETIC_INDUSTRY - 1e-9) : 0;
+  const cyberShortHalf = Math.max(0, cyberNeed - halves);
+  const androidsUnfed = Math.ceil(Math.max(0, 2 * nAndroids * ANDROIDS.industryUpkeep - Math.max(0, halves - cyberNeed)) / (2 * ANDROIDS.industryUpkeep) - 1e-9);
   const production = net;
 
   // Food Replicators cover the colony's own shortfall from its industry.
@@ -374,6 +386,8 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
     growthK: growthPerTurn(pop - natives, pop + nAndroids, max, race, b, bonus.growth * 100 + growthPct),
     troops,
     blockaded: !!ctx.blockaded,
+    cyberShortHalf,
+    androidsUnfed,
   };
 }
 

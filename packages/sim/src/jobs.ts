@@ -64,3 +64,15 @@ export function newUnitJob(colony: Colony): "workers" | "scientists" {
   const after = colony.workers + colony.scientists + 1;
   return colony.scientists < Math.floor(after * DEFAULT_RESEARCH_SHARE) ? "scientists" : "workers";
 }
+
+/** Shuts down androids that lack industry upkeep: workers first, then scientists, then farmers. */
+export function removeAndroids(colony: Colony, n: number): void {
+  const a = colony.androids;
+  if (!a) return;
+  for (let i = 0; i < n; i++) {
+    if (a.workers > 0) a.workers--;
+    else if (a.scientists > 0) a.scientists--;
+    else if (a.farmers > 0) a.farmers--;
+  }
+  if (a.workers + a.scientists + a.farmers === 0) delete colony.androids;
+}

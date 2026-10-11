@@ -803,9 +803,9 @@ class Battle {
       if (!source) continue;
       for (const u of this.units) {
         if (u.side === i || u.immobile || !active(u)) continue;
-        const size = Math.min(5, u.sizeClass);
-        if (!this.rng.chance(Math.min(1, ARTEMIS.chancePerSize * size))) continue;
-        this.applyHit(source, u, ARTEMIS.damagePerSize * size, {}, "artemisSystemNet");
+        const chance = ARTEMIS.chanceByHull[Math.min(ARTEMIS.chanceByHull.length - 1, Math.max(0, u.hullRank))]!;
+        if (this.rng.int(1, 100) > chance) continue;
+        this.applyHit(source, u, this.rng.int(ARTEMIS.damage[0], ARTEMIS.damage[1]), {}, "artemisSystemNet");
       }
     }
   }

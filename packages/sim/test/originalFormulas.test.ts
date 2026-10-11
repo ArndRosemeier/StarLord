@@ -288,3 +288,18 @@ describe("ship damage and repair", () => {
     expect(f.ships[0]!.damage).toBeUndefined();
   });
 });
+
+describe("industry upkeep shortfall", () => {
+  it("starves cybernetic colonists and shuts down androids the colony's industry can't keep", () => {
+    const s = newGame({ seed: "cyb", races: ["kordex", "terran"], monsters: false, raiders: false, council: false });
+    const home = Object.values(s.colonies).find((c) => c.ownerId === 0)!;
+    const planet = s.planets[home.planetId]!;
+    // Nobody works: no industry at all for 6 cybernetic colonists (3 upkeep) and 2 androids.
+    const colony: Colony = { ...home, buildings: [], farmers: 0, workers: 0, scientists: 6, androids: { farmers: 0, workers: 0, scientists: 2 } };
+    const out = computeOutput(planet, s.players[0]!, colony);
+    expect(out.cyberShortHalf).toBe(6);
+    expect(out.androidsUnfed).toBe(2);
+    const human = computeOutput(planet, s.players[1]!, { ...colony, ownerId: 1, raceId: "terran", androids: undefined });
+    expect(human.cyberShortHalf).toBe(0);
+  });
+});

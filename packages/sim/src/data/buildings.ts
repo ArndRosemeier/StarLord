@@ -139,7 +139,7 @@ export const BUILDINGS: BuildingDef[] = [
     effects: { defense: { fighters: FIGHTER_GARRISON.interceptors } },
     description: "Planet-based squadrons: 10 interceptors, or 6 bombers or 4 heavy fighters once those are known. Losses are replaced during long battles." },
   { id: "artemisSystemNet", name: "Artemis System Net", cost: 1000, maintenance: 5, requires: "artemisSystemNet",
-    effects: { defense: { mines: true } }, description: "Space mines that strike attacking ships as a battle opens; bigger ships are hit more often and harder." },
+    effects: { defense: { mines: true } }, description: "Space mines that strike attacking ships as a battle opens for 100–500 damage less shields; the bigger the ship, the likelier: 20% of frigates up to every doom star." },
   { id: "radiationShield", name: "Planetary Radiation Shield", cost: 80, maintenance: 1, requires: "planetaryRadiationShield",
     effects: { defense: { shield: 5 }, radiatedToBarren: true }, description: "Blocks 5 damage per hit against the planet. A radiated world under it becomes barren." },
   { id: "fluxShield", name: "Planetary Flux Shield", cost: 200, maintenance: 3, requires: "planetaryFluxShield", replaces: ["radiationShield"],
