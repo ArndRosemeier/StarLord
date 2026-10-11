@@ -19,7 +19,14 @@ export function fleetShips(f: Fleet) {
 }
 
 /** Planets of a star with colonies, plus colonize/invade buttons for the selected fleet. */
-export function StarPanel({ starId, fleetId, onSelectFleet }: { starId: string; fleetId: string | null; onSelectFleet: (id: string) => void }) {
+export function StarPanel({ starId, fleetId, onSelectFleet, selectedPlanetId, onSelectPlanet }: {
+  starId: string;
+  fleetId: string | null;
+  onSelectFleet: (id: string) => void;
+  /** Planet to highlight, e.g. the one picked in the 3D system view. */
+  selectedPlanetId?: string | null;
+  onSelectPlanet?: (id: string) => void;
+}) {
   const { session, view, me, readOnly } = useGame();
   const star = view.galaxy.stars.find((s) => s.id === starId);
   if (!star) return null;
@@ -53,7 +60,11 @@ export function StarPanel({ starId, fleetId, onSelectFleet }: { starId: string; 
         const canColonize = !readOnly && myFleetHere && !colony && habitable && (modules.has("colony") || modules.has("outpost"));
         const canInvade = !readOnly && myFleetHere && colony && troops > 0 && isHostile(view, me.id, colony.ownerId);
         return (
-          <div className="planet" key={pid}>
+          <div
+            className={`planet${pid === selectedPlanetId ? " selected" : ""}${onSelectPlanet ? " pickable" : ""}`}
+            key={pid}
+            onClick={onSelectPlanet ? (e) => { if (!(e.target as HTMLElement).closest("button")) onSelectPlanet(pid); } : undefined}
+          >
             <PlanetIcon planet={p} />
             <div>
               <div>

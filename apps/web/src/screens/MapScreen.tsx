@@ -4,6 +4,7 @@ import type { MapRenderer } from "../map/renderer";
 import { buildScene, routeTo } from "../map/scene";
 import { useGame } from "../ui/hooks";
 import { FleetPanel, StarPanel, fleetShips, plural } from "../ui/panels";
+import { SystemView } from "./system/SystemView";
 
 export function MapScreen({ focusStar, onFocused }: { focusStar: string | null; onFocused: () => void }) {
   const { session, view, me, readOnly } = useGame();
@@ -11,6 +12,8 @@ export function MapScreen({ focusStar, onFocused }: { focusStar: string | null; 
   const renderer = useRef<MapRenderer | null>(null);
   const [starId, setStarId] = useState<string | null>(focusStar ?? me.homeStarId);
   const [fleetId, setFleetId] = useState<string | null>(null);
+  /** Star shown up close in the 3D system view, if open. */
+  const [systemStar, setSystemStar] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; bad: boolean; at: number } | null>(null);
   // The renderer calls back with the latest selection, so keep it in a ref.
   const sel = useRef({ fleetId, readOnly });
@@ -56,6 +59,8 @@ export function MapScreen({ focusStar, onFocused }: { focusStar: string | null; 
         }
         setStarId(id);
         setFleetId(null);
+        // A plain click with no fleet to order opens the system up close.
+        if (action === "select") setSystemStar(id);
       },
       onFleet(id) {
         setFleetId(id);
@@ -105,7 +110,7 @@ export function MapScreen({ focusStar, onFocused }: { focusStar: string | null; 
             Click a star to send <b>{orderingFleet.name}</b> there. Highlighted stars are in range. Esc or click empty space to deselect.
           </div>
         ) : (
-          <div className="map-hint">Drag to pan · wheel to zoom · click a fleet, then click a star to send it there</div>
+          <div className="map-hint">Drag to pan · wheel to zoom · click a star to view its system · click a fleet, then a star to send it there</div>
         )}
         {notice && <div key={notice.at} className={`map-notice${notice.bad ? " bad" : ""}`}>{notice.text}</div>}
       </div>
@@ -114,6 +119,17 @@ export function MapScreen({ focusStar, onFocused }: { focusStar: string | null; 
         {starId && <div className="panel"><StarPanel starId={starId} fleetId={fleetId} onSelectFleet={setFleetId} /></div>}
         {!readOnly && session.rejected.length > 0 && (
           <div className="panel bad">Some orders are invalid: {session.rejected.join("; ")}</div>
+        )}
+        {systemStar && (
+          <SystemView
+            starId={systemStar}
+            fleetId={fleetId}
+            onClose={() => setSystemStar(null)}
+            onSelectFleet={(id) => {
+              setFleetId(id);
+              setSystemStar(null);
+            }}
+          />
         )}
         <MyFleetsList onSelect={(id) => { setFleetId(id); const f = view.fleets[id]; if (f?.starId) setStarId(f.starId); }} selected={fleetId} />
       </aside>
