@@ -84,7 +84,7 @@ export function processTurn(prev: GameState, orders: TurnOrders): GameState {
   checkElimination(ctx);
 
   state.turn += 1;
-  if (!state.over && state.turn > state.settings.maxTurns) {
+  if (!state.over && state.settings.maxTurns > 0 && state.turn > state.settings.maxTurns) {
     const alive = state.players.filter((p) => p.alive && p.kind === "empire");
     const best = alive.reduce((b, p) => (score(state, p.id) > score(state, b.id) ? p : b), alive[0]!);
     endGame(ctx, best.id, "score");

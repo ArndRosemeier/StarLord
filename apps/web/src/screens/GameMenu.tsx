@@ -22,7 +22,7 @@ export function GameMenu({ onQuit }: { onQuit: () => void }) {
       <div className="panel col">
         <h2>Game</h2>
         <div className="muted">
-          Seed {view.seed} · {view.settings.galaxySize} galaxy · turn {view.turn} of {view.settings.maxTurns}
+          Seed {view.seed} · {view.settings.galaxySize} galaxy · turn {view.turn}{view.settings.maxTurns > 0 ? ` of ${view.settings.maxTurns}` : ""}
         </div>
         <div className="row">
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
