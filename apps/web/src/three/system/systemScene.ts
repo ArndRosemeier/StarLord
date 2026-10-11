@@ -11,6 +11,7 @@ import { buildShip, SHIP_LENGTH } from "../models/ships";
 import { buildMonster } from "../models/monster";
 import { buildAsteroidBelt, buildPlanetRings, type AsteroidBelt } from "../models/belt";
 import type { SystemFleet, SystemModel, SystemPlanet } from "./systemModel";
+import { ColonizeFx } from "./colonizeFx";
 
 /**
  * One star system in 3D: the star in the middle lighting everything, planets
@@ -77,6 +78,10 @@ export class SystemScene {
   private time = 0;
   private sky: THREE.Mesh;
   private starfield: THREE.Points;
+  private model!: SystemModel;
+  /** Planets whose colonization is playing; drawn unsettled until the ship lands. */
+  private landing = new Set<string>();
+  private fx: { effect: ColonizeFx; planetId: string; onDone?: () => void } | null = null;
 
   constructor(container: HTMLElement, model: SystemModel, private opts: SystemSceneOptions) {
     this.reduced = opts.reduced;
@@ -127,6 +132,8 @@ export class SystemScene {
 
   /** Rebuilds the system's contents, keeping the camera and the selection where possible. */
   setModel(model: SystemModel): void {
+    this.model = model;
+    const followKey = this.follow ? this.selectedKey : null;
     this.clearContent();
     const rand = seeded(hash(model.starId));
     const blackHole = model.starClass === "blackHole";
@@ -142,8 +149,9 @@ export class SystemScene {
     this.addBody({ kind: "star" }, this.starModel.root, STAR_RADIUS, 0, 0, 0, [this.starModel]);
     this.labels.set("star", this.starModel.root, `<b>${esc(model.name)}</b><span>${blackHole ? "black hole" : `${model.starClass} star`}</span>`, STAR_RADIUS * 1.25, "three-tag star");
 
-    // Orbits and planets.
-    for (const p of model.planets) {
+    // Orbits and planets; a planet being colonized right now still looks empty until the ship lands.
+    for (const shown of model.planets) {
+      const p = this.landing.has(shown.id) ? { ...shown, colony: null, settle: null } : shown;
       const r = orbitRadius(p.orbit);
       const owned = p.colony?.color ?? null;
       this.content.add(this.orbitLine(r, owned));
@@ -207,6 +215,11 @@ export class SystemScene {
     if (this.selectedKey && !this.bodies.has(this.selectedKey)) this.selectedKey = null;
     this.select(this.selectedKey ? this.bodies.get(this.selectedKey)!.pick : null, false);
     this.place(this.time);
+    // Keep riding along with the body the camera was following.
+    if (followKey && this.bodies.has(followKey)) {
+      this.follow = this.bodies.get(followKey)!.anchor;
+      this.follow.getWorldPosition(this.followPrev);
+    }
     // Frame the whole system: everything out to the fleets fits in view.
     const reach = (model.fleets.length ? fleetRing + 1.5 : outer + 1.5);
     if (reach !== this.reach) {
@@ -220,7 +233,7 @@ export class SystemScene {
   private reach = 0;
 
   /** Highlights a body and has the camera follow it; null returns to the whole system. */
-  select(pick: SystemPick | null, glide = true): void {
+  select(pick: SystemPick | null, glide = true, distance?: number): void {
     // Already showing it (the scene picked it itself and the screen echoes the pick back).
     if (glide && (pick ? pickKey(pick) : null) === this.selectedKey && (this.follow || !pick)) return;
     if (this.selectedKey) this.labels.mark(this.selectedKey, "selected", false);
@@ -230,6 +243,7 @@ export class SystemScene {
       this.selectRing.visible = false;
       if (glide && this.follow) this.stage.resetCamera();
       this.follow = null;
+      this.glide = null;
       return;
     }
     this.labels.mark(this.selectedKey!, "selected", true);
@@ -240,7 +254,58 @@ export class SystemScene {
     body.anchor.getWorldPosition(this.followPrev);
     // Glide in: move the orbit target to the body and pull the camera in to a sensible distance.
     const startDist = this.stage.camera.position.distanceTo(this.stage.controls.target);
-    this.glide = { t: 0, from: this.stage.controls.target.clone(), startDist, dist: Math.min(startDist, Math.max(5, body.radius * 9)) };
+    this.glide = { t: 0, from: this.stage.controls.target.clone(), startDist, dist: distance ?? Math.min(startDist, Math.max(5, body.radius * 9)) };
+  }
+
+  /** Whether the colonization cutscene is playing. */
+  get playing(): boolean {
+    return this.fx !== null;
+  }
+
+  /**
+   * Plays the colony ship flying from its fleet to `planetId` and founding the colony. Call it
+   * before the model shows the new colony: the planet is drawn unsettled until the ship lands.
+   */
+  playColonize(planetId: string, fleetId: string, color: string, onDone?: () => void): void {
+    this.skip();
+    const key = `planet:${planetId}`;
+    const body = this.bodies.get(key);
+    if (!body || this.reduced) {
+      onDone?.();
+      return;
+    }
+    const from = new THREE.Vector3();
+    const fleet = this.bodies.get(`fleet:${fleetId}`);
+    if (fleet) fleet.anchor.getWorldPosition(from);
+    else from.set(0, 0.6, orbitRadius(5) + FLEET_MARGIN);
+    this.landing.add(planetId);
+    const target = {
+      radius: body.radius,
+      position: (out: THREE.Vector3) => {
+        // Look the body up each frame: the scene may rebuild while the ship is under way.
+        const b = this.bodies.get(key);
+        return b ? b.anchor.getWorldPosition(out) : out;
+      },
+    };
+    const effect = new ColonizeFx(this.kit, target, from, color, this.stage.textures.adopt("shockRing", shockTexture));
+    this.stage.scene.add(effect.group);
+    this.fx = { effect, planetId, onDone };
+    // Watch it happen: glide to the planet and follow it.
+    // Pull back far enough to see the ship come in.
+    this.selectedKey = null;
+    this.select(body.pick, true, 16);
+    this.selectRing.visible = false;
+  }
+
+  /** Finishes the cutscene at once. */
+  skip(): void {
+    const fx = this.fx;
+    if (!fx) return;
+    this.fx = null;
+    fx.effect.dispose();
+    this.landing.delete(fx.planetId);
+    if (this.model) this.setModel(this.model);
+    fx.onDone?.();
   }
 
   setReduced(reduced: boolean): void {
@@ -352,10 +417,13 @@ export class SystemScene {
     }
 
     const sel = this.selectedKey ? this.bodies.get(this.selectedKey) : undefined;
+    if (this.fx) this.selectRing.visible = false;
+    else if (sel && !this.selectRing.visible && sel.pick.kind !== "star") this.selectRing.visible = true;
     if (sel && this.selectRing.visible) {
       sel.anchor.getWorldPosition(this.selectRing.position);
       (this.selectRing.material as THREE.SpriteMaterial).rotation = still ? 0 : t * 0.4;
     }
+    if (this.fx && this.fx.effect.update(dt, t, this.stage.camera)) this.skip();
     (this.starfield.material as THREE.ShaderMaterial).uniforms.uTime!.value = t;
     (this.starfield.material as THREE.ShaderMaterial).uniforms.uTwinkle!.value = still ? 0 : 1;
     this.labels.update();
@@ -394,6 +462,11 @@ export class SystemScene {
     this.downAt = null;
     // A drag orbits the camera; only a still click picks.
     if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+    // A click during the cutscene skips it.
+    if (this.fx) {
+      this.skip();
+      return;
+    }
     const body = this.pickAt(e);
     const pick = body?.pick ?? null;
     this.select(pick);
@@ -420,7 +493,6 @@ export class SystemScene {
     this.bodies.clear();
     this.starModel = null;
     this.follow = null;
-    this.glide = null;
   }
 
   dispose(): void {
@@ -430,7 +502,12 @@ export class SystemScene {
     el.removeEventListener("pointerleave", this.onPointerLeave);
     el.removeEventListener("pointerup", this.onPointerUp);
     el.removeEventListener("dblclick", this.onDoubleClick);
+    if (this.fx) {
+      this.fx.effect.dispose();
+      this.fx = null;
+    }
     this.clearContent();
+    this.glide = null;
     this.stage.dispose();
   }
 }
@@ -459,6 +536,25 @@ function hash(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return (h >>> 0) % 2147483646 + 1;
+}
+
+/** A soft, solid ring that fades inward, for shockwaves. */
+function shockTexture(): THREE.CanvasTexture {
+  const size = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d")!;
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, "rgba(255,255,255,0)");
+  g.addColorStop(0.62, "rgba(255,255,255,0.05)");
+  g.addColorStop(0.86, "rgba(255,255,255,0.9)");
+  g.addColorStop(0.94, "rgba(255,255,255,0.35)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 /** A thin bright ring with soft edges, for the selection marker. */

@@ -5,7 +5,7 @@ import {
 } from "@starlord/sim";
 import { useGame } from "./hooks";
 import { climateName, fmt, words } from "./format";
-import { colonizeOption } from "../game/colonize";
+import { colonizeOption, type ColonizeOption } from "../game/colonize";
 
 /** Painted planet art in public/planets, scaled by planet size. */
 export function PlanetIcon({ planet, size }: { planet: Planet; size?: number }) {
@@ -20,7 +20,7 @@ export function fleetShips(f: Fleet) {
 }
 
 /** Planets of a star with colonies, plus colonize/invade buttons for the selected fleet. */
-export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, selectedPlanetId, onSelectPlanet }: {
+export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, selectedPlanetId, onSelectPlanet, onColonize }: {
   starId: string;
   /** The fleet colonize and invade act with. */
   fleetId: string | null;
@@ -31,6 +31,8 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
   /** Planet to highlight, e.g. the one picked in the 3D system view. */
   selectedPlanetId?: string | null;
   onSelectPlanet?: (id: string) => void;
+  /** Handles Colonize instead of issuing the order directly, e.g. to play the landing first. */
+  onColonize?: (planetId: string, settle: ColonizeOption) => void;
 }) {
   const { session, view, me, readOnly } = useGame();
   const star = view.galaxy.stars.find((s) => s.id === starId);
@@ -93,7 +95,7 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
                   className="small primary"
                   disabled={!!settle.blocked}
                   title={settle.blocked ? `Can't settle: ${settle.blocked}.` : `${settle.fleetName} settles this planet when you end the turn.`}
-                  onClick={() => session.issue({ type: "colonize", fleetId: settle.fleetId, planetId: pid })}
+                  onClick={() => (onColonize ? onColonize(pid, settle) : session.issue({ type: "colonize", fleetId: settle.fleetId, planetId: pid }))}
                 >
                   {settle.outpost ? "Outpost" : "Colonize"}
                 </button>
