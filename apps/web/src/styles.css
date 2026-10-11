@@ -242,7 +242,8 @@ img.planet-img { display: block; justify-self: center; object-fit: contain; flex
 }
 .title-hero.leaving .title-version { opacity: 0; }
 .modal.whats-new { max-width: 680px; }
-.modal.research-warning { max-width: 440px; }
+.modal.research-warning { max-width: 560px; }
+.research-prompt-list { gap: 10px; max-height: 50vh; overflow-y: auto; }
 .modal.debug-menu { max-width: 760px; }
 .debug-menu section { margin-top: 14px; }
 .debug-menu h3 { margin: 0 0 6px; }
