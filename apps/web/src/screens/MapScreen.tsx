@@ -7,6 +7,7 @@ import { useGame } from "../ui/hooks";
 import { FleetPanel, StarPanel, fleetShips, plural } from "../ui/panels";
 import { SystemView } from "./system/SystemView";
 import type { ColonizeOption } from "../game/colonize";
+import { additive, isTouchDevice, useMultiSelect } from "../ui/touch";
 import { LastTurnPanel } from "../ui/LastTurnPanel";
 
 export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, onOpenReports }: {
@@ -29,6 +30,10 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
   /** Colonize pressed in the side panel: the system view opens and plays the landing. */
   const [colonizeOnOpen, setColonizeOnOpen] = useState<{ planetId: string; settle: ColonizeOption } | null>(null);
   const [notice, setNotice] = useState<{ text: string; bad: boolean; at: number } | null>(null);
+  const touch = useMemo(isTouchDevice, []);
+  const [several, setSeveral] = useMultiSelect();
+  // The "select several" switch belongs to the map; leaving it turns it off.
+  useEffect(() => () => setSeveral(false), []);
   // The renderer calls back with the latest selection, so keep it in a ref.
   const sel = useRef({ fleetIds, readOnly });
   sel.current = { fleetIds, readOnly };
@@ -148,11 +153,24 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
       <div className="map-host" ref={host}>
         {ordering.length > 0 ? (
           <div className="map-banner">
-            Click a star to send <b>{ordering.length === 1 ? ordering[0]!.name : `${ordering.length} fleets`}</b> there. Highlighted stars are in range.
-            Shift-click fleets to add or remove them. Esc or click empty space to deselect.
+            {touch ? (
+              <>Tap a star to send <b>{ordering.length === 1 ? ordering[0]!.name : `${ordering.length} fleets`}</b> there. Highlighted stars are in range.
+                Hold a fleet to add or remove it. Tap empty space to deselect.</>
+            ) : (
+              <>Click a star to send <b>{ordering.length === 1 ? ordering[0]!.name : `${ordering.length} fleets`}</b> there. Highlighted stars are in range.
+                Shift-click fleets to add or remove them. Esc or click empty space to deselect.</>
+            )}
           </div>
+        ) : touch ? (
+          <div className="map-hint">Drag to pan · pinch to zoom · tap a star to view its system · tap a fleet, then a star to send it there · hold a fleet to select several</div>
         ) : (
           <div className="map-hint">Drag to pan · wheel to zoom · click a star to view its system · click a fleet, then a star to send it there · shift-click to select several fleets</div>
+        )}
+        {touch && !readOnly && (
+          <button className={`map-several${several ? " active" : ""}`} aria-pressed={several} onClick={() => setSeveral(!several)}
+            title="While on, every fleet you tap is added to the selection or taken out of it, as Shift-click does.">
+            {several ? "✓ Selecting several" : "Select several"}
+          </button>
         )}
         {notice && <div key={notice.at} className={`map-notice${notice.bad ? " bad" : ""}`}>{notice.text}</div>}
       </div>
@@ -240,7 +258,7 @@ function MyFleetsList({ onSelect, selected }: { onSelect: (id: string, additive:
     <div className="panel col" style={{ gap: 4 }}>
       <h4>Your fleets ({fleets.length}, {idle.length} idle)</h4>
       {fleets.map((f) => (
-        <button key={f.id} className={`small${selected.includes(f.id) ? " active" : ""}`} style={{ textAlign: "left" }} onClick={(e) => onSelect(f.id, e.shiftKey)}>
+        <button key={f.id} className={`small${selected.includes(f.id) ? " active" : ""}`} style={{ textAlign: "left" }} onClick={(e) => onSelect(f.id, additive(e))}>
           {f.name} <span className="muted">· {plural(fleetShips(f), "ship")} · {f.destStarId ? `→ ${view.galaxy.stars.find((s) => s.id === f.destStarId)?.name}` : view.galaxy.stars.find((s) => s.id === f.starId)?.name}</span>
         </button>
       ))}

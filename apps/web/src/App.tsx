@@ -6,6 +6,7 @@ import { GameShell } from "./screens/GameShell";
 import { SessionContext } from "./ui/hooks";
 import { audio } from "./audio/sound";
 import { HelpProvider } from "./help/HelpDialog";
+import { TouchTips } from "./ui/TouchTips";
 
 export function App() {
   const [session, setSession] = useState<GameSession | null>(null);
@@ -30,6 +31,7 @@ export function App() {
           <GameShell onQuit={() => { setSession(null); setSetup(null); }} />
         </SessionContext.Provider>
       )}
+      <TouchTips />
     </HelpProvider>
   );
 }

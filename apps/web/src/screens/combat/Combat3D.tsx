@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { BattleScene } from "./battleScene";
+import { isTouchDevice } from "../../ui/touch";
 import type { CombatViewProps } from "./Combat2D";
 
 /**
@@ -48,7 +49,9 @@ export default function Combat3D(props: CombatViewProps & { onFail: (error: unkn
 
   return (
     <div ref={host} className="combat-3d">
-      <div className="combat-3d-hint muted">Drag to orbit · wheel to zoom · double-click to reset · click a unit to pin its label</div>
+      <div className="combat-3d-hint muted">{isTouchDevice()
+        ? "Drag to orbit · pinch to zoom · double-tap to reset · tap a unit to pin its label"
+        : "Drag to orbit · wheel to zoom · double-click to reset · click a unit to pin its label"}</div>
     </div>
   );
 }

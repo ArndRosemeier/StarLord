@@ -5,6 +5,7 @@ import {
 } from "@starlord/sim";
 import { useGame } from "./hooks";
 import { climateName, fmt, words } from "./format";
+import { additive } from "./touch";
 import { colonizeOption, type ColonizeOption } from "../game/colonize";
 
 /** Painted planet art in public/planets, scaled by planet size. */
@@ -109,7 +110,7 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
         <div className="col" style={{ gap: 4 }}>
           <h4>Fleets here</h4>
           {fleets.map((f) => (
-            <button key={f.id} className={(selectedFleetIds ?? [fleetId]).includes(f.id) ? "active" : ""} style={{ textAlign: "left" }} onClick={(e) => onSelectFleet(f.id, e.shiftKey)}>
+            <button key={f.id} className={(selectedFleetIds ?? [fleetId]).includes(f.id) ? "active" : ""} style={{ textAlign: "left" }} onClick={(e) => onSelectFleet(f.id, additive(e))}>
               <span className="dot" style={{ background: view.players[f.ownerId]!.color, marginRight: 6 }} />
               {f.ownerId === me.id ? f.name : view.players[f.ownerId]!.name} <span className="muted">· {plural(fleetShips(f), "ship")}</span>
             </button>
@@ -145,9 +146,12 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
             onBlur={() => { if (renaming.trim()) session.issue({ type: "renameFleet", fleetId, name: renaming }); setRenaming(null); }}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
         ) : (
-          <h3 style={{ margin: 0 }} onDoubleClick={() => mine && setRenaming(fleet.name)} title={mine ? "Double-click to rename" : undefined}>
-            {owner.id === me.id ? fleet.name : `${owner.name} fleet`}
-          </h3>
+          <>
+            <h3 style={{ margin: 0 }} onDoubleClick={() => mine && setRenaming(fleet.name)} title={mine ? "Double-click to rename" : undefined}>
+              {owner.id === me.id ? fleet.name : `${owner.name} fleet`}
+            </h3>
+            {mine && <button className="small touch-only" aria-label="Rename fleet" title="Rename this fleet" onClick={() => setRenaming(fleet.name)}>✎</button>}
+          </>
         )}
         {status && <span className={`chip ${status === "war" || status === "hostile" ? "bad" : ""}`}>{status}</span>}
       </div>

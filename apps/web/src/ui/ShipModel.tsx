@@ -55,5 +55,5 @@ export function ShipModelView({ hull, color, style, className }: { hull: HullSiz
     viewer.current?.setShip(hull, color, style);
   }, [hull, color, style]);
 
-  return <div ref={host} className={className} title="Drag to turn · wheel to zoom · double-click to reset" />;
+  return <div ref={host} className={className} title="Drag to turn · wheel or pinch to zoom · double-click or double-tap to reset" />;
 }
