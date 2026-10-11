@@ -1,6 +1,6 @@
 import {
-  ATTITUDE, ATTITUDE_EVENTS, PATIENCE, PEACE_TREATY_TURNS, TEMPERAMENTS, TREATY_ANSWER, TREATY_YIELD, temperament, treatyAcceptChance, treatyScore, empireTotals, empires, isDemand, relation, treatyPotential, treatyTotals,
-  treatyYield, tributeAmount, type PlayerView, type Proposal, type ProposalKind, type TreatyName,
+  ATTITUDE, ATTITUDE_EVENTS, PATIENCE, PEACE_TREATY_TURNS, TEMPERAMENTS, TREATY_ANSWER, TREATY_YIELD, temperament, treatyAcceptChance, treatyPriceChance, treatyScore, empireTotals, empires, isDemand, relation, treatyPotential, treatyTotals,
+  treatyYield, tributeAmount, type PlayerView, type Price, type Proposal, type ProposalKind, type TreatyName,
 } from "@starlord/sim";
 import { fmt, playerName, signed, starName } from "../ui/format";
 import { techName } from "./terms";
@@ -23,15 +23,21 @@ function alliesOf(view: PlayerView, who: number, except: number): string[] {
 /** How likely a computer ruler is to accept a treaty now, and why; empty for a human ruler or other kinds. */
 export function answerOdds(view: PlayerView, me: number, them: number, kind: ProposalKind): string {
   if (view.players[them]?.isHuman) return "";
-  if (kind === "peace" || kind === "ceasefire") {
-    const war = view.turn - relation(view, me, them).since;
-    return war < TREATY_ANSWER.peaceMinWarTurns ? ` They hear no peace before ${TREATY_ANSWER.peaceMinWarTurns} turns of war (${war} so far).` : "";
-  }
-  if (!(kind in TREATY_ANSWER.need)) return "";
+  if (!(kind in TREATY_ANSWER.need) && kind !== "peace" && kind !== "ceasefire") return "";
   const t = treatyScore(view, me, them, kind, null);
   const parts = t.parts.map((p) => `${p.why} ${signed(p.value)}`).join(", ");
   if (t.blocked) return ` They refuse: ${t.blocked}.`;
-  return ` Chance they accept now: ${Math.round(treatyAcceptChance(view, me, them, kind) * 100)}% (${parts}, plus a d100; accepted at 0 or more).`;
+  const price = Math.round(treatyPriceChance(view, me, them, kind) * 100);
+  return ` Chance they accept now: ${Math.round(treatyAcceptChance(view, me, them, kind) * 100)}%${price ? `, and ${price}% that they name a price instead` : ""} (${parts}, plus a d100; accepted at 0 or more, a price from ${TREATY_ANSWER.bigPrice}).`;
+}
+
+/** A price in words: "120 BC", "Fusion Drive", "a 5% tribute (about 3 BC a turn)", "the Vega system". */
+export function priceText(view: PlayerView, payer: number, price: Price): string {
+  if (price.bc) return `${fmt(price.bc)} BC`;
+  if (price.techId) return `your knowledge of ${techName(price.techId)}`;
+  if (price.tribute) return `a ${price.tribute}% tribute, about ${fmt(tributeAmount(view, payer, price.tribute), 1)} BC a turn until you stop`;
+  if (price.starId) return `the ${starName(view, price.starId)} system`;
+  return "nothing";
 }
 
 /** A computer ruler's temperament and what it does to treaty answers. */
@@ -46,10 +52,11 @@ export function temperamentText(view: PlayerView, them: number): { name: string;
 export const TIRED_TEXT = `They will hear no more proposals for now; their patience recovers by ${PATIENCE.recovery} a turn.`;
 
 export function proposalEffect(view: PlayerView, me: number, them: number, kind: ProposalKind): string {
-  return baseEffect(view, me, them, kind) + answerOdds(view, me, them, kind);
+  return treatyEffect(view, me, them, kind) + answerOdds(view, me, them, kind);
 }
 
-function baseEffect(view: PlayerView, me: number, them: number, kind: ProposalKind): string {
+/** What a proposal does, without the odds of an answer. */
+export function treatyEffect(view: PlayerView, me: number, them: number, kind: ProposalKind): string {
   switch (kind) {
     case "peace":
     case "ceasefire":
@@ -101,7 +108,7 @@ export function incomingEffect(view: PlayerView, p: Proposal): { accept: string;
   const them = p.from;
   if (!isDemand(p.kind)) {
     return {
-      accept: `${proposalEffect(view, me, them, p.kind)} Accepting: attitude ${signed(ATTITUDE_EVENTS.acceptedTreaty)} both ways.`,
+      accept: `${p.price ? `You pay ${priceText(view, me, p.price)}. ` : ""}${treatyEffect(view, me, them, p.kind)} Accepting: attitude ${signed(ATTITUDE_EVENTS.acceptedTreaty)} both ways.`,
       refuse: `${capital(attitudeLine(ATTITUDE_EVENTS.rejectedProposal))}.`,
     };
   }

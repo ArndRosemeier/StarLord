@@ -1,6 +1,6 @@
 import { DIFFICULTIES } from "./data/galaxy.js";
 import {
-  ATTITUDE, ATTITUDE_EVENTS, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, type Temperament,
+  ATTITUDE, ATTITUDE_EVENTS, COUNTER_PRICE, PATIENCE, PEACE_ANSWER, TEMPERAMENTS, TREATY_ANSWER, TRUST, type Temperament,
   PEACE_TREATY_TURNS, PROPOSAL_LIFETIME, TREATY_YIELD, TRIBUTE_PERCENTS,
 } from "./data/diplomacy.js";
 import { TRAIT_EFFECTS } from "./data/racePicks.js";
@@ -12,7 +12,9 @@ import type { Emit } from "./context.js";
 import { empireTotals } from "./economy.js";
 import { empireBonus, empires, fleetRange, grantTech, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
-import type { DiplomaticStatus, GameState, Id, PlayerId, Proposal, ProposalKind, Relation } from "./types.js";
+import type { DiplomaticStatus, GameState, Id, PlayerId, Price, Proposal, ProposalKind, Relation } from "./types.js";
+import { designStats, findDesign } from "./designs.js";
+import { empireIncome } from "./empire.js";
 
 /**
  * Relations between empires, after the original: a status (no treaty, war,
@@ -105,7 +107,7 @@ function repulsivePair(state: GameState, a: PlayerId, b: PlayerId): boolean {
   return hasTrait(getRace(state.players[a]!.raceId), "repulsive") || hasTrait(getRace(state.players[b]!.raceId), "repulsive");
 }
 
-export type ProposalTerms = Pick<Proposal, "techId" | "wantTechId" | "starId" | "third" | "percent">;
+export type ProposalTerms = Pick<Proposal, "techId" | "wantTechId" | "starId" | "third" | "percent" | "price">;
 
 function coloniesAt(state: GameState, playerId: PlayerId, starId: Id) {
   return Object.values(state.colonies).filter((c) => c.ownerId === playerId && state.planets[c.planetId]?.starId === starId);
@@ -125,6 +127,10 @@ export function canSign(state: GameState, from: PlayerId, to: PlayerId, kind: Pr
   if (!pf.contacts.includes(to)) return "no contact";
   if (kind !== "peace" && kind !== "ceasefire" && repulsivePair(state, from, to)) {
     return "repulsive races can only declare war or sue for peace";
+  }
+  if (terms.price) {
+    const why = giftProblem(state, to, from, terms.price);
+    if (why) return `can't pay the price: ${why}`;
   }
   const third = terms.third !== undefined ? state.players[terms.third] : undefined;
   const validThird = () => !!third && third.kind === "empire" && third.alive && third.id !== from && third.id !== to;
@@ -264,11 +270,53 @@ export interface TreatyScore {
   blocked: string | null;
 }
 
+/** Kinds a computer ruler answers with the original's score. */
+export function isScoredTreaty(kind: ProposalKind): boolean {
+  return kind === "nonAggression" || kind === "alliance" || kind === "trade" || kind === "research" || kind === "peace" || kind === "ceasefire";
+}
+
+const pairValue = (m: Record<string, Record<string, number>> | undefined, a: PlayerId, b: PlayerId) => m?.[a]?.[b] ?? 0;
+export const trustIn = (state: GameState, a: PlayerId, b: PlayerId) => pairValue(state.trust, a, b);
+export const reputationOf = (state: GameState, a: PlayerId, b: PlayerId) => pairValue(state.reputation, a, b);
+const isDishonored = (state: GameState, a: PlayerId, b: PlayerId) => (state.dishonored?.[a] ?? []).includes(b);
+
+/** Strength of the fleets `state` shows for an empire (in a player's view, only those in sight). */
+export function fleetPower(state: GameState, playerId: PlayerId): number {
+  const owner = state.players[playerId]!;
+  let sum = 0;
+  for (const f of Object.values(state.fleets)) {
+    if (f.ownerId !== playerId) continue;
+    for (const sh of f.ships) {
+      const d = findDesign(owner, sh.designId);
+      if (d) sum += designStats(owner, d).strength * sh.count;
+    }
+  }
+  return sum;
+}
+
+/** Systems where `a` has a colony and `b` has ships. */
+function occupiedBy(state: GameState, a: PlayerId, b: PlayerId): number {
+  const stars = new Set(Object.values(state.colonies).filter((c) => c.ownerId === a).map((c) => state.planets[c.planetId]?.starId));
+  return new Set(Object.values(state.fleets).filter((f) => f.ownerId === b && f.starId && stars.has(f.starId)).map((f) => f.starId)).size;
+}
+
+/** Wars `a` fights other than against `b`, a human enemy counting `humanWarWeight`. */
+function otherWars(state: GameState, a: PlayerId, b: PlayerId, onlyComputer = false): number {
+  let n = 0;
+  for (const p of empires(state)) {
+    if (p.id === a || p.id === b || !p.alive || relation(state, a, p.id).status !== "war") continue;
+    if (onlyComputer && p.isHuman) continue;
+    n += p.isHuman ? PEACE_ANSWER.humanWarWeight : 1;
+  }
+  return n;
+}
+
 /**
- * The original's treaty answer for a non-aggression pact, alliance, trade or
- * research treaty: the listener's attitude, a d100, the treaty's need, the
- * listener's temperament and patience, and the proposer's diplomatic bonuses.
- * With `roll` null the result leaves the die out (for showing odds).
+ * The original's answer to a treaty: for a non-aggression pact, alliance,
+ * trade or research treaty the listener's attitude, a d100, the treaty's need,
+ * its trust in you and your reputation, its temperament and patience, and the
+ * proposer's diplomatic bonuses. Peace leaves attitude out and weighs the war
+ * instead. With `roll` null the result leaves the die out (for showing odds).
  */
 export function treatyScore(
   state: GameState, from: PlayerId, to: PlayerId, kind: ProposalKind, roll: number | null, patienceBefore = patience(state, to, from),
@@ -276,25 +324,55 @@ export function treatyScore(
   const proposer = state.players[from]!;
   const race = getRace(proposer.raceId);
   const temper = temperament(state, to);
-  const parts: { why: string; value: number }[] = [
-    { why: "their attitude toward you", value: attitude(state, to, from) },
-    { why: `what a ${words(kind)} asks of them`, value: -(TREATY_ANSWER.need[kind] ?? 0) },
-  ];
-  if (temper) parts.push({ why: `${TEMPERAMENTS[temper].name} temperament`, value: TEMPERAMENTS[temper].treaty });
-  if (patienceBefore) parts.push({ why: "patience worn by earlier asks", value: patienceBefore });
+  const honorable = temper === "honorable";
+  const peace = kind === "peace" || kind === "ceasefire";
+  const parts: { why: string; value: number }[] = [];
+  const add = (why: string, value: number) => {
+    if (value) parts.push({ why, value: Math.round(value) });
+  };
+  const trust = trustIn(state, to, from);
+  const rep = reputationOf(state, to, from);
+  if (peace) {
+    const r = relation(state, from, to);
+    const turns = state.turn - r.since;
+    parts.push({ why: "what peace asks of them", value: -PEACE_ANSWER.need });
+    add("turns of war so far", (turns - PEACE_ANSWER.warTurnsOffset) * PEACE_ANSWER.perWarTurn);
+    add("their trust in you (counts twice)", 2 * trust);
+    add("your reputation (counts twice)", (honorable ? 3 : 2) * rep);
+    add("their other wars", PEACE_ANSWER.perTheirWar * otherWars(state, to, from));
+    add("your other wars", -PEACE_ANSWER.perYourWar * otherWars(state, from, to));
+    const mine = fleetPower(state, to);
+    const theirs = fleetPower(state, from);
+    let ratio = Math.min(PEACE_ANSWER.strengthCap, ((mine + 1) * 100) / (theirs + 1));
+    ratio /= 2 ** otherWars(state, to, from, true);
+    add("their fleets against yours", -(ratio - 100) / 2);
+    add("your systems their ships hold", -PEACE_ANSWER.theirFleetInYourSystem * occupiedBy(state, from, to));
+    add("their systems your ships hold", PEACE_ANSWER.yourFleetInTheirSystem * occupiedBy(state, to, from));
+  } else {
+    parts.push({ why: "their attitude toward you", value: attitude(state, to, from) });
+    parts.push({ why: `what a ${words(kind)} asks of them`, value: -(TREATY_ANSWER.need[kind] ?? 0) });
+    add("their trust in you", trust);
+    add(honorable ? "your reputation (Honorable rulers count it twice)" : "your reputation", (honorable ? 2 : 1) * rep);
+  }
+  if (temper) {
+    const dishonored = honorable && isDishonored(state, to, from);
+    add(dishonored ? "Honorable, and you broke faith with them" : `${TEMPERAMENTS[temper].name} temperament`, dishonored ? TREATY_ANSWER.dishonored : TEMPERAMENTS[temper].treaty);
+  }
+  add("patience worn by earlier asks", patienceBefore);
   // Charismatic and telepathic proposers, Xeno Psychology and the best diplomat leader.
   const racial = raceDiplomacyPoints(race);
   if (racial) parts.push({ why: hasTrait(race, "charismatic") ? (hasTrait(race, "telepathic") ? "you are charismatic and telepathic" : "you are charismatic") : "you are telepathic", value: racial });
-  const tech = empireBonus(proposer).diplomacy;
-  if (tech) parts.push({ why: "Xeno Psychology", value: tech });
-  const leader = (proposer.diplomacyBonus ?? 0) - racial;
-  if (leader > 0) parts.push({ why: "your diplomat leader", value: leader });
+  add("Xeno Psychology", empireBonus(proposer).diplomacy);
+  add("your diplomat leader", Math.max(0, (proposer.diplomacyBonus ?? 0) - racial));
   if (roll !== null) parts.push({ why: "their mood today (d100)", value: roll });
   let blocked: string | null = null;
   if (kind === "alliance" && attitude(state, to, from) < TREATY_ANSWER.allianceMinAttitude) {
     blocked = `they ally only at attitude ${TREATY_ANSWER.allianceMinAttitude} or better`;
   }
-  return { score: parts.reduce((s, p) => s + p.value, 0), parts, blocked };
+  if (peace && state.turn - relation(state, from, to).since < TREATY_ANSWER.peaceMinWarTurns) {
+    blocked = `they hear no peace before ${TREATY_ANSWER.peaceMinWarTurns} turns of war`;
+  }
+  return { score: parts.reduce((x, p) => x + p.value, 0), parts, blocked };
 }
 
 /** Chance (0..1) a computer empire accepts a treaty now, over its d100. */
@@ -305,7 +383,70 @@ export function treatyAcceptChance(state: GameState, from: PlayerId, to: PlayerI
   return Math.max(0, Math.min(100, 101 + t.score)) / 100;
 }
 
-const words = (kind: ProposalKind) => (kind === "nonAggression" ? "non-aggression pact" : kind === "alliance" ? "alliance" : `${kind} treaty`);
+/** Chance (0..1) that they name a price instead of refusing outright. */
+export function treatyPriceChance(state: GameState, from: PlayerId, to: PlayerId, kind: ProposalKind): number {
+  const t = treatyScore(state, from, to, kind, null);
+  const c = TREATY_ANSWER.counterChance[kind === "ceasefire" ? "peace" : kind] ?? 0;
+  if (t.blocked || !c) return 0;
+  // Score + d100 lands in [bigPrice, -1].
+  const hits = Math.max(0, Math.min(100, -1 - t.score) - Math.max(1, TREATY_ANSWER.bigPrice - t.score) + 1);
+  return (hits / 100) * c;
+}
+
+export type TreatyAnswer = { kind: "accept" } | { kind: "refuse" } | { kind: "price"; price: Price };
+
+/**
+ * A computer ruler's whole answer to a scored treaty proposal: accept, refuse,
+ * or name a price, after the original. Fixed by the proposal's roll.
+ */
+export function treatyAnswer(state: GameState, p: Proposal, warmth = 0): TreatyAnswer {
+  const t = treatyScore(state, p.from, p.to, p.kind, p.roll ?? 50, p.patience ?? 0);
+  if (t.blocked) return { kind: "refuse" };
+  const score = t.score + warmth;
+  if (score >= 0) return { kind: "accept" };
+  if (score < TREATY_ANSWER.bigPrice) return { kind: "refuse" };
+  const chance = TREATY_ANSWER.counterChance[p.kind === "ceasefire" ? "peace" : p.kind] ?? 0;
+  if (!chance || fixedRoll(state, `${p.id}|counter`, 100) > chance * 100) return { kind: "refuse" };
+  const price = counterPrice(state, p.to, p.from, score >= TREATY_ANSWER.smallPrice ? "small" : "big", p.id);
+  return price ? { kind: "price", price } : { kind: "refuse" };
+}
+
+/** A price `ruler` asks of `payer`, small or big, picked by a fixed roll among what the payer can give. */
+export function counterPrice(state: GameState, ruler: PlayerId, payer: PlayerId, size: "small" | "big", key: string): Price | null {
+  const them = state.players[ruler]!;
+  const you = state.players[payer]!;
+  const options: Price[] = [];
+  const income = Math.max(0, empireIncome(state, ruler).net);
+  const bc = Math.min(Math.floor(you.bc), Math.max(COUNTER_PRICE.minBc, Math.round(income * COUNTER_PRICE.bcTurnsOfIncome * (size === "big" ? 2 : 1))));
+  if (bc >= COUNTER_PRICE.minBc) options.push({ bc });
+  const techs = you.techs.filter((t) => TIER_OF_TECH[t] && !them.techs.includes(t)).sort((a, b) => (TIER_OF_TECH[a]!.cost - TIER_OF_TECH[b]!.cost) || a.localeCompare(b));
+  if (techs.length) options.push({ techId: size === "big" ? techs[techs.length - 1]! : techs[0]! });
+  if (!(state.tributes ?? []).some((t) => t.from === payer && t.to === ruler)) options.push({ tribute: size === "big" ? COUNTER_PRICE.bigTribute : COUNTER_PRICE.smallTribute });
+  if (size === "big") {
+    const home = you.homeStarId;
+    const stars = [...new Set(Object.values(state.colonies).filter((c) => c.ownerId === payer).map((c) => state.planets[c.planetId]!.starId))]
+      .filter((id) => id !== home).sort();
+    if (stars.length) options.push({ starId: stars[fixedRoll(state, `${key}|star`, stars.length) - 1]! });
+  }
+  if (!options.length) return null;
+  return options[fixedRoll(state, `${key}|price`, options.length) - 1]!;
+}
+
+/** Records broken faith: the wronged empire's trust and everyone else's opinion of the breaker drop. */
+export function recordBrokenFaith(state: GameState, breaker: PlayerId, wronged: PlayerId, treaty: string): void {
+  const hurt = TRUST.broken[treaty] ?? 0;
+  if (!hurt) return;
+  const honorable = temperament(state, wronged) === "honorable";
+  state.trust = { ...(state.trust ?? {}), [wronged]: { ...(state.trust?.[wronged] ?? {}), [breaker]: trustIn(state, wronged, breaker) - hurt * (honorable ? TRUST.honorableMult : 1) } };
+  state.dishonored = { ...(state.dishonored ?? {}), [wronged]: [...new Set([...(state.dishonored?.[wronged] ?? []), breaker])] };
+  for (const other of empires(state)) {
+    if (other.id === breaker || other.id === wronged || !other.alive || !other.contacts.includes(breaker)) continue;
+    const loss = temperament(state, other.id) === "honorable" ? TRUST.honorableReputation : TRUST.reputation;
+    state.reputation = { ...(state.reputation ?? {}), [other.id]: { ...(state.reputation?.[other.id] ?? {}), [breaker]: reputationOf(state, other.id, breaker) - loss } };
+  }
+}
+
+const words = (kind: ProposalKind) => (kind === "nonAggression" ? "non-aggression pact" : kind === "alliance" ? "alliance" : kind === "peace" || kind === "ceasefire" ? "peace" : `${kind} treaty`);
 
 export function isDemand(kind: ProposalKind): boolean {
   return kind.startsWith("demand");
@@ -313,6 +454,7 @@ export function isDemand(kind: ProposalKind): boolean {
 
 /** Carries out an accepted proposal. */
 export function acceptProposal(state: GameState, p: Proposal, emit?: Emit): void {
+  if (p.price) payPrice(state, p.to, p.from, p.price, emit);
   const r = relation(state, p.from, p.to);
   switch (p.kind) {
     case "ceasefire":
@@ -355,6 +497,7 @@ export function acceptProposal(state: GameState, p: Proposal, emit?: Emit): void
       emit?.({ kind: "diplomacy", playerId: p.third!, other: p.to, what: "made peace with you" });
       break;
     case "demandBreakAlliance":
+      recordBrokenFaith(state, p.to, p.third!, "alliance");
       setStatus(state, p.to, p.third!, "none");
       adjustAttitude(state, p.third!, p.to, ATTITUDE_EVENTS.brokeAlliance);
       emit?.({ kind: "diplomacy", playerId: p.third!, other: p.to, what: "broke off its alliance with you" });
@@ -408,6 +551,17 @@ function giveTech(state: GameState, from: PlayerId, to: PlayerId, tech: string, 
   void from;
 }
 
+/** The receiver of a counter-offer pays its price to the ruler who named it. */
+function payPrice(state: GameState, payer: PlayerId, payee: PlayerId, price: Price, emit?: Emit): void {
+  if (price.bc) {
+    state.players[payer]!.bc -= price.bc;
+    state.players[payee]!.bc += price.bc;
+  }
+  if (price.techId) giveTech(state, payer, payee, price.techId, emit);
+  if (price.tribute) addTribute(state, payer, payee, price.tribute);
+  if (price.starId) cedeSystem(state, payer, payee, price.starId, emit);
+}
+
 function addTribute(state: GameState, from: PlayerId, to: PlayerId, percent: number): void {
   state.tributes = (state.tributes ?? []).filter((t) => !(t.from === from && t.to === to));
   state.tributes.push({ from, to, percent });
@@ -428,6 +582,8 @@ export function cedeSystem(state: GameState, from: PlayerId, to: PlayerId, starI
 export function declareWar(state: GameState, from: PlayerId, to: PlayerId): void {
   const before = relation(state, from, to);
   const brokePeace = (before.peaceUntil ?? 0) > state.turn;
+  if (brokePeace) recordBrokenFaith(state, from, to, "peace");
+  else if (before.status === "nonAggression" || before.status === "alliance") recordBrokenFaith(state, from, to, before.status);
   setStatus(state, from, to, "war");
   adjustAttitude(state, to, from, ATTITUDE_EVENTS.declaredWar + (brokePeace ? ATTITUDE_EVENTS.brokePeace : 0));
   for (const other of empires(state)) {
@@ -448,6 +604,7 @@ export type TreatyName = "trade" | "research" | "nonAggression" | "alliance" | "
 export function breakTreaty(state: GameState, from: PlayerId, to: PlayerId, treaty: TreatyName): void {
   const r = relation(state, from, to);
   exhaustPatience(state, from, to);
+  recordBrokenFaith(state, from, to, treaty);
   switch (treaty) {
     case "trade":
       writeRelation(state, from, to, { ...r, trade: false });

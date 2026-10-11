@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  TRIBUTE_PERCENTS, attitude, audienceTired, canSign, getRace, giftProblem, government, hasTreaty, isDemand, relation,
+  TRIBUTE_PERCENTS, attitude, proposalId, audienceTired, canSign, getRace, giftProblem, government, hasTreaty, isDemand, relation,
   tributeAmount, type Command, type Player, type Proposal, type ProposalKind, type ProposalTerms, type TreatyName,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -91,6 +91,8 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
   const [speechKey, setSpeechKey] = useState(0);
   const [menu, setMenu] = useState<Menu>("main");
   const [answered, setAnswered] = useState<boolean | null>(null);
+  // A price they named for a treaty they would otherwise refuse, answered here like any proposal.
+  const [counter, setCounter] = useState<Proposal | null>(null);
   const [leaving, setLeaving] = useState(false);
 
   const say = (m: Moment) => {
@@ -125,12 +127,19 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
       say(tired ? "tired" : "refuse");
       return;
     }
-    say(isDemand(cmd.kind) ? (answer ? "yield" : "defy") : answer ? "accept" : "refuse");
+    const offer = answer ? undefined : session.counterTo(proposalId(view.turn, me.id, cmd.to, cmd.kind));
+    if (offer) {
+      setCounter(offer);
+      setAnswered(null);
+      say("offer");
+    } else {
+      say(isDemand(cmd.kind) ? (answer ? "yield" : "defy") : answer ? "accept" : "refuse");
+    }
     setMenu("main");
   };
 
   const status = r.status === "none" ? "No treaty" : r.status === "nonAggression" ? "Non-aggression pact" : words(r.status);
-  const incoming = request.opening.kind === "proposal" ? request.opening.proposal : null;
+  const incoming = counter ?? (request.opening.kind === "proposal" ? request.opening.proposal : null);
   const lateWar = request.opening.kind === "war";
 
   return (
@@ -184,9 +193,9 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
                     setAnswered(false);
                     say(isDemand(incoming.kind) ? "threat" : "spurned");
                   }}>{isDemand(incoming.kind) ? "Refuse" : "Decline"}</button>
-                  <button className="ghost" onClick={onClose}>Think it over</button>
+                  <button className="ghost" onClick={counter ? () => setCounter(null) : onClose}>Think it over</button>
                 </>
-              ) : <button className="primary" onClick={onClose}>Continue</button>
+              ) : <button className="primary" onClick={counter ? () => { setCounter(null); setAnswered(null); } : onClose}>Continue</button>
             ) : lateWar ? (
               <button className="primary" onClick={onClose}>So be it</button>
             ) : readOnly ? (

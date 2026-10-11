@@ -407,6 +407,15 @@ export type ProposalKind =
   | "demandTribute" | "demandTech" | "demandSystem" | "demandWar" | "demandPeace" | "demandBreakAlliance"
   | "demandStopSpying" | "demandRemoveFleet";
 
+/** What one empire pays another, as the price of a treaty. */
+export interface Price {
+  bc?: number;
+  techId?: string;
+  /** A standing tribute of this percentage. */
+  tribute?: number;
+  starId?: Id;
+}
+
 export interface Proposal {
   id: Id;
   from: PlayerId;
@@ -420,6 +429,8 @@ export interface Proposal {
   third?: PlayerId;
   /** Tribute percentage (5 or 10). */
   percent?: number;
+  /** A price the proposer asks of the receiver for signing (a counter-offer). */
+  price?: Price;
   /** The listener's d100 for its answer, fixed when the proposal is made. */
   roll?: number;
   /** The listener's patience with the proposer just before this ask. */
@@ -580,6 +591,12 @@ export interface GameState {
   attitude: Record<string, Record<string, number>>;
   /** patience[a][b]: how much more a will hear from b (0 at rest, lower after asks). */
   patience?: Record<string, Record<string, number>>;
+  /** trust[a][b]: a's trust in b, lowered when b breaks a treaty with a. */
+  trust?: Record<string, Record<string, number>>;
+  /** reputation[a][b]: what a has heard of b's faithfulness, lowered when b breaks treaties with others. */
+  reputation?: Record<string, Record<string, number>>;
+  /** dishonored[a]: empires that broke faith with a. */
+  dishonored?: Record<string, PlayerId[]>;
   /** asks[a][b][kind]: a's tally of asking b, per proposal kind. */
   asks?: Record<string, Record<string, Record<string, number>>>;
   proposals: Proposal[];

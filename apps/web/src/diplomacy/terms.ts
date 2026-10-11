@@ -1,3 +1,4 @@
+import { priceText } from "./effects";
 import { TECHS, TIER_OF_TECH, type Player, type PlayerView, type Proposal } from "@starlord/sim";
 import { playerName, starName, words } from "../ui/format";
 
@@ -5,6 +6,11 @@ export const techName = (t: string | undefined) => (t ? TECHS[t]?.name ?? words(
 
 /** One line describing a proposal and its terms. */
 export function describeProposal(view: PlayerView, p: Proposal): string {
+  const base = describeTerms(view, p);
+  return p.price ? `${base}, at a price: ${priceText(view, p.to, p.price)}` : base;
+}
+
+function describeTerms(view: PlayerView, p: Proposal): string {
   const third = p.third !== undefined ? playerName(view, p.third) : "";
   switch (p.kind) {
     case "peace":
