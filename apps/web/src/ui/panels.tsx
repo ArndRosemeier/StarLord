@@ -232,27 +232,6 @@ export function viewStarOfColony(view: PlayerView, colonyId: string) {
   return p ? view.galaxy.stars.find((s) => s.id === p.starId) : undefined;
 }
 
-const HULL_ORDER = ["frigate", "destroyer", "cruiser", "battleship", "titan", "doomStar"];
-
-/** A ship picture from the 5x5 sprite sheet, chosen by hull with a per-design variant. */
-export function ShipSprite({ hull, variantKey, size = 48 }: { hull: string; variantKey: string; size?: number }) {
-  let h = 0;
-  for (const ch of variantKey) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  const index = (Math.max(0, HULL_ORDER.indexOf(hull)) * 4 + (h % 4)) % 25;
-  const col = index % 5;
-  const row = Math.floor(index / 5);
-  // Zoom in a little so neighbouring sprites don't bleed into the frame.
-  const cell = size * 1.15;
-  const offset = (cell - size) / 2;
-  return (
-    <span style={{
-      width: size, height: size, display: "inline-block", flex: "none", borderRadius: 6,
-      backgroundImage: "url(Ships.png)", backgroundSize: `${cell * 5}px ${cell * 5}px`,
-      backgroundPosition: `${-(col * cell + offset)}px ${-(row * cell + offset)}px`,
-    }} />
-  );
-}
-
 const LEADER_PORTRAITS = 24;
 
 /** One of the painted leader portraits, picked by name so a leader always keeps the same face. */

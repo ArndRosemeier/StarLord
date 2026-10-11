@@ -352,7 +352,7 @@
 
 /* ---- ship designer blueprint */
 .blueprint {
-  position: relative; height: 170px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  position: relative; height: 220px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center;
   background:
     linear-gradient(rgba(91, 157, 255, 0.12) 1px, transparent 1px) 0 0 / 20px 20px,
     linear-gradient(90deg, rgba(91, 157, 255, 0.12) 1px, transparent 1px) 0 0 / 20px 20px,
@@ -361,16 +361,18 @@
     radial-gradient(ellipse at center, #0f2a5a, #071226 75%);
   border: 1px solid rgba(91, 157, 255, 0.35); box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
 }
-.blueprint::after {
+.blueprint::after { pointer-events: none; z-index: 1;
   content: ""; position: absolute; left: 0; right: 0; height: 40px; top: -40px;
   background: linear-gradient(transparent, rgba(120, 200, 255, 0.25), transparent);
   animation: scan 3.5s linear infinite;
 }
 @keyframes scan { to { top: 100%; } }
-.blueprint-ship { animation: ship-hover 4s ease-in-out infinite; filter: drop-shadow(0 0 14px rgba(120, 200, 255, 0.55)); border-radius: 12px; }
-@keyframes ship-hover { 50% { transform: translateY(-5px) rotate(-1.5deg); } }
-.blueprint-label { position: absolute; left: 10px; top: 8px; font-family: var(--display); font-size: 10px; letter-spacing: 0.2em; color: #7fb2ff; opacity: 0.8; }
-.blueprint-hull { position: absolute; right: 10px; bottom: 8px; font-family: var(--display); font-size: 11px; letter-spacing: 0.15em; color: #a8ccff; }
+.blueprint-model { position: absolute; inset: 0; cursor: grab; }
+.blueprint-model:active { cursor: grabbing; }
+.ship-thumb { display: inline-block; flex: none; border-radius: 6px; background: radial-gradient(ellipse at center, rgba(40, 80, 160, 0.35), transparent 70%); }
+.ship-thumb img { display: block; }
+.blueprint-label { position: absolute; z-index: 1; pointer-events: none; left: 10px; top: 8px; font-family: var(--display); font-size: 10px; letter-spacing: 0.2em; color: #7fb2ff; opacity: 0.8; }
+.blueprint-hull { position: absolute; z-index: 1; pointer-events: none; right: 10px; bottom: 8px; font-family: var(--display); font-size: 11px; letter-spacing: 0.15em; color: #a8ccff; }
 .design-row { transition: background 0.15s, transform 0.15s; border-radius: 6px; padding: 4px; }
 .design-row:hover { background: rgba(60, 100, 200, 0.12); transform: translateX(3px); }
 
@@ -446,7 +448,7 @@
 .game-over::after { content: ""; position: absolute; inset: -5%; background: inherit; z-index: -1; animation: bg-drift 30s ease-in-out infinite alternate; }
 
 @media (prefers-reduced-motion: reduce) {
-  .planet-orb, .planet-orb *, .planet-orb::before, .ring *, .radar::before, .radar i, .blueprint::after, .blueprint-ship { animation: none !important; }
+  .planet-orb, .planet-orb *, .planet-orb::before, .ring *, .radar::before, .radar i, .blueprint::after { animation: none !important; }
 }
 
 /* ---- 3D system view: a centred modal, the system on the left and its details on the right */

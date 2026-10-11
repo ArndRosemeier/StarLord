@@ -25,6 +25,8 @@ export interface StageOptions {
   maxPolarAngle?: number;
   /** Limits on turning left/right around the target, radians from the start angle. */
   azimuthRange?: number;
+  /** See-through background, so the page shows behind the scene. */
+  transparent?: boolean;
 }
 
 export type FrameCallback = (dt: number, time: number) => void;
@@ -49,7 +51,8 @@ export class Stage {
   viewportHeight = 1;
 
   constructor(readonly container: HTMLElement, opts: StageOptions = {}) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: !!opts.transparent, powerPreference: "high-performance" });
+    if (opts.transparent) this.renderer.setClearColor(0x000000, 0);
     this.renderer.setPixelRatio(Math.min(opts.maxPixelRatio ?? 2, window.devicePixelRatio || 1));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
