@@ -7,6 +7,7 @@ import { customRaceDefs, loadCustomRaces, saveCustomRaces } from "../game/custom
 import { RaceBuilder, blankRace } from "./RaceBuilder";
 import { GameSession } from "../game/session";
 import { deleteSave, listSaves, readSave, readSaveFile } from "../game/saves";
+import { useHold } from "../ui/touch";
 import { words } from "../ui/format";
 
 const PICKS: [keyof ReturnType<typeof getRace>["picks"], string][] = [
@@ -55,7 +56,8 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
 
   const editCustom = (spec: CustomRaceSpec) => setEditing({ spec, index: customSpecs.indexOf(spec) });
 
-  /** Holding Ctrl+Alt while starting turns on the debug menu for that game. */
+  /** Holding Ctrl+Alt while starting (or, on touch, holding the button down) turns on the debug menu for that game. */
+  const debugHold = useHold(() => start(false, true), 1500);
   const start = (spectate: boolean, debug = false) => {
     const others = shuffled(RACES.map((r) => r.id).filter((id) => id !== raceId)).slice(0, opponents);
     const races = spectate ? shuffled(RACES.map((r) => r.id)).slice(0, opponents + 1) : [raceId, ...others];
@@ -177,7 +179,7 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
             </div>
             {customBlocked && <div className="bad">Custom races need Average difficulty or harder.</div>}
             <div className="row">
-              <button className="primary" disabled={customBlocked} onClick={(e) => start(false, e.ctrlKey && e.altKey)}>Play as the {race.plural}</button>
+              <button className="primary" disabled={customBlocked} onClick={(e) => start(false, e.ctrlKey && e.altKey)} {...debugHold}>Play as the {race.plural}</button>
 
               <button onClick={() => start(true)} title="All empires are run by the computer; you watch.">Watch an AI game</button>
               <label className="row" style={{ gap: 6 }}>

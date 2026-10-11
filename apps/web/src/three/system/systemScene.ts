@@ -11,6 +11,7 @@ import { buildShip, SHIP_LENGTH } from "../models/ships";
 import { buildMonster } from "../models/monster";
 import { buildAsteroidBelt, buildPlanetRings, type AsteroidBelt } from "../models/belt";
 import type { SystemFleet, SystemModel, SystemPlanet } from "./systemModel";
+import { additive } from "../../ui/touch";
 import { ColonizeFx } from "./colonizeFx";
 
 /**
@@ -470,7 +471,7 @@ export class SystemScene {
     const body = this.pickAt(e);
     const pick = body?.pick ?? null;
     this.select(pick);
-    this.opts.onPick?.(pick, e.shiftKey);
+    this.opts.onPick?.(pick, additive(e));
   };
 
   private onDoubleClick = () => {

@@ -81,7 +81,28 @@ export class Stage {
     this.resizeObserver.observe(container);
     this.resize();
     this.renderer.domElement.addEventListener("dblclick", this.onDoubleClick);
+    this.renderer.domElement.addEventListener("pointerdown", this.onTapDown);
+    this.renderer.domElement.addEventListener("pointerup", this.onTapUp);
   }
+
+  /** Touch browsers do not all send dblclick, so a quick double tap stands in for it. */
+  private tapDown: { x: number; y: number; t: number } | null = null;
+  private lastTap: { x: number; y: number; t: number } | null = null;
+  private onTapDown = (e: PointerEvent) => {
+    this.tapDown = e.pointerType === "mouse" || !e.isPrimary ? null : { x: e.clientX, y: e.clientY, t: performance.now() };
+  };
+  private onTapUp = (e: PointerEvent) => {
+    const down = this.tapDown;
+    this.tapDown = null;
+    const now = performance.now();
+    if (!down || now - down.t > 300 || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10) return;
+    const prev = this.lastTap;
+    this.lastTap = { x: e.clientX, y: e.clientY, t: now };
+    if (prev && now - prev.t < 350 && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 30) {
+      this.lastTap = null;
+      this.renderer.domElement.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    }
+  };
 
   private azimuthRange: number;
 
@@ -186,6 +207,8 @@ export class Stage {
     this.callbacks.clear();
     this.resizeObserver.disconnect();
     this.renderer.domElement.removeEventListener("dblclick", this.onDoubleClick);
+    this.renderer.domElement.removeEventListener("pointerdown", this.onTapDown);
+    this.renderer.domElement.removeEventListener("pointerup", this.onTapUp);
     this.controls.dispose();
     disposeObject(this.scene);
     for (const o of this.owned) o.dispose();

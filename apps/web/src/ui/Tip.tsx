@@ -1,10 +1,12 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { touchTipCards } from "./touch";
 
 /**
  * Hover tooltips with real content: a title, key numbers and a few lines on
  * what something does. `Tip` wraps any element; the card follows the pointer
  * and stays inside the window. Disabled controls inside still show their tip.
+ * On touch screens, holding a finger on the element shows the same card.
  */
 
 export interface TipCard {
@@ -44,6 +46,19 @@ export function Tip({ card, children, block = false }: { card: TipCard | (() => 
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  const anchor = useRef<HTMLElement>(null);
+  const cardRef = useRef(card);
+  cardRef.current = card;
+
+  useEffect(() => {
+    const el = anchor.current;
+    if (!el) return;
+    touchTipCards.set(el, () => {
+      const c = cardRef.current;
+      return typeof c === "function" ? c() : c;
+    });
+    return () => { touchTipCards.delete(el); };
+  }, []);
 
   useLayoutEffect(() => {
     if (!at || !box.current) return;
@@ -60,8 +75,10 @@ export function Tip({ card, children, block = false }: { card: TipCard | (() => 
   const resolved = at && card ? (typeof card === "function" ? card() : card) : null;
   return (
     <Wrap
+      ref={anchor as never}
       className={`tip-anchor${block ? " block" : ""}`}
-      onMouseMove={(e) => setAt({ x: e.clientX, y: e.clientY })}
+      // Touch browsers fake a mouse move on tap; the hold card in TouchTips covers touch instead.
+      onPointerMove={(e) => { if (e.pointerType === "mouse") setAt({ x: e.clientX, y: e.clientY }); }}
       onMouseLeave={() => setAt(null)}
     >
       {children}

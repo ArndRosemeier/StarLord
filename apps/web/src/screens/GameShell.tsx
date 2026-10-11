@@ -180,7 +180,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
                 <button className="small" onClick={() => session.undo()}>Undo</button>
               </span>
             )}
-            <button className="primary end-turn" onClick={endTurn} disabled={view.over} title="Ctrl+Enter">End turn</button>
+            <button className="primary end-turn" onClick={endTurn} disabled={view.over} title="End the turn (Ctrl+Enter)">End turn</button>
           </>
         )}
       </div>

@@ -560,3 +560,48 @@
 .blueprint-style { position: absolute; left: 10px; bottom: 8px; z-index: 1; pointer-events: none; font-family: var(--display); font-size: 10px; letter-spacing: 0.15em; color: #7fb2ff; opacity: 0.8; text-transform: uppercase; }
 .style-pick { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 6px; border: 2px solid transparent; font-size: 11px; }
 .style-pick.active { border-color: var(--accent); }
+
+/* ---- tablets and touch screens */
+html, body { overscroll-behavior: none; }
+@supports (height: 100dvh) { #root { height: 100dvh; } }
+#root { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.touch-only { display: none; }
+.tip-card.touch { max-width: min(360px, calc(100vw - 16px)); }
+.tip-card.touch p { margin: 4px 0 0; }
+.tip-card.touch p.first { margin: 0; color: var(--text); }
+.map-host .map-several { position: absolute; right: 10px; bottom: 10px; z-index: 2; background: rgba(16, 24, 44, 0.88); }
+.shell .map-host .map-several.active { border-color: var(--accent); background: rgba(40, 80, 170, 0.75); color: #fff; }
+
+/* Fit the top bar on one line at tablet widths. */
+@media (max-width: 1240px) {
+  .shell .topbar { gap: 10px; padding: 6px 10px; }
+  .shell .topbar .brand { display: none; }
+  .body { grid-template-columns: 150px 1fr; }
+  .map-layout { grid-template-columns: 1fr 300px; }
+}
+@media (max-width: 900px) {
+  .body { grid-template-columns: 1fr; }
+  .map-layout { grid-template-columns: 1fr; }
+  .shell .nav button { white-space: nowrap; flex: none; }
+  /* Stat labels shrink to their icons; the numbers stay. */
+  .shell .topbar .stat > small:first-child { font-size: 0; gap: 0; }
+  .shell .topbar .stat > small:first-child .icon { width: 14px; height: 14px; }
+}
+
+/* Fingers need bigger targets than a mouse, and no hover-only effects or text selection. */
+@media (pointer: coarse) {
+  html { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  input, textarea, .help-article, .help-error { -webkit-user-select: text; user-select: text; }
+  .touch-only { display: inline-flex; align-items: center; justify-content: center; }
+  button { min-height: 40px; }
+  button.small, .shell button.small, .modal button.small { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+  select, input[type="text"], input[type="number"], .shell select, .shell input[type="text"], .shell input[type="number"] { min-height: 38px; }
+  input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
+  input[type="range"] { height: 28px; }
+  .shell .nav button { padding: 10px 12px; }
+  .help-button { width: 40px; height: 40px; }
+  .help-list button { padding: 8px 10px; }
+  .help-list .help-item { padding-left: 26px; }
+  .map-hint { right: 160px; }
+}

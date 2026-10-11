@@ -2,6 +2,7 @@ import { Application, Assets, Circle, Container, Graphics, Sprite, Text, Texture
 import type { MapInput, MapRenderer } from "./renderer";
 import type { FleetLook, MapScene } from "./scene";
 import { prefersReducedMotion } from "../ui/fx";
+import { HOLD_MS, HOLD_SLOP, additive, buzz, isTouchDevice } from "../ui/touch";
 
 /** Pixels per galaxy unit at zoom 1. */
 const UNIT = 48;
@@ -162,6 +163,12 @@ export class PixiMapRenderer implements MapRenderer {
   private mounted = false;
   private pending: MapScene | null = null;
   private drag: { x: number; y: number; camX: number; camY: number; moved: boolean } | null = null;
+  /** Fingers on the map, for pinch zoom; screen positions by pointer id. */
+  private touches = new Map<number, { x: number; y: number }>();
+  private pinch: { dist: number; scale: number; cx: number; cy: number; camX: number; camY: number } | null = null;
+  /** Set by a pinch or a hold until every finger is lifted, so lifting does not also tap. */
+  private gestured = false;
+  private hold: { timer: number; x: number; y: number; id: number } | null = null;
   private lastSize = "";
   private destroyed = false;
   /** Soft empire-coloured glow around owned systems, under everything else. */
@@ -173,6 +180,7 @@ export class PixiMapRenderer implements MapRenderer {
   private twinkle: { g: Graphics; phase: number }[] = [];
   private time = 0;
   private still = prefersReducedMotion();
+  private coarse = isTouchDevice();
 
   async mount(container: HTMLElement, input: MapInput): Promise<void> {
     this.container = container;
@@ -191,6 +199,11 @@ export class PixiMapRenderer implements MapRenderer {
     container.appendChild(this.app.canvas);
     this.app.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     this.app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    this.app.canvas.style.touchAction = "none";
+    this.app.canvas.addEventListener("pointerdown", this.onTouchDown);
+    window.addEventListener("pointermove", this.onTouchMove);
+    window.addEventListener("pointerup", this.onTouchUp);
+    window.addEventListener("pointercancel", this.onTouchUp);
     this.app.stage.addChild(this.camera);
     this.camera.addChild(this.backdrop, this.territory, this.trails, this.world, this.hover);
     this.app.ticker.add(this.animate);
@@ -205,14 +218,14 @@ export class PixiMapRenderer implements MapRenderer {
     this.app.stage.eventMode = "static";
     this.app.stage.hitArea = this.app.screen;
     this.app.stage.on("pointerdown", (e) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || this.pinch) return;
       this.drag = { x: e.global.x, y: e.global.y, camX: this.camera.x, camY: this.camera.y, moved: false };
     });
     this.app.stage.on("pointermove", (e) => {
-      if (!this.drag) return;
+      if (!this.drag || this.pinch) return;
       const dx = e.global.x - this.drag.x;
       const dy = e.global.y - this.drag.y;
-      if (Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD) this.drag.moved = true;
+      if (Math.abs(dx) + Math.abs(dy) > (e.pointerType === "mouse" ? DRAG_THRESHOLD : HOLD_SLOP)) this.drag.moved = true;
       if (this.drag.moved) {
         this.camera.x = this.drag.camX + dx;
         this.camera.y = this.drag.camY + dy;
@@ -222,7 +235,7 @@ export class PixiMapRenderer implements MapRenderer {
       this.drag = null;
     };
     this.app.stage.on("pointerup", (e) => {
-      if (this.drag && !this.drag.moved && e.target === this.app.stage) this.input.onBackground();
+      if (this.drag && !this.drag.moved && !this.gestured && e.target === this.app.stage) this.input.onBackground();
       endDrag();
     });
     this.app.stage.on("pointerupoutside", endDrag);
@@ -253,13 +266,82 @@ export class PixiMapRenderer implements MapRenderer {
     const rect = this.app.canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    const old = this.camera.scale.x;
-    const next = Math.min(4, Math.max(0.3, old * Math.exp(-e.deltaY * 0.0015)));
-    // Zoom around the cursor.
-    this.camera.x = mx - ((mx - this.camera.x) * next) / old;
-    this.camera.y = my - ((my - this.camera.y) * next) / old;
-    this.camera.scale.set(next);
+    this.zoomAt(mx, my, this.camera.scale.x * Math.exp(-e.deltaY * 0.0015));
   };
+
+  /** Zoom to `scale`, keeping the galaxy point under screen position (x, y) in place. */
+  private zoomAt(x: number, y: number, scale: number): void {
+    const old = this.camera.scale.x;
+    const next = Math.min(4, Math.max(0.3, scale));
+    this.camera.x = x - ((x - this.camera.x) * next) / old;
+    this.camera.y = y - ((y - this.camera.y) * next) / old;
+    this.camera.scale.set(next);
+  }
+
+  private local(e: PointerEvent): { x: number; y: number } {
+    const rect = this.app.canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  // Two fingers pinch to zoom and drag to pan; one finger pans through the stage's own drag.
+  private onTouchDown = (e: PointerEvent) => {
+    if (e.pointerType === "mouse") return;
+    this.touches.set(e.pointerId, this.local(e));
+    if (this.touches.size === 2) {
+      const [a, b] = [...this.touches.values()] as [{ x: number; y: number }, { x: number; y: number }];
+      this.pinch = {
+        dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), scale: this.camera.scale.x,
+        cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, camX: this.camera.x, camY: this.camera.y,
+      };
+      this.drag = null;
+      this.gestured = true;
+      this.cancelHold();
+    }
+  };
+
+  private onTouchMove = (e: PointerEvent) => {
+    if (!this.touches.has(e.pointerId)) return;
+    this.touches.set(e.pointerId, this.local(e));
+    if (this.hold && e.pointerId === this.hold.id && Math.hypot(e.clientX - this.hold.x, e.clientY - this.hold.y) > HOLD_SLOP) this.cancelHold();
+    const p = this.pinch;
+    if (!p || this.touches.size < 2) return;
+    const [a, b] = [...this.touches.values()] as [{ x: number; y: number }, { x: number; y: number }];
+    const cx = (a.x + b.x) / 2;
+    const cy = (a.y + b.y) / 2;
+    // Pan with the fingers' midpoint, then zoom around it.
+    this.camera.x = p.camX + (cx - p.cx);
+    this.camera.y = p.camY + (cy - p.cy);
+    this.camera.scale.set(p.scale);
+    this.zoomAt(cx, cy, p.scale * (Math.hypot(a.x - b.x, a.y - b.y) / p.dist));
+  };
+
+  private onTouchUp = (e: PointerEvent) => {
+    if (!this.touches.delete(e.pointerId)) return;
+    if (this.hold?.id === e.pointerId) this.cancelHold();
+    if (this.touches.size < 2) this.pinch = null;
+    // Let the tap events of this lift see the flag, then clear it.
+    if (this.touches.size === 0) setTimeout(() => { if (this.touches.size === 0) this.gestured = false; }, 0);
+  };
+
+  /** A finger resting on a fleet adds it to the selection, like Shift-click. */
+  private startHold(e: { pointerType: string; pointerId: number; clientX: number; clientY: number }, fire: () => void): void {
+    if (e.pointerType === "mouse") return;
+    this.cancelHold();
+    const timer = window.setTimeout(() => {
+      this.hold = null;
+      if (this.pinch) return;
+      this.gestured = true;
+      this.drag = null;
+      buzz();
+      fire();
+    }, HOLD_MS);
+    this.hold = { timer, x: e.clientX, y: e.clientY, id: e.pointerId };
+  }
+
+  private cancelHold(): void {
+    if (this.hold) clearTimeout(this.hold.timer);
+    this.hold = null;
+  }
 
   focus(x: number, y: number): void {
     const s = this.camera.scale.x;
@@ -468,7 +550,7 @@ export class PixiMapRenderer implements MapRenderer {
         this.drawHover();
       });
       node.on("pointertap", (e) => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || this.gestured) return;
         e.stopPropagation();
         this.input.onStar(s.id, "select");
       });
@@ -541,13 +623,15 @@ export class PixiMapRenderer implements MapRenderer {
       }
       node.eventMode = "static";
       node.cursor = "pointer";
-      node.hitArea = new Circle(0, 0, Math.max(9, r + 2));
+      // Fingers get a bigger target than the mouse.
+      node.hitArea = new Circle(0, 0, Math.max(this.coarse ? 14 : 9, r + 2));
       node.on("pointertap", (e) => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || this.gestured) return;
         e.stopPropagation();
-        this.input.onFleet(f.id, e.shiftKey);
+        this.input.onFleet(f.id, additive(e));
       });
       node.on("pointerdown", (e) => {
+        if (e.button === 0) this.startHold(e, () => this.input.onFleet(f.id, true));
         if (e.button !== 2 || !f.starId) return;
         e.stopPropagation();
         this.input.onStar(f.starId, "order");
@@ -590,6 +674,11 @@ export class PixiMapRenderer implements MapRenderer {
     this.destroyed = true;
     if (!this.mounted) return;
     this.app.canvas.removeEventListener("wheel", this.onWheel);
+    this.app.canvas.removeEventListener("pointerdown", this.onTouchDown);
+    window.removeEventListener("pointermove", this.onTouchMove);
+    window.removeEventListener("pointerup", this.onTouchUp);
+    window.removeEventListener("pointercancel", this.onTouchUp);
+    this.cancelHold();
     this.app.ticker.remove(this.placeNebula);
     this.app.ticker.remove(this.animate);
     this.app.destroy(true, { children: true });

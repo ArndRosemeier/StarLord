@@ -59,6 +59,14 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li>Click a star to see its planets and fleets in the side panel.</li>
         <li>Click one of your fleets, then click any star to send it there. Stars in fuel range are highlighted and the route is previewed.</li>
         <li><Key>Esc</Key> or a click on empty space deselects the fleet.</li>
+        <li>Shift-click fleets to select several; they all take the next star order.</li>
+      </Ul>
+      <h3>Tablets and touch screens</h3>
+      <Ul>
+        <li>Drag with one finger to pan the map; pinch with two to zoom. The 3D views orbit with one finger, zoom with a pinch and reset with a double tap.</li>
+        <li>Tap a star or fleet as you would click it. Hold a finger on a fleet to add it to the selection, or switch on <b>Select several</b> at the bottom of the map so every tap adds or removes a fleet.</li>
+        <li>Hold a finger on any button, number or control to see the tooltip a mouse would show; lifting the finger then does not press it.</li>
+        <li>The <b>?</b> button stands in for <Key>F1</Key> and <b>End turn</b> for <Key>Ctrl</Key>+<Key>Enter</Key>. The ✎ button next to a fleet's name renames it.</li>
       </Ul>
       <h3>Everywhere</h3>
       <Ul>
