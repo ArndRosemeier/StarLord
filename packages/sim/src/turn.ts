@@ -40,7 +40,7 @@ import { colonyRoom, freePlanetsInSystem, isContinuous, itemCost, learnsWholeFie
 import { applyMutation } from "./mutation.js";
 import { applyDebug } from "./debug.js";
 import { score } from "./score.js";
-import type { BuildItem, Colony, Fleet, GameState, Id, PlayerId } from "./types.js";
+import type { BuildItem, Colony, Fleet, GameState, Id, Player, PlayerId } from "./types.js";
 
 export type TurnOrders = Partial<Record<PlayerId, Command[]>>;
 
@@ -610,7 +610,7 @@ function runEconomy(ctx: TurnContext): void {
       grow(ctx, colony, out, food.shortfall[colony.id] ?? 0);
     }
     const treaties = treatyIncome(state, player.id, totals);
-    research += treaties.research + leaderResearch(state, player.id) + scoutLabResearch(state, player.id);
+    research += treaties.research + extraResearch(state, player.id);
     bc += treaties.bc;
     bc -= salaries(state, player.id);
     const over = commandPointsUsed(state, player.id) - commandPointsAvailable(state, player.id);
@@ -937,15 +937,15 @@ function grow(ctx: TurnContext, colony: Colony, out: ColonyOutput, foodShort: nu
 }
 
 /**
- * Adds research points. Once they reach the field's cost, every turn has a
- * chance of a breakthrough, certain at twice the cost. Points past the cost
- * carry over to the next field.
+ * Adds research points to the current field. Once they pass the field's cost,
+ * every turn has a chance of a breakthrough, certain at twice the cost. As in
+ * MoO2, points made while no field is chosen are lost.
  */
 function advanceResearch(ctx: TurnContext, playerId: PlayerId, points: number): void {
   const player = ctx.state.players[playerId]!;
   const r = player.research;
-  r.progress += points;
   if (!r.tierId) return;
+  r.progress += points;
   const tier = TIERS_BY_ID[r.tierId]!;
   if (!ctx.rng.chance(breakthroughChance(r.progress, researchCost(player, tier)))) return;
   // Points past the cost are lost with the breakthrough.
@@ -978,6 +978,20 @@ export function breakthroughChance(progress: number, cost: number): number {
   if (progress <= cost) return 0;
   const pct = Math.floor((100 * (progress - cost)) / ((RESEARCH.maxCostMult - 1) * cost));
   return Math.min(100, Math.max(1, pct)) / 100;
+}
+
+/**
+ * Chance of a breakthrough at the end of this turn, with `points` research
+ * added first, as the turn does. 0 while nothing is being researched.
+ */
+export function nextBreakthroughChance(player: Player, points: number): number {
+  const tier = player.research.tierId ? TIERS_BY_ID[player.research.tierId] : undefined;
+  return tier ? breakthroughChance(player.research.progress + points, researchCost(player, tier)) : 0;
+}
+
+/** Research an empire adds each turn beyond its colonies and treaties: researcher leaders and scout labs. */
+export function extraResearch(state: GameState, playerId: PlayerId): number {
+  return leaderResearch(state, playerId) + scoutLabResearch(state, playerId);
 }
 
 
