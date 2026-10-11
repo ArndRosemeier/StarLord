@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { SystemScene, type SystemPick } from "../../three/system/systemScene";
+import { isTouchDevice } from "../../ui/touch";
 import type { SystemModel } from "../../three/system/systemModel";
 
 export interface SystemView3DProps {
@@ -89,7 +90,9 @@ export default function SystemView3D({ model, selected, reduced, onPick, onFail,
   return (
     <div ref={host} className="system-3d">
       {playing && <button className="small system-skip" onClick={() => scene.current?.skip()}>Skip ▸</button>}
-      <div className="system-3d-hint muted">Drag to orbit · wheel to zoom · click a planet or fleet · double-click to reset</div>
+      <div className="system-3d-hint muted">{isTouchDevice()
+        ? "Drag to orbit · pinch to zoom · tap a planet or fleet · double-tap to reset"
+        : "Drag to orbit · wheel to zoom · click a planet or fleet · double-click to reset"}</div>
     </div>
   );
 }
