@@ -155,7 +155,7 @@ describe("raiders", () => {
   it("raid an empire once their time comes", () => {
     let s = newGame({ seed: "raid", races: ["terran", "felhari"], monsters: false, council: false });
     s.raiders.nextRaid = s.turn;
-    s.raiders.fleet = [{ designId: "vexari-cruiser", count: 1 }];
+    s.raiders.pool = { cruiser: 1 };
     s.raiders.launch = 200;
     s = processTurn(s, {});
     expect(s.events.some((e) => e.kind === "raid")).toBe(true);

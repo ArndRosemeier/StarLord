@@ -32,7 +32,7 @@ import {
 import { moveFleet } from "./movement.js";
 import { tradeGoodsMult } from "./raceEffects.js";
 import { guardianSlain } from "./npc.js";
-import { raidTick, returnThroughPortal, salvageTech, syncPortals } from "./raiders.js";
+import { raidersReturn, raidTick, returnThroughPortal, salvageTech, syncPortals } from "./raiders.js";
 import { absorbResearch, payBribe, randomEventTick, systemFrozen } from "./randomEvents.js";
 import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
@@ -71,6 +71,7 @@ export function processTurn(prev: GameState, orders: TurnOrders): GameState {
   moveFleets(ctx);
   const silenced = combatPhase(ctx);
   groundPhase(ctx, silenced);
+  raidersReturn(state);
   syncPortals(state);
   runEconomy(ctx);
   espionageTick(state, rng, ctx.emit);

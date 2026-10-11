@@ -1,5 +1,5 @@
 import {
-  blocksInvasion, canMindControl, canReach, colonyDefenseStrength, distance, isHostile, portalStars, RAIDER_CITADEL_ID, RAIDER_ERAS, raiderDesignId, relation, type Command, type Fleet, type PlayerView,
+  blocksInvasion, canMindControl, canReach, colonyDefenseStrength, distance, isHostile, portalStars, raiderHomeShips, relation, type Command, type Fleet, type PlayerView,
 } from "@starlord/sim";
 import { strategyOf } from "./strategies.js";
 import { colonyStar, fleetRoles, fleetStrength, hostileFleetsNear, me, myColonies, myFleets, personality, starById } from "./util.js";
@@ -144,14 +144,13 @@ export function militaryOrders(view: PlayerView): Command[] {
   return out;
 }
 
-/** What waits at the raiders' home: the fleets seen there, or else the era's garrison and citadel. */
+/** What waits at the raiders' home: the fleets seen there, or else their home fleet and citadel. */
 function raiderHomeStrength(view: PlayerView, homeStarId: string): number {
   const seen = Object.values(view.fleets).filter((f) => f.starId === homeStarId).reduce((s, f) => s + fleetStrength(view, f), 0);
   if (seen > 0) return seen;
   const raiders = view.players.find((p) => p.kind === "raiders");
   if (!raiders) return 0;
-  const era = RAIDER_ERAS[view.raiders.era ?? 0] ?? RAIDER_ERAS[0]!;
-  const ships = [{ designId: RAIDER_CITADEL_ID, count: 1 }, ...era.garrison.map((g) => ({ designId: raiderDesignId(g.hull), count: g.count }))];
+  const ships = raiderHomeShips(view.raiders);
   return fleetStrength(view, { id: "", ownerId: raiders.id, x: 0, y: 0, starId: homeStarId, destStarId: null, ships, stance: "attack", name: "" });
 }
 

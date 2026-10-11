@@ -4,7 +4,9 @@ import {
   DRIVES, EXCLUSIVE_TRAITS, FIELD_NAMES, FUEL_RANGES, GOVERNMENTS, GOVERNMENT_COSTS, HULLS, HULLS_BY_ID, INDUSTRY_PER_WORKER,
   LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
   PLANETS_PER_STAR, PLANET_SIZE_WEIGHTS, PLANET_TYPE_WEIGHTS, PROJECTS, PROJECTS_BY_ID, PROJECT_COSTS, RACES, RACES_BY_ID,
-  RAIDER_ERAS, RAIDER_SHIP_NAMES, RAID_BUDGET_MULT, RAID_BUDGET_PERIOD, RAID_FLEET_CAP, RAID_GRACE_TURNS, RAID_LAUNCH_ROLL, RAIDER_HULL_COST, SCRAP_TECH_CHANCE, SHIELDS, SHIELDS_BY_ID, POLLUTION_TOLERANCE, SIZE_FACTOR, SIZE_POP_BASE, SPECIALS, SPECIALS_BY_ID, climatePopulation,
+  RAIDER_CITADEL, RAIDER_CITADEL_ID, RAIDER_DESIGNS, RAIDER_HULLS, RAIDER_SHIP_NAMES, RAID_BUDGET_MULT, RAID_BUDGET_PERIOD, RAID_DESTROYER_WINDOW, RAID_FLEET_CAP,
+  RAID_FRIGATE_WINDOW, RAID_GRACE_TURNS, RAID_HOME_MIN_TITANS, RAID_HOME_QUOTA, RAID_HUMAN_POP_MULT, RAID_LAUNCH_ROLL, RAID_LAUNCH_VALUE_MULT, RAID_MAX_SHIPS,
+  RAID_TITAN_DISCOUNT, RAIDER_HULL_COST, BOMB_DAMAGE_PER_HIT, crewName, type Difficulty, type WeaponMount, SCRAP_TECH_CHANCE, SHIELDS, SHIELDS_BY_ID, POLLUTION_TOLERANCE, SIZE_FACTOR, SIZE_POP_BASE, SPECIALS, SPECIALS_BY_ID, climatePopulation,
   RESEARCH, STARTING_TECH_APPS, STARTING_TIERS, STAR_COLOR_WEIGHTS, TECHS, TECH_FIELDS, TECH_TIERS, TERRAFORM_STEP,
   TIERS_BY_ID, TRAIT_COSTS, WEAPONS, WEAPONS_BY_ID, nextTier, previousTier, ARCS, MISSILE_RACKS, STATION_HULLS,
   WEAPON_MODS, WEAPON_MODS_BY_ID, SHIELD_SPACE_BY_HULL, SHIELD_COST_BY_HULL, COMPUTER_COST_BY_HULL,
@@ -947,12 +949,20 @@ function GovernmentPage({ id }: { id: keyof typeof GOVERNMENTS }) {
 
 const npcWeapon = (id: string) => ALL_WEAPONS[id] ?? NPC_WEAPONS.find((w) => w.id === id);
 
+/** "12× Particle Beam (Heavy Mount)". */
+const mountLabel = (m: WeaponMount) =>
+  `${m.count}× ${npcWeapon(m.weaponId)?.name ?? m.weaponId}${m.mods?.length ? ` (${m.mods.map((id) => WEAPON_MODS_BY_ID[id]?.name ?? id).join(", ")})` : ""}`;
+
+const LEVELS: Difficulty[] = ["tutor", "easy", "average", "hard", "impossible"];
+
+const homeQuota = RAIDER_HULLS.filter((h) => RAID_HOME_QUOTA[h] > 0).map((h) => `${RAID_HOME_QUOTA[h]} ${RAIDER_SHIP_NAMES[h]}s`).join(", ");
+
 function MonsterRow({ d, label }: { d: ShipDesign; label?: string }) {
   const f = d.fixed!;
   return (
     <tr>
       <td><HelpLink to={`monster:${d.id}`} />{label && <small className="muted"> {label}</small>}</td><td>{fmt(f.hits)}</td><td>{fmt(f.armor ?? 0)}</td><td>{f.attack}</td><td>{f.defense}</td><td>{f.shield}</td><td>{f.combatSpeed}</td>
-      <td>{f.weapons.map((w) => `${w.count}× ${npcWeapon(w.weaponId)?.name ?? w.weaponId}`).join(", ")}</td>
+      <td>{f.weapons.map(mountLabel).join(", ")}</td>
     </tr>
   );
 }
@@ -970,43 +980,84 @@ function MonstersPage() {
       <table className="help-table">{monsterHead}<tbody>{MONSTER_DESIGNS.map((d) => <MonsterRow key={d.id} d={d} />)}</tbody></table>
       <h3>Raiders</h3>
       <p>
-        The Vexari raiders live in a pocket dimension outside the galaxy. They leave the galaxy alone for the first
+        The Vexari raiders live in a pocket dimension outside the galaxy. They leave the galaxy alone for the first{" "}
         {RAID_GRACE_TURNS.average} turns ({RAID_GRACE_TURNS.preWarp} when starting pre-warp, none when starting advanced).
-        After that, every {RAID_BUDGET_PERIOD} turns they gain build points: 1, then 2, then 3 and so on, {RAID_BUDGET_MULT.hard / 100} times
-        as much on Hard and {RAID_BUDGET_MULT.impossible / 100} times as much on Impossible. They spend the points on raid ships
-        ({Object.entries(RAIDER_HULL_COST).map(([h, c]) => `${RAIDER_SHIP_NAMES[h as keyof typeof RAIDER_SHIP_NAMES]} ${c}, up to ${RAID_FLEET_CAP[h as keyof typeof RAID_FLEET_CAP]}`).join("; ")}).
-        Once a raid fleet is ready, each turn it waits it has one more chance in {RAID_LAUNCH_ROLL} of setting off.
+        After that they have two build budgets, one for raid ships and one for the fleet guarding their home. Every{" "}
+        {RAID_BUDGET_PERIOD} turns each budget gains 1 point, then 2, then 3 and so on ({RAID_BUDGET_MULT.hard / 100}× as much on Hard
+        and {RAID_BUDGET_MULT.impossible / 100}× on Impossible, rounded up). Once the home fleet is complete
+        ({homeQuota}), the raid budget gets both shares.
       </p>
       <p>
-        A raid goes for a big empire: empires are weighted by the square of how much more population they have than the
-        smallest one, who is left alone. Lucky empires count a third of their population. Human players count less on Tutor and Easy
-        and more on Hard and Impossible. The raid hits that empire's most populous colony and fights its defenders. If the
-        defenses fall, it kills colonists and wrecks buildings, then vanishes. Their ships are real warships with
-        xentronium armor, and their technology improves in four eras counted from the first raid.
+        Each budget buys ships smallest hull first: again and again, the smallest hull that is affordable, under its cap
+        and still in its time window. Frigates are only bought for the first {RAID_FRIGATE_WINDOW.average} turns after the grace
+        period ({RAID_FRIGATE_WINDOW.hard} on Hard, {RAID_FRIGATE_WINDOW.impossible} on Impossible, never in games started at the
+        advanced tech level), destroyers for the first {RAID_DESTROYER_WINDOW.average} ({RAID_DESTROYER_WINDOW.hard} on Hard,{" "}
+        {RAID_DESTROYER_WINDOW.impossible} on Impossible). Once the raid pool has reached its cap of frigates, destroyers or cruisers,
+        lost ones are never replaced, and three cruisers at home end cruiser building for raids too. On Hard and Impossible,
+        buying the first titan cuts every price to {RAID_TITAN_DISCOUNT.pct}% for the rest of the game
+        ({RAIDER_HULLS.map((h) => Math.floor((RAIDER_HULL_COST[h] * RAID_TITAN_DISCOUNT.pct) / 100)).join(", ")}).
       </p>
       <table className="help-table">
-        <thead><tr><th>Era from</th><th>Home fleet</th><th>New technology</th><th>Raid damage</th></tr></thead>
+        <thead><tr><th>Ship</th><th>Hull</th><th>Cost</th><th>Raid pool cap</th><th>Home fleet</th></tr></thead>
         <tbody>
-          {RAIDER_ERAS.map((e, i) => (
-            <tr key={i}>
-              <td>{e.from === 0 ? "first raid" : `+${e.from} turns, ${e.minTechs} techs known by someone`}</td>
-              <td>{e.garrison.map((g) => `${g.count}× ${RAIDER_SHIP_NAMES[g.hull]}`).join(", ")} and the <HelpLink to={`monster:${citadelDesign(i).id}`} /></td>
-              <td>{e.techs.filter((t) => !t.endsWith("Hull")).map((t, j) => <span key={t}>{j > 0 && ", "}<HelpLink to={`tech:${t}`} /></span>)}</td>
-              <td>{e.raze.pop[0]}–{e.raze.pop[1]} pop, {e.raze.buildings} building{e.raze.buildings > 1 ? "s" : ""}</td>
+          {RAIDER_HULLS.map((h) => (
+            <tr key={h}>
+              <td>{RAIDER_SHIP_NAMES[h]}</td><td><HelpLink to={`hull:${h}`} /></td><td>{RAIDER_HULL_COST[h]}</td><td>{RAID_FLEET_CAP[h]}</td>
+              <td>{h === "titan" ? `${RAID_HOME_QUOTA[h]} (always at least ${RAID_HOME_MIN_TITANS})` : RAID_HOME_QUOTA[h] || "–"}</td>
             </tr>
           ))}
+        </tbody>
+      </table>
+      <p>
+        A raid can only set off while {RAID_LAUNCH_VALUE_MULT}× the value of the raid pool is at least the value of the home
+        fleet plus both unspent budgets. Each such turn with raid ships waiting raises a counter by 1, and the raid sets off
+        with a chance of (counter + 1) in {RAID_LAUNCH_ROLL}; the counter starts again from 0 after a raid. A raid takes
+        up to {RAID_MAX_SHIPS} ships from the pool, largest hulls first.
+      </p>
+      <p>
+        A raid goes for a big empire: the empire with the fewest people is left alone, and the others are weighted by the square of
+        how much more population they have than it. Lucky empires count a third of their population. Human players count{" "}
+        {pct(RAID_HUMAN_POP_MULT.tutor)} on Tutor, {pct(RAID_HUMAN_POP_MULT.easy)} on Easy, {RAID_HUMAN_POP_MULT.hard}× on Hard
+        and {RAID_HUMAN_POP_MULT.impossible}× on Impossible. The raid strikes a random system with one of that empire's colonies
+        (outposts don't count) and fights everything there. If the defenses fall, the raiders bomb the colony with their
+        neutronium bombs like any bombardment (every {BOMB_DAMAGE_PER_HIT} damage kills a colonist or troop or wrecks a
+        building); a colony left with nobody is destroyed. Raiders never invade. At the end of the turn the survivors go home
+        and can raid again; only the ships destroyed are lost. Ships the home fleet loses are replaced from the raid pool.
+      </p>
+      <p>
+        Their ships never change: one design per hull, the same all game, with no shield, a{" "}
+        <HelpLink to="computer:moleculartronicComputer" />, <HelpLink to="armor:xentroniumArmor" /> armor, the Hyper Drive,
+        a <HelpLink to="special:damperField" /> and a <HelpLink to="special:quantumDetonator" />. Only the jammer depends on the
+        difficulty level. Raid crews are {crewName(2)}; the citadel's crew is {crewName(RAIDER_CITADEL.crewLevel)}.
+      </p>
+      <table className="help-table">
+        <thead><tr><th>Ship</th><th>Weapons</th><th>Other specials</th><th>Jammer (Tutor, Easy, Average, Hard, Impossible)</th></tr></thead>
+        <tbody>
+          {RAIDER_HULLS.map((h) => {
+            const spec = RAIDER_DESIGNS[h];
+            return (
+              <tr key={h}>
+                <td>{RAIDER_SHIP_NAMES[h]}</td>
+                <td>{spec.weapons.map((w) => mountLabel(w) + (w.arc === "full" ? ", all round" : "")).join("; ")}</td>
+                <td>{spec.specials.map((id, j) => <span key={id}>{j > 0 && ", "}<HelpLink to={`special:${id}`} /></span>)}{spec.specials.length === 0 && "–"}</td>
+                <td>{LEVELS.map((d) => (spec.jammer[d] ? SPECIALS_BY_ID[spec.jammer[d]!]?.name : "none")).join(", ")}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <h3>Striking back</h3>
       <p>
         A <HelpLink to="project:dimensionalPortal" /> is built at one colony. Fleets in that system can cross to Vex Prime in a
         single turn. If they don't destroy everything there, the survivors come back through the nearest of your portals.
-        Destroying the home fleet and the citadel wipes the raiders out. Every other empire then capitulates and you win
+        Vex Prime is guarded by the home fleet, at least one {RAIDER_SHIP_NAMES.titan}, and the{" "}
+        <HelpLink to={`monster:${RAIDER_CITADEL_ID}`} />: {fmt(RAIDER_CITADEL.armor)} armor, {fmt(RAIDER_CITADEL.structure)} structure,
+        no shield, rebuilt fresh for every battle. Destroying all of it wipes the raiders out. Every other empire then capitulates and you win
         the game, with the biggest score bonus there is. Captured raider ships can be scrapped: each one has
         a {pct(SCRAP_TECH_CHANCE)} chance to teach one of its technologies. That is the only way to learn their xenon technology.
       </p>
-      <table className="help-table">{monsterHead}<tbody>{RAIDER_ERAS.map((_, i) => <MonsterRow key={i} d={citadelDesign(i)} label={`Era ${i + 1}`} />)}</tbody></table>
-      <h3>Their weapons</h3>
+      <table className="help-table">{monsterHead}<tbody><MonsterRow d={citadelDesign()} /></tbody></table>
+      <h3>Monster weapons</h3>
       <table className="help-table">
         <thead><tr><th>Weapon</th><th>Kind</th><th>Damage</th><th>Shots</th><th /></tr></thead>
         <tbody>{[...NPC_WEAPONS, WEAPONS_BY_ID.deathRay!].filter(Boolean).map((w) => (
@@ -1019,7 +1070,7 @@ function MonstersPage() {
 }
 
 function MonsterPage({ id }: { id: string }) {
-  const d = [...MONSTER_DESIGNS, citadelDesign(0)].find((x) => x.id === id)!;
+  const d = [...MONSTER_DESIGNS, citadelDesign()].find((x) => x.id === id)!;
   const f = d.fixed!;
   return (
     <div className="col">
@@ -1027,9 +1078,11 @@ function MonsterPage({ id }: { id: string }) {
         ["Structure", fmt(f.hits)], ["Armor", fmt(f.armor ?? 0)], ["Attack", f.attack], ["Defense", f.defense], ["Shield", `${f.shield} per hit`], ["Combat speed", f.combatSpeed],
         ["Weapons", <List items={f.weapons.map((w) => {
           const wd = npcWeapon(w.weaponId);
-          const label = `${w.count}× ${wd?.name ?? w.weaponId}`;
+          const label = mountLabel(w);
           return wd && WEAPONS_BY_ID[wd.id] ? <HelpLink to={`weapon:${wd.id}`}>{label}</HelpLink> : <>{label}{wd && <small className="muted"> ({dmg(wd)} damage)</small>}</>;
         })} />],
+        ...(d.specials.length > 0 ? [["Specials", <Links ids={d.specials.map((s) => `special:${s}`)} />] as [string, ReactNode]] : []),
+        ...(f.crew !== undefined ? [["Crew", crewName(f.crew)] as [string, ReactNode]] : []),
       ]} />
       <p className="muted">See <HelpLink to="page:monsters" /> for where they appear.</p>
     </div>
