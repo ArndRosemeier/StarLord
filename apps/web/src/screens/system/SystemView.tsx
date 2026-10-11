@@ -7,6 +7,8 @@ import { ColonyDetail } from "../ColoniesScreen";
 import { webglAvailable } from "../../three/webgl";
 import { buildSystemModel } from "../../three/system/systemModel";
 import type { SystemPick } from "../../three/system/systemScene";
+import type { ColonizeCue } from "./SystemView3D";
+import type { ColonizeOption } from "../../game/colonize";
 
 const SystemView3D = lazy(() => import("./SystemView3D"));
 
@@ -15,13 +17,15 @@ const SystemView3D = lazy(() => import("./SystemView3D"));
  * system's details (colonize, invade, fleets) beside it. Without WebGL the
  * details still show. Esc, the close button or a click outside closes it.
  */
-export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelectFleet }: {
+export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelectFleet, colonizeOnOpen }: {
   starId: string;
   fleetId: string | null;
   selectedFleetIds?: readonly string[];
   onClose: () => void;
   /** Picking a fleet closes the view so the fleet can be ordered on the map; a shift-click (`additive`) adds it to the selection. */
   onSelectFleet: (id: string, additive: boolean) => void;
+  /** Settle this planet as soon as the view opens (Colonize pressed on the galaxy map), playing the landing. */
+  colonizeOnOpen?: { planetId: string; settle: ColonizeOption } | null;
 }) {
   const { session, view, me, readOnly } = useGame();
   const reduced = useReducedMotion();
@@ -29,6 +33,17 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
   const [selected, setSelected] = useState<SystemPick | null>(null);
   const [failed, setFailed] = useState(false);
   const show3d = webglAvailable() && !failed;
+  const [cue, setCue] = useState<ColonizeCue | null>(null);
+
+  // Settling plays the landing in 3D; the order goes in once the scene has taken the cue, so the
+  // planet still looks empty while the ship is on its way. Without 3D the order goes in at once.
+  const colonize = (planetId: string, settle: ColonizeOption) => {
+    if (settle.blocked) return;
+    setSelected({ kind: "planet", id: planetId });
+    if (show3d && !reduced) setCue({ id: Date.now(), planetId, fleetId: settle.fleetId, color: me.color });
+    else session.issue({ type: "colonize", fleetId: settle.fleetId, planetId });
+  };
+
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -41,6 +56,13 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
   useEffect(() => {
     setSelected(null);
   }, [starId]);
+
+  // After the reset above, so the planet being settled stays picked.
+  useEffect(() => {
+    if (colonizeOnOpen) colonize(colonizeOnOpen.planetId, colonizeOnOpen.settle);
+    // Only when the view opens with a request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colonizeOnOpen]);
 
   if (!model) return null;
   const planetId = selected?.kind === "planet" ? selected.id : null;
@@ -64,6 +86,9 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
                   selected={selected}
                   reduced={reduced}
                   onFail={() => setFailed(true)}
+                  colonize={cue}
+                  onColonizeStart={(c) => session.issue({ type: "colonize", fleetId: c.fleetId, planetId: c.planetId })}
+                  onColonizeDone={(c) => setCue((now) => (now?.id === c.id ? null : now))}
                   onPick={(p, additive) => {
                     setSelected(p);
                     if (p?.kind === "fleet") onSelectFleet(p.id, additive);
@@ -74,7 +99,7 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
           ) : (
             <div className="system-loading muted">3D view unavailable in this browser.</div>
           )}
-          {picked?.settle ? (
+          {cue ? null : picked?.settle ? (
             <div className="system-action">
               <div>
                 <b>{picked.settle.outpost ? "Build an outpost here" : "Settle this planet"}</b>
@@ -87,7 +112,7 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
               <button
                 className="primary"
                 disabled={!!picked.settle.blocked}
-                onClick={() => session.issue({ type: "colonize", fleetId: picked.settle!.fleetId, planetId: picked.id })}
+                onClick={() => colonize(picked.id, picked.settle!)}
               >
                 ✚ {picked.settle.outpost ? "Outpost" : "Colonize"}
               </button>
@@ -127,6 +152,7 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
               selectedPlanetId={planetId}
               onSelectPlanet={(id) => setSelected({ kind: "planet", id })}
               onSelectFleet={onSelectFleet}
+              onColonize={colonize}
             />
           )}
         </aside>
