@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  DIFFICULTIES, DIFFICULTY_ORDER, RACES, TRAIT_COSTS, getRace, type CustomRaceSpec, type Difficulty, type GalaxyAge, type GalaxySize,
+  DIFFICULTIES, DIFFICULTY_ORDER, RACES, STAR_COUNTS, TRAIT_COSTS, getRace, type CustomRaceSpec, type Difficulty, type GalaxyAge, type GalaxySize,
   type TechLevel,
 } from "@starlord/sim";
 import { customRaceDefs, loadCustomRaces, saveCustomRaces } from "../game/customRaces";
@@ -142,11 +142,24 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
 
           <div className="panel col" style={{ marginTop: 8 }}>
             <div className="row">
-              <label>Galaxy <select value={galaxy} onChange={(e) => setGalaxy(e.target.value as GalaxySize)}>
-                {(["small", "medium", "large", "huge"] as const).map((g) => <option key={g} value={g}>{words(g)}</option>)}
+              <label>Galaxy size <select value={galaxy} onChange={(e) => setGalaxy(e.target.value as GalaxySize)}>
+                {(["small", "medium", "large", "huge"] as const).map((g) => <option key={g} value={g}>{words(g)} · {STAR_COUNTS[g]} stars</option>)}
+              </select></label>
+              <label>Galaxy age <select value={galaxyAge} onChange={(e) => setGalaxyAge(e.target.value as GalaxyAge)}>
+                {(["young", "average", "old"] as const).map((a) => <option key={a} value={a}>{words(a)}</option>)}
               </select></label>
               <label>Opponents <select value={opponents} onChange={(e) => setOpponents(Number(e.target.value))}>
                 {[1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}
+              </select></label>
+            </div>
+            <div className="row">
+              <label>Difficulty <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as Difficulty)}>
+                {DIFFICULTY_ORDER.map((d) => <option key={d} value={d}>{DIFFICULTIES[d].name}</option>)}
+              </select></label>
+              <label>Tech level <select value={techLevel} onChange={(e) => setTechLevel(e.target.value as TechLevel)}>
+                <option value="preWarp">Pre-warp</option>
+                <option value="average">Average</option>
+                <option value="advanced">Advanced</option>
               </select></label>
               <label>Turn limit <input type="number" min={50} max={1000} step={50} value={maxTurns} onChange={(e) => setMaxTurns(Number(e.target.value))} /></label>
               <label>Seed <input type="text" size={8} value={seed} onChange={(e) => setSeed(e.target.value)} /></label>
@@ -159,19 +172,6 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
               <label title="In battle, every ship of both sides acts in order of combat speed plus beam attack / 10, instead of the attacker's whole side first">
                 <input type="checkbox" checked={shipInitiative} onChange={(e) => setShipInitiative(e.target.checked)} /> Ship initiative
               </label>
-            </div>
-            <div className="row">
-              <label>Difficulty <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as Difficulty)}>
-                {DIFFICULTY_ORDER.map((d) => <option key={d} value={d}>{DIFFICULTIES[d].name}</option>)}
-              </select></label>
-              <label>Galaxy age <select value={galaxyAge} onChange={(e) => setGalaxyAge(e.target.value as GalaxyAge)}>
-                {(["young", "average", "old"] as const).map((a) => <option key={a} value={a}>{words(a)}</option>)}
-              </select></label>
-              <label>Tech level <select value={techLevel} onChange={(e) => setTechLevel(e.target.value as TechLevel)}>
-                <option value="preWarp">Pre-warp</option>
-                <option value="average">Average</option>
-                <option value="advanced">Advanced</option>
-              </select></label>
             </div>
             {customBlocked && <div className="bad">Custom races need Average difficulty or harder.</div>}
             <div className="row">
