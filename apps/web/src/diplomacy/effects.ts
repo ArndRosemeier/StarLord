@@ -1,4 +1,5 @@
 import {
+  NO_WAR_MULT,
   ATTITUDE, ATTITUDE_EVENTS, PATIENCE, PEACE_TREATY_TURNS, TEMPERAMENTS, TREATY_ANSWER, TREATY_YIELD, temperament, treatyAcceptChance, treatyPriceChance, treatyScore, empireTotals, empires, isDemand, relation, treatyPotential, treatyTotals,
   treatyYield, tributeAmount, type PlayerView, type Price, type Proposal, type ProposalKind, type TreatyName,
 } from "@starlord/sim";
@@ -45,7 +46,7 @@ export function temperamentText(view: PlayerView, them: number): { name: string;
   const t = temperament(view, them);
   if (!t) return null;
   const d = TEMPERAMENTS[t];
-  return { name: d.name, text: `${d.name}: ${signed(d.treaty)} to every treaty answer.` };
+  return { name: d.name, text: `${d.name}: ${signed(d.treaty)} to every treaty answer. A treaty keeps them from declaring war on you for ${d.noWar} turns (trade or research), ${d.noWar * NO_WAR_MULT.nonAggression} (non-aggression pact) or ${d.noWar * NO_WAR_MULT.alliance} (alliance).` };
 }
 
 /** Why they will hear no more, and when they will again. */

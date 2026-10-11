@@ -1,4 +1,5 @@
 import {
+  COUNCIL_VOTE, councilCandidates, councilVotes, voteChance,
   ATTITUDE, COUNCIL, COUNCIL_INTERVAL, COUNCIL_MAJORITY, attitude, attitudeParts, audienceTired, canSign, getRace, government, nextCouncilTurn, relation,
   settledShare,
 } from "@starlord/sim";
@@ -145,9 +146,28 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
           <h3>Galactic council</h3>
           <div className="muted">
             The council first convenes once {pct(COUNCIL.settledShare)} of the galaxy's systems are owned (not before turn {COUNCIL.earliestTurn}),
-            then every {COUNCIL_INTERVAL} turns. The two most populous empires stand; {pct(COUNCIL_MAJORITY)} of the votes elects one.{" "}
+            then every {COUNCIL_INTERVAL} turns. The two empires with the most votes (one per {COUNCIL.popPerVote} population) stand; {pct(COUNCIL_MAJORITY)} of all votes elects one.
+            Computer empires back a candidate on a d{COUNCIL_VOTE.die} against attitude + trust + 2 × reputation, +{COUNCIL_VOTE.nonAggression} for a non-aggression pact,
+            +{COUNCIL_VOTE.trade} each for trade and research treaties, +{COUNCIL_VOTE.charismatic} for a charismatic candidate, +{COUNCIL_VOTE.holdsOrion} for one holding Orion,
+            +{COUNCIL_VOTE.xenoPsychology} for Xeno Psychology, +{COUNCIL_VOTE.atWarWithRival} if at war with the other candidate, {COUNCIL_VOTE.repulsive} for a repulsive one;
+            always for an ally, never for an enemy, and they abstain unless exactly one candidate passes.{" "}
             {nextSession !== null ? `Next session: turn ${nextSession}.` : `Owned so far: ${pct(settledShare(view))}.`}
           </div>
+          {(() => {
+            const [a, b] = councilCandidates(view);
+            if (a === undefined || b === undefined) return null;
+            const voters = view.players.filter((p) => p.kind === "empire" && p.alive && p.id !== a && p.id !== b && !p.isHuman);
+            return (
+              <div>
+                If it met now: {view.players[a]!.name} ({councilVotes(view, a)} votes) vs {view.players[b]!.name} ({councilVotes(view, b)} votes).
+                {voters.length > 0 && (
+                  <div className="muted">
+                    {voters.map((p) => `${p.name} (${councilVotes(view, p.id)}): ${pct(voteChance(view, p.id, a, b))} / ${pct(voteChance(view, p.id, b, a))}`).join(" · ")}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {council.lastResult && (
             <div>
               Last vote (turn {council.lastResult.turn}):{" "}
@@ -162,7 +182,7 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
                 const v = e.target.value;
                 session.issue({ type: "setCouncilVote", vote: v === "auto" || v === "abstain" ? v : Number(v) });
               }}>
-              <option value="auto">Automatic (yourself, or the candidate you like)</option>
+              <option value="auto">Automatic (yourself, or as a computer empire would)</option>
               <option value="abstain">Abstain</option>
               {view.players.filter((p) => p.kind === "empire" && p.alive).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>

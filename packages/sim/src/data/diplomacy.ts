@@ -73,14 +73,21 @@ export const TRUST = {
   honorableReputation: 20,
 } as const;
 
-/** The original's six computer personalities and what each adds to its treaty answers. */
+/**
+ * The original's six computer personalities: what each adds to its treaty
+ * answers, and `noWar`, the original's NOWAR table: every treaty a computer
+ * empire signs keeps it from declaring war on that partner for a while
+ * (a trade or research treaty noWar turns, a non-aggression pact 1.5x, an
+ * alliance 2x). `warLust` (0..1) is StarLord's estimate of how readily each
+ * personality starts a war once nothing holds it back.
+ */
 export const TEMPERAMENTS = {
-  xenophobic: { name: "Xenophobic", treaty: -50 },
-  ruthless: { name: "Ruthless", treaty: -20 },
-  aggressive: { name: "Aggressive", treaty: -20 },
-  erratic: { name: "Erratic", treaty: 0 },
-  honorable: { name: "Honorable", treaty: 20 },
-  pacifistic: { name: "Pacifistic", treaty: 30 },
+  xenophobic: { name: "Xenophobic", treaty: -50, noWar: 5, warLust: 0.9 },
+  ruthless: { name: "Ruthless", treaty: -20, noWar: 10, warLust: 0.9 },
+  aggressive: { name: "Aggressive", treaty: -20, noWar: 20, warLust: 0.8 },
+  erratic: { name: "Erratic", treaty: 0, noWar: 5, warLust: 0.6 },
+  honorable: { name: "Honorable", treaty: 20, noWar: 50, warLust: 0.3 },
+  pacifistic: { name: "Pacifistic", treaty: 30, noWar: 40, warLust: 0.1 },
 } as const;
 export type Temperament = keyof typeof TEMPERAMENTS;
 
@@ -211,4 +218,57 @@ export const COUNCIL = {
   /** One vote per this many population units, at least one. */
   popPerVote: 5,
   minEmpires: 3,
+} as const;
+
+/**
+ * How a computer empire decides to back a council candidate, from the
+ * original (FUN_00016021): it votes for a candidate when a d200 rolls at or
+ * under attitude + trust + 2 x reputation plus the points below. It never
+ * backs one it is at war with and always backs an ally; it votes only when it
+ * would back exactly one of the two candidates, and abstains otherwise. On
+ * Hard and Impossible a human candidate's score is scaled by 6 / (6 + level).
+ * Two terms of the original are left out: a per-pair personality term and a
+ * +50 whose field is not yet decoded.
+ */
+/** Treaty multipliers on a personality's noWar turns (see TEMPERAMENTS). */
+export const NO_WAR_MULT = { trade: 1, research: 1, nonAggression: 1.5, alliance: 2 } as const;
+
+/**
+ * When a computer empire picks a fight (StarLord's estimate; the original's
+ * war check is not decoded yet). Once the galaxy is crowded (this share of
+ * systems owned, or after `crowdedTurn`), it goes after a neighbor it doesn't
+ * love whenever its fleets outgun theirs by `edge` minus its war lust.
+ */
+export const AI_WAR = {
+  earliestTurn: 60,
+  earliestTurnAggressive: 40,
+  crowdedShare: 0.6,
+  crowdedTurn: 150,
+  /** Crowded empires fight anyone they feel less than this about. */
+  crowdedMaxAttitude: 50,
+  edge: 2.2,
+  crowdedEdge: 1.8,
+  /** Attitude under which an empire wants war regardless of crowding: dislike - warLust x dislikeSpan. */
+  dislike: 20,
+  dislikeSpan: 60,
+  minPopShare: 0.7,
+  minPower: 20,
+} as const;
+
+export const COUNCIL_VOTE = {
+  die: 200,
+  /** The voter is at war with the other candidate. */
+  atWarWithRival: 100,
+  /** The candidate holds Orion (likely: the original checks the owner of one star). */
+  holdsOrion: 40,
+  charismatic: 40,
+  repulsive: -100,
+  /** The candidate knows Xeno Psychology. */
+  xenoPsychology: 30,
+  nonAggression: 50,
+  trade: 25,
+  research: 25,
+  /** Difficulty index (Tutor 0 .. Impossible 4) above which a human candidate's score shrinks. */
+  humanScaleAbove: 2,
+  humanScaleBase: 6,
 } as const;

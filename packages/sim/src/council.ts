@@ -1,5 +1,7 @@
-import { COUNCIL } from "./data/diplomacy.js";
-import { attitude, setStatus } from "./diplomacy.js";
+import { COUNCIL, COUNCIL_VOTE } from "./data/diplomacy.js";
+import { DIFFICULTIES } from "./data/galaxy.js";
+import { getRace, hasTrait } from "./data/races.js";
+import { attitude, fixedRoll, relation, reputationOf, setStatus, trustIn } from "./diplomacy.js";
 import { empireTotals } from "./economy.js";
 import { empires } from "./empire.js";
 import type { GameState, PlayerId } from "./types.js";
@@ -9,7 +11,8 @@ import type { Emit } from "./context.js";
  * The Galactic Council forms once nearly the whole galaxy is settled and then
  * meets every 25 turns while three or more empires remain. The two empires
  * with the most votes stand; every empire votes with its size, by its
- * relations with the candidates. A two-thirds majority elects a leader of the
+ * relations with the candidates (the original's rule, see COUNCIL_VOTE). A
+ * two-thirds majority elects a leader of the
  * galaxy, but nobody can be forced to accept: an empire that refuses the
  * result goes to war with everyone else and the game goes on.
  */
@@ -31,7 +34,44 @@ export function councilCandidates(state: GameState): PlayerId[] {
     .map((x) => x.id);
 }
 
-/** Who a player's votes go to; "auto" votes for itself or the candidate it likes better. */
+/**
+ * How much a voter is inclined to back a candidate over the other one, out
+ * of COUNCIL_VOTE.die, by the original's rule: always (die) for an ally,
+ * never (-1) when at war, otherwise relations plus treaties and traits.
+ */
+export function voteScore(state: GameState, voter: PlayerId, candidate: PlayerId, rival: PlayerId): number {
+  const r = relation(state, voter, candidate);
+  if (r.status === "war") return -1;
+  if (r.status === "alliance") return COUNCIL_VOTE.die;
+  const c = state.players[candidate]!;
+  const race = getRace(c.raceId);
+  let s = attitude(state, voter, candidate) + trustIn(state, voter, candidate) + 2 * reputationOf(state, voter, candidate);
+  if (relation(state, voter, rival).status === "war") s += COUNCIL_VOTE.atWarWithRival;
+  const orion = state.galaxy.stars.find((st) => st.special === "orion");
+  if (orion?.planetIds.some((id) => { const col = state.planets[id]?.colonyId; return col && state.colonies[col]?.ownerId === candidate; })) {
+    s += COUNCIL_VOTE.holdsOrion;
+  }
+  if (hasTrait(race, "charismatic")) s += COUNCIL_VOTE.charismatic;
+  if (hasTrait(race, "repulsive")) s += COUNCIL_VOTE.repulsive;
+  if (c.techs.includes("xenoPsychology")) s += COUNCIL_VOTE.xenoPsychology;
+  if (r.status === "nonAggression") s += COUNCIL_VOTE.nonAggression;
+  if (r.trade) s += COUNCIL_VOTE.trade;
+  if (r.research) s += COUNCIL_VOTE.research;
+  const level = Object.keys(DIFFICULTIES).indexOf(state.settings.difficulty ?? "average");
+  if (c.isHuman && level > COUNCIL_VOTE.humanScaleAbove) s = Math.trunc((s * COUNCIL_VOTE.humanScaleBase) / (level + COUNCIL_VOTE.humanScaleBase));
+  return s;
+}
+
+/** Chance (0..1) a voter would back a candidate, before the other candidate is weighed. */
+export function voteChance(state: GameState, voter: PlayerId, candidate: PlayerId, rival: PlayerId): number {
+  return Math.max(0, Math.min(1, voteScore(state, voter, candidate, rival) / COUNCIL_VOTE.die));
+}
+
+/**
+ * Who a player's votes go to. Candidates vote for themselves; "auto" (every
+ * computer empire) rolls a d200 against each candidate's vote score and backs
+ * the one that passes, abstaining when both or neither do.
+ */
 export function resolveVote(state: GameState, voter: PlayerId, candidates: PlayerId[]): PlayerId | null {
   if (candidates.includes(voter)) return voter;
   const choice = state.players[voter]!.councilVote;
@@ -39,12 +79,10 @@ export function resolveVote(state: GameState, voter: PlayerId, candidates: Playe
   if (typeof choice === "number" && candidates.includes(choice)) return choice;
   const [a, b] = candidates;
   if (a === undefined || b === undefined) return null;
-  // Empires only back a candidate they clearly like; the galaxy is wary of crowning anyone.
-  const da = attitude(state, voter, a);
-  const db = attitude(state, voter, b);
-  const [best, other] = da >= db ? [a, db] : [b, da];
-  const fav = Math.max(da, db);
-  return fav >= 30 && fav - other >= 20 ? best : null;
+  const backs = (c: PlayerId, rival: PlayerId) => fixedRoll(state, `council${state.turn}|${voter}|${c}`, COUNCIL_VOTE.die) <= voteScore(state, voter, c, rival);
+  const forA = backs(a, b);
+  const forB = backs(b, a);
+  return forA === forB ? null : forA ? a : b;
 }
 
 /** Share of systems with a habitable planet that hold a colony. */

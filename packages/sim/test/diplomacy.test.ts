@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  COUNCIL, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, TIER_OF_TECH, audienceTired, canSign, previewOrders, validateCommand, patience, temperament, treatyAcceptChance, treatyPriceChance, treatyScore, counterPrice, trustIn, reputationOf, TREATY_YIELD, attitude, destructibleBuildings, empireIncome, empireTotals,
+  COUNCIL, COUNCIL_VOTE, voteScore, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, TIER_OF_TECH, audienceTired, canSign, previewOrders, validateCommand, patience, temperament, treatyAcceptChance, treatyPriceChance, treatyScore, counterPrice, trustIn, reputationOf, TREATY_YIELD, attitude, destructibleBuildings, empireIncome, empireTotals,
   newGame, playerView, processTurn, relKey, relation, spyEdge, treatyTotals, treatyYield, type GameState,
 } from "@starlord/sim";
 
@@ -160,6 +160,24 @@ describe("galactic council", () => {
     s = processTurn(s, {});
     expect(s.council.convened).toBe(true);
     expect(s.council.lastResult?.winner).toBe(0);
+  });
+});
+
+describe("council votes (the original's rule)", () => {
+  it("always backs an ally, never an enemy, and adds treaties and traits to relations", () => {
+    const s = met("votes", ["felhari", "terran", "kordex"]);
+    s.attitude[0] = { 1: 20, 2: 20 };
+    const plain = voteScore(s, 0, 2, 1);
+    expect(plain).toBe(20);
+    // Terrans are charismatic.
+    expect(voteScore(s, 0, 1, 2)).toBe(20 + COUNCIL_VOTE.charismatic);
+    s.relations["0-2"] = { ...relation(s, 0, 2), status: "nonAggression", trade: true };
+    expect(voteScore(s, 0, 2, 1)).toBe(20 + COUNCIL_VOTE.nonAggression + COUNCIL_VOTE.trade);
+    s.relations["0-1"] = { ...relation(s, 0, 1), status: "war" };
+    expect(voteScore(s, 0, 1, 2)).toBe(-1);
+    expect(voteScore(s, 0, 2, 1)).toBe(20 + COUNCIL_VOTE.nonAggression + COUNCIL_VOTE.trade + COUNCIL_VOTE.atWarWithRival);
+    s.relations["0-2"] = { ...relation(s, 0, 2), status: "alliance" };
+    expect(voteScore(s, 0, 2, 1)).toBe(COUNCIL_VOTE.die);
   });
 });
 
