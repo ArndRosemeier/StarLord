@@ -214,9 +214,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><HelpLink to="trait:creative">Creative</HelpLink> races learn every application of a field they finish.</li>
         <li><HelpLink to="trait:uncreative">Uncreative</HelpLink> races get one random application instead of choosing.</li>
         <li>
-          Once the research points pass a field's cost, a breakthrough can come any turn: the chance is how far past the
-          cost you are, as a percent of it (1% just past, certain at {RESEARCH.maxCostMult}x the cost). Points past the cost
-          are lost when the breakthrough comes.
+          Until the research points pass a field's cost, the chance of a breakthrough is 0%. After that every turn rolls a
+          chance that is how far past the cost you are, as a percent of it (1% just past, certain at {RESEARCH.maxCostMult}x the
+          cost), so it climbs each turn. Points past the cost are lost when the breakthrough comes, and points made while no
+          field is chosen are lost too.
         </li>
         <li>
           When a category is finished, its hyper-advanced field ({fmt(RESEARCH.hyperCost)} RP, {fmt(RESEARCH.hyperCostStep)} more for each further level) can be researched again

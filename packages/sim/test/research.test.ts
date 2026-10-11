@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ARMORS, BUILDINGS, COMPUTERS, HULLS, PROJECTS, RESEARCH, SHIELDS, SPECIALS, TECHS, TECH_FIELDS, TECH_TIERS, TIERS_BY_ID,
-  WEAPONS, availableTiers, breakthroughChance, researchCost, commandPointsAvailable, empireBonus, getRace, newGame, processTurn,
+  WEAPONS, availableTiers, breakthroughChance, nextBreakthroughChance, researchCost, commandPointsAvailable, empireBonus, getRace, newGame, processTurn,
   researchOptions, score, validateCommand, type GameState,
 } from "@starlord/sim";
 
@@ -63,7 +63,28 @@ describe("research rules", () => {
     s.players[0]!.research.progress = 1000;
     s = processTurn(s, { 0: [{ type: "setResearch", tierId: "astroBiology", techId: "biospheres" }] });
     expect(s.players[0]!.tiers).toContain("astroBiology");
-    expect(s.players[0]!.research.progress).toBeGreaterThan(900);
+    expect(s.players[0]!.research.progress).toBe(1000);
+  });
+
+  it("loses the points of a turn with no field chosen", () => {
+    let s = game();
+    s.players[0]!.research = { tierId: null, techChoice: null, progress: 0 };
+    s = processTurn(s, {});
+    expect(s.players[0]!.research.progress).toBe(0);
+  });
+
+  it("gives a 0% chance until the points pass the cost, then climbs each turn", () => {
+    const s = game();
+    const p = s.players[0]!;
+    const tier = TIERS_BY_ID.molecularControl!;
+    const cost = researchCost(p, tier);
+    p.research = { tierId: tier.id, techChoice: null, progress: 0 };
+    expect(nextBreakthroughChance(p, cost)).toBe(0);
+    p.research.progress = cost;
+    expect(nextBreakthroughChance(p, cost / 4)).toBe(0.25);
+    expect(nextBreakthroughChance(p, cost)).toBe(1);
+    p.research.tierId = null;
+    expect(nextBreakthroughChance(p, cost)).toBe(0);
   });
 
   it("opens a repeatable hyper-advanced field once a category is done", () => {

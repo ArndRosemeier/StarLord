@@ -4,7 +4,7 @@ import { techSummary } from "../help/articles";
 import { useState } from "react";
 import {
   FIELD_NAMES, PICK_OPTIONS, RESEARCH, TECHS, TECH_FIELDS, TECH_TIERS, TIERS_BY_ID, TRAIT_COSTS, availableTiers, getRace,
-  hasTrait, hyperLevel, learnsWholeField, mutationCost, researchCost, researchOptions, type NumericPick, type Player, type RacePicks,
+  hasTrait, hyperLevel, learnsWholeField, mutationCost, nextBreakthroughChance, researchCost, researchOptions, type NumericPick, type Player, type RacePicks,
   type RaceTrait,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -33,10 +33,10 @@ export function ResearchScreen() {
   const open = new Set(availableTiers(view, me.id));
   const race = getRace(me.raceId);
   const creative = hasTrait(race, "creative");
-  // Breakthroughs are random past the base cost, so the estimate is to the base cost.
+  // As in MoO2: turns until the points pass the cost, then a chance each turn that climbs to certain at twice the cost.
   const cost = current ? researchCost(me, current) : 0;
-  const eta = current && rpt > 0 ? Math.max(1, Math.ceil((cost - me.research.progress) / rpt)) : null;
-  const pastBase = !!current && me.research.progress > cost;
+  const chance = nextBreakthroughChance(me, rpt);
+  const eta = current && rpt > 0 ? Math.max(1, Math.floor((cost - me.research.progress) / rpt) + 1) : null;
 
   return (
     <div className="col">
@@ -52,8 +52,9 @@ export function ResearchScreen() {
         {current ? (
           <div className="research-now" style={{ marginTop: 8 }}>
             <ProgressRing value={me.research.progress} max={cost} size={124} color={FIELD_LOOK[current.field]?.color}>
-              <b>{Math.floor((me.research.progress / cost) * 100)}%</b>
-              {pastBase ? <small>any turn</small> : eta !== null && <small>{eta} turn{eta === 1 ? "" : "s"}</small>}
+              {chance > 0
+                ? <><b>{Math.round(chance * 100)}%</b><small>chance this turn</small></>
+                : <><b>{Math.floor((me.research.progress / cost) * 100)}%</b>{eta !== null ? <small>chance in {eta} turn{eta === 1 ? "" : "s"}</small> : <small>no research</small>}</>}
             </ProgressRing>
             <div className="col" style={{ gap: 4, flex: 1 }}>
               <small className="muted" style={{ letterSpacing: "0.12em", textTransform: "uppercase" }}>Now researching</small>
@@ -62,10 +63,10 @@ export function ResearchScreen() {
               </div>
               {me.research.techChoice && <div>Goal: <b style={{ color: FIELD_LOOK[current.field]?.color }}>{TECHS[me.research.techChoice]?.name}</b> <span className="muted">{techSummary(me.research.techChoice)}</span></div>}
               <small className="muted">
-                {fmt(me.research.progress)} / {fmt(cost)} research points.
-                {pastBase
-                  ? ` A breakthrough can come any turn; certain at ${fmt(cost * RESEARCH.maxCostMult)}.`
-                  : ` After that, a breakthrough can come any turn, at the latest at ${fmt(cost * RESEARCH.maxCostMult)}.`}
+                {fmt(me.research.progress)} / {fmt(cost)} research points, +{fmt(rpt, 1)} this turn.
+                {chance > 0
+                  ? ` Past the cost, so each turn has a chance of a breakthrough: ${Math.round(chance * 100)}% this turn, rising by about ${fmt(Math.min(100, (rpt / cost) * 100), 1)}% a turn, certain at ${fmt(cost * RESEARCH.maxCostMult)}.`
+                  : ` The chance of a breakthrough stays at 0% until the points pass the cost. Then it is 1% for every 1% past the cost, certain at ${fmt(cost * RESEARCH.maxCostMult)}.`}
               </small>
             </div>
           </div>
