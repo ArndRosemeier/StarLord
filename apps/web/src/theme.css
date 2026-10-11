@@ -448,3 +448,48 @@
 @media (prefers-reduced-motion: reduce) {
   .planet-orb, .planet-orb *, .planet-orb::before, .ring *, .radar::before, .radar i, .blueprint::after, .blueprint-ship { animation: none !important; }
 }
+
+/* ---- 3D system view: a centred modal, the system on the left and its details on the right */
+.system-back { z-index: 40; background: rgba(2, 3, 10, 0.72); backdrop-filter: blur(3px); animation: system-fade 0.25s ease-out both; }
+.modal.system-modal {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 340px; padding: 0; overflow: hidden;
+  width: min(1320px, 96vw); max-width: none; height: min(820px, 90vh); max-height: none;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--glass-line), 0 0 40px rgba(91, 157, 255, 0.12);
+  animation: system-pop 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+@keyframes system-fade { from { opacity: 0; } }
+@keyframes system-pop { from { opacity: 0; transform: scale(0.94); } }
+.system-stage { position: relative; min-width: 0; min-height: 0; background: #020308; }
+.system-3d { position: absolute; inset: 0; }
+.system-3d-hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px; pointer-events: none; z-index: 2; text-shadow: 0 1px 3px #000; }
+.system-loading { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); letter-spacing: 0.08em; }
+.system-title { position: absolute; left: 16px; top: 12px; pointer-events: none; text-shadow: 0 2px 8px #000; z-index: 2; }
+.system-title h2 { margin: 0; font-size: 22px; }
+.system-title .muted { text-transform: capitalize; }
+.system-side { position: relative; overflow: auto; padding: 16px; border-left: 1px solid var(--glass-line); background: var(--glass); }
+.modal .system-close { position: absolute; right: 10px; top: 10px; width: 30px; height: 30px; padding: 0; line-height: 1; z-index: 3; }
+.system-side h3 { padding-right: 36px; }
+.planet.pickable { cursor: pointer; border-radius: 6px; transition: background 0.15s; }
+.planet.pickable:hover { background: rgba(91, 157, 255, 0.07); }
+.planet.selected { background: rgba(91, 157, 255, 0.14); box-shadow: inset 2px 0 0 var(--accent); }
+
+/* name tags pinned to planets, fleets and the star */
+.three-tag {
+  position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 2px 7px;
+  font-size: 10px; white-space: nowrap; color: var(--muted); background: rgba(6, 9, 20, 0.62); border: 1px solid rgba(120, 150, 220, 0.22);
+  border-left: 2px solid var(--tag-color, rgba(120, 150, 220, 0.4)); border-radius: 5px; opacity: 0.85; transition: opacity 0.15s, border-color 0.15s;
+}
+.three-tag b { font-size: 11px; color: var(--text); font-weight: 600; }
+.three-tag.owned b, .three-tag.fleet b { color: color-mix(in srgb, var(--tag-color, #fff) 60%, white); }
+.three-tag.star { background: transparent; border: none; font-family: var(--display); letter-spacing: 0.08em; text-transform: capitalize; }
+.three-tag.star b { font-size: 13px; text-shadow: 0 0 10px rgba(255, 220, 160, 0.7); }
+.three-tag.note { background: rgba(6, 9, 20, 0.8); font-size: 12px; padding: 6px 12px; transform-origin: center; }
+.three-tag.hover, .three-tag.selected { opacity: 1; border-color: rgba(160, 200, 255, 0.7); background: rgba(10, 16, 36, 0.9); z-index: 1; }
+
+@media (max-width: 860px) {
+  .modal.system-modal { grid-template-columns: 1fr; grid-template-rows: minmax(260px, 1fr) minmax(0, 0.8fr); height: 92vh; }
+  .system-side { border-left: none; border-top: 1px solid var(--glass-line); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .system-back, .modal.system-modal { animation: none; }
+}
