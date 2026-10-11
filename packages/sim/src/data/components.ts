@@ -161,10 +161,10 @@ export const WEAPONS: WeaponDef[] = [
 
   { id: "antiMissileRockets", name: "Anti-Missile Rockets", kind: "special", damageMin: 0, damageMax: 0, space: 20, cost: 5, ammo: 20, range: 15, effect: "antiMissile", mods: [], requires: "antiMissileRockets" },
   { id: "tractorBeam", name: "Tractor Beam", kind: "special", damageMin: 0, damageMax: 0, space: 30, cost: 20, range: 12, effect: "tractor", mods: [], requires: "tractorBeam" },
-  { id: "gyroDestabilizer", name: "Gyro Destabilizer", kind: "special", damageMin: 3, damageMax: 7, space: 75, cost: 50, range: 15, perSize: true, effect: "gyro", mods: [], requires: "gyroDestabilizer" },
+  { id: "gyroDestabilizer", name: "Gyro Destabilizer", kind: "special", damageMin: 1, damageMax: 4, space: 75, cost: 50, range: 15, perSize: true, effect: "gyro", mods: [], requires: "gyroDestabilizer" },
   { id: "plasmaWeb", name: "Plasma Web", kind: "special", damageMin: 5, damageMax: 25, space: 40, cost: 40, range: 15, effect: "plasmaWeb", mods: [], requires: "plasmaWeb" },
-  { id: "pulsar", name: "Pulsar", kind: "special", damageMin: 2, damageMax: 24, space: 50, cost: 30, range: 2, perSize: true, traits: ["area"], effect: "pulsar", mods: [], requires: "pulsar" },
-  { id: "spatialCompressor", name: "Spatial Compressor", kind: "special", damageMin: 4, damageMax: 32, space: 50, cost: 40, range: 2, perSize: true, traits: ["area"], effect: "spatialCompressor", mods: [], requires: "spatialCompressor" },
+  { id: "pulsar", name: "Pulsar", kind: "special", damageMin: 2, damageMax: 24, space: 50, cost: 30, range: 3, perSize: true, traits: ["area"], effect: "pulsar", mods: [], requires: "pulsar" },
+  { id: "spatialCompressor", name: "Spatial Compressor", kind: "special", damageMin: 4, damageMax: 32, space: 50, cost: 40, range: 3, traits: ["area"], effect: "spatialCompressor", mods: [], requires: "spatialCompressor" },
   { id: "stasisField", name: "Stasis Field", kind: "special", damageMin: 0, damageMax: 0, space: 75, cost: 75, range: 3, effect: "stasis", mods: [], requires: "stasisField" },
   { id: "blackHoleGenerator", name: "Black Hole Generator", kind: "special", damageMin: 0, damageMax: 0, space: 150, cost: 150, range: 15, effect: "blackHole", mods: [], requires: "blackHoleGenerator" },
   { id: "stellarConverter", name: "Stellar Converter", kind: "special", damageMin: 400, damageMax: 400, space: 500, cost: 500, traits: ["alwaysHits", "enveloping", "noRangeDissipation"], effect: "stellarConverter", mods: [], requires: "stellarConverter" },
@@ -507,13 +507,15 @@ export function hullIndex(hull: HullId): number {
 
 /**
  * Colony, outpost and troop modules. Support ships are fixed designs in the
- * original; here they are a module on a hull that pays only a share of the
- * hull's price, and use command points like the smallest warship.
+ * original, priced 500 (colony ship), 100 (outpost ship) and 100 (transport)
+ * before the government's ship cost; here they are a module on a hull, and
+ * the module carries that whole price (the hull itself is free). They use
+ * command points like the smallest warship.
  */
 export const MODULES: Record<"colony" | "outpost" | "transport", { name: string; space: number; cost: number; minHull: HullSize; troops: number }> = {
-  colony: { name: "Colony Module", space: 90, cost: 120, minHull: "cruiser", troops: 0 },
-  outpost: { name: "Outpost Module", space: 40, cost: 30, minHull: "destroyer", troops: 0 },
-  transport: { name: "Troop Module", space: 40, cost: 15, minHull: "destroyer", troops: 4 },
+  colony: { name: "Colony Module", space: 90, cost: 500, minHull: "cruiser", troops: 0 },
+  outpost: { name: "Outpost Module", space: 40, cost: 100, minHull: "destroyer", troops: 0 },
+  transport: { name: "Troop Module", space: 40, cost: 100, minHull: "destroyer", troops: 4 },
 };
-export const SUPPORT_HULL_COST_SHARE = 0.25;
+export const SUPPORT_HULL_COST_SHARE = 0;
 export const SUPPORT_SHIP_COMMAND_POINTS = 1;

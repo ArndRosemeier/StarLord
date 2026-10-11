@@ -2,8 +2,9 @@ import type { ReactNode } from "react";
 import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES } from "@starlord/ai";
 import {
   ANDROIDS, ASSIMILATION, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_HIT,
-  CAPTURE_TECH_CHANCE, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST,
-  BOARDING, DEPLOY, EXPLOSION, HULLS_BY_ID, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE, STATION_ARMS,
+  CAPTURE_TECH, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST,
+  BOARDING, DEPLOY, EXPLOSION, HULLS_BY_ID, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE, STATION_ARMS, ANTI_MISSILE, BOMBARD_ROUNDS,
+  COMBAT_BOMB_RANGE, CRAFT, DAMAGE, PLANET_POPULATION_HP,
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
@@ -308,7 +309,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Battles happen when hostile armed fleets meet, or when an armed colony sees enemy ships. They are fought
         automatically on a {FIELD_WIDTH}×{FIELD_HEIGHT} battlefield for up to {MAX_ROUNDS} rounds and can be replayed from
         the turn report. A battle ends when one side has nothing left; if both still stand when time runs out, the
-        defender holds the field.
+        defender holds the field (when neither side has anything left to shoot with, time runs out at once).
       </P>
       <h3>Moving and firing</h3>
       <Ul>
@@ -317,16 +318,20 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li>Ships spend their combat speed to move and turn. Each beam fires only into its arc, so facing matters.</li>
         <li>A beam's hit chance is its attack against the target's beam defense, minus a penalty that grows with range. Damage also drops with range unless the mount ignores it.</li>
         <li>Better rolls do more damage: a shot that barely hits does its minimum, a near-certain one close to its maximum.</li>
-        <li>Missiles fly {MISSILE_SPEED.base} squares a round, {MISSILE_SPEED.perDrive} more for every drive after the first; torpedoes keep their own speed. On arrival they can be shot down by point-defense beams, anti-missile rockets or a lightning field, or misled by jammers. Better missiles are harder to shoot down; torpedoes do half damage to planets.</li>
-        <li>Fighter and bomber bays launch craft that fly to their target, attack and return to rearm. Craft get faster with better drives and tougher with better armor.</li>
+        <li>Missiles fly {MISSILE_SPEED.base} squares a round, {MISSILE_SPEED.perDrive} more for every drive after the first; torpedoes keep their own speed. On arrival they can be shot down by point-defense beams, anti-missile rockets ({ANTI_MISSILE.base - Math.floor(2 * ANTI_MISSILE.perBandStep) - 1}% each) or a lightning field, or misled by jammers; point defense and rockets only bother with missiles whose damage would get through the shields. Better missiles are harder to shoot down; torpedoes cannot be shot down and do half damage to planets.</li>
+        <li>Fighter and bomber bays launch craft that fly to their target and attack once a turn until their passes are spent ({CRAFT.fighters.shots} for interceptors, {CRAFT.heavyFighters.shots} for heavy fighters, {CRAFT.bombers.shots} for bombers), then return to rearm. Each pass a fighter fires one shot of your best beam that can take a point-defense mount, aimed with {CRAFT.attackBase} plus your best computer; bombers drop your best bomb, which always hits. Craft get faster with better drives and tougher with better armor.</li>
+        <li>Bombs drop only on an enemy planet your fleet came to attack, from {COMBAT_BOMB_RANGE.normal} squares ({COMBAT_BOMB_RANGE.transporters} with Transporters); each volley uses one of the rack's shots.</li>
+        <li>Range is measured between the nearest squares of the two ships: frigates fill one square, destroyers and cruisers 2×2, larger ships and planets 3×3.</li>
       </Ul>
       <h3>Damage</h3>
       <Ul>
         <li>Shields take their class off every hit, then soak what is left from the pool on the side that was hit. Each side recovers part of its pool every round.</li>
-        <li>Damage that gets through wears down armor first, then structure. Hits on structure may knock out weapons, the shield generator, the computer or the drive; losing the drive destroys the ship.</li>
+        <li>An Energy Absorber takes a quarter of each hit first and adds it to the ship's next shot; a Damper Field lets only a quarter of the rest through.</li>
+        <li>Damage that gets through wears down armor first. Past the armor each piece of damage lands on an internal system or the structure: a system's chance grows with its hit points (the drive counts half) against the structure left. A system takes what it can hold and the rest lands again; a weapon hit breaks one weapon at a time. Losing the drive destroys the ship. Every point on structure or systems has a {DAMAGE.crewCasualty * 100}% chance to kill a marine.</li>
         <li>A ship that loses its drive explodes: {EXPLOSION.perDriveHP} times its hull's drive hit points (a cruiser {EXPLOSION.perDriveHP * HULLS_BY_ID.cruiser.driveHP}, a titan {EXPLOSION.perDriveHP * HULLS_BY_ID.titan.driveHP}), {EXPLOSION.detonatorMult} times that with a Quantum Detonator, which goes off however the ship dies. The blast hits every ship nearby, friend or foe, weaker with distance, and can set off more explosions.</li>
         <li>Armor-piercing and shield-piercing weapons skip part of this, and some specials change it further.</li>
-        <li>Repair units fix armor, structure and systems every round.</li>
+        <li>Repair units fix armor, structure and systems every round, broken weapons included.</li>
+        <li>Gyro Destabilizers and Spatial Compressors go straight into the structure. Pulsars and compressors strike every ship near the firing ship, friends too, once an enemy is within reach. A Stasis Field holds one ship until it is let go; a Black Hole Generator destroys the ship it traps at the end of the second turn after, unless it is lost first. Ion weapons cannot be aimed at raiders or monsters.</li>
       </Ul>
       <h3>Damage and repair</h3>
       <P>
@@ -373,7 +378,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <P>
         A captured ship loses its captain and sits out the rest of the battle (a telepathic captor turns it on its old
-        side at once). The captor keeps it only if its side wins; otherwise it is lost. A ship with a Quantum Detonator
+        side at once). The captor keeps it only if its side wins, otherwise it is lost; a telepath's prize is kept
+        whoever wins. A ship with a Quantum Detonator
         blows itself up half the time when taken.
       </P>
       <h3>Stations and planets</h3>
@@ -392,8 +398,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         garrison (which sends up fresh craft every {FIGHTER_GARRISON.replenishRounds} combat turns), crewed by Regulars and
         aimed with a Battle Scanner once you know it. Every hit on it loses the planetary shield's strength
         (<HelpLink to="page:buildings" />) plus your best ship shield class. Ship beams do only half damage to it. Every
-        {" "}{PLANET_INSTALLATION_HP} damage that gets through (more with better armor) knocks out one installation at random. Stations are fair game in any
+        {" "}{PLANET_INSTALLATION_HP} damage that gets through (more with better armor) knocks out one installation at random. Once they are all gone,
+        damage past the planetary shield alone falls on the colony: every {PLANET_POPULATION_HP} is one bombing hit. Stations are fair game in any
         battle, but only fleets set to attack fire on the planet, and only once no defending ships or station remain.
+        After a won battle such a fleet bombards the colony with every weapon for {BOMBARD_ROUNDS} combat turns.
       </P>
     </>
   ),
@@ -406,8 +414,9 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Bombing</h3>
       <P>
-        Fleets on <b>Attack</b> stance bomb open colonies every turn. Each bomb loses the planetary shield's worth of
-        damage, and every {BOMB_DAMAGE_PER_HIT} points that get through are one hit. A hit lands at random on a building
+        Fleets on <b>Attack</b> stance bombard open colonies every turn: every weapon aboard fires at the planet for{" "}
+        {BOMBARD_ROUNDS} combat turns (beams at half damage, missiles and bombs until their shots run out). Each shot
+        loses the planetary shield's worth of damage, and every {BOMB_DAMAGE_PER_HIT} points that get through are one hit. A hit lands at random on a building
         (not the colony's defenses), a trained marine or tank, or a colonist; a tank needs at least two hits.
         Death spores and the bio-terminator kill population with a {pct(SPORE_KILL_CHANCE_PER_POINT)} chance per point
         of damage, which every other empire resents. A colony bombed to zero is destroyed.
@@ -432,7 +441,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         {PICK_VALUES.groundCombatPerLevel}. <HelpLink to="trait:lowG" /> troops fight at −10,{" "}
         <HelpLink to="trait:subterranean" /> defenders at +10, <HelpLink to="trait:highG" /> troops take one more hit,
         and a Commando leader in the system adds his skill. A captured colony keeps its buildings and its people, who
-        must be assimilated (see Colonies), and has a {pct(CAPTURE_TECH_CHANCE)} chance to yield one of the loser's techs.
+        must be assimilated (see Colonies). It may also yield up to {CAPTURE_TECH.maxTechs} of the loser's techs: each
+        building whose tech you lack gives it with a {CAPTURE_TECH.perBuilding.human / 10}% chance, then each colonist one
+        of the loser's techs with a {CAPTURE_TECH.perColonist.human / 10}% chance, both divided by one more than the techs
+        taken so far (computer players' odds are a little lower, rising with the difficulty level).
 
       </P>
       <P>

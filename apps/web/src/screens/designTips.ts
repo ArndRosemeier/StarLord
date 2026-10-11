@@ -28,30 +28,30 @@ const KIND_TEXT: Record<WeaponKind, string> = {
 const TRAIT_TEXT: Record<WeaponTrait, string> = {
   noRangeDissipation: "Full damage at any range.",
   doubleRangePenalty: "Range costs twice the usual hit chance.",
-  systemsOnly: "Damages only internal systems (computer, drive, shields, weapons); a quarter damage against monsters.",
+  systemsOnly: "Damages only internal systems (computer, drive, shields, weapons), past armor; cannot be aimed at raiders or monsters, and does nothing to planets.",
   killsMarines: "Each 5 damage that gets through kills a marine aboard.",
-  extraStructural: "Damage past the armor hits structure half again as hard.",
+  extraStructural: "Tears half its damage out of the structure twice, before armor, on top of the normal hit; double damage to planets.",
   continuous: "Steady beam: +25 to hit.",
   shieldPiercing: "Ignores shields (except hard shields).",
   enveloping: "Hits all four shield facings at once.",
   alwaysHits: "Never misses.",
   dissipates: "Loses strength for every square it travels.",
-  area: "Hits everything around the firing ship, ignoring shields.",
+  area: "Goes off when an enemy is within 3 squares and hits every ship around the firing ship, friend or foe, and missiles and craft.",
 };
 
 const EFFECT_TEXT: Record<WeaponEffect, string> = {
-  spatialCompressor: "Crushes every enemy ship within reach, harder against bigger hulls; ignores shields.",
-  stasis: "Freezes one ship for the round: it can neither act nor be harmed.",
-  antiMissile: "Shoots down incoming missiles before they reach the ship.",
-  gyro: "Shakes the target apart: damage that skips shields and armor, more against bigger hulls.",
+  spatialCompressor: "Crushes every ship around the firing ship, friend or foe: its damage goes straight into the structure.",
+  stasis: "Holds one ship until it is let go: it can neither act nor be harmed. Each field holds one ship; the holder lets the last free enemy go.",
+  antiMissile: "Each rocket has a 64% chance to stop an incoming missile that would get through the shields (20 rockets a battle).",
+  gyro: "Shakes the target apart: 1-4 damage per hull size step (frigate 1 to doom star 6), straight into the structure.",
   plasmaWeb: "Wraps the target in plasma that keeps burning it in later rounds, weaker each time.",
-  pulsar: "An energy burst that hits every enemy ship within reach, harder against bigger hulls.",
-  blackHole: "Traps one ship so it cannot move; if the generator holds it for a few rounds, the ship is destroyed.",
+  pulsar: "An energy burst that hits every ship around the firing ship, friend or foe, harder against bigger hulls.",
+  blackHole: "Traps one ship or station so it cannot move; unless the generator is lost first, the ship is destroyed at the end of the second turn after.",
   stellarConverter: "400 damage to every shield facing of the target; never misses.",
   tractor: "Slows the target; enough tractor beams for its size hold it in place.",
-  fighters: "Launches interceptors that dogfight missiles, craft and ships.",
-  bombers: "Launches bombers that strike ships and planets hard but cannot stop craft.",
-  heavyFighters: "Launches heavy fighters: tougher interceptors with stronger guns.",
+  fighters: "Launches interceptors: each makes four strafing passes, one a turn, with your best point-defense-capable beam.",
+  bombers: "Launches bombers: each drops your best bomb once, which always hits.",
+  heavyFighters: "Launches heavy fighters: tougher craft that make two passes, each with a beam shot and a bomb.",
   shuttles: "Launches assault shuttles that land marines on an enemy ship to capture it, or to wreck its systems in a hit-and-run raid when capture looks hopeless.",
 };
 
@@ -159,7 +159,7 @@ export function moduleTip(player: Player, draft: ShipDesign, id: DesignModule | 
       ["Smallest hull", HULLS_BY_ID[m.minHull].name],
       ...(m.troops ? [["Troops carried", fmt(m.troops)] as [string, string]] : []),
     ],
-    text: [MODULE_TEXT[id], "Support ships pay only a quarter of the hull's cost and may use hulls you have not researched yet."],
+    text: [MODULE_TEXT[id], "A support ship costs its module's fixed price (the hull is free) and may use hulls you have not researched yet."],
   };
 }
 
@@ -171,7 +171,7 @@ export function weaponTip(player: Player, draft: ShipDesign, weaponId: string, m
   return {
     title: w.name, kind: `${words(w.kind)} weapon`,
     rows: [
-      ...(w.damageMax > 0 ? [["Damage per shot", w.perSize ? `${dmg(w)} × size class` : dmg(w)] as [string, string]] : []),
+      ...(w.damageMax > 0 ? [["Damage per shot", w.perSize ? `${dmg(w)} × (hull size + 1)` : dmg(w)] as [string, string]] : []),
       ["Space each", fmt(unit.space)],
       ["Cost each", `${fmt(unit.cost)} BC`],
       ...(w.ammo ? [["Shots per battle", fmt(w.ammo)] as [string, string]] : []),
