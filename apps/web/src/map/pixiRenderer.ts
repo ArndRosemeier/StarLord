@@ -102,7 +102,7 @@ export class PixiMapRenderer implements MapRenderer {
   private app = new Application();
   private camera = new Container();
   private nebula: Sprite | null = null;
-  private backdrop = new Graphics();
+  private backdrop = new Container();
   private world = new Container();
   /** The route preview under the cursor, redrawn on hover without rebuilding the map. */
   private hover = new Container();
