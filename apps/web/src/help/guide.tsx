@@ -5,7 +5,7 @@ import {
   CAPTURE_TECH, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST,
   BOARDING, DEPLOY, EXPLOSION, HULLS_BY_ID, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE, STATION_ARMS, ANTI_MISSILE, BOMBARD_ROUNDS,
   COMBAT_BOMB_RANGE, CRAFT, DAMAGE, PLANET_POPULATION_HP,
-  COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
+  COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES, EVENT_NUMBERS,
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
   SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
@@ -603,24 +603,29 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
     </>
   ),
 
-  events: () => (
-    <>
-      <P>
-        Random events start on turn {EVENT_START}. Every quiet turn makes the next one likelier (about one in{" "}
-        {EVENT_TIMING.dieSides} more per turn, a little less on easier levels), and after an event the galaxy stays calm
-        for {EVENT_TIMING.cooldown} turns. Disasters strike the most populous empires, never the smallest; windfalls go to
-        the smaller ones. Comets and supernovas don't come before turn 200. They can be switched off when starting a
-        game. <HelpLink to="trait:lucky" /> races are spared the disasters and build up to windfalls of their own.
-      </P>
-      <Ul>
-        <li><b>Windfalls</b>: donations, derelict ships and research breakthroughs, new mineral deposits, a planet's axis shifting to a terran climate, population booms, diplomatic marriages.</li>
-        <li><b>Disasters</b>: earthquakes, industrial accidents that irradiate a planet, depleted mines, computer viruses, ship explosions, assassinations.</li>
-        <li><b>Threats you can fight</b>: a comet bound for a colony (warships in orbit break it up), pirates (send warships to their system), a plague (the colony's research finds a cure) and a supernova (the system's research must stop it).</li>
-        <li><b>Hyperspace trouble</b>: flux that stops all ships, a warp beast that eats ships in flight, warp funnels that trap a fleet, unstable wormholes that fling one across the galaxy, and time-space anomalies where nothing can be built or fought.</li>
-        <li><b>Monsters</b> from beyond the rim: one turns a system toxic, one kills every colonist, one blockades, one ravages the population, and one demands BC or pillages the system.</li>
-      </Ul>
-    </>
-  ),
+  events: () => {
+    const N = EVENT_NUMBERS;
+    return (
+      <>
+        <P>
+          Random events start on turn {EVENT_START}. Every quiet turn makes the next one likelier (about one in{" "}
+          {EVENT_TIMING.dieSides} more per turn, a little less on easier levels), and after an event the galaxy stays calm
+          for {EVENT_TIMING.cooldown} turns. Each time, up to {EVENT_TIMING.tries} kinds of event are drawn, all equally likely,
+          and the first that can happen strikes. Each kind happens at most once a game. Disasters strike the most populous
+          empires, never the smallest; windfalls go to the smaller ones. Comets and supernovas don't come before turn 200, and
+          a comet only during hyperspace flux. On Tutor there are no disasters. Random events can be switched off when
+          starting a game. <HelpLink to="trait:lucky" /> races are spared the disasters and build up to windfalls of their own.
+        </P>
+        <Ul>
+          <li><b>Windfalls</b>: a donation of {N.donation.base} BC plus {N.donation.step} for every {N.donation.perTurns} turns played; a derelict ship that teaches the beam weapon closest above the strongest any empire has and the best armor any empire has; a breakthrough that completes your current research at once; new mineral deposits ({N.depositSteps} steps richer); a planet's axis shifting to a terran climate; a population boom (+{GROWTH.boomPercent}% growth); a diplomatic marriage (a +{N.relationShift} relation event with an empire you know).</li>
+          <li><b>Disasters</b>: an earthquake ((d3 + d2) × (buildings + population) / 10 hits on buildings and colonists); an industrial accident ((d3 + d3) × population / 10 colonists die, plus one hit; tolerant races are spared); depletion (an ultra rich world drops to rich); a computer virus ({N.virus.base} + d{N.virus.die} stored research lost); a ship explosion; an assassination (a −{N.relationShift} relation event); a pirate raid ({N.pirateLootPercent.base + 1} to {N.pirateLootPercent.base + N.pirateLootPercent.die}% of the treasury).</li>
+          <li><b>Threats you can fight</b>: a comet ((d{N.cometHp.die} + {N.cometHp.base} + difficulty) × {N.cometHp.mult} hit points, striking in d{N.cometTurns.die} + {N.cometTurns.base} − difficulty turns for (d3 + d3) × (buildings + population) / 10 hits), which every ship in orbit, of any empire, wears down by its hull size (frigate 1 … doom star 6) each turn. Pirates (only against an empire with {N.pirates.minFreighters} or more freighters) take freighters from every empire with a colony in their system and halve its trade, until ships in orbit wear their base down the same way. A plague (−{-GROWTH.plaguePercent}% growth) lasts until the colony's research finds a cure: its research times (d{N.plague.die} + {N.plague.perDifficulty} × difficulty). A supernova threatens a colonised star: unless the system's research adds up to its research when the threat began times the turns given, its colonies die and its worlds turn radiated.</li>
+          <li><b>Hyperspace trouble</b>: flux that stops all ships, a beast that destroys a ship in flight every turn (a new victim each time), unstable wormholes that carry a fleet to its destination at once, and time-space anomalies where nothing can be built or fought. Flux, the beast, anomalies and population booms end with a 1 in {N.lasting.endDie} chance each turn from their {N.lasting.minTurns}th turn on, and always by their {N.lasting.maxTurns}nd. A warp funnel can be drawn but does nothing, as in the original.</li>
+          <li><b>Monsters</b> from beyond the rim: one turns a system toxic, one kills every colonist, one blockades, one ravages the population, and one demands BC or pillages the system.</li>
+        </Ul>
+      </>
+    );
+  },
 
   victory: () => (
     <>

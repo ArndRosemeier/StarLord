@@ -234,13 +234,13 @@ describe("original random events", () => {
     expect(p.research.progress).toBeLessThanOrEqual(449);
   });
 
-  it("lets pirates take 30 to 50 percent of a treasury of at least 100 BC", () => {
+  it("lets a pirate raid take 30 to 50 percent of a treasury of at least 100 BC", () => {
     const { s, ctx } = setup();
     const p = s.players[0]!;
     p.bc = 99;
-    expect(fireEvent(ctx, "pirates", p)).toBe(false);
+    expect(fireEvent(ctx, "pirateRaid", p)).toBe(false);
     p.bc = 1000;
-    fireEvent(ctx, "pirates", p);
+    fireEvent(ctx, "pirateRaid", p);
     expect(p.bc).toBeGreaterThanOrEqual(500);
     expect(p.bc).toBeLessThanOrEqual(700);
   });
@@ -252,11 +252,11 @@ describe("original random events", () => {
     expect(fireEvent(ctx, "industrialAccident", s.players[1]!)).toBe(true);
   });
 
-  it("ends lasting events by 20 turns", () => {
+  it("keeps lasting events at least 6 turns and ends them by 22", () => {
     let { s, ctx } = setup();
     fireEvent(ctx, "hyperspaceFlux");
     expect(s.activeEvents!.some((e) => e.kind === "hyperspaceFlux")).toBe(true);
-    for (let i = 0; i < 4; i++) s = processTurn(s, {});
+    for (let i = 0; i < 6; i++) s = processTurn(s, {});
     expect(s.activeEvents!.some((e) => e.kind === "hyperspaceFlux")).toBe(true);
     for (let i = 0; i < 17; i++) s = processTurn(s, {});
     expect(s.activeEvents!.some((e) => e.kind === "hyperspaceFlux")).toBe(false);

@@ -11,6 +11,7 @@ import type { Emit } from "./context.js";
 import { androids, empireTotals, population } from "./economy.js";
 import { empireBonus, empireIncome, empires, fleetRange, grantTech, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
+import { piratesActive } from "./randomEvents.js";
 import type { DiplomaticStatus, GameState, Id, PlayerId, Price, Proposal, ProposalKind, Relation } from "./types.js";
 import type { Rng } from "./rng.js";
 import {
@@ -953,16 +954,14 @@ export function treatyPopulation(state: GameState, playerId: PlayerId, kind: "tr
   return n;
 }
 
-const pirated = (state: GameState, playerId: PlayerId) => (state.activeEvents ?? []).some((e) => e.kind === "pirates" && e.playerId === playerId);
-
 /**
  * The unscaled base of a treaty between a and b: half the smaller partner's
- * population; trade halved again while pirates prey on either (the original
- * halves for one random event that is probably its pirates: an estimate).
+ * population; trade halved again while pirates prey on either (an empire with
+ * a colony in the pirates' system, as in the original).
  */
 export function treatyBase(state: GameState, a: PlayerId, b: PlayerId, kind: "trade" | "research"): number {
   const base = Math.trunc(Math.min(treatyPopulation(state, a, kind), treatyPopulation(state, b, kind)) / TREATY_YIELD.baseDivisor);
-  if (kind === "trade" && (pirated(state, a) || pirated(state, b))) return Math.trunc(base / TREATY_YIELD.piratesDivisor);
+  if (kind === "trade" && (piratesActive(state, a) || piratesActive(state, b))) return Math.trunc(base / TREATY_YIELD.piratesDivisor);
   return base;
 }
 

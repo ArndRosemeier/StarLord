@@ -1,19 +1,21 @@
 /**
- * Random events, after the original's Galactic News list. How often they come
- * and whom they strike follow the original program; most magnitudes are ours.
+ * Random events, after the original's Galactic News list. How often they come,
+ * whom they strike and how hard follow the original program. Each kind of
+ * event happens at most once a game, as in the original (its slot stays taken
+ * once used).
  */
 
 export type EventId =
   | "derelict" | "axisShift" | "comet" | "computerVirus" | "assassination" | "diplomaticMarriage" | "donation"
   | "earthquake" | "shipExplosion" | "hyperspaceFlux" | "industrialAccident" | "mineralDepletion" | "mineralDeposit"
-  | "mutiny" | "pirates" | "plague" | "populationBoom" | "breakthrough" | "supernova" | "timeSpaceAnomaly"
+  | "mutiny" | "pirates" | "pirateRaid" | "plague" | "populationBoom" | "breakthrough" | "supernova" | "timeSpaceAnomaly"
   | "warpBeast" | "warpFunnel" | "unstableWormhole"
   | "amoeba" | "crystal" | "dragon" | "eel" | "hydra";
 
 export interface EventDef {
   /** Disasters strike big empires and spare lucky ones; good events go to small empires. */
   mood: "good" | "bad" | "neutral";
-  /** Strikes the whole galaxy rather than one empire. */
+  /** Strikes the whole galaxy (or a star picked at random) rather than one empire. */
   global?: boolean;
   /** Needs the monsters setting. */
   monster?: boolean;
@@ -25,37 +27,40 @@ export interface EventDef {
   fluxBefore?: number;
   /** In the list but switched off, as in the original. */
   disabled?: boolean;
+  /** Fires and uses up its slot but does nothing, as in the original (its effect was never wired up). */
+  dud?: boolean;
 }
 
 export const EVENTS: Record<EventId, EventDef> = {
   derelict: { mood: "good" },
   axisShift: { mood: "good" },
-  donation: { mood: "good" },
-  mineralDeposit: { mood: "good" },
-  populationBoom: { mood: "good" },
-  breakthrough: { mood: "good" },
-  diplomaticMarriage: { mood: "good" },
   comet: { mood: "bad", fromTurn: 200, needsFlux: true },
   computerVirus: { mood: "bad" },
   assassination: { mood: "bad" },
+  diplomaticMarriage: { mood: "good" },
+  donation: { mood: "good" },
   earthquake: { mood: "bad" },
   shipExplosion: { mood: "bad" },
-  hyperspaceFlux: { mood: "neutral", global: true },
+  hyperspaceFlux: { mood: "bad", global: true },
   industrialAccident: { mood: "bad" },
   mineralDepletion: { mood: "bad" },
+  mineralDeposit: { mood: "good" },
   mutiny: { mood: "bad", disabled: true },
   pirates: { mood: "bad" },
+  pirateRaid: { mood: "bad" },
   plague: { mood: "bad" },
-  supernova: { mood: "bad", fromTurn: 200 },
-  timeSpaceAnomaly: { mood: "bad" },
-  warpBeast: { mood: "neutral", global: true },
-  warpFunnel: { mood: "bad" },
-  unstableWormhole: { mood: "good" },
+  populationBoom: { mood: "good" },
+  breakthrough: { mood: "good" },
   amoeba: { mood: "bad", monster: true, fluxBefore: 100 },
   crystal: { mood: "bad", monster: true, fluxBefore: 200 },
   dragon: { mood: "bad", monster: true, fluxBefore: 300 },
   eel: { mood: "bad", monster: true, fluxBefore: 150 },
   hydra: { mood: "bad", monster: true, fluxBefore: 250 },
+  supernova: { mood: "bad", global: true, fromTurn: 200 },
+  timeSpaceAnomaly: { mood: "bad" },
+  warpBeast: { mood: "bad" },
+  warpFunnel: { mood: "bad", dud: true },
+  unstableWormhole: { mood: "good" },
 };
 
 /**
@@ -75,48 +80,61 @@ export const EVENT_TIMING = {
   luckDivisor: { events: 6, eventsAndRaiders: 8, noEvents: 10, noEventsWithRaiders: 12 },
 } as const;
 
-/** Event magnitudes. Ranges are inclusive [min, max]. */
+/** Event magnitudes, as the original program has them. Ranges are inclusive [min, max]. */
 export const EVENT_NUMBERS = {
   /** Donation: base + step × floor(turn / perTurns) BC, so it grows with the game. */
   donation: { base: 100, step: 100, perTurns: 20 },
-  derelictMaxCost: 1500,
+  /**
+   * Derelict ship: the beam weapon closest at or above the strongest beam any
+   * empire has (by top damage, at most `beamReach` higher), and the best armor
+   * any empire has, each if the empire lacks it. Xenon weapons are never found.
+   */
+  derelict: { beamReach: 50, defaultBeam: "laserCannon" },
   /**
    * Comet: hit points (rnd(5) + 10 + difficulty) × 10 and impact in
-   * rnd(5) + 10 − difficulty turns, as in the original. Each armed ship in orbit
-   * does its size class times cometDamagePerSize per turn (ours).
+   * rnd(5) + 10 − difficulty turns. Every ship in orbit there, of any empire,
+   * takes off its hull size (frigate 1 … doom star 6) each turn. On impact
+   * it scores (rnd(3) + rnd(3)) × (buildings + population) / 10 hits.
    */
   cometHp: { die: 5, base: 10, mult: 10 },
   cometTurns: { die: 5, base: 10 },
-  cometDamagePerSize: 10,
+  cometImpact: { dice: [3, 3] as [number, number] },
   /** Computer virus: needs this much stored research and wipes min(base + rnd(die), stored). */
   virus: { minStored: 10, base: 50, die: 50 },
-  attitudeShift: 20,
-  earthquakeKills: [0, 2] as [number, number],
-  earthquakeBuildings: [1, 2] as [number, number],
-  /**
-   * Pirates need this much BC in the treasury and steal (base + rnd(die))% of
-   * it when they strike; then their base chokes trade until armed ships of
-   * this total size class come to the system or they move on.
-   */
+  /** Assassination and diplomatic marriage: a relation event of this size with a random empire in contact, not at war. */
+  relationShift: 100,
+  /** Earthquake: (rnd(3) + rnd(2)) × (buildings + population) / 10 hits, at least 1. */
+  earthquake: { dice: [3, 2] as [number, number] },
+  /** Industrial accident: (rnd(3) + rnd(3)) × population / 10 colonists die, and one more hit lands. */
+  industrialAccident: { dice: [3, 3] as [number, number], hits: 1 },
+  /** Pirate raid: needs this much BC and steals (base + rnd(die))% of the treasury. */
   pirateMinBc: 100,
   pirateLootPercent: { base: 29, die: 21 },
-  pirateHunterSize: 6,
-  /** Plague: research points to cure, a colonist dies with this chance each turn, and the outbreak burns out after the timeout. */
-  plagueStrength: [100, 300] as [number, number],
-  plagueTimeout: 40,
-  boomTurns: [10, 20] as [number, number],
-  supernovaStrength: [200, 500] as [number, number],
-  /** Turns until the star explodes: rnd(5) + 10 − difficulty. */
+  /**
+   * Pirates: need this many freighters. Their base's strength is the fleet
+   * size (each ship's hull size, frigate 1 … doom star 6) of every empire
+   * with a colony in the system, times a fraction by difficulty (tutor …
+   * impossible); under `minStrength` they don't come. Each turn, with a
+   * chance of strength left / starting strength, every empire there loses a
+   * freighter; then the ships in orbit wear the strength down by their hull
+   * sizes. They stay until it is gone.
+   */
+  pirates: { minFreighters: 4, minStrength: 5, difficultyShare: [1 / 5, 2 / 5, 3 / 5, 1, 4 / 5] },
+  /** Plague: the cure takes the colony's research × (rnd(die) + perDifficulty × difficulty). */
+  plague: { die: 8, perDifficulty: 2 },
+  /**
+   * Supernova: explodes in rnd(5) + 10 − difficulty turns; stopping it takes
+   * that many turns of the system's current research. The system's worlds
+   * are left radiated.
+   */
   supernovaTurns: { die: 5, base: 10 },
   /**
-   * Lasting events (hyperspace flux, time-space anomaly, pirates, warp beast)
-   * end with a 1 in `endDie` chance each turn once they are `minTurns` old,
-   * and always after `maxTurns`.
+   * Lasting events (hyperspace flux, time-space anomaly, warp beast,
+   * population boom) end with a 1 in `endDie` chance each turn once they are
+   * `minTurns` old, and always at `maxTurns`.
    */
-  lasting: { minTurns: 5, maxTurns: 20, endDie: 20 },
-  /** Mineral deposits raise a planet's richness this many steps. */
+  lasting: { minTurns: 6, maxTurns: 22, endDie: 20 },
+  /** Mineral deposits raise a planet's richness this many steps; depletion only strikes ultra rich worlds. */
   depositSteps: 2,
-  /** Chance per turn the warp beast eats a ship from a fleet in hyperspace. */
-  warpBeastStrike: 0.4,
-  funnelTurns: [3, 6] as [number, number],
 };
+
