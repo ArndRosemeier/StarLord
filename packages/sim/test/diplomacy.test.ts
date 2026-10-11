@@ -1,0 +1,164 @@
+import { describe, expect, it } from "vitest";
+import {
+  COUNCIL, TIER_OF_TECH, TREATY_YIELD, attitude, destructibleBuildings, empireIncome, empireTotals,
+  newGame, playerView, processTurn, relKey, relation, spyEdge, treatyTotals, treatyYield, type GameState,
+} from "@starlord/sim";
+
+const quiet = { monsters: false, raiders: false, council: false, randomEvents: false };
+
+function met(seed: string, races = ["terran", "felhari"], extra: object = {}): GameState {
+  const s = newGame({ seed, races, ...quiet, ...extra });
+  for (const p of s.players) if (p.kind === "empire") p.contacts = s.players.filter((q) => q.kind === "empire" && q.id !== p.id).map((q) => q.id);
+  return s;
+}
+
+/** Signs trade and research treaties between 0 and 1 through proposals, as play would. */
+function signTreaties(s: GameState): GameState {
+  s = processTurn(s, { 0: [{ type: "propose", to: 1, kind: "trade" }, { type: "propose", to: 1, kind: "research" }] });
+  const ids = s.proposals.filter((p) => p.from === 0 && p.to === 1).map((p) => p.id);
+  expect(ids).toHaveLength(2);
+  return processTurn(s, { 1: ids.map((id) => ({ type: "respond" as const, proposalId: id, accept: true })) });
+}
+
+describe("trade and research treaties", () => {
+  it("start at a loss, break even, then pay the full yield every turn", () => {
+    let s = signTreaties(met("treaty"));
+    expect(relation(s, 0, 1)).toMatchObject({ trade: true, research: true });
+    const signed = relation(s, 0, 1).tradeSince!;
+    const seen: { age: number; bc: number; research: number }[] = [];
+    for (let i = 0; i < TREATY_YIELD.trade.full + 3; i++) {
+      const y = treatyYield(s, 0, 1, treatyTotals(s));
+      seen.push({ age: s.turn - signed, ...y });
+      s = processTurn(s, {});
+    }
+    const pop = Math.min(empireTotals(s, 0).population, empireTotals(s, 1).population);
+    expect(seen[0]!.bc).toBeLessThan(0);
+    expect(seen.find((x) => x.age === TREATY_YIELD.trade.breakEven)!.bc).toBe(0);
+    const last = seen[seen.length - 1]!;
+    expect(last.research).toBeGreaterThan(0);
+    expect(last.bc).toBeCloseTo(TREATY_YIELD.trade.perPop * pop, 0);
+  });
+
+  it("the money really arrives in the treasury", () => {
+    let s = signTreaties(met("treasury"));
+    for (let i = 0; i < TREATY_YIELD.trade.full; i++) s = processTurn(s, {});
+    const withTreaty = structuredClone(s);
+    const without = structuredClone(s);
+    const k = relKey(0, 1);
+    without.relations[k] = { ...without.relations[k]!, trade: false, research: false };
+    const a = processTurn(withTreaty, {});
+    const b = processTurn(without, {});
+    const y = treatyYield(s, 0, 1, treatyTotals(s));
+    expect(y.bc).toBeGreaterThan(0);
+    expect(a.players[0]!.bc - b.players[0]!.bc).toBeCloseTo(y.bc, 0);
+  });
+
+  // Regression: the player's own screens showed 0 because the partner's colonies were out of sight.
+  it("the player's view shows the same yield the turn pays, and counts it in income", () => {
+    let s = signTreaties(met("fogged"));
+    for (let i = 0; i < TREATY_YIELD.trade.full; i++) s = processTurn(s, {});
+    const view = playerView(s, 0);
+    expect(Object.values(view.colonies).some((c) => c.ownerId === 1)).toBe(false);
+    const real = treatyYield(s, 0, 1, treatyTotals(s));
+    expect(real.bc).toBeGreaterThan(0);
+    expect(treatyYield(view, 0, 1, treatyTotals(view))).toEqual(real);
+    expect(empireIncome(view, 0).treaties).toBeCloseTo(real.bc, 5);
+  });
+
+  it("stop paying when broken, and breaking sours their attitude", () => {
+    let s = signTreaties(met("broken"));
+    const before = attitude(s, 1, 0);
+    s = processTurn(s, { 0: [{ type: "breakTreaty", target: 1, treaty: "trade" }] });
+    expect(relation(s, 0, 1).trade).toBe(false);
+    expect(treatyYield(s, 0, 1, treatyTotals(s)).bc).toBe(0);
+    expect(attitude(s, 1, 0)).toBeLessThan(before);
+  });
+});
+
+describe("gifts and surrender", () => {
+  it("a gift of BC moves the money and warms them up", () => {
+    let s = met("gift");
+    s.players[0]!.bc = 200;
+    const before = attitude(s, 1, 0);
+    const theirs = s.players[1]!.bc;
+    s = processTurn(s, { 0: [{ type: "gift", to: 1, bc: 50 }] });
+    expect(s.players[1]!.bc - theirs).toBeGreaterThanOrEqual(50);
+    expect(attitude(s, 1, 0)).toBeGreaterThan(before);
+  });
+
+  it("a gift of technology teaches it", () => {
+    let s = met("techgift");
+    const tech = Object.keys(TIER_OF_TECH).find((t) => !s.players[0]!.techs.includes(t) && !s.players[1]!.techs.includes(t))!;
+    s.players[0]!.techs.push(tech);
+    s = processTurn(s, { 0: [{ type: "gift", to: 1, techId: tech }] });
+    expect(s.players[1]!.techs).toContain(tech);
+  });
+
+  it("surrender hands over every colony and ends the empire", () => {
+    let s = met("surrender");
+    const theirs = Object.values(s.colonies).filter((c) => c.ownerId === 1).length;
+    s = processTurn(s, { 1: [{ type: "surrender", to: 0 }] });
+    expect(s.players[1]!.alive).toBe(false);
+    expect(Object.values(s.colonies).filter((c) => c.ownerId === 0).length).toBeGreaterThanOrEqual(1 + theirs);
+  });
+
+  it("war ends treaties", () => {
+    let s = signTreaties(met("war"));
+    s = processTurn(s, { 0: [{ type: "declareWar", target: 1 }] });
+    expect(relation(s, 0, 1)).toMatchObject({ status: "war", trade: false, research: false });
+  });
+});
+
+describe("espionage", () => {
+  it("a strong spy team steals technology", () => {
+    let s = met("steal");
+    const tech = Object.keys(TIER_OF_TECH).find((t) => !s.players[0]!.techs.includes(t) && !s.players[1]!.techs.includes(t))!;
+    s.players[1]!.techs.push(tech);
+    s.players[1]!.spies.home = 0;
+    s.players[0]!.spies.abroad[1] = { count: 30, mission: "steal" };
+    expect(spyEdge(s, 0, 1, 30)).toBeGreaterThanOrEqual(15);
+    for (let i = 0; i < 20 && !s.players[0]!.techs.includes(tech); i++) s = processTurn(s, {});
+    expect(s.players[0]!.techs).toContain(tech);
+  });
+
+  it("sabotage destroys a building", () => {
+    let s = met("sabotage");
+    const home = Object.values(s.colonies).find((c) => c.ownerId === 1)!;
+    const count = () => destructibleBuildings(s.colonies[home.id]!).length;
+    expect(count()).toBeGreaterThan(0);
+    const before = count();
+    s.players[1]!.spies.home = 0;
+    s.players[0]!.spies.abroad[1] = { count: 30, mission: "sabotage" };
+    for (let i = 0; i < 20 && count() === before; i++) s = processTurn(s, {});
+    expect(count()).toBeLessThan(before);
+  });
+
+  it("spies at home make the enemy's job harder", () => {
+    const s = met("defense");
+    const open = spyEdge(s, 0, 1, 3);
+    s.players[1]!.spies.home = 5;
+    expect(spyEdge(s, 0, 1, 3)).toBeLessThan(open);
+  });
+});
+
+describe("galactic council", () => {
+  it("meets once enough of the galaxy is settled and a big enough majority elects a winner", () => {
+    let s = met("council", ["terran", "felhari", "kordex"], { council: true });
+    s.turn = COUNCIL.earliestTurn;
+    // Settle every star system for empire 0 on paper: one colony per system is what counts.
+    for (const star of s.galaxy.stars) {
+      const pid = star.planetIds.find((id) => !s.planets[id]!.colonyId);
+      if (!pid) continue;
+      const id = `c${s.nextId++}`;
+      const src = Object.values(s.colonies).find((c) => c.ownerId === 0)!;
+      s.colonies[id] = { ...structuredClone(src), id, planetId: pid, name: id, buildings: [], queue: [], progress: 0 };
+      s.planets[pid]!.colonyId = id;
+    }
+    // Everyone loves empire 0.
+    s.attitude[1] = { ...(s.attitude[1] ?? {}), 0: 100 };
+    s.attitude[2] = { ...(s.attitude[2] ?? {}), 0: 100 };
+    s = processTurn(s, {});
+    expect(s.council.convened).toBe(true);
+    expect(s.council.lastResult?.winner).toBe(0);
+  });
+});

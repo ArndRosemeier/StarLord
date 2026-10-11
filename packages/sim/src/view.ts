@@ -1,3 +1,5 @@
+import { relation } from "./diplomacy.js";
+import { empireTotals } from "./economy.js";
 import { BATTLE_SCANNER_RANGE, TRANSIT_DETECTION_PER_SIZE } from "./data/movement.js";
 import { getRace, registerRaces } from "./data/races.js";
 import { designStats, findDesign } from "./designs.js";
@@ -9,7 +11,11 @@ import type { Fleet, GameState, PlayerId } from "./types.js";
 /** What an empire calls a system it has not explored yet. */
 export const UNKNOWN_STAR_NAME = "Unknown system";
 
-export type PlayerView = GameState & { viewer: PlayerId };
+export type PlayerView = GameState & {
+  viewer: PlayerId;
+  /** Population of each empire the viewer has a trade or research treaty with: the treaty's yield depends on it. */
+  knownPopulation?: Record<PlayerId, number>;
+};
 
 /**
  * The game as one player knows it: every star position, but planets only in
@@ -90,8 +96,15 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
     const { feature, ...rest } = s;
     return { ...rest, name: UNKNOWN_STAR_NAME, ...(feature === "wormhole" ? { feature } : {}) };
   });
+  const knownPopulation: Record<PlayerId, number> = {};
+  for (const p of state.players) {
+    if (p.id === viewer || p.kind !== "empire" || !p.alive) continue;
+    const r = relation(state, viewer, p.id);
+    if (r.trade || r.research) knownPopulation[p.id] = empireTotals(state, p.id).population;
+  }
   return structuredClone({
     ...state,
+    knownPopulation,
     players,
     galaxy: { ...state.galaxy, stars: shownStars },
     planets, colonies, fleets, leaders, proposals, combats, events, viewer,

@@ -1,3 +1,4 @@
+import { treatyIncome, treatyTotals } from "./diplomacy.js";
 import { BUILDINGS_BY_ID, PROJECT_UPKEEP } from "./data/buildings.js";
 import { DRIVES, FUEL_RANGES, HULLS_BY_ID, SUPPORT_SHIP_COMMAND_POINTS } from "./data/components.js";
 import { GOVERNMENTS, type GovernmentDef } from "./data/governments.js";
@@ -194,8 +195,9 @@ export function empireIncome(state: GameState, playerId: PlayerId): EmpireIncome
   const salaries = Object.values(state.leaders).filter((l) => l.ownerId === playerId).reduce((s, l) => s + l.salary, 0);
   const over = Math.max(0, commandPointsUsed(state, playerId) - commandPointsAvailable(state, playerId));
   const commandOverage = over * COMMAND_OVERAGE_COST;
+  const treaties = treatyIncome(state, playerId, treatyTotals(state)).bc;
   return {
-    colonies, foodSales: food.saleBC, maintenance, freighters: food.upkeep, projects, salaries, commandOverage,
-    net: colonies + food.saleBC - maintenance - food.upkeep - projects - salaries - commandOverage,
+    colonies, foodSales: food.saleBC, maintenance, freighters: food.upkeep, projects, salaries, commandOverage, treaties,
+    net: colonies + food.saleBC + treaties - maintenance - food.upkeep - projects - salaries - commandOverage,
   };
 }

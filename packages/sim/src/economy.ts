@@ -572,6 +572,8 @@ export interface EmpireIncome {
   projects: number;
   salaries: number;
   commandOverage: number;
+  /** Trade treaties (research treaties pay research, not BC). */
+  treaties: number;
   net: number;
 }
 
