@@ -123,7 +123,7 @@ export function EmpireScreen() {
                   )}
                 </span>
               </label>
-              <select value={strategy.id} disabled={readOnly} aria-label={`${DOMAIN_INFO[d].name} strategy`}
+              <select className="strategy-select" value={strategy.id} disabled={readOnly} aria-label={`${DOMAIN_INFO[d].name} strategy`}
                 title={strategy.description} onChange={(e) => setStrategy(d, e.target.value)}>
                 {STRATEGIES[d].map((s) => <option key={s.id} value={s.id} title={s.description}>{s.name}</option>)}
               </select>
