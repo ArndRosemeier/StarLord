@@ -236,6 +236,19 @@ img.planet-img { display: block; justify-self: center; object-fit: contain; flex
   .title-canvas { cursor: default; }
 }
 .title-settings { background: rgba(14,18,32,0.85); }
+.title-version {
+  position: absolute; top: 12px; right: 16px; font-family: Orbitron, Inter, sans-serif; font-size: 12px; letter-spacing: 0.12em;
+  color: rgba(200,214,245,0.7); text-shadow: 0 1px 4px #000; pointer-events: none; animation: fade-in 1.5s 1.6s both;
+}
+.title-hero.leaving .title-version { opacity: 0; }
+.modal.whats-new { max-width: 680px; }
+.whats-new-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.whats-new-head h2 { margin: 0; }
+.whats-new-release { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
+.whats-new-release h3 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 0 0 6px; font-size: 15px; }
+.whats-new-version { font-family: Orbitron, Inter, sans-serif; color: var(--accent); }
+.whats-new-date { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); }
+.whats-new-release ul { margin: 0; padding-left: 20px; line-height: 1.5; }
 .title-screen.setup { max-width: none; margin: 0; padding: 24px max(24px, calc((100% - 1280px) / 2));
   background: linear-gradient(rgba(7,9,18,0.82), rgba(7,9,18,0.94)), url(/art/galaxy.webp) center / cover fixed; }
 .title-screen .logo { font-family: Orbitron, Inter, system-ui, sans-serif; }
