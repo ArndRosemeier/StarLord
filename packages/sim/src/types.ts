@@ -23,7 +23,22 @@ export interface GameSettings {
   council: boolean;
   /** Player-built races in this game, so saves and replays carry their rules. */
   customRaces?: RaceDef[];
+  /** AI production, research and attitude toward human players. Missing means "average". */
+  difficulty?: Difficulty;
+  /** Star colour mix: young galaxies are hot and mineral rich, old ones cool and fertile. */
+  galaxyAge?: GalaxyAge;
+  /** Starting civilization: pre-warp, average or advanced. */
+  techLevel?: TechLevel;
+  /** Random events (disasters, windfalls, invading monsters). Missing means on. */
+  randomEvents?: boolean;
 }
+
+export type Difficulty = "tutor" | "easy" | "average" | "hard" | "impossible";
+export type GalaxyAge = "young" | "average" | "old";
+export type TechLevel = "preWarp" | "average" | "advanced";
+
+/** One-time or system-wide specials found when a system is first explored. */
+export type SystemFeature = "cache" | "debris" | "hero" | "wormhole";
 
 export interface Star {
   id: Id;
@@ -33,6 +48,19 @@ export interface Star {
   color: StarColor;
   planetIds: Id[];
   special: "orion" | "raiderHome" | null;
+  /** The system's special, if it is a system-wide one (planet specials sit on the planet). */
+  feature?: SystemFeature;
+  /** Other end of this system's stable wormhole. */
+  wormholeTo?: Id;
+  /** Inside a nebula: ships crawl at 1 parsec per turn and only hard shields work in combat. */
+  nebula?: boolean;
+}
+
+/** A nebula cloud on the galaxy map. */
+export interface Nebula {
+  x: number;
+  y: number;
+  r: number;
 }
 
 export interface Planet {
@@ -43,8 +71,12 @@ export interface Planet {
   size: PlanetSize;
   minerals: Minerals;
   gravity: Gravity;
-  special: "none" | "artifacts" | "gold" | "gems" | "natives";
+  special: "none" | "artifacts" | "gold" | "gems" | "natives" | "splinter";
   colonyId: Id | null;
+  /** Native population units living here before anyone settles (natives special). */
+  natives?: number;
+  /** Set once an empire has colonized an artifacts planet and taken its breakthrough. */
+  artifactsClaimed?: boolean;
 }
 
 export type BuildItem =
@@ -82,6 +114,11 @@ export interface Colony {
   assimilation?: number;
   /** Empire the colony was taken from, which revolting aliens return it to. */
   formerOwnerId?: PlayerId;
+  /**
+   * Native farmers counted among the farmers; they never change jobs and
+   * farm at +2 food.
+   */
+  natives?: number;
   /** Android population units by job; they count toward max population but eat no food. */
   androids?: AndroidCounts;
   /** Marines and tank battalions trained by the barracks beyond the ones present when built. */
@@ -126,6 +163,10 @@ export interface Fleet {
   name: string;
   /** Colony this fleet's troops will invade once its defenses are down. */
   invadeTarget?: Id;
+  /** Star the fleet last left, for jump gates between your own colonies. */
+  fromStarId?: Id;
+  /** Fixed speed in parsecs per turn for monsters roaming the galaxy. */
+  speed?: number;
 }
 
 export interface WeaponMount {
@@ -314,16 +355,29 @@ export interface Leader {
   availableUntil: number;
 }
 
-export type DiplomaticStatus = "none" | "war" | "peace" | "alliance";
+/** none = no treaty; peace = a signed peace treaty; nonAggression = pact; alliance. */
+export type DiplomaticStatus = "none" | "war" | "peace" | "nonAggression" | "alliance";
 
 export interface Relation {
   status: DiplomaticStatus;
   trade: boolean;
   research: boolean;
+  /** Turn the status last changed. */
   since: number;
+  /** Turns the trade and research treaties were signed; their yield ramps up from a loss. */
+  tradeSince?: number;
+  researchSince?: number;
+  /** A peace treaty forbids attacks until this turn; breaking it is a grave offence. */
+  peaceUntil?: number;
 }
 
-export type ProposalKind = "peace" | "alliance" | "trade" | "research" | "ceasefire";
+export type ProposalKind =
+  | "peace" | "ceasefire" | "nonAggression" | "alliance" | "trade" | "research"
+  /** One-for-one swap: the proposer gives techId and asks for wantTechId. */
+  | "techExchange"
+  /** Demands the receiver may accept or refuse. */
+  | "demandTribute" | "demandTech" | "demandSystem" | "demandWar" | "demandPeace" | "demandBreakAlliance"
+  | "demandStopSpying" | "demandRemoveFleet";
 
 export interface Proposal {
   id: Id;
@@ -331,6 +385,38 @@ export interface Proposal {
   to: PlayerId;
   kind: ProposalKind;
   turn: number;
+  techId?: string;
+  wantTechId?: string;
+  starId?: Id;
+  /** Third empire named by a war, peace or alliance demand. */
+  third?: PlayerId;
+  /** Tribute percentage (5 or 10). */
+  percent?: number;
+}
+
+/** Standing tribute: `from` pays `percent` of its income to `to` every turn. */
+export interface Tribute {
+  from: PlayerId;
+  to: PlayerId;
+  percent: number;
+}
+
+/** A random event or invading monster still in progress. */
+export interface ActiveEvent {
+  id: Id;
+  kind: string;
+  playerId?: PlayerId;
+  colonyId?: Id;
+  starId?: Id;
+  fleetId?: Id;
+  planetId?: Id;
+  /** Last turn the event lasts (inclusive). */
+  until: number;
+  /** Comet hit points, plague or supernova research needed, bribe asked… */
+  strength?: number;
+  progress?: number;
+  /** Original planet climate for a temporary change. */
+  restore?: string;
 }
 
 export interface CombatShipSnapshot {
@@ -404,7 +490,7 @@ export type GameEvent =
   | { turn: number; kind: "spy"; playerId: PlayerId; other: PlayerId; what: string }
   | { turn: number; kind: "leader"; playerId: PlayerId; leaderId: Id; what: string }
   | { turn: number; kind: "council"; playerId: PlayerId; what: string }
-  | { turn: number; kind: "random"; playerId: PlayerId; what: string }
+  | { turn: number; kind: "random"; playerId: PlayerId; what: string; starId?: Id }
   | { turn: number; kind: "raid"; playerId: PlayerId; starId: Id }
   | { turn: number; kind: "eliminated"; playerId: PlayerId }
   | { turn: number; kind: "victory"; playerId: PlayerId; how: VictoryKind };
@@ -412,6 +498,10 @@ export type GameEvent =
 export interface CouncilState {
   nextTurn: number;
   lastResult: { turn: number; candidates: PlayerId[]; votes: Record<string, number>; winner: PlayerId | null } | null;
+  /** An elected leader awaiting acceptance; any empire may refuse during the next turn. */
+  pending?: { winner: PlayerId; turn: number; refused: PlayerId[] } | null;
+  /** Whether the council has started meeting (it first meets once most of the galaxy is settled). */
+  convened?: boolean;
 }
 
 export interface GameState {
@@ -433,6 +523,13 @@ export interface GameState {
   leaders: Record<Id, Leader>;
   council: CouncilState;
   raiders: { nextRaid: number; defeated: boolean };
+  /** Nebula clouds drawn on the map; stars inside carry `nebula`. */
+  nebulae?: Nebula[];
+  tributes?: Tribute[];
+  activeEvents?: ActiveEvent[];
+  /** Empires that ordered a surrender this turn, mapped to who receives them. */
+  surrenders?: Record<string, PlayerId>;
+
   /** Combats from the most recent turn, kept for replay. */
   combats: CombatReport[];
   /** Events produced by the most recent turn. */

@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
-import { RACES, TRAIT_COSTS, getRace, type CustomRaceSpec, type GalaxySize } from "@starlord/sim";
+import {
+  DIFFICULTIES, DIFFICULTY_ORDER, RACES, TRAIT_COSTS, getRace, type CustomRaceSpec, type Difficulty, type GalaxyAge, type GalaxySize,
+  type TechLevel,
+} from "@starlord/sim";
 import { customRaceDefs, loadCustomRaces, saveCustomRaces } from "../game/customRaces";
 import { RaceBuilder, blankRace } from "./RaceBuilder";
 import { GameSession } from "../game/session";
@@ -30,6 +33,10 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
   const [monsters, setMonsters] = useState(true);
   const [raiders, setRaiders] = useState(true);
   const [council, setCouncil] = useState(true);
+  const [difficulty, setDifficulty] = useState<Difficulty>("average");
+  const [galaxyAge, setGalaxyAge] = useState<GalaxyAge>("average");
+  const [techLevel, setTechLevel] = useState<TechLevel>("average");
+  const [randomEvents, setRandomEvents] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saves, setSaves] = useState(listSaves);
   const [customSpecs, setCustomSpecs] = useState<CustomRaceSpec[]>(loadCustomRaces);
@@ -37,6 +44,8 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
   const custom = useMemo(() => customRaceDefs(customSpecs), [customSpecs]);
   const chosenCustom = custom.find((c) => c.def.id === raceId);
   const race = chosenCustom?.def ?? getRace(raceId);
+  // As in the original, custom races are not allowed on the two easiest levels.
+  const customBlocked = !!chosenCustom && !DIFFICULTIES[difficulty].customRaces;
 
   const storeCustom = (list: CustomRaceSpec[]) => {
     setCustomSpecs(list);
@@ -49,7 +58,9 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
     const others = shuffled(RACES.map((r) => r.id).filter((id) => id !== raceId)).slice(0, opponents);
     const races = spectate ? shuffled(RACES.map((r) => r.id)).slice(0, opponents + 1) : [raceId, ...others];
     const customRaces = !spectate && chosenCustom ? [chosenCustom.spec] : [];
-    onStart(GameSession.create({ seed, galaxySize: galaxy, races, maxTurns, monsters, raiders, council, customRaces }, spectate ? null : 0));
+    onStart(GameSession.create({
+      seed, galaxySize: galaxy, races, maxTurns, monsters, raiders, council, customRaces, difficulty, galaxyAge, techLevel, randomEvents,
+    }, spectate ? null : 0));
   };
 
   const load = (data: unknown) => {
@@ -143,9 +154,25 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
               <label><input type="checkbox" checked={monsters} onChange={(e) => setMonsters(e.target.checked)} /> Monsters</label>
               <label><input type="checkbox" checked={raiders} onChange={(e) => setRaiders(e.target.checked)} /> Raiders</label>
               <label><input type="checkbox" checked={council} onChange={(e) => setCouncil(e.target.checked)} /> Galactic council</label>
+              <label><input type="checkbox" checked={randomEvents} onChange={(e) => setRandomEvents(e.target.checked)} /> Random events</label>
             </div>
             <div className="row">
-              <button className="primary" onClick={() => start(false)}>Play as the {race.plural}</button>
+              <label>Difficulty <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as Difficulty)}>
+                {DIFFICULTY_ORDER.map((d) => <option key={d} value={d}>{DIFFICULTIES[d].name}</option>)}
+              </select></label>
+              <label>Galaxy age <select value={galaxyAge} onChange={(e) => setGalaxyAge(e.target.value as GalaxyAge)}>
+                {(["young", "average", "old"] as const).map((a) => <option key={a} value={a}>{words(a)}</option>)}
+              </select></label>
+              <label>Tech level <select value={techLevel} onChange={(e) => setTechLevel(e.target.value as TechLevel)}>
+                <option value="preWarp">Pre-warp</option>
+                <option value="average">Average</option>
+                <option value="advanced">Advanced</option>
+              </select></label>
+            </div>
+            {customBlocked && <div className="bad">Custom races need Average difficulty or harder.</div>}
+            <div className="row">
+              <button className="primary" disabled={customBlocked} onClick={() => start(false)}>Play as the {race.plural}</button>
+
               <button onClick={() => start(true)} title="All empires are run by the computer; you watch.">Watch an AI game</button>
               <label className="row" style={{ gap: 6 }}>
                 <span className="muted">or load a save or replay file</span>

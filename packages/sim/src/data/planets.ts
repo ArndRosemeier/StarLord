@@ -24,6 +24,12 @@ export interface ClimateInfo {
 }
 
 /** Farming is impossible where the base food per farmer is 0, unless Biomorphic Fungi are known. */
+/**
+ * Hostile worlds hold a quarter of a Gaia world. With max population rounded
+ * down this gives the original's 1 / 2 / 4 / 5 / 6 for tiny to huge.
+ */
+export const HOSTILE_POP = 4 / 3 + 0.001;
+
 export const CLIMATES: Record<PlanetType, ClimateInfo> = {
   gaia: { popPerSize: 5, foodPerFarmer: 3, habitable: true, hostile: false, maintenancePenalty: 0 },
   terran: { popPerSize: 4, foodPerFarmer: 2, habitable: true, hostile: false, maintenancePenalty: 0 },
@@ -32,10 +38,10 @@ export const CLIMATES: Record<PlanetType, ClimateInfo> = {
   arid: { popPerSize: 3, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0 },
   tundra: { popPerSize: 2, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0 },
   desert: { popPerSize: 2, foodPerFarmer: 1, habitable: true, hostile: false, maintenancePenalty: 0.25 },
-  barren: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
-  radiated: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.25 },
-  toxic: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.5 },
-  inferno: { popPerSize: 1, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
+  barren: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
+  radiated: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.25 },
+  toxic: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0.5 },
+  inferno: { popPerSize: HOSTILE_POP, foodPerFarmer: 0, habitable: true, hostile: true, maintenancePenalty: 0 },
   asteroids: { popPerSize: 0, foodPerFarmer: 0, habitable: false, hostile: true, maintenancePenalty: 0 },
   gasGiant: { popPerSize: 0, foodPerFarmer: 0, habitable: false, hostile: true, maintenancePenalty: 0 },
 };
@@ -68,7 +74,7 @@ export function gravityOf(size: PlanetSize, minerals: Minerals): Gravity {
 
 /** Relative frequency of star colors. */
 export const STAR_COLOR_WEIGHTS: Record<StarColor, number> = {
-  blue: 6, white: 10, yellow: 18, orange: 20, red: 32, brown: 10, blackHole: 4,
+  blue: 6, white: 10, yellow: 20, orange: 22, red: 34, brown: 3, blackHole: 5,
 };
 
 /** Planet type weights by star color: hotter stars skew hostile, yellow skews temperate. */
@@ -97,5 +103,5 @@ export const MINERAL_WEIGHTS_BY_STAR: Record<StarColor, Partial<Record<Minerals,
 };
 
 export const PLANETS_PER_STAR: Record<StarColor, [number, number]> = {
-  blue: [1, 4], white: [1, 5], yellow: [1, 5], orange: [1, 5], red: [0, 4], brown: [0, 3], blackHole: [0, 0],
+  blue: [1, 4], white: [1, 5], yellow: [1, 5], orange: [1, 5], red: [0, 4], brown: [0, 0], blackHole: [0, 0],
 };

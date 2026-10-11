@@ -71,11 +71,20 @@ export function government(player: Player): GovernmentDef {
   return GOVERNMENTS[player.government];
 }
 
+/**
+ * Base galaxy-map speed in parsecs per turn: the best drive known, plus 2 for
+ * trans-dimensional races. Jump gates, nebulae and interdictors adjust single
+ * moves (see movement.ts).
+ */
 export function fleetSpeed(player: Player): number {
   const known = DRIVES.filter((d) => knows(player, d.tech));
   const base = known.length ? known[known.length - 1]!.speed : 1;
-  // Trans-dimensional races fold space: +2 parsecs a turn, even without a drive.
-  return base + (knows(player, "jumpGate") ? 1 : 0) + raceFleetSpeedBonus(getRace(player.raceId));
+  return base + raceFleetSpeedBonus(getRace(player.raceId));
+}
+
+/** Whether a player has any faster-than-light drive; pre-warp empires cannot leave their home system. */
+export function hasFtl(player: Player): boolean {
+  return DRIVES.some((d) => knows(player, d.tech));
 }
 
 export function fleetRange(player: Player): number {
@@ -83,7 +92,8 @@ export function fleetRange(player: Player): number {
   return known.length ? known[known.length - 1]!.range : 3;
 }
 
-export const BASE_SCAN_RANGE = 2;
+/** Space Scanner range; Tachyon, Neutron and Sensors raise it to 3, 5 and 8. */
+export const BASE_SCAN_RANGE = 1;
 
 export function scanRange(player: Player): number {
   return BASE_SCAN_RANGE + empireBonus(player).scanRange;
@@ -141,6 +151,10 @@ export function spyingLevel(player: Player, state?: GameState): number {
   return (offensiveSpyPoints(getRace(player.raceId)) + leader) / PICK_VALUES.spyingPerLevel + empireBonus(player).spying;
 }
 
+/**
+ * Defensive spy level: counter-agents get only half the race pick, plus the
+ * spy techs, telepathy, government security and security buildings.
+ */
 export function securityLevel(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId]!;
   // Defending spies get half the racial spying bonus (telepaths +10 in full) and the best Telepath leader's points.

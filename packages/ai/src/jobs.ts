@@ -21,9 +21,11 @@ export function jobOrders(view: PlayerView): Command[] {
   const share = personality(view).science;
   const plan = new Map<string, Colony>();
   for (const c of colonies) {
-    const pop = population(c);
-    const sci = pop >= 3 ? Math.round(pop * share) : 0;
-    plan.set(c.id, { ...c, farmers: 0, workers: pop - sci, scientists: sci });
+    // Natives only ever farm.
+    const natives = c.natives ?? 0;
+    const free = population(c) - natives;
+    const sci = free >= 3 ? Math.round(free * share) : 0;
+    plan.set(c.id, { ...c, farmers: natives, workers: free - sci, scientists: sci });
   }
 
   const ctx = { turn: view.turn };

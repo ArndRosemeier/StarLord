@@ -172,6 +172,7 @@ function commandKey(cmd: Command): string | null {
     case "setTaxRate":
     case "setDoctrine":
     case "setCouncilVote":
+    case "councilResponse":
     case "setAutomation":
       return cmd.type;
     case "moveFleet":

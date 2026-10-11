@@ -482,7 +482,10 @@ const hasWeapons = (u: Unit) => u.mounts.some((m) => m.count > 0 && m.shots > 0 
 const armed = (u: Unit) => active(u) && hasWeapons(u);
 
 export function resolveCombat(state: GameState, rng: Rng, starId: string, a: CombatSide, b: CombatSide, reportId: string): CombatOutcome {
-  return new Battle(state, rng, a, b).run(starId, reportId);
+  const battle = new Battle(state, rng, a, b);
+  // Ionized nebula gas stops deflector shields unless they are hard shields.
+  battle.nebula = !!state.galaxy.stars.find((s) => s.id === starId)?.nebula;
+  return battle.run(starId, reportId);
 }
 
 class Battle {
@@ -494,6 +497,8 @@ class Battle {
   /** Scout labs give the whole fleet an attack bonus against monsters. */
   monsterBonus = [0, 0];
   fleetEvasion = [0, 0];
+  /** The battle is inside a nebula: only hard shields work. */
+  nebula = false;
   readonly sides: readonly [CombatSide, CombatSide];
 
   constructor(readonly state: GameState, readonly rng: Rng, a: CombatSide, b: CombatSide) {
@@ -698,6 +703,7 @@ class Battle {
   // ------------------------------------------------------------ derived values
 
   shieldWorks(u: Unit): boolean {
+    if (this.nebula && !u.hardShields && u.kind !== "planet") return false;
     return u.shieldClass > 0 && (u.shieldGen === null || u.shieldGen.hp > 0);
   }
 

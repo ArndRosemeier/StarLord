@@ -1,7 +1,7 @@
 import { useState } from "react";
-import type { CombatReport } from "@starlord/sim";
+import { bribeProblem, monsterDemands, type CombatReport } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
-import { describeEvent, starName } from "../ui/format";
+import { describeEvent, fmt, starName, words } from "../ui/format";
 import { CombatReplay } from "./CombatReplay";
 
 /** A small glyph per kind of turn report event. */
@@ -25,6 +25,18 @@ export function EventsScreen({ onShowStar }: { onShowStar: (starId: string) => v
         <span className="spacer" />
         <label><input type="checkbox" checked={showRoutine} onChange={(e) => setShowRoutine(e.target.checked)} /> Show exploration and finished builds</label>
       </div>
+      {monsterDemands(view, me.id).map((ev) => {
+        const why = bribeProblem(view, me.id, ev.id);
+        return (
+          <div className="panel row incoming" key={ev.id}>
+            <span>A {words(ev.kind)} hovers over {starName(view, ev.starId ?? "")} and will leave for {fmt(ev.strength ?? 0)} BC.</span>
+            <span className="spacer" />
+            {ev.starId && <button className="small" onClick={() => onShowStar(ev.starId!)}>Show</button>}
+            <button className="small primary" disabled={!!why || session.pending.some((c) => c.type === "bribeMonster" && c.eventId === ev.id)}
+              title={why ?? undefined} onClick={() => session.issue({ type: "bribeMonster", eventId: ev.id })}>Pay</button>
+          </div>
+        );
+      })}
       {turns.length === 0 && <div className="panel muted">Nothing has happened yet. End your first turn.</div>}
       {turns.map((t) => {
         const events = t.events.filter((e) => e.playerId === me.id && (showRoutine || (e.kind !== "explored" && e.kind !== "built")));

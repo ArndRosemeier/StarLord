@@ -1,16 +1,21 @@
+import { TECH_LEVELS } from "./data/galaxy.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import { gravityOf, type Minerals, type PlanetSize, type PlanetType } from "./data/planets.js";
 import { RACES, getRace, hasTrait } from "./data/races.js";
-import { STARTING_TECHS, STARTING_TIERS, emptyHyperLevels } from "./data/techs.js";
+import { STARTING_TECH_APPS, TECH_TIERS, emptyHyperLevels, type TechTier } from "./data/techs.js";
 import { startingDesigns } from "./designs.js";
-import { generateGalaxy, pickHomeStars } from "./galaxy.js";
+import { distance, generateGalaxy, pickHomeStars, placeNebulae, placeSpecials } from "./galaxy.js";
 import { assignJobsForFood } from "./jobs.js";
 import { buildCustomRace, type CustomRaceSpec } from "./customRace.js";
 import { createRoster } from "./leaders.js";
 import { setupNpcs } from "./npc.js";
 import { COUNCIL_FIRST } from "./council.js";
+import { maxPopulation } from "./economy.js";
+import { learnsWholeField, researchOptions } from "./rules.js";
 import { Rng, seedRng } from "./rng.js";
-import type { Colony, Fleet, GameSettings, GameState, Id, Planet, Player, PlayerId } from "./types.js";
+import type {
+  Colony, Difficulty, Fleet, GalaxyAge, GameSettings, GameState, Id, Planet, Player, PlayerId, TechLevel,
+} from "./types.js";
 
 export interface NewGameOptions {
   seed: string | number;
@@ -22,15 +27,20 @@ export interface NewGameOptions {
   humanPlayers?: PlayerId[];
   maxTurns?: number;
   monsters?: boolean;
+  /** Antaran-style attacks by the Vexari raiders (and the portal victory). */
   raiders?: boolean;
   council?: boolean;
+  difficulty?: Difficulty;
+  galaxyAge?: GalaxyAge;
+  techLevel?: TechLevel;
+  randomEvents?: boolean;
   /** Player-built races; their ids (from buildCustomRace) may appear in `races`. */
   customRaces?: CustomRaceSpec[];
 }
 
 export const HOMEWORLD_POP = 8;
 export const STARTING_BC = 50;
-export const HOMEWORLD_BUILDINGS = ["marineBarracks", "starBase"];
+export const HOMEWORLD_BUILDINGS = TECH_LEVELS.average.buildings;
 
 export function newGame(opts: NewGameOptions): GameState {
   const seed = String(opts.seed);
@@ -52,11 +62,17 @@ export function newGame(opts: NewGameOptions): GameState {
     monsters: opts.monsters ?? true,
     raiders: opts.raiders ?? true,
     council: opts.council ?? true,
+    difficulty: opts.difficulty ?? "average",
+    galaxyAge: opts.galaxyAge ?? "average",
+    techLevel: opts.techLevel ?? "average",
+    randomEvents: opts.randomEvents ?? true,
   };
   if (customRaces.length > 0) settings.customRaces = customRaces;
+  const level = TECH_LEVELS[settings.techLevel!];
 
-  const galaxy = generateGalaxy(rng, settings.galaxySize, newId);
+  const galaxy = generateGalaxy(rng, settings.galaxySize, newId, settings.galaxyAge);
   const homes = pickHomeStars(rng, galaxy.stars, playerCount);
+  const nebulae = placeNebulae(rng, settings.galaxySize, galaxy.width, galaxy.height, galaxy.stars, galaxy.planets, homes);
 
   const state: GameState = {
     version: 2,
@@ -75,6 +91,9 @@ export function newGame(opts: NewGameOptions): GameState {
     leaders: {},
     council: { nextTurn: COUNCIL_FIRST, lastResult: null },
     raiders: { nextRaid: Infinity, defeated: false },
+    nebulae,
+    tributes: [],
+    activeEvents: [],
     combats: [],
     events: [],
     nextId: 0,
@@ -87,6 +106,7 @@ export function newGame(opts: NewGameOptions): GameState {
     const race = getRace(raceId);
     const home = homes[i]!;
     home.color = "yellow";
+    home.nebula = false;
 
     // Replace a middle orbit with the homeworld so every start is comparable.
     const size: PlanetSize = hasTrait(race, "largeHomeworld") ? "large" : "medium";
@@ -99,6 +119,7 @@ export function newGame(opts: NewGameOptions): GameState {
       special: hasTrait(race, "artifactsHomeworld") ? "artifacts" : "none",
       colonyId: null,
     };
+    if (hw.special === "artifacts") hw.artifactsClaimed = true;
     for (const pid of home.planetIds) {
       if (state.planets[pid]!.orbit === 3) delete state.planets[pid];
     }
@@ -114,10 +135,10 @@ export function newGame(opts: NewGameOptions): GameState {
       isHuman: settings.humanPlayers.includes(i),
       alive: true,
       government: race.picks.government,
-      bc: STARTING_BC,
+      bc: level.bc,
       taxRate: 0,
-      techs: [...STARTING_TECHS],
-      tiers: [...STARTING_TIERS],
+      techs: [...STARTING_TECH_APPS],
+      tiers: [],
       research: { tierId: null, techChoice: null, progress: 0 },
       hyperLevels: emptyHyperLevels(),
       mutationPoints: 0,
@@ -138,32 +159,60 @@ export function newGame(opts: NewGameOptions): GameState {
     const needsCapitol = GOVERNMENTS[player.government].capitalLossMorale > 0;
     if (needsCapitol) player.capitol = "held";
     state.players.push(player);
+    grantStartingTechs(rng, player, settings.techLevel!);
 
     const colony: Colony = {
       id: newId("c"), planetId: hw.id, ownerId: i, raceId, name: home.name, outpost: false,
       farmers: 0, workers: HOMEWORLD_POP, scientists: 0, growthK: 0,
       // Unified governments neither have nor need a capital.
-      buildings: [...(needsCapitol ? ["capitol"] : []), ...HOMEWORLD_BUILDINGS], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
+      buildings: [...(needsCapitol ? ["capitol"] : []), ...level.buildings], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
     };
     hw.colonyId = colony.id;
     state.colonies[colony.id] = colony;
     assignJobsForFood(state, colony);
 
-    const fleet = (name: string, ships: Fleet["ships"]): void => {
+    for (const s of level.ships) {
       const f: Fleet = {
-        id: newId("f"), ownerId: i, x: home.x, y: home.y, starId: home.id, destStarId: null, ships,
-        stance: "defend", name,
+        id: newId("f"), ownerId: i, x: home.x, y: home.y, starId: home.id, destStarId: null,
+        ships: [{ designId: s.designId, count: s.count }], stance: "defend", name: s.name,
       };
       state.fleets[f.id] = f;
-    };
-    fleet("Scout I", [{ designId: "scout", count: 1 }]);
-    fleet("Scout II", [{ designId: "scout", count: 1 }]);
-    fleet("Colony Fleet", [{ designId: "colonyShip", count: 1 }]);
-    fleet("Home Guard", [{ designId: "frigate", count: 2 }]);
+    }
   });
+
+  // Advanced starts: settled neighbourhoods and charted space.
+  for (const player of state.players) {
+    const home = state.galaxy.stars.find((s) => s.id === player.homeStarId)!;
+    if (level.exploredRadius > 0) {
+      for (const s of state.galaxy.stars) {
+        if (!player.explored.includes(s.id) && distance(s, home) <= level.exploredRadius) player.explored.push(s.id);
+      }
+    }
+    for (let n = 0; n < level.extraColonies; n++) {
+      const race = getRace(player.raceId);
+      const options = state.galaxy.stars
+        .filter((s) => distance(s, home) <= 6 && !homes.some((h) => h !== home && distance(h, s) < distance(home, s)))
+        .flatMap((s) => s.planetIds.map((id) => state.planets[id]!))
+        .filter((p) => !p.colonyId && p.special !== "natives" && p.special !== "splinter" && maxPopulation(p, race) >= level.extraColonyPop)
+        .sort((a, b) => maxPopulation(b, race) - maxPopulation(a, race) || (a.id < b.id ? -1 : 1));
+      const planet = options[0];
+      if (!planet) break;
+      const star = state.galaxy.stars.find((s) => s.id === planet.starId)!;
+      const c: Colony = {
+        id: newId("c"), planetId: planet.id, ownerId: player.id, raceId: player.raceId, name: `${star.name} ${["I", "II", "III", "IV", "V"][planet.orbit - 1]}`,
+        outpost: false, farmers: 0, workers: level.extraColonyPop, scientists: 0, growthK: 0,
+        buildings: [], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
+      };
+      planet.colonyId = c.id;
+      state.colonies[c.id] = c;
+      assignJobsForFood(state, c);
+      if (!player.explored.includes(star.id)) player.explored.push(star.id);
+    }
+  }
 
   state.nextId = nextId;
   setupNpcs(state, rng);
+  placeSpecials(rng, state.galaxy.stars, state.planets, homes);
   createRoster(state, rng);
   for (const p of state.players) {
     if (p.kind === "empire" && hasTrait(getRace(p.raceId), "omniscient")) {
@@ -171,4 +220,32 @@ export function newGame(opts: NewGameOptions): GameState {
     }
   }
   return state;
+}
+
+/**
+ * Researched fields at the start. Pre-warp knows only the starting
+ * applications; average adds every general field plus a few random extras;
+ * advanced adds every field up to a tech level. Non-general fields teach the
+ * race's usual share: all for creative races, otherwise one random application.
+ */
+export function grantStartingTechs(rng: Rng, player: Player, techLevel: TechLevel): void {
+  const def = TECH_LEVELS[techLevel];
+  const learn = (tier: TechTier) => {
+    if (player.tiers.includes(tier.id)) return;
+    player.tiers.push(tier.id);
+    const options = researchOptions(player, tier);
+    const apps = learnsWholeField(player, tier) ? options : options.length ? [rng.pick(options)] : [];
+    for (const t of apps) if (!player.techs.includes(t)) player.techs.push(t);
+  };
+  for (const tier of TECH_TIERS) {
+    if (tier.hyper) continue;
+    if ((def.generalFields && tier.general) || tier.level <= def.maxFieldLevel) learn(tier);
+  }
+  for (let i = 0; i < def.extraFields; i++) {
+    const next = TECH_TIERS.filter(
+      (t) => !t.hyper && !player.tiers.includes(t.id) && t.level <= def.extraMaxLevel && (t.prev === null || player.tiers.includes(t.prev)),
+    );
+    if (next.length === 0) break;
+    learn(rng.pick(next));
+  }
 }

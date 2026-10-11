@@ -44,7 +44,7 @@ function npcPlayer(id: number, kind: "monsters" | "raiders"): Player {
   };
 }
 
-function spawn(state: GameState, ownerId: number, star: Star, ships: Fleet["ships"], name: string): Fleet {
+export function spawn(state: GameState, ownerId: number, star: Star, ships: Fleet["ships"], name: string): Fleet {
   const f: Fleet = {
     id: newId(state, "f"), ownerId, x: star.x, y: star.y, starId: star.id, destStarId: null,
     ships, stance: "attack", name,
@@ -79,6 +79,7 @@ export function setupNpcs(state: GameState, rng: Rng): void {
       orion.special = "orion";
       orion.name = "Orion";
       orion.color = "white";
+      orion.nebula = false;
       for (const pid of orion.planetIds) delete state.planets[pid];
       const p = {
         id: newId(state, "p"), starId: orion.id, orbit: 3, type: "gaia" as const, size: "huge" as const,
@@ -92,7 +93,7 @@ export function setupNpcs(state: GameState, rng: Rng): void {
     const terran = getRace("terran");
     const maxHome = Math.max(...state.galaxy.stars.map((s) => Math.min(...homes.map((h) => distance(h, s)))));
     for (const star of state.galaxy.stars) {
-      if (star.special || homes.includes(star) || nearHome(star, 5)) continue;
+      if (star.special || star.color === "blackHole" || homes.includes(star) || nearHome(star, 5)) continue;
       const value = star.planetIds.reduce((sum, id) => sum + maxPopulation(state.planets[id]!, terran), 0);
       if (value < 8 || !rng.chance(0.25)) continue;
       const depth = Math.min(...homes.map((h) => distance(h, star))) / maxHome;
@@ -100,9 +101,10 @@ export function setupNpcs(state: GameState, rng: Rng): void {
       const designId = LAIR_MONSTERS[Math.max(0, idx)]!;
       const design = MONSTER_DESIGNS.find((d) => d.id === designId)!;
       spawn(state, monsters.id, star, [{ designId, count: 1 }], design.name);
-      // Lairs guard treasure.
-      const best = star.planetIds.map((id) => state.planets[id]!).find((p) => p.special === "none");
+      // Lairs guard treasure: a monster system always has a second special.
+      const best = star.planetIds.map((id) => state.planets[id]!).find((p) => p.special === "none" && !p.colonyId);
       if (best) best.special = rng.pick(["gold", "gems", "artifacts"] as const);
+
     }
   }
 

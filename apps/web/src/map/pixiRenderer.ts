@@ -290,6 +290,20 @@ export class PixiMapRenderer implements MapRenderer {
       return (h % 1000) / 1000;
     };
 
+    // Nebulae: soft violet clouds under the territory glow.
+    for (const n of scene.nebulae) {
+      const cloud = glowSprite(0x9b6bd6, n.r * UNIT * 2.6, 0.32);
+      cloud.position.set(n.x * UNIT, n.y * UNIT);
+      this.territory.addChild(cloud);
+    }
+    // Wormholes: a faint dashed link joining the pair.
+    if (scene.wormholes.length > 0) {
+      const links = new Graphics();
+      for (const w of scene.wormholes) dashTo(links, w.x1 * UNIT, w.y1 * UNIT, w.x2 * UNIT, w.y2 * UNIT, 3, 6);
+      links.stroke({ width: 1.5, color: 0x6ee7ff, alpha: 0.45 });
+      this.territory.addChild(links);
+    }
+
     for (const s of scene.stars) {
       if (s.owners.length === 0) continue;
       const t = glowSprite(hex(s.owners[0]!), UNIT * 5, 0.34);
