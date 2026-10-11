@@ -599,6 +599,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Every area follows a strategy you pick next to its switch. <b>Balanced</b> is the default and plays exactly like the
         computer empires; the others lean one way, for example a Research jobs strategy that makes most colonists
         scientists, or a Defensive military that never goes on the attack. The <b>All balanced</b> button resets them all.
+        Your automation choices are remembered in this browser, and every new game starts with them.
       </P>
       <P>With everything automated you can watch the game play itself, or start a new game as a spectator.</P>
     </>
