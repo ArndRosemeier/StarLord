@@ -48,7 +48,7 @@ export interface BuildingEffects {
   alienManagement?: { assimilationTurns: number; revoltMult: number };
   /** Seat of government; losing it hurts morale everywhere (see GovernmentDef.capitalLossMorale). */
   capitol?: boolean;
-  /** Ships built here start this many crew levels higher; ships in the system gain experience every turn. */
+  /** Ships built here start this many crew levels higher; the owner's ships in orbit here gain this much more XP every turn. */
   crew?: { startLevels: number; xpPerTurn: number };
   /** Hostile fleets within this many parsecs of the star crawl at `INTERDICTED_SPEED`. */
   interdictRadius?: number;
@@ -148,7 +148,7 @@ export const BUILDINGS: BuildingDef[] = [
   { id: "warpInterdictor", name: "Warp Interdictor", cost: 300, maintenance: 3, requires: "warpInterdictor",
     effects: { interdictRadius: 2 }, description: "Hostile fleets within 2 parsecs of the system move only 1 parsec per turn." },
   { id: "spaceAcademy", name: "Space Academy", cost: 100, maintenance: 2, requires: "spaceAcademy",
-    effects: { crew: { startLevels: 1, xpPerTurn: 2 } }, description: "Ships built here start one crew level higher, and crews in the system train every turn." },
+    effects: { crew: { startLevels: 1, xpPerTurn: 1 } }, description: "Ships built here start one crew level higher, and crews in the system train every turn." },
   { id: "securityStations", name: "Security Stations", cost: 100, maintenance: 1, requires: "securityStations",
     effects: { security: 2 }, description: "+2 spy defense." },
 

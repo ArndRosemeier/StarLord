@@ -147,6 +147,8 @@ export interface ColonistTransfer {
 export interface ShipStack {
   designId: string;
   count: number;
+  /** Crew experience the stack shares; missing means a green crew. */
+  xp?: number;
 }
 
 export type FleetStance = "defend" | "attack";

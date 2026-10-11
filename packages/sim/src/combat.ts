@@ -4,26 +4,48 @@ import {
   hullIndex, type FiringArc, type HullDef, type StationHull, type WeaponDef, type WeaponModId, type WeaponTrait,
 } from "./data/components.js";
 import {
-  ANTI_MISSILE, ARTEMIS, BEAM_HIT, BLACK_HOLE_TURNS, CRAFT, DEFENSE_PER_SPEED, FIELD_HEIGHT, FIELD_WIDTH,
-  IMMOBILE_DEFENSE, MAX_BAND, MAX_ROUNDS, MISSILE_DEFENSE_PER_SPEED, MISSILE_HP_PER_ARMOR, PLANET_BEAM_DAMAGE,
-  PLANET_INSTALLATION_HP, PLASMA_WEB_DECAY, RANGE_BANDS, SHIELD_FACINGS, SHIELD_REGEN, SQUADRON_SIZE,
-  STATION_FLEET_BONUS, STATION_TURN_DEG, TORPEDO_DISSIPATION, TURN_COST_PER_STEP,
+  ANTI_MISSILE, ARTEMIS, BEAM_HIT, BLACK_HOLE_TURNS, CRAFT, CRAFT_ARMOR_STEP, CRAFT_SPEED_PER_DRIVE, CREW,
+  DEFENSE_PER_SPEED, DEPLOY_COLUMNS, DIE, FIELD_HEIGHT, FIELD_WIDTH, IMMOBILE_DEFENSE, MAX_BAND, MAX_ROUNDS,
+  MISSILE_DEFENSE_BONUS, MISSILE_DEFENSE_PER_SPEED, MISSILE_HP, MISSILE_SPEED, PLANET_BEAM_DAMAGE,
+  PLANET_INSTALLATION_ARMOR_STEP, PLANET_INSTALLATION_HP, PLANET_TORPEDO_DAMAGE, PLASMA_WEB_DECAY, RANGE_BANDS,
+  SHIELD_FACINGS, SHIELD_REGEN, SQUADRON_SIZE, STATION_FLEET_BONUS, STATION_TURN_DEG, TORPEDO_DISSIPATION, TORPEDO_HP,
+  TURN_COST_PER_STEP,
 } from "./data/combat.js";
+import { ARMORS, DRIVES } from "./data/components.js";
+import { crewLevel } from "./crew.js";
 import {
-  ALL_WEAPONS, bestArmor, bestBeam, bestComputer, bestShield, designStats, findDesign, groundBatteryWeapons,
+  ALL_WEAPONS, bestArmor, bestBeam, bestComputer, bestDrive, bestShield, designStats, findDesign, groundBatteryWeapons,
   missileBaseWeapons, noEffects, rackShots, stationWeapons, strengthOf, weaponHP, weaponUnitCost,
   type MergedEffects,
 } from "./designs.js";
 import { empireBonus, knows } from "./empire.js";
 import { getRace } from "./data/races.js";
-import { raceCombatRepair, raceGroundBonus, shipAttackPickBonus, shipDefensePickBonus } from "./raceEffects.js";
+import {
+  raceCombatRepair, raceCombatSpeedBonus, raceGroundBonus, shipAttackPickBonus, shipDefensePickBonus,
+} from "./raceEffects.js";
 import type { Rng } from "./rng.js";
 import type {
   Colony, CombatReport, CombatRoundEvent, CombatShipSnapshot, Fleet, GameState, LeaderSkills, Player, PlayerId,
   ShipStack, WeaponMount,
 } from "./types.js";
 
-export { FIELD_HEIGHT, FIELD_WIDTH, MAX_ROUNDS };
+export { FIELD_HEIGHT, FIELD_WIDTH, MAX_ROUNDS, MISSILE_SPEED, PLANET_INSTALLATION_HP };
+
+/** Squares per combat turn of a missile or torpedo an empire fires (before the Fast mod). */
+export function missileSpeed(player: Player, w: WeaponDef): number {
+  if (w.kind !== "missile") return w.speed ?? MISSILE_SPEED.base;
+  return MISSILE_SPEED.base + MISSILE_SPEED.perDrive * DRIVES.indexOf(bestDrive(player));
+}
+
+/** Squares per combat turn of an empire's fighters, bombers or shuttles from a bay. */
+export function craftSpeed(player: Player, w: WeaponDef): number {
+  return (w.speed ?? 0) + CRAFT_SPEED_PER_DRIVE * DRIVES.indexOf(bestDrive(player)) + raceCombatSpeedBonus(getRace(player.raceId));
+}
+
+/** Armor classes above Titanium: craft hit points and planetary installations grow with it. */
+function armorClass(player: Player): number {
+  return Math.max(0, ARMORS.findIndex((a) => a.id === bestArmor(player).id));
+}
 
 /**
  * Tactical space combat with the original's rules. Ships carry armor,
@@ -67,6 +89,10 @@ export interface CombatOutcome {
   stationsLost: Set<string>;
   /** Ships taken by boarding parties of a side that held the field. */
   captured: CapturedShip[];
+  /** Experience the winner's surviving crews (and captains) gain, if anyone won. */
+  crewXp: { ownerId: PlayerId; amount: number } | null;
+  /** Which side attacked (0 or 1); the defender acts second and holds the field when time runs out. */
+  attacker: 0 | 1;
 }
 
 type UnitKind = "ship" | "station" | "planet" | "monster";
@@ -102,8 +128,7 @@ interface System {
 
 interface Installation {
   name: string;
-  hp: number;
-  max: number;
+  alive: boolean;
 }
 
 interface Unit {
@@ -133,6 +158,13 @@ interface Unit {
   /** Planets block a flat amount per hit and hold their weapons in installations. */
   planetShield: number;
   installations: Installation[];
+  /** Damage needed to knock out one installation, and the damage gathered toward the next. */
+  installationHP: number;
+  installationPool: number;
+  /** Crew level and the beam attack, beam defense and boarding it adds. */
+  crew: number;
+  /** Hull size for battle experience: frigate 0 ... doom star 5, stations 6 to 8. */
+  hullRank: number;
   drive: System | null;
   computer: System | null;
   shieldGen: System | null;
@@ -167,7 +199,6 @@ interface Unit {
   strength: number;
   craftBeam: WeaponDef;
   craftBomb: WeaponDef | null;
-  missileHP: number;
   scannerEccm: number;
 }
 
@@ -180,6 +211,8 @@ interface Projectile {
   x: number;
   y: number;
   speed: number;
+  /** Beam defense of each missile or craft against point defense. */
+  defense: number;
   /** Missiles, torpedoes or craft still flying, and the hit points of each. */
   count: number;
   hp: number;
@@ -270,11 +303,12 @@ function baseUnit(player: Player, side: 0 | 1): Omit<Unit, "key" | "designId" | 
   return {
     side, ownerId: player.id, player, fleetId: null, colonyId: null, heading: side === 0 ? 0 : Math.PI,
     shieldClass: 0, shieldMax: 0, shields: [0, 0, 0, 0], hardShields: false, planetShield: 0, installations: [],
+    installationHP: 0, installationPool: 0, crew: 0, hullRank: 0,
     drive: null, computer: null, shieldGen: null, specials: [], fixedDefense: null, missileEvasion: 0, fx: noEffects(),
     marines: 0, immobile: false, noArmorPierce: false, alive: true, retreated: false, captured: null,
     firedThisRound: false, firedLastRound: true, phasingLeft: 0, hyperXRest: false, fastRackRest: false, tractor: 0,
     stasisUntil: -1, blackHole: null, web: null, moved: false, craftBeam: craft.beam, craftBomb: craft.bomb,
-    missileHP: bestArmor(player).mult * MISSILE_HP_PER_ARMOR, scannerEccm: scannerEccm(player),
+    scannerEccm: scannerEccm(player),
   };
 }
 
@@ -304,7 +338,7 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
           kind: fortress ? "station" : monster ? "monster" : "ship",
           hullId: fortress ? "starFortress" : monster ? undefined : design.hull,
           sizeClass: s.sizeClass,
-          x: sideIdx === 0 ? 5 - (row % 3) * 1.5 : FIELD_WIDTH - 6 + (row % 3) * 1.5,
+          x: DEPLOY_COLUMNS[sideIdx] + (sideIdx === 0 ? -1 : 1) * (row % 3) * 1.5,
           y: FIELD_HEIGHT / 2 + (((Math.floor(row / 3) % 9) + 1) >> 1) * 3 * ((Math.floor(row / 3) % 2) * 2 - 1),
           armor: s.armor, maxArmor: s.armor, structure: s.structure, maxStructure: s.structure,
           shieldClass: s.shield, shieldMax: s.shieldStrength, shields: Array(SHIELD_FACINGS).fill(s.shieldStrength),
@@ -329,6 +363,8 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
           noArmorPierce: design.specials.includes("heavyArmor") || design.armor === "xentroniumArmor",
           phasingLeft: s.effects.phasing,
           strength: s.strength,
+          crew: monster ? 0 : crewLevel(player.kind === "raiders" ? Math.max(stack.xp ?? 0, CREW.raiderXp) : stack.xp ?? 0, player),
+          hullRank: monster ? hullIndex(design.hull) : fortress ? 6 + STATION_HULLS.findIndex((h) => h.id === "starFortress") : hullIndex(design.hull),
         };
         if (!monster) {
           if (s.driveHP > 0) u.drive = { id: "drive", hp: s.driveHP, max: s.driveHP };
@@ -402,6 +438,7 @@ function stationUnit(player: Player, colony: Colony, hull: HullDef<StationHull>,
     sizeClass: hull.sizeClass,
     x: planetX + (sideIdx === 0 ? 3 : -3),
     y: FIELD_HEIGHT / 2,
+    hullRank: 6 + STATION_HULLS.findIndex((h) => h.id === hull.id),
     armor: hull.armor * armor.mult, maxArmor: hull.armor * armor.mult,
     structure: hull.structure * armor.mult, maxStructure: hull.structure * armor.mult,
     shieldClass: shield?.absorb ?? 0, shieldMax, shields: Array(SHIELD_FACINGS).fill(shieldMax),
@@ -426,7 +463,6 @@ function stationUnit(player: Player, colony: Colony, hull: HullDef<StationHull>,
 }
 
 function planetUnit(player: Player, colony: Colony, d: ColonyDefense, sideIdx: 0 | 1): Unit {
-  const mult = bestArmor(player).mult;
   const race = getRace(player.raceId);
   const bonus = empireBonus(player);
   const mounts: Mount[] = [];
@@ -434,11 +470,11 @@ function planetUnit(player: Player, colony: Colony, d: ColonyDefense, sideIdx: 0
   for (const inst of d.installations) {
     const weapons = inst === "groundBatteries" ? groundBatteryWeapons(player) : missileBaseWeapons(player);
     mounts.push(...makeMounts(player, weapons, true, true, installations.length));
-    const hp = PLANET_INSTALLATION_HP * mult;
-    installations.push({ name: BUILDINGS_BY_ID[inst]?.name ?? inst, hp, max: hp });
+    installations.push({ name: BUILDINGS_BY_ID[inst]?.name ?? inst, alive: true });
   }
   const computer = bestComputer(player);
-  const hp = installations.reduce((s, i) => s + i.max, 0);
+  const installationHP = PLANET_INSTALLATION_HP + armorClass(player) * PLANET_INSTALLATION_ARMOR_STEP;
+  const hp = installationHP * installations.length;
   const attackBase = shipAttackPickBonus(race) + bonus.shipAttack;
   const u: Unit = {
     ...baseUnit(player, sideIdx),
@@ -448,11 +484,12 @@ function planetUnit(player: Player, colony: Colony, d: ColonyDefense, sideIdx: 0
     name: colony.name,
     kind: "planet",
     sizeClass: 10,
-    x: sideIdx === 0 ? 1.5 : FIELD_WIDTH - 1.5,
+    x: planetColumn(sideIdx),
     y: FIELD_HEIGHT / 2,
     armor: 0, maxArmor: 0, structure: hp, maxStructure: hp,
     planetShield: d.shield,
     installations,
+    installationHP,
     mounts,
     attackBase,
     computerAttack: computer?.attack ?? 0,
@@ -475,10 +512,13 @@ export function colonyDefenseStrength(state: GameState, colony: Colony): number 
   if (!player) return 0;
   const d = planetDefense(colony);
   let total = 0;
-  if (d.station) total += stationUnit(player, colony, HULLS_BY_ID[d.station], 1, FIELD_WIDTH).strength;
+  if (d.station) total += stationUnit(player, colony, HULLS_BY_ID[d.station], 1, planetColumn(1)).strength;
   if (d.installations.length > 0) total += planetUnit(player, colony, d, 1).strength;
   return total;
 }
+
+/** The defending planet sits behind its side's fleet. */
+const planetColumn = (side: 0 | 1) => DEPLOY_COLUMNS[side] + (side === 0 ? -6 : 6);
 
 const active = (u: Unit) => u.alive && !u.retreated;
 const hasWeapons = (u: Unit) => u.mounts.some((m) => m.count > 0 && m.shots > 0 && m.def.effect !== "antiMissile");
@@ -503,15 +543,19 @@ class Battle {
   /** The battle is inside a nebula: only hard shields work. */
   nebula = false;
   readonly sides: readonly [CombatSide, CombatSide];
+  /** The side that came to fight: the one without a colony here, else the one on attack stance. */
+  readonly attacker: 0 | 1;
 
   constructor(readonly state: GameState, readonly rng: Rng, a: CombatSide, b: CombatSide) {
     this.sides = [a, b];
+    const attacking = (x: CombatSide) => x.fleets.some((f) => f.stance === "attack") || state.players[x.ownerId]?.kind === "raiders";
+    this.attacker = a.colony && !b.colony ? 1 : b.colony && !a.colony ? 0 : attacking(b) && !attacking(a) ? 1 : 0;
     this.units = [...shipUnits(state, a, 0), ...shipUnits(state, b, 1)];
     for (const [i, s] of this.sides.entries()) {
       if (!s.colony) continue;
       const player = state.players[s.ownerId]!;
       const d = planetDefense(s.colony);
-      const planetX = i === 0 ? 1.5 : FIELD_WIDTH - 1.5;
+      const planetX = planetColumn(i as 0 | 1);
       if (d.installations.length > 0 || d.mines) {
         const p = planetUnit(player, s.colony, d, i as 0 | 1);
         // A planet with only mines is not a target and does not hold the field.
@@ -541,7 +585,12 @@ class Battle {
     }));
     const rounds: CombatRoundEvent[][] = [];
     const retreated = new Set<PlayerId>();
-    const first = rng.int(0, 1);
+    // The attacker acts first every round; raiders defending their home strike first instead.
+    const att = this.attacker;
+    const def = (1 - att) as 0 | 1;
+    const order: (0 | 1)[] = this.state.players[sides[def].ownerId]?.kind === "raiders" ? [def, att] : [att, def];
+    // A side stands while it has any ship or station left, or a planet with working installations.
+    const standing = (idx: 0 | 1) => units.some((x) => x.side === idx && active(x) && (x.kind !== "planet" || x.installations.some((i) => i.alive)));
     let idle = 0;
 
     for (this.round = 0; this.round < MAX_ROUNDS; this.round++) {
@@ -550,29 +599,29 @@ class Battle {
       if (this.round === 0) this.mines();
       this.startRound();
       let acted = false;
-      for (const k of [0, 1]) {
-        const side = ((first + this.round + k) % 2) as 0 | 1;
-        const order = units
-          .filter((u) => u.side === side && active(u))
-          .sort((x, y) => this.currentSpeed(y) - this.currentSpeed(x) || (x.key < y.key ? -1 : 1));
-        for (const u of order) if (this.act(u)) acted = true;
+      for (const side of order) {
+        // Units act in their fixed order.
+        const mine = units.filter((u) => u.side === side && active(u));
+        for (const u of mine) if (this.act(u)) acted = true;
         if (this.moveProjectiles(side)) acted = true;
-        // Time Warp Facilitators give their ships a second turn.
-        for (const u of order) if (u.fx.extraTurn && active(u) && this.act(u)) acted = true;
+      }
+      // Time Warp Facilitators give their ships an extra turn once both sides have moved.
+      for (const side of order) {
+        for (const u of units) if (u.side === side && u.fx.extraTurn && active(u) && this.act(u)) acted = true;
       }
       this.retreats(retreated);
 
+      if (!standing(0) || !standing(1)) break;
+      // When nobody can shoot or nothing has happened for two turns, nothing will change: time runs out.
       const armedA = units.some((x) => x.side === 0 && armed(x));
       const armedB = units.some((x) => x.side === 1 && armed(x));
-      const anyA = units.some((x) => x.side === 0 && active(x));
-      const anyB = units.some((x) => x.side === 1 && active(x));
-      if (!anyA || !anyB || (!armedA && !armedB)) break;
+      if (!armedA && !armedB) break;
       idle = acted || this.projectiles.length > 0 ? 0 : idle + 1;
       if (idle >= 2) break;
     }
 
-    const aliveArmed = (idx: 0 | 1) => units.some((x) => x.side === idx && armed(x));
-    const winnerIdx = aliveArmed(0) && !aliveArmed(1) ? 0 : aliveArmed(1) && !aliveArmed(0) ? 1 : null;
+    // The side left standing wins; if both stand when time runs out, the defender holds the field.
+    const winnerIdx: 0 | 1 | null = standing(def) ? def : standing(att) ? att : null;
 
     const captured: CapturedShip[] = [];
     const survivors = new Map<string, ShipStack[]>();
@@ -580,8 +629,19 @@ class Battle {
       for (const f of s.fleets) {
         const counts = new Map<string, number>();
         for (const u of units) if (u.fleetId === f.id && u.alive) counts.set(u.designId, (counts.get(u.designId) ?? 0) + 1);
-        survivors.set(f.id, [...counts].map(([designId, count]) => ({ designId, count })));
+        survivors.set(f.id, [...counts].map(([designId, count]) => {
+          const xp = f.ships.find((x) => x.designId === designId)?.xp;
+          return xp ? { designId, count, xp } : { designId, count };
+        }));
       }
+    }
+    // The winner's crews learn from the enemy ships they destroyed or took: half the sum of (hull size + 1), at least 1.
+    let crewXp: CombatOutcome["crewXp"] = null;
+    if (winnerIdx !== null) {
+      const sizes = units
+        .filter((u) => u.side !== winnerIdx && u.kind !== "planet" && (!u.alive || u.captured))
+        .reduce((n, u) => n + u.hullRank + 1, 0);
+      crewXp = { ownerId: sides[winnerIdx].ownerId, amount: Math.max(1, Math.floor(sizes / 2)) };
     }
     for (const u of units) {
       if (!u.captured) continue;
@@ -632,6 +692,8 @@ class Battle {
       planetSilenced,
       stationsLost,
       captured,
+      crewXp,
+      attacker: this.attacker,
     };
   }
 
@@ -734,7 +796,7 @@ class Battle {
   }
 
   attackOf(u: Unit, target: Unit): number {
-    let ba = u.attackBase + this.sideBonus[u.side]!.attack;
+    let ba = u.attackBase + this.sideBonus[u.side]!.attack + CREW.attack[u.crew]!;
     if (u.computer === null || u.computer.hp > 0) ba += u.computerAttack;
     if (target.kind === "monster" || target.player.kind === "raiders") ba += this.monsterBonus[u.side]!;
     return ba;
@@ -744,7 +806,7 @@ class Battle {
     if (u.fixedDefense !== null) return u.fixedDefense + (u.immobile ? 0 : this.sideBonus[u.side]!.defense);
     const speed = this.currentSpeed(u);
     let bd = speed > 0 ? speed * DEFENSE_PER_SPEED : IMMOBILE_DEFENSE;
-    bd += u.defenseBonus + this.sideBonus[u.side]!.defense;
+    bd += u.defenseBonus + this.sideBonus[u.side]!.defense + CREW.defense[u.crew]!;
     if (this.cloaked(u)) bd += u.fx.cloakDefense;
     return bd;
   }
@@ -764,7 +826,8 @@ class Battle {
   }
 
   missileEvasionOf(u: Unit): number {
-    return Math.max(u.missileEvasion, this.fleetEvasion[u.side]!);
+    // Trained crews dodge missiles too, with half their beam defense bonus.
+    return Math.max(u.missileEvasion, this.fleetEvasion[u.side]!) + Math.floor(CREW.defense[u.crew]! / 2);
   }
 
   // ------------------------------------------------------------ geometry
@@ -777,9 +840,11 @@ class Battle {
     return u.kind === "planet" ? 1.5 : 0.4 + 0.1 * Math.min(u.sizeClass, 10);
   }
 
-  /** Squares between the edges of two units. */
+  /** Squares between the edges of two units, measured as the original does: the longer leg plus half the shorter. */
   edge(a: Unit, b: Unit): number {
-    return Math.max(0, this.dist(a, b) - this.radius(a) - this.radius(b));
+    const dx = Math.abs(a.x - b.x);
+    const dy = Math.abs(a.y - b.y);
+    return Math.max(0, Math.max(dx, dy) + Math.min(dx, dy) / 2 - this.radius(a) - this.radius(b));
   }
 
   band(a: Unit, b: Unit): number {
@@ -989,10 +1054,10 @@ class Battle {
     if (traits.has("continuous") || m.mods.has("continuous")) diff += MOD_EFFECTS.continuousToHit;
     if (m.mods.has("pointDefense")) diff += MOD_EFFECTS.pointDefenseToHit;
     if (m.mods.has("autoFire")) diff += MOD_EFFECTS.autoFireToHit;
-    let r = this.rng.int(0, 99);
-    if (traits.has("alwaysHits")) r = 100;
+    let r = this.rng.int(1, DIE);
+    if (traits.has("alwaysHits")) r = DIE;
     else if (r <= BEAM_HIT.unmodifiedAbove) r = Math.min(100, r + diff);
-    if (t.fx.displacement > 0 && this.specialWorks(t, "displacementDevice") && this.rng.int(0, 99) < t.fx.displacement * 100) return;
+    if (t.fx.displacement > 0 && this.specialWorks(t, "displacementDevice") && this.rng.int(1, DIE) <= t.fx.displacement * DIE) return;
     if (r < threshold) return;
     let pct = 100;
     if (!traits.has("noRangeDissipation") && !m.mods.has("noRangeDissipation")) pct += RANGE_BANDS.damagePct[bands.damage]!;
@@ -1001,7 +1066,7 @@ class Battle {
     if (u.fx.beamDamagePct && this.specialWorks(u, "highEnergyFocus")) pct += u.fx.beamDamagePct;
     const lo = Math.max(1, Math.round((m.def.damageMin * pct) / 100));
     const hi = Math.max(1, Math.round((m.def.damageMax * pct) / 100));
-    let dmg = Math.min(hi, lo + Math.floor(((hi - lo + 1) * (r - threshold)) / Math.max(1, 100 - threshold)));
+    let dmg = Math.min(hi, lo + Math.floor(((hi - lo + 1) * (r - threshold)) / Math.max(1, DIE - threshold)));
     // Reflection fields bounce some beams back at the shooter.
     if (t.fx.reflection > 0 && this.specialWorks(t, "reflectionField") && this.rng.chance(t.fx.reflection / (dmg + t.fx.reflection))) {
       this.applyHit(t, u, dmg, { isBeam: true }, m.def.id);
@@ -1043,10 +1108,13 @@ class Battle {
     if (m.mods.has("overloaded")) damage = Math.round(damage * (1 + MOD_EFFECTS.overloadedDamagePct / 100));
     m.shots -= 1;
     if (w.reload) m.cooldown = w.reload;
-    const speed = (w.speed ?? 10) + (m.mods.has("fast") ? MOD_EFFECTS.fastSpeed : 0);
+    const base = missileSpeed(u.player, w);
+    const speed = base + (m.mods.has("fast") ? MOD_EFFECTS.fastSpeed : 0);
+    // Point defense rolls against 5 x speed plus the missile type's bonus; armor does not toughen missiles.
+    const hp = (w.kind === "torpedo" ? TORPEDO_HP : MISSILE_HP[w.id] ?? TORPEDO_HP) * (m.mods.has("armored") ? MOD_EFFECTS.armoredHpMult : 1);
     const p: Projectile = {
-      owner: u, mount: mi, weapon: w, mods: m.mods, target, x: u.x, y: u.y, speed, count: m.count,
-      hp: u.missileHP * (m.mods.has("armored") ? MOD_EFFECTS.armoredHpMult : 1), frontDamage: 0, damage, travelled: 0, craft: null,
+      owner: u, mount: mi, weapon: w, mods: m.mods, target, x: u.x, y: u.y, speed, count: m.count, hp,
+      defense: base * MISSILE_DEFENSE_PER_SPEED + (MISSILE_DEFENSE_BONUS[w.id] ?? 0), frontDamage: 0, damage, travelled: 0, craft: null,
     };
     this.log.push({ kind: "launch", ship: u.key, target: target.key, weapon: w.id });
     if (!Number.isFinite(speed)) {
@@ -1065,10 +1133,11 @@ class Battle {
     if (craft === "shuttles" && (target.kind !== "ship" || u.marines <= 0)) return false;
     if (craft === "bombers" && !u.craftBomb) return false;
     m.out = true;
-    const armorMult = bestArmor(u.player).mult;
+    const speed = craftSpeed(u.player, m.def);
+    const hp = Math.floor((CRAFT[craft].hp * (100 + CRAFT_ARMOR_STEP * armorClass(u.player))) / 100);
     this.projectiles.push({
-      owner: u, mount: mi, weapon: m.def, mods: new Set(), target, x: u.x, y: u.y, speed: m.def.speed ?? 10,
-      count: SQUADRON_SIZE * m.count, hp: CRAFT[craft].hp * armorMult, frontDamage: 0, damage: 0, travelled: 0, craft,
+      owner: u, mount: mi, weapon: m.def, mods: new Set(), target, x: u.x, y: u.y, speed, defense: speed * MISSILE_DEFENSE_PER_SPEED,
+      count: SQUADRON_SIZE * m.count, hp, frontDamage: 0, damage: 0, travelled: 0, craft,
     });
     this.log.push({ kind: "launch", ship: u.key, target: target.key, weapon: m.def.id });
     return true;
@@ -1125,7 +1194,7 @@ class Battle {
     const t = p.target;
     const torpedo = p.weapon.kind === "torpedo";
     if (!torpedo) {
-      const defense = (p.craft ? (p.weapon.speed ?? 10) : p.speed) * MISSILE_DEFENSE_PER_SPEED;
+      const defense = p.defense;
       for (const m of t.mounts) {
         if (p.count <= 0) break;
         if (m.count <= 0) continue;
@@ -1133,15 +1202,16 @@ class Battle {
           m.firedThisRound = true;
           const ev: CombatRoundEvent = { kind: "fire", ship: t.key, target: p.owner.key, weapon: m.def.id, hit: false, damage: 0 };
           for (let i = 0; i < m.count && p.count > 0; i++) {
-            const r = this.rng.int(0, 99);
-            const roll = r <= BEAM_HIT.unmodifiedAbove ? r + this.attackOf(t, p.owner) + MOD_EFFECTS.pointDefenseToHit - defense : r;
+            const r = this.rng.int(1, DIE);
+            const roll = r <= BEAM_HIT.unmodifiedAbove ? r + this.attackOf(t, p.owner) + MOD_EFFECTS.pointDefenseToHit - defense : DIE;
             if (roll < BEAM_HIT.threshold) continue;
             const pct = 100 + MOD_EFFECTS.pointDefenseDamagePct;
             const dmg = Math.max(1, Math.round((this.rng.int(m.def.damageMin, m.def.damageMax) * pct) / 100));
             p.frontDamage += dmg;
             if (p.frontDamage >= p.hp) {
+              // One hit downs at most one missile; what is left over carries to the next.
               p.count--;
-              p.frontDamage = 0;
+              p.frontDamage = Math.min(p.frontDamage - p.hp, p.hp - 1);
               ev.hit = true;
             }
           }
@@ -1182,12 +1252,13 @@ class Battle {
     if (this.cloaked(t)) jam = 100 - (100 - jam) / 2;
     const ev: CombatRoundEvent = { kind: "fire", ship: u.key, target: t.key, weapon: p.weapon.id, hit: false, damage: 0, absorbed: 0, armorDamage: 0, structureDamage: 0 };
     let damage = p.damage;
-    if (p.weapon.traits?.includes("dissipates") && !p.mods.has("noRangeDissipation")) damage = Math.max(0, damage - TORPEDO_DISSIPATION * Math.round(p.travelled));
+    if (p.weapon.traits?.includes("dissipates") && !p.mods.has("noRangeDissipation")) damage = Math.max(0, damage - TORPEDO_DISSIPATION * Math.max(0, Math.floor(p.travelled) - 1));
+    if (t.kind === "planet" && p.weapon.kind === "torpedo") damage = Math.floor(damage * PLANET_TORPEDO_DAMAGE);
     const warheads = p.mods.has("mirv") ? MOD_EFFECTS.mirvWarheads : 1;
     const env = p.mods.has("enveloping");
     const always = p.weapon.traits?.includes("alwaysHits");
     for (let i = 0; i < p.count && t.alive; i++) {
-      if (!always && this.rng.int(0, 99) < jam) continue;
+      if (!always && this.rng.int(1, DIE) <= jam) continue;
       if (!always && t.fx.displacement > 0 && this.specialWorks(t, "displacementDevice") && this.rng.chance(t.fx.displacement)) continue;
       for (let w = 0; w < warheads && t.alive; w++) {
         const facings = env ? [0, 1, 2, 3] : [this.facingToward(t, u)];
@@ -1215,8 +1286,8 @@ class Battle {
     const bombs = p.craft === "bombers" ? CRAFT.bombers.shots : p.craft === "heavyFighters" ? CRAFT.heavyFighters.shots : 0;
     for (let c = 0; c < p.count && t.alive; c++) {
       for (let s = 0; s < beamShots && t.alive; s++) {
-        const r = this.rng.int(0, 99);
-        const roll = r <= BEAM_HIT.unmodifiedAbove ? r + this.attackOf(u, t) + MOD_EFFECTS.pointDefenseToHit - this.defenseOf(t) : r;
+        const r = this.rng.int(1, DIE);
+        const roll = r <= BEAM_HIT.unmodifiedAbove ? r + this.attackOf(u, t) + MOD_EFFECTS.pointDefenseToHit - this.defenseOf(t) : DIE;
         if (roll < BEAM_HIT.threshold) continue;
         const dmg = Math.max(1, Math.round(this.rng.int(u.craftBeam.damageMin, u.craftBeam.damageMax) * (100 + MOD_EFFECTS.pointDefenseDamagePct) / 100));
         this.tally(ev, this.hit(u, t, dmg, { facing, shieldPiercing: u.craftBeam.traits?.includes("shieldPiercing") }));
@@ -1318,8 +1389,8 @@ class Battle {
     if (t.kind !== "ship" || !active(t) || marines <= 0) return;
     // Race ground combat picks, and Commando captains leading the marines on either side.
     const commando = (x: Unit) => (x.fleetId ? captainSkills(this.state, x.fleetId).groundCombat ?? 0 : 0);
-    const atkBonus = raceGroundBonus(getRace(u.player.raceId)) + commando(u);
-    const defBonus = raceGroundBonus(getRace(t.player.raceId)) + commando(t) + t.fx.boardingDefense;
+    const atkBonus = raceGroundBonus(getRace(u.player.raceId)) + commando(u) + CREW.boarding[u.crew]!;
+    const defBonus = raceGroundBonus(getRace(t.player.raceId)) + commando(t) + t.fx.boardingDefense + CREW.boarding[t.crew]!;
     let attackers = marines;
     u.marines -= marines;
     while (attackers > 0 && t.marines > 0) {
@@ -1433,7 +1504,10 @@ class Battle {
     return h;
   }
 
-  /** Planets have no armor; damage knocks out one installation after another. Ship beams do half. */
+  /**
+   * Planets have no armor. Damage past the planetary shield gathers in a pool;
+   * every full installation's worth knocks out one installation at random.
+   */
   hitPlanet(t: Unit, raw: number, o: HitOptions, h: Hit): Hit {
     let dmg = raw;
     if (!o.ignoreShields) {
@@ -1441,20 +1515,21 @@ class Battle {
       dmg -= flat;
       h.absorbed += flat;
     }
-    for (const [i, inst] of t.installations.entries()) {
-      if (dmg <= 0) break;
-      if (inst.hp <= 0) continue;
-      const d = Math.min(inst.hp, dmg);
-      inst.hp -= d;
-      dmg -= d;
-      h.structure += d;
-      t.structure = Math.max(0, t.structure - d);
-      if (inst.hp <= 0) {
-        h.system = inst.name;
-        for (const m of t.mounts) if (m.installation === i) m.count = 0;
-      }
+    if (dmg <= 0) return h;
+    h.structure += Math.min(dmg, t.structure);
+    t.installationPool += dmg;
+    while (t.installationPool >= t.installationHP) {
+      const up = t.installations.map((inst, i) => (inst.alive ? i : -1)).filter((i) => i >= 0);
+      if (up.length === 0) break;
+      const i = up[this.rng.int(0, up.length - 1)]!;
+      t.installations[i]!.alive = false;
+      t.installationPool -= t.installationHP;
+      h.system = t.installations[i]!.name;
+      for (const m of t.mounts) if (m.installation === i) m.count = 0;
     }
-    if (t.installations.every((i) => i.hp <= 0)) this.destroy(t);
+    const up = t.installations.filter((i) => i.alive).length;
+    t.structure = Math.max(0, up * t.installationHP - t.installationPool);
+    if (up === 0) this.destroy(t);
     return h;
   }
 

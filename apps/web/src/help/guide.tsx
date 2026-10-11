@@ -3,9 +3,9 @@ import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES } from "@starlord/ai";
 import {
   ANDROIDS, ASSIMILATION, AUDIENCE_ITEMS, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_POP,
   BOMB_DAMAGE_PER_TROOP, CAPTURE_TECH_CHANCE, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST,
-  COUNCIL_INTERVAL, COUNCIL_MAJORITY, EVENT_START, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
+  COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING,
-  NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
+  MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
   SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
   TRADE_GOODS_RATE, TRAIT_EFFECTS, TREATY_YIELD, TROOPS, abilityValue, type HeroSkill, type HeroSkillGroup,
 } from "@starlord/sim";
@@ -297,16 +297,17 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>
         Battles happen when hostile armed fleets meet, or when an armed colony sees enemy ships. They are fought
         automatically on a {FIELD_WIDTH}×{FIELD_HEIGHT} battlefield for up to {MAX_ROUNDS} rounds and can be replayed from
-        the turn report.
+        the turn report. A battle ends when one side has nothing left; if both still stand when time runs out, the
+        defender holds the field.
       </P>
       <h3>Moving and firing</h3>
       <Ul>
-        <li>The two sides take turns ship by ship; which side starts is rolled at the beginning and swaps every round.</li>
+        <li>Every round the attacker's ships act first, one after another, then the defender's.</li>
         <li>Ships spend their combat speed to move and turn. Each beam fires only into its arc, so facing matters.</li>
         <li>A beam's hit chance is its attack against the target's beam defense, minus a penalty that grows with range. Damage also drops with range unless the mount ignores it.</li>
         <li>Better rolls do more damage: a shot that barely hits does its minimum, a near-certain one close to its maximum.</li>
-        <li>Missiles and torpedoes fly across the field at their own speed. On arrival they can be shot down by point-defense beams, anti-missile rockets or a lightning field, or misled by jammers.</li>
-        <li>Fighter and bomber bays launch craft that fly to their target, attack and return to rearm.</li>
+        <li>Missiles fly {MISSILE_SPEED.base} squares a round, {MISSILE_SPEED.perDrive} more for every drive after the first; torpedoes keep their own speed. On arrival they can be shot down by point-defense beams, anti-missile rockets or a lightning field, or misled by jammers. Better missiles are harder to shoot down; torpedoes do half damage to planets.</li>
+        <li>Fighter and bomber bays launch craft that fly to their target, attack and return to rearm. Craft get faster with better drives and tougher with better armor.</li>
       </Ul>
       <h3>Damage</h3>
       <Ul>
@@ -314,6 +315,18 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li>Damage that gets through wears down armor first, then structure. Hits on structure may knock out weapons, the shield generator, the computer or the drive; losing the drive destroys the ship.</li>
         <li>Armor-piercing and shield-piercing weapons skip part of this, and some specials change it further.</li>
         <li>Repair units fix armor, structure and systems every round.</li>
+      </Ul>
+      <h3>Crews</h3>
+      <P>
+        Every ship's crew gains {CREW.xpPerTurn} experience a turn, plus the best Instructor's bonus, and more while in
+        orbit at your own Space Academy; ships built there start as {CREW.names[1]}. After a won battle the surviving
+        crews and captains gain half the summed hull sizes of the enemy ships destroyed. Experience stops at
+        {" "}{CREW.xpCap} every turn, so crews top out at {CREW.names[3]}; warlike races rank one level higher.
+      </P>
+      <Ul>
+        {CREW.names.map((n, i) => (
+          <li key={n}>{n} ({CREW.xp[i]} XP): +{CREW.attack[i]} beam attack, +{CREW.defense[i]} beam defense, +{CREW.boarding[i]} boarding.</li>
+        ))}
       </Ul>
       <h3>Combat doctrine</h3>
       <P>
@@ -330,7 +343,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <P>
         The planet itself is a separate target with its own ground batteries and missile base, protected by planetary
-        shields (<HelpLink to="page:buildings" />). Ship beams do only half damage to it. Stations are fair game in any
+        shields (<HelpLink to="page:buildings" />). Ship beams do only half damage to it. Every
+        {" "}{PLANET_INSTALLATION_HP} damage that gets through (more with better armor) knocks out one installation at random. Stations are fair game in any
         battle, but only fleets set to attack fire on the planet, and only once no defending ships or station remain.
       </P>
     </>
