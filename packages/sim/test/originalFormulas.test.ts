@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buyPrice, getRace, growthPerTurn, newGame, raceMaxPopulation, computeOutput, type Colony } from "@starlord/sim";
+import { buyPrice, getRace, growthPerTurn, newGame, raceMaxPopulation, computeOutput, spyCountBonus, troopUnit, type Colony } from "@starlord/sim";
 
 /** Numbers recovered from the original program; each case was worked out by hand from the decoded formulas. */
 describe("original colony formulas", () => {
@@ -49,5 +49,20 @@ describe("original colony formulas", () => {
     const taxed = computeOutput(s.planets[colony.planetId]!, player, colony);
     expect(taxed.taxes).toBe(Math.floor(untaxed.industry * 0.5));
     expect(taxed.bc).toBe(untaxed.bc + taxed.taxes);
+  });
+});
+
+describe("original turn rules", () => {
+  it("counts spies 2 each up to 5, 1 each up to 10, half each beyond", () => {
+    expect([0, 5, 6, 10, 12, 13].map(spyCountBonus)).toEqual([0, 10, 11, 15, 16, 16]);
+  });
+
+  it("rates troops by kind with basic armor", () => {
+    const s = newGame({ seed: "troops", races: ["terran", "felhari"], monsters: false, raiders: false, council: false });
+    s.players[0]!.isHuman = true;
+    s.players[0]!.techs = s.players[0]!.techs.filter((t) => !t.endsWith("Rifle") && !t.endsWith("Armor"));
+    const rating = (kind: "militia" | "marines" | "armor") => troopUnit(s, 0, "terran", kind, false).rating;
+    expect(rating("marines") - rating("militia")).toBe(10);
+    expect(rating("armor") - rating("marines")).toBe(10);
   });
 });

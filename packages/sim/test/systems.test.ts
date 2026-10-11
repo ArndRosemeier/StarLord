@@ -85,8 +85,8 @@ describe("invasion", () => {
     for (const f of Object.values(s.fleets)) if (f.ownerId === 1) delete s.fleets[f.id];
     const f = addFleet(s, 0, star, [{ designId: "transport", count: 6 }]);
     s = processTurn(s, { 0: [{ type: "invade", fleetId: f.id, colonyId: victim.id }] });
-    expect(s.colonies[victim.id]!.ownerId).toBe(0);
-    expect(s.events.some((e) => e.kind === "colonyCaptured")).toBe(true);
+    // The conquered people may rise up at once (1% per alien), so check the capture itself.
+    expect(s.events.some((e) => e.kind === "colonyCaptured" && e.playerId === 0)).toBe(true);
   });
 });
 

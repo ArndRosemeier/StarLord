@@ -5,7 +5,7 @@ import {
   SPECIAL_INCOME, TAX_BC_PER_INDUSTRY, TAX_PER_POP,
 } from "./data/economy.js";
 import { ASSIMILATION } from "./data/governments.js";
-import { DIFFICULTIES, NATIVE_FOOD_BONUS } from "./data/galaxy.js";
+import { DIFFICULTIES, DIFFICULTY_ORDER, NATIVE_FOOD_BONUS } from "./data/galaxy.js";
 import {
   CLIMATES, INDUSTRY_PER_WORKER, POLLUTION_PER_EXCESS, POLLUTION_TOLERANCE, SIZE_FACTOR, SOILLESS, type Gravity,
   type PlanetType,
@@ -233,7 +233,7 @@ export function isBlockaded(state: GameState, colony: Colony): boolean {
 export function colonyTroops(colony: Colony): number {
   const b = colony.buildings;
   return sumEffect(b, "troops") + (colony.marinesTrained ?? 0) + (colony.tanksTrained ?? 0) +
-    Math.ceil(population(colony) * MILITIA_PER_POP);
+    Math.floor(population(colony) * MILITIA_PER_POP);
 }
 
 export function computeOutput(planet: Planet, player: Player, colony: Colony, ctx: OutputContext = { turn: 0 }): ColonyOutput {
@@ -547,11 +547,20 @@ export function assimilationTurns(player: Player, colony: Colony): number {
   return Math.max(1, Math.round(turns));
 }
 
-/** Chance this turn that a colony's unassimilated aliens revolt. */
-export function revoltChance(colony: Colony): number {
+/**
+ * Chance this turn that a colony's unassimilated aliens revolt: 1% each,
+ * more on harder levels when a human rules a computer empire's people, and
+ * halved by an Alien Management Center.
+ */
+export function revoltChance(colony: Colony, state?: GameState): number {
   const aliens = colony.aliens ?? 0;
   if (aliens <= 0) return 0;
   const amc = colony.buildings.map((id) => BUILDINGS_BY_ID[id]?.effects.alienManagement).find((x) => x);
-  const base = Math.min(ASSIMILATION.revoltChanceMax, aliens * ASSIMILATION.revoltChancePerAlien);
-  return base * (amc ? amc.revoltMult : 1);
+  let chance = aliens * ASSIMILATION.revoltChancePerAlien;
+  const owner = state?.players[colony.ownerId];
+  const former = colony.formerOwnerId !== undefined ? state?.players[colony.formerOwnerId] : undefined;
+  if (state && owner?.isHuman && former && !former.isHuman) {
+    chance += ASSIMILATION.revoltChancePerDifficulty * (DIFFICULTY_ORDER.indexOf(state.settings.difficulty ?? "average") - 2);
+  }
+  return Math.max(0, chance * (amc ? amc.revoltMult : 1));
 }

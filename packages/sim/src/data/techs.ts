@@ -32,16 +32,14 @@ export const FIELD_NAMES: Record<TechField, string> = {
 
 /** Research rule numbers. */
 export const RESEARCH = {
-  /** Research can never cost more than this multiple of a field's base cost. */
-  maxCostMult: 2,
   /**
-   * Chance of a breakthrough on the first turn the base cost is reached. It
-   * rises linearly to certainty at `maxCostMult` times the cost. The original
-   * only promises "a good chance every turn"; the curve is our reading.
+   * Past a field's cost, each turn's breakthrough chance is the overshoot as
+   * a percent of the cost (at least 1%), certain at this multiple of the cost.
    */
-  breakthroughStartChance: 0.25,
-  /** Cost of every hyper-advanced field level. */
+  maxCostMult: 2,
+  /** Cost of the first hyper-advanced field level, and what each later level adds. */
   hyperCost: 15000,
+  hyperCostStep: 10000,
   /** Score for each hyper-advanced level. */
   hyperScore: 5,
   /** Race pick points granted by Evolutionary Mutation. */
@@ -260,8 +258,8 @@ const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> 
   advancedCityPlanning: { description: "+5 max pop on every colony.", bonus: { maxPopFlat: 5 } },
   deepCoreMining: { description: "Colonies can build Deep Core Mining: +15 industry and +3 per worker." },
   coreWasteDump: { name: "Core Waste Dumps", description: "Colonies can build Core Waste Dumps, which end their pollution." },
-  poweredArmor: { description: "Battle suits: +10 troop rating (best suit only).", group: "suit", bonus: { groundCombat: 1 } },
-  battleoids: { description: "Robot fighting vehicles: +10 troop rating.", bonus: { groundCombat: 1 } },
+  poweredArmor: { description: "Marines: +10 troop rating and one more hit." },
+  battleoids: { description: "Tanks: +10 troop rating and one more hit." },
   // Power
   freighters: { description: "Colonies can build Freighter Fleets to carry food and colonists between your colonies." },
   colonyShip: { description: "Ships that settle planets in other systems." },
@@ -349,7 +347,7 @@ const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> 
   ecmJammer: { name: "ECM Jammer", description: "" },
   multiWaveEcm: { name: "Multi-Wave ECM Jammer", description: "" },
   antiGravHarness: { name: "Anti-Grav Harness", description: "+10 troop rating.", bonus: { groundCombat: 1 } },
-  personalShield: { description: "Battle suits: +20 troop rating (best suit only).", group: "suit", bonus: { groundCombat: 2 } },
+  personalShield: { description: "+20 troop rating.", bonus: { groundCombat: 2 } },
   stealthSuit: { description: "+10 on all spy rolls.", bonus: { spying: 1 } },
   warpInterdictor: { description: "Colonies can build a Warp Interdictor, slowing hostile fleets near the system." },
   hardShields: { description: "Shields stop 3 more damage and work in nebulae." },
@@ -408,4 +406,9 @@ export const HYPER_TIERS: Record<TechField, TechTier> = Object.fromEntries(
 
 export function emptyHyperLevels(): Record<TechField, number> {
   return Object.fromEntries(TECH_FIELDS.map((f) => [f, 0])) as Record<TechField, number>;
+}
+
+/** What a field costs this player: hyper-advanced levels get dearer each time. */
+export function researchCost(player: { hyperLevels?: Partial<Record<string, number>> }, tier: { cost: number; hyper?: boolean; field: string }): number {
+  return tier.hyper ? RESEARCH.hyperCost + RESEARCH.hyperCostStep * (player.hyperLevels?.[tier.field] ?? 0) : tier.cost;
 }

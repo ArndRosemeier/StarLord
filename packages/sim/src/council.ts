@@ -1,5 +1,4 @@
 import { COUNCIL } from "./data/diplomacy.js";
-import { CLIMATES } from "./data/planets.js";
 import { attitude, setStatus } from "./diplomacy.js";
 import { empireTotals } from "./economy.js";
 import { empires } from "./empire.js";
@@ -50,15 +49,9 @@ export function resolveVote(state: GameState, voter: PlayerId, candidates: Playe
 
 /** Share of systems with a habitable planet that hold a colony. */
 export function settledShare(state: GameState): number {
-  let habitable = 0;
-  let settled = 0;
-  for (const s of state.galaxy.stars) {
-    const planets = s.planetIds.map((id) => state.planets[id]).filter((p) => p && CLIMATES[p.type].habitable);
-    if (planets.length === 0) continue;
-    habitable++;
-    if (planets.some((p) => p!.colonyId)) settled++;
-  }
-  return habitable === 0 ? 1 : settled / habitable;
+  const stars = state.galaxy.stars;
+  const owned = stars.filter((s) => s.planetIds.some((id) => state.planets[id]?.colonyId)).length;
+  return stars.length === 0 ? 1 : owned / stars.length;
 }
 
 /** Turn of the next session, or null while the council has not formed yet. */
@@ -90,8 +83,8 @@ export function councilTick(state: GameState, emit: Emit): { winner: PlayerId } 
 
   if (!state.settings.council) return null;
   if (!council.convened) {
-    if (state.turn < COUNCIL.earliestTurn) return null;
-    if (settledShare(state) < COUNCIL.settledShare && state.turn < COUNCIL.latestFirstTurn) return null;
+    if (state.turn < COUNCIL.earliestTurn || alive.length < COUNCIL.minEmpires) return null;
+    if (settledShare(state) < COUNCIL.settledShare) return null;
     council.convened = true;
     council.nextTurn = state.turn;
   }

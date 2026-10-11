@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ARMORS, BUILDINGS, COMPUTERS, HULLS, PROJECTS, RESEARCH, SHIELDS, SPECIALS, TECHS, TECH_FIELDS, TECH_TIERS, TIERS_BY_ID,
-  WEAPONS, availableTiers, breakthroughChance, commandPointsAvailable, empireBonus, getRace, newGame, processTurn,
+  WEAPONS, availableTiers, breakthroughChance, researchCost, commandPointsAvailable, empireBonus, getRace, newGame, processTurn,
   researchOptions, score, validateCommand, type GameState,
 } from "@starlord/sim";
 
@@ -11,7 +11,7 @@ const game = (races = ["terran", "kordex"]): GameState => newGame({ seed: "resea
 
 /** Finishes a field for player 0: enough points for a certain breakthrough. */
 function research(s: GameState, tierId: string, techId?: string): GameState {
-  s.players[0]!.research.progress = TIERS_BY_ID[tierId]!.cost * RESEARCH.maxCostMult;
+  s.players[0]!.research.progress = researchCost(s.players[0]!, TIERS_BY_ID[tierId]!) * RESEARCH.maxCostMult;
   return processTurn(s, { 0: [{ type: "setResearch", tierId, techId }] });
 }
 
@@ -55,8 +55,9 @@ describe("research rules", () => {
 
   it("rolls for a breakthrough between the base cost and twice the cost", () => {
     expect(breakthroughChance(99, 100)).toBe(0);
-    expect(breakthroughChance(100, 100)).toBe(RESEARCH.breakthroughStartChance);
-    expect(breakthroughChance(150, 100)).toBeGreaterThan(RESEARCH.breakthroughStartChance);
+    expect(breakthroughChance(100, 100)).toBe(0);
+    expect(breakthroughChance(100.5, 100)).toBe(0.01);
+    expect(breakthroughChance(150, 100)).toBe(0.5);
     expect(breakthroughChance(200, 100)).toBe(1);
     let s = game();
     s.players[0]!.research.progress = 1000;

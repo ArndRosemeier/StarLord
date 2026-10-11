@@ -549,6 +549,8 @@ export interface GameState {
   nebulae?: Nebula[];
   tributes?: Tribute[];
   activeEvents?: ActiveEvent[];
+  /** Turn the last random event struck, and each lucky empire's count toward a bonus windfall. */
+  eventClock?: { last: number; luck: Record<string, number> };
   /** Empires that ordered a surrender this turn, mapped to who receives them. */
   surrenders?: Record<string, PlayerId>;
 

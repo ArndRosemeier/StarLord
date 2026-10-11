@@ -53,9 +53,27 @@ export function createController(domains: readonly AutomationDomain[] = ALL_DOMA
   const on = new Set(domains);
   return {
     orders(view) {
-      return MODULES.filter(([d]) => on.has(d)).flatMap(([, run]) => run(view));
+      return dropScrappedFleets(view, MODULES.filter(([d]) => on.has(d)).flatMap(([, run]) => run(view)));
     },
   };
+}
+
+/** Production may scrap a whole fleet; later modules' orders for it would be rejected, so drop them. */
+function dropScrappedFleets(view: PlayerView, orders: Command[]): Command[] {
+  const scrapped = new Map<string, number>();
+  for (const c of orders) if (c.type === "scrapShips") scrapped.set(c.fleetId, (scrapped.get(c.fleetId) ?? 0) + c.count);
+  const gone = new Set(
+    [...scrapped].filter(([id, n]) => {
+      const f = view.fleets[id];
+      return !!f && n >= f.ships.reduce((m, s) => m + s.count, 0);
+    }).map(([id]) => id),
+  );
+  if (gone.size === 0) return orders;
+  return orders.filter((c) => {
+    if (c.type === "scrapShips") return true;
+    const ids: unknown[] = [(c as { fleetId?: string }).fleetId, c.type === "assignLeader" ? c.targetId : undefined];
+    return !ids.some((id) => typeof id === "string" && gone.has(id));
+  });
 }
 
 /** Orders for one player: full AI for computer empires, chosen areas for humans. */

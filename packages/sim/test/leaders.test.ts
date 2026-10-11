@@ -31,10 +31,10 @@ describe("race picks", () => {
     const pick = (shipAttack: number, shipDefense: number) => ({ ...getRace("terran"), picks: { ...getRace("terran").picks, shipAttack, shipDefense } });
     expect([-1, 1, 2].map((v) => shipAttackPickBonus(pick(v, 0)))).toEqual([-20, 20, 50]);
     expect([-1, 1, 2].map((v) => shipDefensePickBonus(pick(0, v)))).toEqual([-20, 25, 50]);
-    // Defending spies get half the racial bonus; telepaths add 10 both ways.
+    // Defending spies get the full racial bonus too; telepaths add 10 both ways.
     const spy = { ...getRace("terran"), picks: { ...getRace("terran").picks, spying: 2 } };
     expect(offensiveSpyPoints(spy)).toBe(20);
-    expect(defensiveSpyPoints(spy)).toBe(10);
+    expect(defensiveSpyPoints(spy)).toBe(20);
     expect(offensiveSpyPoints(getRace("lysari"))).toBe(10);
   });
 

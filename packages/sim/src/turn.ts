@@ -4,7 +4,7 @@ import { FREIGHTERS, GROWTH, MILITIA_PER_POP, TRADE_GOODS_RATE } from "./data/ec
 import { GOVERNMENTS } from "./data/governments.js";
 import type { PlanetType } from "./data/planets.js";
 import { getRace, hasTrait, registerRaces } from "./data/races.js";
-import { RESEARCH, TECHS, TIERS_BY_ID, emptyHyperLevels } from "./data/techs.js";
+import { RESEARCH, TECHS, TIERS_BY_ID, emptyHyperLevels, researchCost } from "./data/techs.js";
 import { colonyDefenseStrength, hasArmedDefenses, resolveCombat, type CombatSide } from "./combat.js";
 import { buyCost, termsOf, validateCommand, type Command } from "./commands.js";
 import { newId, type TurnContext } from "./context.js";
@@ -646,7 +646,7 @@ function assimilate(ctx: TurnContext, c: Colony): void {
   if (!c.aliens || c.aliens <= 0) return;
   const owner = state.players[c.ownerId]!;
   const former = c.formerOwnerId !== undefined ? state.players[c.formerOwnerId] : undefined;
-  if (former && former.alive && former.kind === "empire" && former.id !== owner.id && rng.chance(revoltChance(c))) {
+  if (former && former.alive && former.kind === "empire" && former.id !== owner.id && rng.chance(revoltChance(c, state))) {
     revolt(ctx, c, former.id);
     return;
   }
@@ -660,9 +660,10 @@ function assimilate(ctx: TurnContext, c: Colony): void {
 /** The aliens rise against the garrison; if they win, the colony returns to its former owner. */
 function revolt(ctx: TurnContext, c: Colony, formerId: PlayerId): void {
   const { state, rng } = ctx;
-  let rebels = c.aliens ?? 0;
-  const loyal = population(c) - rebels;
-  let defenders = colonyTroops(c) - Math.ceil(population(c) * MILITIA_PER_POP) + Math.ceil(loyal * MILITIA_PER_POP);
+  // Some of the aliens take up arms.
+  let rebels = rng.int(1, Math.max(1, c.aliens ?? 0));
+  const loyal = population(c) - (c.aliens ?? 0);
+  let defenders = colonyTroops(c) - Math.floor(population(c) * MILITIA_PER_POP) + Math.floor(loyal * MILITIA_PER_POP);
   const starId = starOf(state, c.planetId).id;
   const atk = troopUnit(state, formerId, c.raceId, "militia", false, starId).rating;
   const def = troopUnit(state, c.ownerId, state.players[c.ownerId]!.raceId, "militia", true, starId).rating;
@@ -925,9 +926,9 @@ function advanceResearch(ctx: TurnContext, playerId: PlayerId, points: number): 
   r.progress += points;
   if (!r.tierId) return;
   const tier = TIERS_BY_ID[r.tierId]!;
-  if (r.progress < tier.cost) return;
-  if (!ctx.rng.chance(breakthroughChance(r.progress, tier.cost))) return;
-  r.progress -= tier.cost;
+  if (!ctx.rng.chance(breakthroughChance(r.progress, researchCost(player, tier)))) return;
+  // Points past the cost are lost with the breakthrough.
+  r.progress = 0;
   r.tierId = null;
   const choice = r.techChoice;
   r.techChoice = null;
@@ -947,13 +948,17 @@ function advanceResearch(ctx: TurnContext, playerId: PlayerId, points: number): 
   for (const t of learned) learnTech(ctx, playerId, t, tier.id, "research");
 }
 
-/** Chance that research at `progress` points breaks through a field costing `cost`. */
+/**
+ * Chance that research at `progress` points breaks through a field costing
+ * `cost`: the overshoot as a whole percent of the cost, from 1% just past it
+ * to certain at twice the cost.
+ */
 export function breakthroughChance(progress: number, cost: number): number {
-  if (progress < cost) return 0;
-  const span = (RESEARCH.maxCostMult - 1) * cost;
-  const t = span > 0 ? Math.min(1, (progress - cost) / span) : 1;
-  return RESEARCH.breakthroughStartChance + (1 - RESEARCH.breakthroughStartChance) * t;
+  if (progress <= cost) return 0;
+  const pct = Math.floor((100 * (progress - cost)) / ((RESEARCH.maxCostMult - 1) * cost));
+  return Math.min(100, Math.max(1, pct)) / 100;
 }
+
 
 /** Gives a player an application, with the side effects some applications have. */
 export function learnTech(ctx: TurnContext, playerId: PlayerId, tech: string, tierId: string, source: "research" | "stolen" | "salvage" | "event"): void {
