@@ -971,7 +971,8 @@ function advanceResearch(ctx: TurnContext, playerId: PlayerId, points: number): 
   const player = ctx.state.players[playerId]!;
   const r = player.research;
   if (!r.tierId) return;
-  r.progress += points;
+  // A new research treaty can cost more than the empire makes; progress never goes below nothing.
+  r.progress = Math.max(0, r.progress + points);
   const tier = TIERS_BY_ID[r.tierId]!;
   if (!ctx.rng.chance(breakthroughChance(r.progress, researchCost(player, tier)))) return;
   // Points past the cost are lost with the breakthrough.

@@ -50,7 +50,7 @@ export const IMMOBILE_DEFENSE = -20;
 /** Ship beams (not missiles, torpedoes or bombs) do this fraction of their damage to planets. */
 export const PLANET_BEAM_DAMAGE = 0.5;
 
-/** Shields regain this fraction of their facing strength every combat turn. */
+/** Each combat turn a ship regains this fraction of one facing's strength, shared out a point at a time over its weakened facings. */
 export const SHIELD_REGEN = 0.3;
 export const SHIELD_FACINGS = 4;
 
