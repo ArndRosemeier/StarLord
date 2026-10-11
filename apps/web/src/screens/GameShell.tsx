@@ -19,6 +19,7 @@ import { EventsScreen } from "./EventsScreen";
 import { GameMenu } from "./GameMenu";
 import { DebugMenu } from "./DebugMenu";
 import { GameOver } from "./GameOver";
+import { ResearchPrompt } from "./ResearchPrompt";
 import { audio } from "../audio/sound";
 import { MuteButton } from "../ui/AudioControls";
 import { useHelp } from "../help/HelpDialog";
@@ -82,8 +83,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const cpMax = commandPointsAvailable(view, me.id);
   const reportBadge = view.turn !== seenTurn ? session.lastTurnEvents(me.id).filter((e) => e.kind !== "explored" && e.kind !== "built").length : 0;
 
-  // Nothing to research is worth a warning unless automation picks the next field or none is left.
-  const noResearch = !readOnly && !me.research.tierId && !me.automation.includes("research") && availableTiers(view, me.id).length > 0;
+  // Research points with no field are lost, so ask unless there are none, automation picks the field, or none is left.
+  const noResearch = !readOnly && research > 0 && !me.research.tierId && !me.automation.includes("research") && availableTiers(view, me.id).length > 0;
   const endTurn = () => {
     if (noResearch) setResearchWarning(true);
     else session.endTurn();
@@ -238,16 +239,10 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         {view.over && !overSeen && <GameOver won={won} spectating={readOnly} onClose={() => setOverSeen(true)} onQuit={onQuit} />}
       </div>
       {researchWarning && (
-        <div className="modal-back" onClick={() => setResearchWarning(false)}>
-          <div className="modal research-warning" role="alertdialog" aria-label="No research target" onClick={(e) => e.stopPropagation()}>
-            <h3>No research target</h3>
-            <p>Your scientists have no technology to work on. The research points made this turn will be lost, and nothing gets discovered until you choose one.</p>
-            <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-              <button onClick={() => { setResearchWarning(false); session.endTurn(); }}>End turn anyway</button>
-              <button className="primary" autoFocus onClick={() => { setResearchWarning(false); go("research"); }}>Choose research</button>
-            </div>
-          </div>
-        </div>
+        <ResearchPrompt points={research}
+          onPick={(cmd) => { setResearchWarning(false); session.issue(cmd); session.endTurn(); }}
+          onSkip={() => { setResearchWarning(false); session.endTurn(); }}
+          onOpenScreen={() => { setResearchWarning(false); go("research"); }} />
       )}
       {audiences[0] && !(view.over && !overSeen) && (
         <Audience key={`${view.turn}:${audiences.length}:${audiences[0].themId}:${audiences[0].opening.kind}`} request={audiences[0]}
