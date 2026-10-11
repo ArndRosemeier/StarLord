@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import {
-  CLIMATES, canReach, designStats, findDesign, getRace, isHostile, maxPopulation, population, relation, travelTurns,
+  CLIMATES, canReach, crewLevel, crewName, designStats, findDesign, getRace, isHostile, maxPopulation, population, relation, travelTurns,
   type Fleet, type Planet, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "./hooks";
@@ -157,7 +157,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
         {captain && <> · Captain {captain.name}</>}
       </div>
       <table>
-        <thead><tr><th>Ship</th><th>Count</th><th>Strength</th>{mine && <th>Split</th>}</tr></thead>
+        <thead><tr><th>Ship</th><th>Count</th><th>Strength</th>{mine && <th title="Crew experience: beam attack and defense rise with each level">Crew</th>}{mine && <th>Split</th>}</tr></thead>
         <tbody>
           {fleet.ships.map((s) => {
             const d = findDesign(owner, s.designId);
@@ -167,6 +167,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
                 <td>{d?.name ?? s.designId} <small className="muted">{d && !d.fixed ? words(d.hull) : ""}</small></td>
                 <td>{s.count}</td>
                 <td>{stats ? fmt(stats.strength) : "?"}</td>
+                {mine && <td title={`${s.xp ?? 0} XP`}>{d?.fixed ? "–" : crewName(crewLevel(s.xp ?? 0, owner))}</td>}
                 {mine && (
                   <td>
                     <input type="number" min={0} max={s.count} value={split[s.designId] ?? 0} style={{ width: 52 }}

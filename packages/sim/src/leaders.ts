@@ -373,11 +373,11 @@ export function addXp(state: GameState, l: Leader, xp: number, emit?: Emit): voi
   if (l.level > before) emit?.({ kind: "leader", playerId: l.ownerId, leaderId: l.id, what: `${l.name} reached level ${l.level}` });
 }
 
-/** Captains of fleets that fought gain experience: one per enemy ship destroyed, at least one. */
-export function combatXp(state: GameState, fleetIds: Id[], enemyLosses: number, emit?: Emit): void {
+/** Captains of the winning fleets gain the same battle experience as their crews. */
+export function combatXp(state: GameState, fleetIds: Id[], amount: number, emit?: Emit): void {
   for (const id of fleetIds) {
     const l = captainOf(state, id);
-    if (l) addXp(state, l, Math.max(1, enemyLosses), emit);
+    if (l) addXp(state, l, Math.max(1, amount), emit);
   }
 }
 

@@ -103,7 +103,10 @@ export interface WeaponDef {
   ammo?: number;
   /** Torpedoes fire every other combat turn. */
   reload?: number;
-  /** Squares per combat turn for missiles, torpedoes and craft; Infinity hits at once. */
+  /**
+   * Squares per combat turn for missiles, torpedoes and craft; Infinity hits at once.
+   * Missiles and craft add 2 for every drive beyond the Nuclear Drive.
+   */
   speed?: number;
   /** Maximum reach in squares for weapons that are not range-banded beams. */
   range?: number;
@@ -134,10 +137,10 @@ export const WEAPONS: WeaponDef[] = [
   { id: "deathRay", name: "Death Ray", kind: "beam", damageMin: 50, damageMax: 100, space: 30, cost: 75, traits: ["killsMarines", "continuous"], mods: ["heavyMount"], requires: "deathRay" },
   { id: "maulerDevice", name: "Mauler Device", kind: "beam", damageMin: 100, damageMax: 100, space: 50, cost: 75, traits: ["doubleRangePenalty", "alwaysHits"], mods: ["heavyMount"], requires: "maulerDevice" },
 
-  { id: "nuclearMissile", name: "Nuclear Missile", kind: "missile", damageMin: 8, damageMax: 8, space: 0, cost: 0, speed: 10, mods: MISSILE_MODS, requires: "nuclearMissile" },
+  { id: "nuclearMissile", name: "Nuclear Missile", kind: "missile", damageMin: 8, damageMax: 8, space: 0, cost: 0, speed: 12, mods: MISSILE_MODS, requires: "nuclearMissile" },
   { id: "merculiteMissile", name: "Merculite Missile", kind: "missile", damageMin: 14, damageMax: 14, space: 0, cost: 0, speed: 12, mods: MISSILE_MODS, requires: "merculiteMissile" },
-  { id: "pulsonMissile", name: "Pulson Missile", kind: "missile", damageMin: 20, damageMax: 20, space: 0, cost: 0, speed: 14, mods: MISSILE_MODS, requires: "pulsonMissile" },
-  { id: "zeonMissile", name: "Zeon Missile", kind: "missile", damageMin: 30, damageMax: 30, space: 0, cost: 0, speed: 16, mods: MISSILE_MODS, requires: "zeonMissile" },
+  { id: "pulsonMissile", name: "Pulson Missile", kind: "missile", damageMin: 20, damageMax: 20, space: 0, cost: 0, speed: 12, mods: MISSILE_MODS, requires: "pulsonMissile" },
+  { id: "zeonMissile", name: "Zeon Missile", kind: "missile", damageMin: 30, damageMax: 30, space: 0, cost: 0, speed: 12, mods: MISSILE_MODS, requires: "zeonMissile" },
 
   { id: "antimatterTorpedo", name: "Anti-Matter Torpedo", kind: "torpedo", damageMin: 25, damageMax: 25, space: 20, cost: 15, reload: 2, speed: 20, mods: ["enveloping", "eccm", "fast", "overloaded"], requires: "antimatterTorpedo" },
   { id: "protonTorpedo", name: "Proton Torpedo", kind: "torpedo", damageMin: 40, damageMax: 40, space: 30, cost: 20, reload: 2, speed: Infinity, range: 24, mods: ["enveloping", "eccm", "overloaded"], requires: "protonTorpedo" },
@@ -160,9 +163,9 @@ export const WEAPONS: WeaponDef[] = [
   { id: "blackHoleGenerator", name: "Black Hole Generator", kind: "special", damageMin: 0, damageMax: 0, space: 150, cost: 150, range: 15, effect: "blackHole", mods: [], requires: "blackHoleGenerator" },
   { id: "stellarConverter", name: "Stellar Converter", kind: "special", damageMin: 400, damageMax: 400, space: 500, cost: 500, traits: ["alwaysHits", "enveloping", "noRangeDissipation"], effect: "stellarConverter", mods: [], requires: "stellarConverter" },
 
-  { id: "fighterBays", name: "Fighter Bays", kind: "bay", damageMin: 0, damageMax: 0, space: 30, cost: 10, speed: 15, effect: "fighters", mods: [], requires: "fighterBays" },
-  { id: "bomberBays", name: "Bomber Bays", kind: "bay", damageMin: 0, damageMax: 0, space: 60, cost: 30, speed: 10, effect: "bombers", mods: [], requires: "bomberBays" },
-  { id: "heavyFighterBays", name: "Heavy Fighter Bays", kind: "bay", damageMin: 0, damageMax: 0, space: 80, cost: 50, speed: 12, effect: "heavyFighters", mods: [], requires: "heavyFighterBays" },
+  { id: "fighterBays", name: "Fighter Bays", kind: "bay", damageMin: 0, damageMax: 0, space: 30, cost: 10, speed: 10, effect: "fighters", mods: [], requires: "fighterBays" },
+  { id: "bomberBays", name: "Bomber Bays", kind: "bay", damageMin: 0, damageMax: 0, space: 60, cost: 30, speed: 8, effect: "bombers", mods: [], requires: "bomberBays" },
+  { id: "heavyFighterBays", name: "Heavy Fighter Bays", kind: "bay", damageMin: 0, damageMax: 0, space: 80, cost: 50, speed: 8, effect: "heavyFighters", mods: [], requires: "heavyFighterBays" },
   { id: "assaultShuttles", name: "Assault Shuttles", kind: "bay", damageMin: 0, damageMax: 0, space: 25, cost: 10, speed: 6, effect: "shuttles", mods: [], requires: "assaultShuttles" },
 ];
 

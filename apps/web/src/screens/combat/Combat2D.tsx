@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FIELD_HEIGHT, FIELD_WIDTH, WEAPONS_BY_ID, type CombatReport, type PlayerView } from "@starlord/sim";
 import { STEP_MS, isProjectile, type CombatEvent, type Frames, type UnitInfo } from "./replayModel";
 
@@ -10,8 +10,25 @@ import { STEP_MS, isProjectile, type CombatEvent, type Frames, type UnitInfo } f
 const backdrop = typeof Image === "undefined" ? null : Object.assign(new Image(), { src: "art/combat.webp" });
 
 const CELL = 26;
-const W = FIELD_WIDTH * CELL;
-const H = FIELD_HEIGHT * CELL;
+
+/** The part of the battlefield the fight uses: every unit's start and move, with a margin, at least 32 x 18 squares. */
+export function fieldWindow(report: CombatReport): { x0: number; y0: number; w: number; h: number } {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const s of report.ships) { xs.push(s.x); ys.push(s.y); }
+  for (const round of report.rounds) for (const e of round) if (e.kind === "move" && e.x !== undefined && e.y !== undefined) { xs.push(e.x); ys.push(e.y); }
+  const fit = (lo: number, hi: number, min: number, max: number) => {
+    let a = Math.floor(lo) - 3;
+    let b = Math.ceil(hi) + 4;
+    if (b - a < min) { const grow = min - (b - a); a -= Math.floor(grow / 2); b += Math.ceil(grow / 2); }
+    if (a < 0) { b -= a; a = 0; }
+    if (b > max) { a = Math.max(0, a - (b - max)); b = max; }
+    return [a, b - a] as const;
+  };
+  const [x0, w] = xs.length ? fit(Math.min(...xs), Math.max(...xs), 32, FIELD_WIDTH) : [0, FIELD_WIDTH];
+  const [y0, h] = ys.length ? fit(Math.min(...ys), Math.max(...ys), 18, FIELD_HEIGHT) : [0, FIELD_HEIGHT];
+  return { x0, y0, w, h };
+}
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string }
 interface Floater { x: number; y: number; text: string; life: number; color: string }
@@ -31,6 +48,9 @@ export interface CombatViewProps {
 
 export function Combat2D({ report, view, units, frames, event, step, reduced, resetKey }: CombatViewProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const win = useMemo(() => fieldWindow(report), [report]);
+  const W = win.w * CELL;
+  const H = win.h * CELL;
   // Everything the animation loop reads lives in a ref so the loop itself never restarts.
   const live = useRef({ frames, event, stepAt: 0, reduced, view, report, units });
   const fx = useRef({ particles: [] as Particle[], floaters: [] as Floater[], shocks: [] as Shock[], shake: 0 });
@@ -77,6 +97,8 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
     const ctx = el?.getContext("2d");
     if (!el || !ctx) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const ox = -win.x0 * CELL;
+    const oy = -win.y0 * CELL;
     el.width = W * dpr;
     el.height = H * dpr;
     // A fixed sky of faint stars, laid out once.
@@ -113,11 +135,13 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
         ctx.fillRect(s.x, s.y, s.r, s.r);
       }
       ctx.globalAlpha = 1;
+      // Everything below is drawn in battlefield coordinates, shifted to the window the fight uses.
+      ctx.translate(ox, oy);
       ctx.strokeStyle = "rgba(90,130,220,0.06)";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let x = 0; x <= FIELD_WIDTH; x++) { ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, H); }
-      for (let y = 0; y <= FIELD_HEIGHT; y++) { ctx.moveTo(0, y * CELL); ctx.lineTo(W, y * CELL); }
+      for (let x = 0; x <= FIELD_WIDTH; x++) { ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, FIELD_HEIGHT * CELL); }
+      for (let y = 0; y <= FIELD_HEIGHT; y++) { ctx.moveTo(0, y * CELL); ctx.lineTo(FIELD_WIDTH * CELL, y * CELL); }
       ctx.stroke();
 
       const at = (key: string) => {
@@ -259,6 +283,7 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
       }
       ctx.globalAlpha = 1;
 
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       // Soft vignette.
       const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.65);
       v.addColorStop(0, "rgba(0,0,0,0)");
@@ -270,7 +295,7 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [W, H, win.x0, win.y0]);
 
   return <canvas ref={canvas} style={{ width: "100%", aspectRatio: `${W} / ${H}`, display: "block" }} />;
 }

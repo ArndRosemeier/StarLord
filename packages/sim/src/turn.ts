@@ -20,6 +20,7 @@ import {
 import { espionageTick } from "./espionage.js";
 import { distance } from "./galaxy.js";
 import { addShips, deleteFleet, removeShips } from "./fleetOps.js";
+import { builtCrewXp, crewTick } from "./crew.js";
 import { captureColony, destroyColony, exterminate, groundPhase, troopUnit, type Silenced } from "./ground.js";
 import { assignDefaultJobs, newUnitJob, removePopulation } from "./jobs.js";
 import {
@@ -68,6 +69,7 @@ export function processTurn(prev: GameState, orders: TurnOrders): GameState {
   espionageTick(state, rng, ctx.emit);
   diplomacyTick(state, ctx.emit);
   leaderTick(state, rng, ctx.emit);
+  crewTick(state);
   const elected = councilTick(state, ctx.emit);
   if (elected) endGame(ctx, elected.winner, "council");
   randomEventTick(ctx);
@@ -201,9 +203,14 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       break;
     case "splitFleet": {
       const f = state.fleets[cmd.fleetId]!;
-      for (const s of cmd.ships) f.ships.find((x) => x.designId === s.designId)!.count -= s.count;
+      // The split-off ships keep their crews' experience.
+      const ships = cmd.ships.map((s) => {
+        const from = f.ships.find((x) => x.designId === s.designId)!;
+        from.count -= s.count;
+        return from.xp ? { designId: s.designId, count: s.count, xp: from.xp } : { designId: s.designId, count: s.count };
+      });
       f.ships = f.ships.filter((s) => s.count > 0);
-      const nf: Fleet = { ...f, id: splitFleetId(state, f.id), ships: cmd.ships.map((s) => ({ ...s })), name: `${f.name} II` };
+      const nf: Fleet = { ...f, id: splitFleetId(state, f.id), ships, name: `${f.name} II` };
       delete nf.invadeTarget;
       state.fleets[nf.id] = nf;
       break;
@@ -211,7 +218,7 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "mergeFleets": {
       const [first, ...rest] = cmd.fleetIds.map((id) => state.fleets[id]!);
       for (const f of rest) {
-        for (const s of f.ships) addShips(first!, s.designId, s.count);
+        for (const s of f.ships) addShips(first!, s.designId, s.count, s.xp ?? 0);
         deleteFleet(state, f.id);
       }
       break;
@@ -467,12 +474,12 @@ function applyCombat(
     if (stack) stack.count++;
     else fleetShips.push({ designId: id, count: 1 });
   }
-  // Captains learn from battle: experience for every enemy ship destroyed, at least one.
-  const shipsOf = (fleetId: Id, list?: { count: number }[]) => (list ?? state.fleets[fleetId]?.ships ?? []).reduce((n, s) => n + s.count, 0);
-  for (const side of sides) {
-    const enemy = sides.find((s) => s !== side)!;
-    const enemyLost = enemy.fleets.reduce((n, f) => n + Math.max(0, shipsOf(f.id) - shipsOf(f.id, outcome.survivors.get(f.id))), 0);
-    combatXp(state, side.fleets.map((f) => f.id).filter((id) => outcome.survivors.has(id)), enemyLost, ctx.emit);
+  // The winner's crews and captains learn from battle (capped again at the next turn's training).
+  if (outcome.crewXp) {
+    const { ownerId, amount } = outcome.crewXp;
+    const fleetIds = sides.find((s) => s.ownerId === ownerId)!.fleets.map((f) => f.id).filter((id) => outcome.survivors.has(id));
+    for (const id of fleetIds) for (const s of outcome.survivors.get(id)!) s.xp = (s.xp ?? 0) + amount;
+    combatXp(state, fleetIds, amount, ctx.emit);
   }
   for (const [fleetId, ships] of outcome.survivors) {
     const f = state.fleets[fleetId];
@@ -808,11 +815,13 @@ function completeItem(ctx: TurnContext, colony: Colony, item: BuildItem): void {
           return d && designStats(player, d).role === role;
         }),
     );
-    if (docked) addShips(docked, item.designId, 1);
+    // A Space Academy here sends the ship out with a trained crew.
+    const xp = builtCrewXp(colony);
+    if (docked) addShips(docked, item.designId, 1, xp);
     else {
       const f: Fleet = {
         id: newId(state, "f"), ownerId: colony.ownerId, x: star.x, y: star.y, starId: star.id, destStarId: null,
-        ships: [{ designId: item.designId, count: 1 }], stance: "defend", name: `${design.name} Group`,
+        ships: [xp > 0 ? { designId: item.designId, count: 1, xp } : { designId: item.designId, count: 1 }], stance: "defend", name: `${design.name} Group`,
       };
       state.fleets[f.id] = f;
     }

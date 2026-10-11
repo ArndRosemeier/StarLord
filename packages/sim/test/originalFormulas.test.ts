@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buyPrice, getRace, growthPerTurn, newGame, raceMaxPopulation, computeOutput, spyCountBonus, troopUnit, type Colony } from "@starlord/sim";
+import {
+  CREW, Rng, buyPrice, crewLevel, crewTick, getRace, growthPerTurn, missileSpeed, newGame, raceMaxPopulation,
+  computeOutput, resolveCombat, spyCountBonus, troopUnit, WEAPONS_BY_ID, type Colony, type Fleet, type GameState,
+} from "@starlord/sim";
 
 /** Numbers recovered from the original program; each case was worked out by hand from the decoded formulas. */
 describe("original colony formulas", () => {
@@ -64,5 +67,82 @@ describe("original turn rules", () => {
     const rating = (kind: "militia" | "marines" | "armor") => troopUnit(s, 0, "terran", kind, false).rating;
     expect(rating("marines") - rating("militia")).toBe(10);
     expect(rating("armor") - rating("marines")).toBe(10);
+  });
+});
+
+describe("original crews and space combat", () => {
+  const twoEmpires = () => {
+    const s = newGame({ seed: "crew", races: ["terran", "felhari"], monsters: false, raiders: false, council: false });
+    s.players[0]!.contacts = [1];
+    s.players[1]!.contacts = [0];
+    return s;
+  };
+  const addFleet = (s: GameState, ownerId: number, starId: string, ships: Fleet["ships"], stance: Fleet["stance"] = "defend") => {
+    const star = s.galaxy.stars.find((x) => x.id === starId)!;
+    const f: Fleet = { id: `t${s.nextId++}`, ownerId, x: star.x, y: star.y, starId, destStarId: null, ships, stance, name: "Test" };
+    s.fleets[f.id] = f;
+    return f;
+  };
+
+  it("ranks crews by experience, warlords one level higher", () => {
+    const s = twoEmpires();
+    const human = s.players[0]!;
+    const warlord = s.players[1]!;
+    expect([0, 49, 50, 149, 150, 500].map((xp) => crewLevel(xp, human))).toEqual([0, 0, 1, 1, 2, 3]);
+    expect([0, 50, 150, 500].map((xp) => crewLevel(xp, warlord))).toEqual([1, 2, 3, 4]);
+  });
+
+  it("trains crews every turn, more at a Space Academy, and caps experience at Elite", () => {
+    const s = twoEmpires();
+    const home = s.players[0]!.homeStarId;
+    const colony = Object.values(s.colonies).find((c) => c.ownerId === 0)!;
+    const f = addFleet(s, 0, home, [{ designId: "frigate", count: 1, xp: 10 }]);
+    crewTick(s);
+    expect(f.ships[0]!.xp).toBe(11);
+    colony.buildings.push("spaceAcademy");
+    crewTick(s);
+    expect(f.ships[0]!.xp).toBe(13);
+    f.ships[0]!.xp = 499;
+    crewTick(s);
+    expect(f.ships[0]!.xp).toBe(CREW.xpCap);
+  });
+
+  it("speeds missiles up with better drives", () => {
+    const s = twoEmpires();
+    const p = s.players[0]!;
+    expect(missileSpeed(p, WEAPONS_BY_ID.nuclearMissile!)).toBe(12);
+    p.techs.push("fusionDrive", "ionDrive");
+    expect(missileSpeed(p, WEAPONS_BY_ID.zeonMissile!)).toBe(16);
+    expect(missileSpeed(p, WEAPONS_BY_ID.plasmaTorpedo!)).toBe(24);
+  });
+
+  it("gives the winner half the hull sizes it destroyed as experience", () => {
+    const s = twoEmpires();
+    const star = s.players[1]!.homeStarId;
+    const a = addFleet(s, 0, star, [{ designId: "frigate", count: 12 }], "attack");
+    const b = addFleet(s, 1, star, [{ designId: "frigate", count: 2 }]);
+    const out = resolveCombat(s, new Rng({ s: 7 }), star, { ownerId: 0, fleets: [a], attacksPlanet: false }, { ownerId: 1, fleets: [b], attacksPlanet: false }, "cb");
+    expect(out.report.winner).toBe(0);
+    // Two frigates (size 0 + 1 each) destroyed: max(1, 2 / 2).
+    expect(out.crewXp).toEqual({ ownerId: 0, amount: 1 });
+  });
+
+  it("hands the field to the defender when nothing can be decided", () => {
+    const s = twoEmpires();
+    const star = s.players[1]!.homeStarId;
+    const colony = Object.values(s.colonies).find((c) => c.ownerId === 1)!;
+    colony.buildings = [];
+    const a = addFleet(s, 0, star, [{ designId: "scout", count: 1 }]);
+    const b = addFleet(s, 1, star, [{ designId: "scout", count: 1 }]);
+    let checked = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const out = resolveCombat(s, new Rng({ s: seed }), star, { ownerId: 0, fleets: [a], attacksPlanet: false }, { ownerId: 1, fleets: [b], attacksPlanet: false, colony }, "cb");
+      expect(out.attacker).toBe(0);
+      // Unarmed ships may slip away; when both stay, nobody can win and the defender keeps the field.
+      if (out.report.rounds.flat().some((e) => e.kind === "retreat")) continue;
+      expect(out.report.winner).toBe(1);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

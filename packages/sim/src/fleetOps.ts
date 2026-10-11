@@ -1,11 +1,12 @@
+import { mergeCrew } from "./crew.js";
 import type { Fleet, GameState, Id } from "./types.js";
 
 /** Small fleet bookkeeping shared by the turn phases. */
 
-export function addShips(f: Fleet, designId: string, count: number): void {
+export function addShips(f: Fleet, designId: string, count: number, xp = 0): void {
   const s = f.ships.find((x) => x.designId === designId);
-  if (s) s.count += count;
-  else f.ships.push({ designId, count });
+  if (s) mergeCrew(s, count, xp);
+  else f.ships.push(xp > 0 ? { designId, count, xp } : { designId, count });
 }
 
 export function removeShips(state: GameState, f: Fleet, designId: string, count: number): void {
