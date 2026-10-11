@@ -453,12 +453,14 @@ export function growthPerTurn(pop: number, total: number, max: number, race: Rac
 }
 
 /** Fighters a colony's garrison launches: the best type the owner knows. */
-export function fighterGarrison(player: Player, colony: Colony): { kind: "interceptor" | "bomber" | "heavyFighter"; count: number } | null {
-  const squadrons = colony.buildings.reduce((n, id) => n + (BUILDINGS_BY_ID[id]?.effects.defense?.fighters ? 1 : 0), 0);
-  if (squadrons === 0) return null;
-  if (knows(player, "heavyFighterBays")) return { kind: "heavyFighter", count: FIGHTER_GARRISON.heavyFighters * squadrons };
-  if (knows(player, "bomberBays")) return { kind: "bomber", count: FIGHTER_GARRISON.bombers * squadrons };
-  return { kind: "interceptor", count: FIGHTER_GARRISON.interceptors * squadrons };
+export function fighterGarrison(player: Player, colony: Colony): { kind: "interceptor" | "bomber" | "heavyFighter"; slots: number; bays: number; count: number } | null {
+  const garrisons = colony.buildings.reduce((n, id) => n + (BUILDINGS_BY_ID[id]?.effects.defense?.fighters ? 1 : 0), 0);
+  if (garrisons === 0) return null;
+  const kind = knows(player, "heavyFighterBays") ? "heavyFighter" : knows(player, "bomberBays") ? "bomber" : "interceptor";
+  const slots = FIGHTER_GARRISON.slots * garrisons;
+  const bays = FIGHTER_GARRISON.bays[kind];
+  const count = kind === "heavyFighter" ? FIGHTER_GARRISON.heavyFighters : kind === "bomber" ? FIGHTER_GARRISON.bombers : FIGHTER_GARRISON.interceptors;
+  return { kind, slots, bays, count: count * garrisons };
 }
 
 // ---------------------------------------------------------------- food trade

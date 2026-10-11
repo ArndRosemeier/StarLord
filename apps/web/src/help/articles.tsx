@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  CREW, DEFENSE_CREW_LEVEL, SIDE_ATTACK_BY_IMMOBILE_SIZE, hullIndex,
   ALL_WEAPONS, ARMORS, ARMORS_BY_ID, BUILDINGS, BUILDINGS_BY_ID, CLIMATES, COMPUTERS, COMPUTERS_BY_ID, CUSTOM_RACE_POINTS,
   DRIVES, EXCLUSIVE_TRAITS, FIELD_NAMES, FUEL_RANGES, GOVERNMENTS, GOVERNMENT_COSTS, HULLS, HULLS_BY_ID, INDUSTRY_PER_WORKER,
   LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
@@ -449,15 +450,20 @@ function HullsPage() {
       </table>
       <h3>Orbital stations</h3>
       <p>
-        Stations are buildings, but they fight as immobile ships fitted automatically with your best weapons, armor,
-        shield and computer. They are easy to hit, never run out of ammunition and fire in every direction. Losing one in
-        battle destroys the building.
+        Stations are buildings, but they fight as immobile ships of the hull size listed, fitted automatically with your
+        best weapons, armor, shield and computer, a Regular crew and up to eight specials you know. They are easy to hit
+        and their beams fire in every direction and never run dry; half their space holds missile racks. Losing one in
+        battle, or having it boarded and taken, destroys the building.
       </p>
       <table className="help-table">
-        <thead><tr><th>Station</th><th>Space</th><th>Cost</th><th>Armor</th><th>Structure</th><th>Beam defense</th></tr></thead>
+        <thead><tr><th>Station</th><th>Fights as</th><th>Space</th><th>Cost</th><th>Armor</th><th>Structure</th><th>Marines</th><th>Beam defense</th><th>Side beam attack</th></tr></thead>
         <tbody>
           {STATION_HULLS.map((h) => (
-            <tr key={h.id}><td><HelpLink to={`building:${h.id}`} /></td><td>{h.space}</td><td>{h.cost}</td><td>{h.armor}</td><td>{h.structure}</td><td>{signed(h.fixedDefense ?? 0)}</td></tr>
+            <tr key={h.id}>
+              <td><HelpLink to={`building:${h.id}`} /></td><td>{h.asHull ? HULLS_BY_ID[h.asHull].name : ""}</td><td>{h.space}</td><td>{h.cost}</td>
+              <td>{h.armor}</td><td>{h.structure}</td><td>{h.marines}</td><td>{signed((h.fixedDefense ?? 0) + CREW.defense[DEFENSE_CREW_LEVEL]!)}</td>
+              <td>{signed(SIDE_ATTACK_BY_IMMOBILE_SIZE[hullIndex(h.asHull ?? "cruiser")] ?? 0)}</td>
+            </tr>
           ))}
         </tbody>
       </table>

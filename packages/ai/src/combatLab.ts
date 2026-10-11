@@ -200,6 +200,9 @@ export function reportProblems(setup: LabSetup, r: CombatReport): string[] {
   }
   const destroyed = new Set<string>();
   const retreated = new Set<string>();
+  // Boarders can take a unit: it changes hands, and sits out the battle unless its captor is telepathic.
+  const owner = new Map(r.ships.map((s) => [s.key, s.ownerId]));
+  const sittingOut = new Set<string>();
   r.rounds.forEach((round, i) => {
     for (const e of round) {
       const where = `round ${i + 1}, ${e.kind}`;
@@ -208,7 +211,9 @@ export function reportProblems(setup: LabSetup, r: CombatReport): string[] {
       if (!u) { bad(`${where}: unknown unit ${e.ship}`); continue; }
       const t = e.target ? units.get(e.target) : undefined;
       if (e.target && !t) bad(`${where}: unknown target ${e.target}`);
-      if (t && t.ownerId === u.ownerId && e.kind !== "repair") bad(`${where}: ${u.name} targets its own side's ${t.name}`);
+      // An explosion strikes everything near it, friend or foe.
+      if (t && owner.get(t.key) === owner.get(u.key) && e.kind !== "repair" && e.weapon !== "explosion") bad(`${where}: ${u.name} targets its own side's ${t.name}`);
+      if (sittingOut.has(e.ship) && e.kind !== "destroyed") bad(`${where}: ${u.name} acts after being taken out of the fight`);
       for (const k of ["damage", "absorbed", "armorDamage", "structureDamage"] as const) {
         const v = e[k];
         if (isNum(v) && v! < 0) bad(`${where}: negative ${k} ${v}`);
@@ -228,10 +233,15 @@ export function reportProblems(setup: LabSetup, r: CombatReport): string[] {
         if (u.kind !== "ship") bad(`${where}: ${u.name} (${u.kind}) retreated`);
         retreated.add(e.ship);
       }
+      if (e.kind === "captured") {
+        if (u.kind !== "ship" && u.kind !== "station") bad(`${where}: ${u.name} (${u.kind}) was captured`);
+        if (t) owner.set(e.ship, owner.get(t.key)!);
+        if (!e.hit) sittingOut.add(e.ship);
+      }
     }
   });
   if (r.winner !== null) {
-    const left = r.ships.filter((s) => s.ownerId === r.winner && !destroyed.has(s.key) && !retreated.has(s.key));
+    const left = r.ships.filter((s) => owner.get(s.key) === r.winner && !destroyed.has(s.key) && !retreated.has(s.key) && !sittingOut.has(s.key));
     if (left.length === 0) bad("the winner has nothing left on the field");
   }
   void setup;

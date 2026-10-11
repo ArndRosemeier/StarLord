@@ -99,11 +99,19 @@ export interface BuildingDef {
   description: string;
 }
 
-/** Fighters a Fighter Garrison holds, by the best fighter type known. */
+/**
+ * A Fighter Garrison, as the original fits it: two bay slots of 5 Fighter Bays,
+ * or of 2 Heavy Fighter Bays once those are known, else of 3 Bomber Bays once
+ * those are known. Every bay launches a squadron of 4 craft, once; the garrison
+ * sends up fresh craft every few combat turns.
+ */
 export const FIGHTER_GARRISON = {
-  interceptors: 10,
-  bombers: 6,
-  heavyFighters: 4,
+  slots: 2,
+  bays: { interceptor: 5, bomber: 3, heavyFighter: 2 },
+  /** Craft in the air at once: 2 slots x bays x 4 per squadron. */
+  interceptors: 40,
+  bombers: 24,
+  heavyFighters: 16,
   /** Lost fighters are replaced after this many combat rounds. */
   replenishRounds: 10,
 } as const;
@@ -128,16 +136,16 @@ export const BUILDINGS: BuildingDef[] = [
   { id: "battlestation", name: "Battlestation", cost: 1000, maintenance: 3, requires: "battlestation", replaces: ["starBase"],
     effects: { commandPoints: 2, scanRange: 4, defense: { station: "battlestation" } }, description: "Heavier orbital station and star dock. +2 command points, +4 parsec scanner range, +10 beam attack for your ships fighting here." },
   { id: "starFortress", name: "Star Fortress", cost: 2500, maintenance: 4, requires: "starFortress", replaces: ["starBase", "battlestation"],
-    effects: { commandPoints: 3, scanRange: 6, defense: { station: "starFortress" } }, description: "Massive orbital fortress and star dock. +3 command points, +6 parsec scanner range, +20 beam attack and defense for your ships fighting here." },
+    effects: { commandPoints: 3, scanRange: 6, defense: { station: "starFortress" } }, description: "Massive orbital fortress and star dock. +3 command points, +6 parsec scanner range, +20 beam attack for your ships fighting here." },
   { id: "missileBase", name: "Planetary Missile Base", cost: 120, maintenance: 2, requires: "missileBase",
-    effects: { defense: { installation: "missileBase" } }, description: "300 space of your best missiles on the planet, never out of ammunition." },
+    effects: { defense: { installation: "missileBase" } }, description: "300 space of your best missiles in 5-shot racks, with ECCM and the Fast and Armored refinements you know; 125 shots each." },
   { id: "groundBatteries", name: "Ground Batteries", cost: 200, maintenance: 2, requires: "groundBatteries",
-    effects: { defense: { installation: "groundBatteries" } }, description: "300 space of heavy-mount and point-defense versions of your best beam on the planet." },
+    effects: { defense: { installation: "groundBatteries" } }, description: "225 space of your best beam as heavy mounts with every refinement you know, and 75 space of your best point-defense beam. They fire all round." },
   { id: "planetaryStellarConverter", name: "Planetary Stellar Converter", cost: 1000, maintenance: 6, requires: "stellarConverter",
     effects: { defense: { installation: "stellarConverter" } }, description: "A stellar converter on the planet: 400 damage to every shield of a ship in orbit each combat turn, at any range." },
   { id: "fighterGarrison", name: "Fighter Garrison", cost: 150, maintenance: 2, requires: "fighterGarrison",
     effects: { defense: { fighters: FIGHTER_GARRISON.interceptors } },
-    description: "Planet-based squadrons: 10 interceptors, or 6 bombers or 4 heavy fighters once those are known. Losses are replaced during long battles." },
+    description: "Planet-based squadrons: 40 interceptors, or 24 bombers or 16 heavy fighters once those are known. Fresh craft go up every 10 combat turns." },
   { id: "artemisSystemNet", name: "Artemis System Net", cost: 1000, maintenance: 5, requires: "artemisSystemNet",
     effects: { defense: { mines: true } }, description: "Space mines that strike attacking ships as a battle opens for 100–500 damage less shields; the bigger the ship, the likelier: 20% of frigates up to every doom star." },
   { id: "radiationShield", name: "Planetary Radiation Shield", cost: 80, maintenance: 1, requires: "planetaryRadiationShield",

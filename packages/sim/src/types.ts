@@ -500,7 +500,11 @@ export interface CombatShipSnapshot {
 
 export interface CombatRoundEvent {
   /** Viewers must ignore kinds they don't know. */
-  kind: "move" | "fire" | "destroyed" | "retreat" | "launch" | "board" | "repair";
+  /**
+   * "captured": boarders took `ship` for the owner of `target`; `hit` is true when the prize fights on for its
+   * captor (a telepathic captor), otherwise it sits out the rest of the battle.
+   */
+  kind: "move" | "fire" | "destroyed" | "retreat" | "launch" | "board" | "repair" | "captured";
   ship: string;
   target?: string;
   x?: number;

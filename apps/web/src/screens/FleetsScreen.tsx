@@ -60,7 +60,7 @@ export function FleetsScreen({ onShowStar }: { onShowStar: (starId: string) => v
               </Tip>
             ))}
           </div>
-          <small className="muted">{FOCUS_TIPS[doctrine.focus]} When your side's total strength falls below the retreat share of the enemy's, your ships there retreat (not while your own station or planet defenses fight beside them).</small>
+          <small className="muted">{FOCUS_TIPS[doctrine.focus]} When your side's total strength falls below the retreat share of the enemy's, each of your ships there is ordered out on its turn and escapes on its next one; until then it can still be shot or boarded. A ship needs a working drive and some speed to get away, and an enemy Warp Dissipator stops it.</small>
         </div>
       </div>
       {selected && view.fleets[selected] && (

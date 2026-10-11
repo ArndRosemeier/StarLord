@@ -91,6 +91,20 @@ const STATION_NAMES: Record<string, StationTier> = {
 export const unitsOf = (report: CombatReport): UnitSnapshot[] => report.ships as readonly object[] as UnitSnapshot[];
 export const eventsOf = (report: CombatReport): CombatEvent[][] => report.rounds as readonly object[][] as CombatEvent[][];
 
+/**
+ * The player whose units start on the left of the field. The defender usually
+ * deploys there, the attacker when it is a human player; older reports put
+ * the first side there.
+ */
+export function leftOwner(report: CombatReport): number {
+  const meanX = (owner: number) => {
+    const xs = report.ships.filter((s) => s.ownerId === owner).map((s) => s.x);
+    return xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : Infinity;
+  };
+  const [a, b] = report.sides;
+  return meanX(b) < meanX(a) ? b : a;
+}
+
 export function replaySteps(report: CombatReport): ReplayStep[] {
   return eventsOf(report).flatMap((r, round) => r.map((e) => ({ round, e })));
 }
@@ -155,9 +169,10 @@ export function starPlanetType(report: CombatReport, view: PlayerView, ownerId?:
 }
 
 export function unitInfo(report: CombatReport, view: PlayerView): UnitInfo[] {
+  const left = leftOwner(report);
   return unitsOf(report).map((snap) => {
     const owner = view.players[snap.ownerId];
-    const side: 0 | 1 = snap.ownerId === report.sides[1] ? 1 : 0;
+    const side: 0 | 1 = snap.ownerId === left ? 0 : 1;
     const station = snap.kind === "station" || !snap.kind ? stationTier(snap) : null;
     let kind: UnitKind;
     if (snap.kind === "ship" || snap.kind === "station" || snap.kind === "planet" || snap.kind === "monster") kind = snap.kind;
@@ -180,13 +195,14 @@ export function unitInfo(report: CombatReport, view: PlayerView): UnitInfo[] {
 }
 
 export function initialStates(report: CombatReport): UnitStates {
+  const left = leftOwner(report);
   return new Map(unitsOf(report).map((s) => [s.key, {
     x: s.x,
     y: s.y,
     hits: s.armor !== undefined && s.structure !== undefined ? s.armor + s.structure : s.maxHits,
     armor: s.armor ?? s.maxArmor ?? null,
     structure: s.structure ?? s.maxStructure ?? null,
-    heading: s.ownerId === report.sides[1] ? Math.PI : 0,
+    heading: s.ownerId === left ? 0 : Math.PI,
     alive: true,
     gone: false,
   }]));
@@ -243,6 +259,10 @@ export function applyEvent(units: UnitStates, e: CombatEvent): void {
     case "retreat":
       s.gone = true;
       break;
+    case "captured":
+      // A prize sits out the rest of the battle, unless its telepathic captor turns it on its old side.
+      if (!e.hit) s.gone = true;
+      break;
     // launch, board and any future kinds change nothing we track.
   }
 }
@@ -274,7 +294,8 @@ export function describe(report: CombatReport, e: CombatEvent | undefined): stri
     case "destroyed": return `${n(e.ship)} destroyed`;
     case "retreat": return `${n(e.ship)} retreats`;
     case "launch": return `${n(e.ship)} launches${e.target ? ` at ${n(e.target)}` : ""}`;
-    case "board": return `${n(e.ship)} boards ${n(e.target)}`;
+    case "board": return `${n(e.ship)} boards ${n(e.target)}${e.hit === false ? ", and is beaten back" : ""}`;
+    case "captured": return `${n(e.ship)} is captured by ${n(e.target)}'s marines${e.hit ? " and turns on its old side" : ""}`;
     case "repair": return `${n(e.ship)} repairs${e.damage ? ` ${e.damage}` : ""}`;
     default: return "";
   }

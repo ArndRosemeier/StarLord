@@ -3,6 +3,7 @@ import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES } from "@starlord/ai";
 import {
   ANDROIDS, ASSIMILATION, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_HIT,
   CAPTURE_TECH_CHANCE, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST,
+  BOARDING, DEPLOY, EXPLOSION, HULLS_BY_ID, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE, STATION_ARMS,
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES,
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
@@ -311,6 +312,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Moving and firing</h3>
       <Ul>
+        <li>Whoever started the fight attacks, unless the battle is at the other side's colony: a colony's owner always defends. The defender deploys on the left, the attacker {DEPLOY.rightColumn - DEPLOY.leftColumn} squares away on the right (a human attacker takes the left instead). Ships line up in a column by size, biggest in the middle; the planet sits behind the defenders with its station in front of it.</li>
         <li>Every round the attacker's ships act first, one after another, then the defender's.</li>
         <li>Ships spend their combat speed to move and turn. Each beam fires only into its arc, so facing matters.</li>
         <li>A beam's hit chance is its attack against the target's beam defense, minus a penalty that grows with range. Damage also drops with range unless the mount ignores it.</li>
@@ -322,6 +324,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <Ul>
         <li>Shields take their class off every hit, then soak what is left from the pool on the side that was hit. Each side recovers part of its pool every round.</li>
         <li>Damage that gets through wears down armor first, then structure. Hits on structure may knock out weapons, the shield generator, the computer or the drive; losing the drive destroys the ship.</li>
+        <li>A ship that loses its drive explodes: {EXPLOSION.perDriveHP} times its hull's drive hit points (a cruiser {EXPLOSION.perDriveHP * HULLS_BY_ID.cruiser.driveHP}, a titan {EXPLOSION.perDriveHP * HULLS_BY_ID.titan.driveHP}), {EXPLOSION.detonatorMult} times that with a Quantum Detonator, which goes off however the ship dies. The blast hits every ship nearby, friend or foe, weaker with distance, and can set off more explosions.</li>
         <li>Armor-piercing and shield-piercing weapons skip part of this, and some specials change it further.</li>
         <li>Repair units fix armor, structure and systems every round.</li>
       </Ul>
@@ -344,23 +347,51 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
           <li key={n}>{n} ({CREW.xp[i]} XP): +{CREW.attack[i]} beam attack, +{CREW.defense[i]} beam defense, +{CREW.boarding[i]} boarding.</li>
         ))}
       </Ul>
-      <h3>Combat doctrine</h3>
+      <h3>Combat doctrine and retreat</h3>
       <P>
         On the <b>Fleets</b> screen you set when your fleets retreat (when their strength drops below a share of the
-        enemy's) and whom they target first: the nearest, weakest or strongest enemy. Retreating fleets head to your
-        nearest colony.
+        enemy's) and whom they target first: the nearest, weakest or strongest enemy. A retreat is an order each ship
+        takes on its turn; it escapes at the start of its next turn, and until then it can still be shot or boarded. Only
+        ships with a working drive that can still move get away, and none can while an enemy Warp Dissipator works.
+        Ships that escape head to your nearest colony; the rest of their fleet stays to fight.
+      </P>
+      <P>
+        Computer empires pull out of a battle with another empire, if they hold a colony elsewhere, once one enemy volley
+        would cost them more than {RETREAT.volleyRatio} times the share of their strength that their own volley costs the
+        enemy. Their unarmed ships leave on their own.
+      </P>
+      <h3>Boarding</h3>
+      <P>
+        Marines board an enemy ship that cannot move (its drive is gone, a tractor beam holds it, or it is a station) from
+        right beside it, whatever its shields. Transporters beam them across about {BOARDING.transporterBand * 3} squares,
+        but only through a shield facing that is down and never through hard shields; a damper field stops{" "}
+        {BOARDING.damperDivisor - 1} in {BOARDING.damperDivisor} of a party beamed in from afar. Half the marines aboard
+        go each time. When the odds look good the party tries to take the ship, fighting the defenders as ground troops do
+        (with your marines' equipment, Commando captains, Security captains and Security Stations); otherwise it raids,
+        each marine who beats the defenders by more than {BOARDING.raid.sabotageAbove} wrecking two internal systems for{" "}
+        {BOARDING.raid.systemDamage} damage each.
+      </P>
+      <P>
+        A captured ship loses its captain and sits out the rest of the battle (a telepathic captor turns it on its old
+        side at once). The captor keeps it only if its side wins; otherwise it is lost. A ship with a Quantum Detonator
+        blows itself up half the time when taken.
       </P>
       <h3>Stations and planets</h3>
       <P>
-        A star base, battlestation or star fortress fights as an immobile ship that carries your best weapons and
-        systems, fires in every direction and never runs out of missiles. A battlestation also makes your ships in the
-        battle more accurate, and a star fortress makes them harder to hit as well. If the station is destroyed, the
-        building is lost.
+        A star base, battlestation or star fortress fights as an immobile cruiser, battleship or titan with a Regular
+        crew, your best armor, shield and computer, and the specials you know (Heavy Armor, Reinforced Hull, shield
+        specials, your best jammer, Warp Dissipator, Battle Scanner and more, up to eight). A quarter of its space holds
+        heavy mounts of your best beam, an eighth plain mounts, an eighth point-defense beams, all firing in every
+        direction without running dry, and half holds {STATION_ARMS.missileRack}-shot missile racks. A battlestation
+        gives every unit on your side +{SIDE_ATTACK_BY_IMMOBILE_SIZE[3]} beam attack and a star fortress +
+        {SIDE_ATTACK_BY_IMMOBILE_SIZE[4]}; an armed planet with no station gives +{SIDE_ATTACK_BY_IMMOBILE_SIZE[3]} too.
+        If the station is destroyed or captured, the building is lost.
       </P>
       <P>
         The planet itself is a separate target with its own ground batteries, missile base, stellar converter and fighter
-        garrison (which sends up fresh craft every {FIGHTER_GARRISON.replenishRounds} combat turns), protected by planetary
-        shields (<HelpLink to="page:buildings" />). Ship beams do only half damage to it. Every
+        garrison (which sends up fresh craft every {FIGHTER_GARRISON.replenishRounds} combat turns), crewed by Regulars and
+        aimed with a Battle Scanner once you know it. Every hit on it loses the planetary shield's strength
+        (<HelpLink to="page:buildings" />) plus your best ship shield class. Ship beams do only half damage to it. Every
         {" "}{PLANET_INSTALLATION_HP} damage that gets through (more with better armor) knocks out one installation at random. Stations are fair game in any
         battle, but only fleets set to attack fire on the planet, and only once no defending ships or station remain.
       </P>

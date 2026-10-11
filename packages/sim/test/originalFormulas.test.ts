@@ -264,6 +264,11 @@ describe("ship damage and repair", () => {
   const battle = () => {
     const s = newGame({ seed: "dmg", races: ["terran", "felhari"], monsters: false, raiders: false, council: false, randomEvents: false });
     s.relations["0-1"] = { status: "war", trade: false, research: false, since: 1 };
+    // Both sides fight to the end: no doctrine retreat, and the lone defender is not left to the AI's retreat rule.
+    for (const p of s.players) {
+      p.isHuman = true;
+      p.doctrine = { ...p.doctrine, retreatBelow: 0 };
+    }
     const star = s.galaxy.stars.find((x) => x.id !== s.players[0]!.homeStarId && x.id !== s.players[1]!.homeStarId)!;
     const mk = (ownerId: number, count: number, stance: Fleet["stance"]): Fleet => {
       const f: Fleet = { id: `d${s.nextId++}`, ownerId, x: star.x, y: star.y, starId: star.id, destStarId: null, ships: [{ designId: "frigate", count }], stance, name: "D" };

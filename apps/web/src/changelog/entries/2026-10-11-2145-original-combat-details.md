@@ -1,0 +1,14 @@
+# Stations, retreat, boarding and explosions as in the original
+
+- Orbital stations now fight as a cruiser (Star Base), battleship (Battlestation) or titan (Star Fortress) with a Regular crew and up to eight specials you know for free, such as Heavy Armor, Reinforced Hull, your best jammer, Warp Dissipator and Battle Scanner.
+- Station weapons: a quarter of the space as heavy mounts of your best beam, an eighth as plain mounts, an eighth as point-defense beams, all firing in every direction, and half as 20-shot missile racks with ECCM. Megafluxers give stations a quarter more space.
+- A Battlestation gives every unit on your side +10 beam attack and a Star Fortress +20. A defended planet with no station gives +10. The Star Fortress no longer makes your ships harder to hit.
+- Ground Batteries hold 225 space of heavy-mount beams with every refinement you know plus 75 space of point-defense beams. The Missile Base holds 300 space of 5-shot racks with ECCM and Fast and Armored once you have them, 125 shots each.
+- The planet fights with a Regular crew and a Battle Scanner once you know it. Every hit on its installations loses your planetary shield plus your best ship shield class. A Fighter Garrison now sends up 40 interceptors (24 bombers, or 16 heavy fighters).
+- Retreat is now a per-ship order. A ship leaves at the start of its next turn and can still be shot or boarded until then. It needs a working drive and speed left, and an enemy Warp Dissipator stops it. Ships that escape split off and head home while the rest of their fleet fights on.
+- Computer empires retreat as the original's AI did: only against another empire, only if they hold another colony, and only when the enemy would hurt them far more than they can hurt it. Unarmed ships no longer slip away at random.
+- Boarding: half the marines cross at a time, to a ship next to them that cannot move or by Transporters through a downed shield. The game chooses between a capture and a hit-and-run raid that wrecks systems. Captures use the ground-combat rules and your marines' equipment.
+- A captured ship loses its captain and sits out the battle (a telepathic captor turns it on its old owner at once). It is lost again if the captor's side does not win. A Quantum Detonator blows up half the ships boarders take.
+- Ships whose drives are shot out explode and damage everything nearby, friend or foe: 5 times the hull's drive hit points, 3 times that with a Quantum Detonator, which now goes off however the ship dies.
+- Battles open as in the original. The colony's owner defends, otherwise the side that started the fight attacks. The defender lines up on the left with its planet behind it and its station in front, and ships form columns by size.
+- Destroying a station is now worth as much battle experience as a ship of its size.
