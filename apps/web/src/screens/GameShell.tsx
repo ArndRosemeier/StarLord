@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   availableTiers, commandPointsAvailable, commandPointsUsed, empireIncome, empireTotals, empires, treatyIncome, treatyTotals,
-  TIERS_BY_ID, type PlayerView,
+  TIERS_BY_ID, extraResearch, nextBreakthroughChance, researchCost, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, signed } from "../ui/format";
@@ -50,10 +50,10 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "game", label: "Game", icon: "⛁" },
 ];
 
-/** Research points per turn including treaty bonuses. */
+/** Research points per turn including treaty bonuses, researcher leaders and scout labs. */
 export function researchPerTurn(view: PlayerView): number {
   const totals = treatyTotals(view);
-  return (totals.get(view.viewer)?.research ?? 0) + treatyIncome(view, view.viewer, totals).research;
+  return (totals.get(view.viewer)?.research ?? 0) + treatyIncome(view, view.viewer, totals).research + extraResearch(view, view.viewer);
 }
 
 export function GameShell({ onQuit }: { onQuit: () => void }) {
@@ -76,6 +76,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const income = empireIncome(view, me.id);
   const research = researchPerTurn(view);
   const tier = me.research.tierId ? TIERS_BY_ID[me.research.tierId] : undefined;
+  const tierCost = tier ? researchCost(me, tier) : 0;
+  const breakthrough = nextBreakthroughChance(me, research);
   const cpUsed = commandPointsUsed(view, me.id);
   const cpMax = commandPointsAvailable(view, me.id);
   const reportBadge = view.turn !== seenTurn ? session.lastTurnEvents(me.id).filter((e) => e.kind !== "explored" && e.kind !== "built").length : 0;
@@ -173,8 +175,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         <div className="stat"><small><Icon name="industry" size={12} /> Industry</small><span className="industry"><AnimatedNumber value={totals.industry} format={fmt} /></span></div>
         <div className="stat">
           <small><Icon name="research" size={12} /> Research</small>
-          <span className="research"><AnimatedNumber value={research} format={fmt} /> {tier && <small className="muted">→ {tier.name} {fmt(me.research.progress)}/{fmt(tier.cost)}</small>}</span>
-          {tier && <span className="stat-meter"><span style={{ width: `${Math.min(100, (me.research.progress / tier.cost) * 100)}%` }} /></span>}
+          <span className="research"><AnimatedNumber value={research} format={fmt} /> {tier && <small className="muted">→ {tier.name} {breakthrough > 0 ? `${Math.round(breakthrough * 100)}% chance` : `${fmt(me.research.progress)}/${fmt(tierCost)}`}</small>}</span>
+          {tier && <span className="stat-meter"><span style={{ width: `${Math.min(100, (me.research.progress / tierCost) * 100)}%` }} /></span>}
         </div>
         <div className="stat"><small><Icon name="command" size={12} /> Command</small><span className={cpUsed > cpMax ? "bad" : ""}>{cpUsed}/{cpMax}</span></div>
         <div className="stat"><small><Icon name="population" size={12} /> Population</small><span><AnimatedNumber value={totals.population} format={fmt} /></span></div>
@@ -239,7 +241,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         <div className="modal-back" onClick={() => setResearchWarning(false)}>
           <div className="modal research-warning" role="alertdialog" aria-label="No research target" onClick={(e) => e.stopPropagation()}>
             <h3>No research target</h3>
-            <p>Your scientists have no technology to work on. Their points are kept, but nothing gets discovered until you choose one.</p>
+            <p>Your scientists have no technology to work on. The research points made this turn will be lost, and nothing gets discovered until you choose one.</p>
             <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
               <button onClick={() => { setResearchWarning(false); session.endTurn(); }}>End turn anyway</button>
               <button className="primary" autoFocus onClick={() => { setResearchWarning(false); go("research"); }}>Choose research</button>
