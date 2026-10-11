@@ -34,12 +34,14 @@ export const RACE_SHIP_STYLE: Record<string, ShipStyle> = {
 
 export const isShipStyle = (id: string): id is ShipStyle => id in SHIP_STYLES_BY_ID;
 
-/** The default style of a race; custom races borrow the style of the race whose art they use. */
+/** The default style of a race: its own pick, else the built-in table; custom races without one borrow the style of the race whose art they use. */
 export function raceShipStyle(raceId: string): ShipStyle {
   const direct = RACE_SHIP_STYLE[raceId];
   if (direct) return direct;
   try {
-    return RACE_SHIP_STYLE[getRace(raceId).assetKey] ?? "standard";
+    const race = getRace(raceId);
+    if (race.shipStyle && isShipStyle(race.shipStyle)) return race.shipStyle;
+    return RACE_SHIP_STYLE[race.assetKey] ?? "standard";
   } catch {
     return "standard";
   }

@@ -1,5 +1,6 @@
 import { CUSTOM_RACE_POINTS, EXCLUSIVE_TRAITS, GOVERNMENT_COSTS, MAX_NEGATIVE_POINTS, PICK_OPTIONS, TRAIT_COSTS, type NumericPick } from "./data/racePicks.js";
 import { RACE_LOOKS, registerRaces, type RaceDef, type RacePicks } from "./data/races.js";
+import { isShipStyle } from "./data/shipStyles.js";
 
 /**
  * Player-built races, MoO2-style: pick strengths and drawbacks within a point
@@ -16,6 +17,8 @@ export interface CustomRaceSpec {
   /** Built-in race whose art this race uses. */
   assetKey: string;
   picks: RacePicks;
+  /** Default ship style of the race's designs; unset borrows the style of the race whose art it uses. */
+  shipStyle?: string;
 }
 
 export function raceCost(picks: RacePicks): { total: number; negative: number } {
@@ -42,6 +45,7 @@ export function validateCustomRace(spec: CustomRaceSpec): string | null {
   if (!spec.plural.trim() || spec.plural.length > 24) return "plural must be 1-24 characters";
   if (!/^#[0-9a-fA-F]{6}$/.test(spec.color)) return "color must be #rrggbb";
   if (!RACE_LOOKS.some((l) => l.assetKey === spec.assetKey)) return "unknown appearance";
+  if (spec.shipStyle !== undefined && !isShipStyle(spec.shipStyle)) return "unknown ship style";
   if (!(spec.picks.government in GOVERNMENT_COSTS)) return "unknown government";
   for (const key of Object.keys(PICK_OPTIONS) as NumericPick[]) {
     const v = spec.picks[key];
@@ -72,6 +76,7 @@ export function buildCustomRace(spec: CustomRaceSpec): RaceDef {
   const body = {
     name: spec.name.trim(), plural: spec.plural.trim(), description: spec.description.trim().slice(0, 300),
     color: spec.color.toLowerCase(), assetKey: spec.assetKey, picks,
+    ...(spec.shipStyle ? { shipStyle: spec.shipStyle } : {}),
   };
   const def: RaceDef = { id: `custom-${hashString(JSON.stringify(body))}`, archetype: "Custom race", ...body };
   registerRaces([def]);

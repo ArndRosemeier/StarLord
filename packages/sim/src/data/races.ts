@@ -44,6 +44,8 @@ export interface RaceDef {
   color: string;
   assetKey: string;
   picks: RacePicks;
+  /** Default ship style (see SHIP_STYLES); custom races pick one, built-in races use RACE_SHIP_STYLE. */
+  shipStyle?: string;
 }
 
 const base: Omit<RacePicks, "government" | "traits"> = {

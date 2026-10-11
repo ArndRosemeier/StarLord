@@ -1,13 +1,17 @@
 import { useState } from "react";
 import {
-  CUSTOM_RACE_POINTS, EXCLUSIVE_TRAITS, GOVERNMENT_COSTS, MAX_NEGATIVE_POINTS, PICK_OPTIONS, RACE_LOOKS, TRAIT_COSTS,
-  raceCost, validateCustomRace,
+  CUSTOM_RACE_POINTS, EXCLUSIVE_TRAITS, GOVERNMENT_COSTS, MAX_NEGATIVE_POINTS, PICK_OPTIONS, RACE_LOOKS, RACE_SHIP_STYLE,
+  SHIP_STYLES, TRAIT_COSTS, raceCost, validateCustomRace,
   type CustomRaceSpec, type Government, type NumericPick, type RaceTrait,
 } from "@starlord/sim";
 import { words } from "../ui/format";
+import { ShipThumb } from "../ui/ShipModel";
+import { Tip } from "../ui/Tip";
 
 export const blankRace = (): CustomRaceSpec => ({
   name: "", plural: "", description: "", color: "#4fb3ff", assetKey: RACE_LOOKS[0]!.assetKey,
+  // A new race starts with a random ship style; the player can change it.
+  shipStyle: SHIP_STYLES[Math.floor(Math.random() * SHIP_STYLES.length)]!.id,
   picks: {
     growth: 0, farming: 0, industry: 0, science: 0, money: 0, shipAttack: 0, shipDefense: 0, groundCombat: 0, spying: 0,
     government: "dictatorship", traits: [],
@@ -65,6 +69,21 @@ export function RaceBuilder({ initial, isNew = true, onSave, onCancel, onDelete 
             <img src={`races/${l.assetKey}.webp`} alt={l.name} width={52} height={52} style={{ display: "block", borderRadius: 6, objectFit: "cover" }} />
           </button>
         ))}
+      </div>
+
+      <h4>Ship style</h4>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+        {SHIP_STYLES.map((s) => {
+          const on = (spec.shipStyle ?? RACE_SHIP_STYLE[spec.assetKey] ?? "standard") === s.id;
+          return (
+            <Tip key={s.id} card={{ title: `${s.name} style`, kind: "Ship style", text: [s.text, "The look your race's ships start with. Any design can still pick another style in the ship designer."] }}>
+              <button onClick={() => setSpec({ ...spec, shipStyle: s.id })} className={`style-pick${on ? " active" : ""}`}>
+                <ShipThumb hull="cruiser" color={spec.color} style={s.id} size={64} />
+                <span>{s.name}</span>
+              </button>
+            </Tip>
+          );
+        })}
       </div>
 
       <h4>Government</h4>
