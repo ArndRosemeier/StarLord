@@ -1,10 +1,13 @@
 import {
-  blocksInvasion, canMindControl, canReach, colonyDefenseStrength, distance, isHostile, relation, type Command, type Fleet, type PlayerView,
+  blocksInvasion, canMindControl, canReach, colonyDefenseStrength, distance, isHostile, portalStars, RAIDER_CITADEL_ID, RAIDER_ERAS, raiderDesignId, relation, type Command, type Fleet, type PlayerView,
 } from "@starlord/sim";
 import { colonyStar, fleetRoles, fleetStrength, hostileFleetsNear, me, myColonies, myFleets, personality, starById } from "./util.js";
 
 function rallyStar(view: PlayerView): string | null {
   const player = me(view);
+  // With a Dimensional Portal the strike force gathers there, ready to cross over.
+  const portal = portalStars(view, view.viewer)[0];
+  if (portal) return portal;
   const colonies = myColonies(view);
   const home = colonies.find((c) => colonyStar(view, c).id === player.homeStarId);
   const c = home ?? colonies.sort((a, b) => b.workers + b.farmers + b.scientists - (a.workers + a.farmers + a.scientists))[0];
@@ -116,10 +119,20 @@ export function militaryOrders(view: PlayerView): Command[] {
   // Endgame: strike the raiders' home through the portal.
   const raiderHome = view.galaxy.stars.find((s) => s.special === "raiderHome");
   if (raiderHome && player.hasPortal && canReach(view, view.viewer, main, raiderHome.id)) {
-    const fortress = Object.values(view.fleets).filter((f) => f.starId === raiderHome.id).reduce((s, f) => s + fleetStrength(view, f), 0);
-    if (fortress > 0 ? power > fortress * 1.3 : power > 2000) out.push({ type: "moveFleet", fleetId: main.id, destStarId: raiderHome.id });
+    if (power > raiderHomeStrength(view, raiderHome.id) * 1.3) out.push({ type: "moveFleet", fleetId: main.id, destStarId: raiderHome.id });
   }
   return out;
+}
+
+/** What waits at the raiders' home: the fleets seen there, or else the era's garrison and citadel. */
+function raiderHomeStrength(view: PlayerView, homeStarId: string): number {
+  const seen = Object.values(view.fleets).filter((f) => f.starId === homeStarId).reduce((s, f) => s + fleetStrength(view, f), 0);
+  if (seen > 0) return seen;
+  const raiders = view.players.find((p) => p.kind === "raiders");
+  if (!raiders) return 0;
+  const era = RAIDER_ERAS[view.raiders.era ?? 0] ?? RAIDER_ERAS[0]!;
+  const ships = [{ designId: RAIDER_CITADEL_ID, count: 1 }, ...era.garrison.map((g) => ({ designId: raiderDesignId(g.hull), count: g.count }))];
+  return fleetStrength(view, { id: "", ownerId: raiders.id, x: 0, y: 0, starId: homeStarId, destStarId: null, ships, stance: "attack", name: "" });
 }
 
 /** At an enemy colony: land troops when we have them, otherwise keep bombing. */

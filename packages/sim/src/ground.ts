@@ -12,6 +12,7 @@ import { commandoBonusAt } from "./leaders.js";
 import { raceGroundBonus, troopHits } from "./raceEffects.js";
 import { TIER_OF_TECH } from "./data/techs.js";
 import { bombardment } from "./combat.js";
+import { raidRaze } from "./raiders.js";
 import type { TurnContext } from "./context.js";
 import { designStats, findDesign } from "./designs.js";
 import { bioWeaponOutrage, exterminationOutrage, isHostile } from "./diplomacy.js";
@@ -153,8 +154,15 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
     }
     if (f.stance !== "attack" && owner.kind !== "raiders") continue;
     for (const c of targets) {
+      // Raiders who hold the field lay waste to the colony: colonists die and buildings burn.
       if (owner.kind === "raiders") {
-        raze(ctx, c, rng.int(1, 3));
+        const r = raidRaze(state);
+        raze(ctx, c, rng.int(r.pop[0], r.pop[1]));
+        for (let i = 0; i < r.buildings && state.colonies[c.id]; i++) {
+          const wreckable = destructibleBuildings(c);
+          if (wreckable.length === 0) break;
+          c.buildings.splice(c.buildings.indexOf(wreckable[rng.int(0, wreckable.length - 1)]!), 1);
+        }
         continue;
       }
       const { bombs, spores } = bombardment(state, f);

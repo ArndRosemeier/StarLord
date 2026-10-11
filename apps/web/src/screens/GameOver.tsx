@@ -5,7 +5,7 @@ import { Celebration } from "../ui/fx";
 const HOW: Record<string, string> = {
   conquest: "by conquest",
   council: "by vote of the galactic council",
-  raiders: "by destroying the raiders' stronghold",
+  raiders: "after destroying the Vexari in their own dimension, and every other empire capitulated",
   score: "on score when time ran out",
 };
 

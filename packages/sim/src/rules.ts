@@ -74,7 +74,8 @@ export function availableProjects(state: GameState, playerId: PlayerId, colony: 
       case "gaiaTransform":
         return planet.type === "terran";
       case "dimensionalPortal":
-        return !player.hasPortal && !queuedAnywhere(state, playerId, "dimensionalPortal");
+        // One portal per colony; fleets can only cross over from a system that has one.
+        return !colony.portal && !colony.queue.some((q) => q.kind === "project" && q.id === "dimensionalPortal");
       default:
         return true;
     }

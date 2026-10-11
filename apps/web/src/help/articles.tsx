@@ -4,11 +4,11 @@ import {
   DRIVES, EXCLUSIVE_TRAITS, FIELD_NAMES, FUEL_RANGES, GOVERNMENTS, GOVERNMENT_COSTS, HULLS, HULLS_BY_ID, INDUSTRY_PER_WORKER,
   LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
   PLANETS_PER_STAR, PLANET_SIZE_WEIGHTS, PLANET_TYPE_WEIGHTS, PROJECTS, PROJECTS_BY_ID, PROJECT_COSTS, RACES, RACES_BY_ID,
-  RAIDER_DESIGNS, RAID_INTERVAL, RAID_START, SHIELDS, SHIELDS_BY_ID, SIZE_FACTOR, SPECIALS, SPECIALS_BY_ID,
+  RAIDER_ERAS, RAIDER_SHIP_NAMES, RAID_DIFFICULTY_SHIFT, RAID_FIRST_TURN, SCRAP_TECH_CHANCE, SHIELDS, SHIELDS_BY_ID, SIZE_FACTOR, SPECIALS, SPECIALS_BY_ID,
   RESEARCH, STARTING_TECH_APPS, STARTING_TIERS, STAR_COLOR_WEIGHTS, TECHS, TECH_FIELDS, TECH_TIERS, TERRAFORM_STEP,
   TIERS_BY_ID, TRAIT_COSTS, WEAPONS, WEAPONS_BY_ID, nextTier, previousTier, ARCS, MISSILE_RACKS, STATION_HULLS,
   WEAPON_MODS, WEAPON_MODS_BY_ID, SHIELD_SPACE_BY_HULL, SHIELD_COST_BY_HULL, COMPUTER_COST_BY_HULL,
-  cumulativeTierCost, fleetRange, fleetSpeed, gravityMultiplier, gravityOf, raidFleet, techHasEffect,
+  cumulativeTierCost, fleetRange, fleetSpeed, gravityMultiplier, gravityOf, citadelDesign, techHasEffect,
   techInfo, techUnlocks, type GovernmentDef, type Minerals, type NumericPick, type PlanetSize, type PlanetType, type Player,
   type RaceDef, type RaceTrait, type ShipDesign, type StarColor, type TechTier, type Unlock, type WeaponDef,
 } from "@starlord/sim";
@@ -947,11 +947,11 @@ function GovernmentPage({ id }: { id: keyof typeof GOVERNMENTS }) {
 
 const npcWeapon = (id: string) => ALL_WEAPONS[id] ?? NPC_WEAPONS.find((w) => w.id === id);
 
-function MonsterRow({ d }: { d: ShipDesign }) {
+function MonsterRow({ d, label }: { d: ShipDesign; label?: string }) {
   const f = d.fixed!;
   return (
     <tr>
-      <td><HelpLink to={`monster:${d.id}`} /></td><td>{fmt(f.hits)}</td><td>{fmt(f.armor ?? 0)}</td><td>{f.attack}</td><td>{f.defense}</td><td>{f.shield}</td><td>{f.combatSpeed}</td>
+      <td><HelpLink to={`monster:${d.id}`} />{label && <small className="muted"> {label}</small>}</td><td>{fmt(f.hits)}</td><td>{fmt(f.armor ?? 0)}</td><td>{f.attack}</td><td>{f.defense}</td><td>{f.shield}</td><td>{f.combatSpeed}</td>
       <td>{f.weapons.map((w) => `${w.count}× ${npcWeapon(w.weaponId)?.name ?? w.weaponId}`).join(", ")}</td>
     </tr>
   );
@@ -960,7 +960,6 @@ function MonsterRow({ d }: { d: ShipDesign }) {
 const monsterHead = <thead><tr><th>Name</th><th>Structure</th><th>Armor</th><th>Attack</th><th>Defense</th><th>Shield</th><th>Speed</th><th>Weapons</th></tr></thead>;
 
 function MonstersPage() {
-  const sampleTurns = [0, 30, 60, 120, 180].map((t) => RAID_START + t);
   return (
     <div className="col">
       <p>
@@ -971,21 +970,37 @@ function MonstersPage() {
       <table className="help-table">{monsterHead}<tbody>{MONSTER_DESIGNS.map((d) => <MonsterRow key={d.id} d={d} />)}</tbody></table>
       <h3>Raiders</h3>
       <p>
-        From turn {RAID_START} raiders strike from their own dimension every {RAID_INTERVAL[0]}–{RAID_INTERVAL[1]} turns.
-        A raid fleet appears at one of the most populous colonies, fights its defenders, razes the colony if its
-        defenses fall, and vanishes again. Building a <HelpLink to="project:dimensionalPortal" /> lets your fleets cross to
-        their home; destroying every raider there wins the game.
+        The Vexari raiders live in a pocket dimension outside the galaxy. On Average difficulty their first raid comes around
+        turn {RAID_FIRST_TURN} ({signed(RAID_DIFFICULTY_SHIFT.tutor)} turns on Tutor, {signed(RAID_DIFFICULTY_SHIFT.impossible)} on
+        Impossible). A raid fleet appears at one of the most populous colonies and fights its defenders. If the
+        defenses fall, it kills colonists and wrecks buildings, then vanishes. Lucky races are often overlooked.
+        Their ships are real warships with xentronium armor, and their technology improves in four eras counted from the
+        first raid. Raids get bigger and more frequent with each era.
       </p>
-      <table className="help-table">{monsterHead}<tbody>{RAIDER_DESIGNS.map((d) => <MonsterRow key={d.id} d={d} />)}</tbody></table>
-      <h3>Raid size by turn</h3>
       <table className="help-table">
-        <thead><tr><th>Turn</th><th>Fleet</th></tr></thead>
+        <thead><tr><th>Era from</th><th>Every</th><th>Raid</th><th>Home fleet</th><th>New technology</th><th>Raid damage</th></tr></thead>
         <tbody>
-          {sampleTurns.map((t) => (
-            <tr key={t}><td>{t}</td><td>{raidFleet(t).map((x) => `${x.count}× ${RAIDER_DESIGNS.find((d) => d.id === x.designId)?.name}`).join(", ")}</td></tr>
+          {RAIDER_ERAS.map((e, i) => (
+            <tr key={i}>
+              <td>{e.from === 0 ? "first raid" : `+${e.from} turns`}</td>
+              <td>{e.interval[0]}–{e.interval[1]} turns</td>
+              <td>{e.raid.map((r, j) => `${r.count}${j === 0 && e.extra ? `–${r.count + e.extra}` : ""}× ${RAIDER_SHIP_NAMES[r.hull]}`).join(", ")}</td>
+              <td>{e.garrison.map((g) => `${g.count}× ${RAIDER_SHIP_NAMES[g.hull]}`).join(", ")} and the <HelpLink to={`monster:${citadelDesign(i).id}`} /></td>
+              <td>{e.techs.filter((t) => !t.endsWith("Hull")).map((t, j) => <span key={t}>{j > 0 && ", "}<HelpLink to={`tech:${t}`} /></span>)}</td>
+              <td>{e.raze.pop[0]}–{e.raze.pop[1]} pop, {e.raze.buildings} building{e.raze.buildings > 1 ? "s" : ""}</td>
+            </tr>
           ))}
         </tbody>
       </table>
+      <h3>Striking back</h3>
+      <p>
+        A <HelpLink to="project:dimensionalPortal" /> is built at one colony. Fleets in that system can cross to Vex Prime in a
+        single turn. If they don't destroy everything there, the survivors come back through the nearest of your portals.
+        Destroying the home fleet and the citadel wipes the raiders out. Every other empire then capitulates and you win
+        the game, with the biggest score bonus there is. Captured raider ships can be scrapped: each one has
+        a {pct(SCRAP_TECH_CHANCE)} chance to teach one of its technologies. That is the only way to learn their xenon technology.
+      </p>
+      <table className="help-table">{monsterHead}<tbody>{RAIDER_ERAS.map((_, i) => <MonsterRow key={i} d={citadelDesign(i)} label={`Era ${i + 1}`} />)}</tbody></table>
       <h3>Their weapons</h3>
       <table className="help-table">
         <thead><tr><th>Weapon</th><th>Kind</th><th>Damage</th><th>Shots</th><th /></tr></thead>
@@ -999,7 +1014,7 @@ function MonstersPage() {
 }
 
 function MonsterPage({ id }: { id: string }) {
-  const d = [...MONSTER_DESIGNS, ...RAIDER_DESIGNS].find((x) => x.id === id)!;
+  const d = [...MONSTER_DESIGNS, citadelDesign(0)].find((x) => x.id === id)!;
   const f = d.fixed!;
   return (
     <div className="col">

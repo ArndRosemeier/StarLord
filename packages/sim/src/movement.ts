@@ -99,6 +99,17 @@ export function canRedirect(state: GameState, playerId: PlayerId, fleet: Fleet):
   });
 }
 
+/** Stars where a player has a colony with a Dimensional Portal. */
+export function portalStars(state: GameState, playerId: PlayerId): Id[] {
+  const out = new Set<Id>();
+  for (const c of Object.values(state.colonies)) {
+    if (c.ownerId !== playerId || !c.portal) continue;
+    const starId = state.planets[c.planetId]?.starId;
+    if (starId) out.add(starId);
+  }
+  return [...out];
+}
+
 /** Why a fleet cannot be sent to a star, or null if it can. */
 export function moveProblem(state: GameState, playerId: PlayerId, fleet: Fleet, destStarId: Id): string | null {
   const player = state.players[playerId]!;
@@ -109,10 +120,11 @@ export function moveProblem(state: GameState, playerId: PlayerId, fleet: Fleet, 
   if (!fleet.starId && fleet.destStarId !== destStarId && !canRedirect(state, playerId, fleet)) {
     return "fleets in hyperspace can only be redirected with communication technology";
   }
+  // Only fleets in a system with one of your Dimensional Portals can cross over, and only back through one.
   if (dest.special === "raiderHome") {
-    return player.hasPortal && !!here && ownsColonyAt(state, playerId, here.id) ? null : "only a dimensional portal reaches there";
+    return !!here && portalStars(state, playerId).includes(here.id) ? null : "only fleets at one of your Dimensional Portals can go there";
   }
-  if (here?.special === "raiderHome") return ownsColonyAt(state, playerId, dest.id) ? null : "the portal only leads back to your colonies";
+  if (here?.special === "raiderHome") return portalStars(state, playerId).includes(dest.id) ? null : "the way back leads only to your portals";
   if (!hasFtl(player)) return "no faster-than-light drive yet";
   if (dest.color === "blackHole") return "black holes cannot be entered";
   if (isStarGateMove(state, playerId, fleet.starId, destStarId) || isWormholeMove(state, fleet.starId, destStarId)) return null;

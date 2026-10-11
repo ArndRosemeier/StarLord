@@ -290,6 +290,8 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
       if (!design) continue;
       const s = designStats(player, design);
       const monster = !!design.fixed;
+      // A fixed design that never moves (the raiders' citadel) fights like an orbital station.
+      const fortress = !!design.fixed?.immobile;
       for (let i = 0; i < stack.count; i++) {
         const row = n++;
         const mounts = makeMounts(player, s.weapons, false, false);
@@ -299,8 +301,8 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
           fleetId: f.id,
           designId: stack.designId,
           name: design.name,
-          kind: monster ? "monster" : "ship",
-          hullId: monster ? undefined : design.hull,
+          kind: fortress ? "station" : monster ? "monster" : "ship",
+          hullId: fortress ? "starFortress" : monster ? undefined : design.hull,
           sizeClass: s.sizeClass,
           x: sideIdx === 0 ? 5 - (row % 3) * 1.5 : FIELD_WIDTH - 6 + (row % 3) * 1.5,
           y: FIELD_HEIGHT / 2 + (((Math.floor(row / 3) % 9) + 1) >> 1) * 3 * ((Math.floor(row / 3) % 2) * 2 - 1),
@@ -323,6 +325,7 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
             repairSystems: Math.max(s.effects.repairSystems, cyber.systems),
           },
           marines: s.marines,
+          immobile: fortress,
           noArmorPierce: design.specials.includes("heavyArmor") || design.armor === "xentroniumArmor",
           phasingLeft: s.effects.phasing,
           strength: s.strength,
@@ -589,7 +592,7 @@ class Battle {
     }
     const losses: Record<string, number> = {};
     for (const u of units) {
-      if (!u.alive && (u.kind === "ship" || u.kind === "monster")) losses[u.ownerId] = (losses[u.ownerId] ?? 0) + 1;
+      if (!u.alive && (u.kind === "ship" || u.kind === "monster" || (u.kind === "station" && u.fleetId))) losses[u.ownerId] = (losses[u.ownerId] ?? 0) + 1;
     }
 
     const fled = new Set<string>();
@@ -733,7 +736,7 @@ class Battle {
   attackOf(u: Unit, target: Unit): number {
     let ba = u.attackBase + this.sideBonus[u.side]!.attack;
     if (u.computer === null || u.computer.hp > 0) ba += u.computerAttack;
-    if (target.kind === "monster") ba += this.monsterBonus[u.side]!;
+    if (target.kind === "monster" || target.player.kind === "raiders") ba += this.monsterBonus[u.side]!;
     return ba;
   }
 
@@ -1382,6 +1385,8 @@ class Battle {
     if (o.killsMarines && !(t.fx.damageTaken < 1)) t.marines = Math.max(0, t.marines - Math.floor(dmg / 5));
     if (from && from.fx.penetratingMult > 1 && this.specialWorks(from, "structuralAnalyzer")) dmg *= from.fx.penetratingMult;
     if (o.systemsOnly) {
+      // Raider ships shrug off system-only weapons entirely.
+      if (t.player.kind === "raiders") return h;
       if (t.kind === "monster") {
         dmg = Math.floor(dmg / 4);
         const s = Math.min(t.structure, dmg);

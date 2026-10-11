@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import {
-  CLIMATES, designStats, findDesign, getRace, isHostile, maxPopulation, population, relation, travelTurns,
+  CLIMATES, canReach, designStats, findDesign, getRace, isHostile, maxPopulation, population, relation, travelTurns,
   type Fleet, type Planet, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "./hooks";
@@ -127,6 +127,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
   const owner = view.players[fleet.ownerId]!;
   const mine = owner.id === me.id && !readOnly;
   const dest = fleet.destStarId ? view.galaxy.stars.find((s) => s.id === fleet.destStarId) : undefined;
+  const raiderHome = view.galaxy.stars.find((s) => s.special === "raiderHome");
   const eta = dest ? travelTurns(view, fleet, dest.id) : 0;
   const others = Object.values(view.fleets).filter((f) => f.id !== fleet.id && f.ownerId === fleet.ownerId && f.starId && f.starId === fleet.starId);
   const captain = Object.values(view.leaders).find((l) => l.status === "hired" && l.assignedTo === fleet.id);
@@ -187,6 +188,12 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
             <button className="small" disabled={splitShips.length === 0} onClick={() => { session.issue({ type: "splitFleet", fleetId, ships: splitShips }); setSplit({}); }}>Split off</button>
             {others.length > 0 && <button className="small" onClick={() => session.issue({ type: "mergeFleets", fleetIds: [fleet.id, ...others.map((f) => f.id)] })}>Merge all here ({others.length + 1})</button>}
             {dest && fleet.starId && <button className="small" onClick={() => session.issue({ type: "moveFleet", fleetId, destStarId: fleet.starId! })}>Stop</button>}
+            {raiderHome && dest?.id !== raiderHome.id && canReach(view, view.viewer, fleet, raiderHome.id) && (
+              <button className="small danger" title="Send this fleet through the Dimensional Portal; it arrives next turn."
+                onClick={() => { if (confirm(`Send ${fleet.name} through the portal to attack ${raiderHome.name}?`)) session.issue({ type: "moveFleet", fleetId, destStarId: raiderHome.id }); }}>
+                Attack {raiderHome.name}
+              </button>
+            )}
             <button className="small danger" disabled={splitShips.length !== 1}
               onClick={() => { const s = splitShips[0]!; if (confirm(`Scrap ${s.count} ship(s)?`)) session.issue({ type: "scrapShips", fleetId, designId: s.designId, count: s.count }); setSplit({}); }}>
               Scrap selected

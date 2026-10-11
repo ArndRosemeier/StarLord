@@ -27,7 +27,8 @@ import {
 } from "./leaders.js";
 import { moveFleet } from "./movement.js";
 import { tradeGoodsMult } from "./raceEffects.js";
-import { guardianSlain, raidTick } from "./npc.js";
+import { guardianSlain } from "./npc.js";
+import { raidTick, returnThroughPortal, salvageTech, syncPortals } from "./raiders.js";
 import { absorbResearch, growthMultiplier, payBribe, randomEventTick, systemFrozen } from "./randomEvents.js";
 import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
@@ -62,6 +63,7 @@ export function processTurn(prev: GameState, orders: TurnOrders): GameState {
   moveFleets(ctx);
   const silenced = combatPhase(ctx);
   groundPhase(ctx, silenced);
+  syncPortals(state);
   runEconomy(ctx);
   espionageTick(state, rng, ctx.emit);
   diplomacyTick(state, ctx.emit);
@@ -225,6 +227,8 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       const d = findDesign(player, cmd.designId);
       if (d) player.bc += Math.floor(designStats(player, d).cost * 0.25) * cmd.count;
       removeShips(state, f, cmd.designId, cmd.count);
+      // Taking a captured ship apart can teach its builders' technology.
+      if (d) salvageTech(ctx, playerId, d, cmd.count);
       break;
     }
     case "saveDesign": {
@@ -450,7 +454,7 @@ function applyCombat(
     const fleetShips = outcome.survivors.get(cap.fleetId);
     if (!design || !fleetShips || design.fixed) continue;
     const id = `cap${cap.fromOwner}-${design.id}`;
-    if (!findDesign(to, id)) to.designs.push({ ...structuredClone(design), id, name: `${design.name} (captured)`, obsolete: true });
+    if (!findDesign(to, id)) to.designs.push({ ...structuredClone(design), id, name: `${design.name} (captured)`, obsolete: true, capturedFrom: cap.fromOwner });
     const stack = fleetShips.find((x) => x.designId === id);
     if (stack) stack.count++;
     else fleetShips.push({ designId: id, count: 1 });
@@ -476,12 +480,13 @@ function applyCombat(
       if (owner.kind === "raiders" && before > 0 && state.players[killer]!.kind === "empire") heroJoins(state, killer, "raiders", ctx.emit);
       if (owner.kind === "raiders" && state.galaxy.stars.find((s) => s.id === starId)?.special === "raiderHome") {
         const homeLeft = Object.values(state.fleets).some((x) => x.ownerId === f.ownerId && x.starId === starId);
-        if (!homeLeft && state.players[killer]!.kind === "empire") {
-          state.raiders.defeated = true;
-          endGame(ctx, killer, "raiders");
-        }
+        if (!homeLeft && state.players[killer]!.kind === "empire") raidersDefeated(ctx, killer);
       }
     }
+  }
+  // Whoever is still at the raiders' home after the battle comes back through the portal.
+  if (state.galaxy.stars.find((s) => s.id === starId)?.special === "raiderHome" && !state.raiders.defeated) {
+    returnThroughPortal(state, starId);
   }
   for (const f of Object.values(state.fleets)) {
     if (f.starId !== starId || !(outcome.retreated.has(f.ownerId) || outcome.fled.has(f.id))) continue;
@@ -497,6 +502,21 @@ function applyCombat(
       kind: "combat", playerId: s.ownerId, reportId: outcome.report.id, starId, won: outcome.report.winner === s.ownerId,
     });
   }
+}
+
+/**
+ * The raiders are beaten at home: they are gone for good, every other empire
+ * capitulates to the victor, and the game ends.
+ */
+function raidersDefeated(ctx: TurnContext, victor: PlayerId): void {
+  const { state } = ctx;
+  state.raiders.defeated = true;
+  state.raiders.defeatedBy = victor;
+  for (const p of state.players) {
+    if (p.kind === "raiders") p.alive = false;
+    if (p.kind === "empire") ctx.emit({ kind: "raidersDefeated", playerId: p.id, by: victor });
+  }
+  endGame(ctx, victor, "raiders");
 }
 
 function nearestOwnStar(state: GameState, playerId: PlayerId, fromStarId: Id): Id | null {
@@ -548,7 +568,7 @@ function runEconomy(ctx: TurnContext): void {
     const aiProd = player.isHuman ? 1 : level.aiProduction;
     const aiResearch = player.isHuman ? 1 : level.aiResearch;
     let research = 0;
-    let bc = food.saleBC - food.upkeep - (player.hasPortal ? PROJECT_UPKEEP.dimensionalPortal : 0);
+    let bc = food.saleBC - food.upkeep - list.filter((x) => x.colony.portal).length * PROJECT_UPKEEP.dimensionalPortal;
     for (const { colony, out } of list) {
       // A plague or a threatened supernova claims the colony's research.
       research += absorbResearch(state, colony, out.research * aiResearch);
@@ -850,6 +870,7 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
       return;
     }
     case "dimensionalPortal":
+      colony.portal = true;
       player.hasPortal = true;
       return;
     case "spy":

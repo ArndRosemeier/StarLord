@@ -123,13 +123,7 @@ function hullFromHits(maxHits: number): HullSize {
   return HULL_ORDER[i === -1 ? HULL_ORDER.length - 1 : i]!;
 }
 
-/** Monster and raider designs all sit on titan hulls in the data, so size them by their role instead. */
-const RAIDER_HULLS: Record<string, HullSize> = {
-  raiderCorvette: "frigate", raiderDestroyer: "destroyer", raiderDreadnought: "battleship", raiderFortress: "doomStar",
-};
-
 function npcHull(designId: string): HullSize | null {
-  if (RAIDER_HULLS[designId]) return RAIDER_HULLS[designId]!;
   const monster = MONSTER_DESIGNS.find((d) => d.id === designId);
   return monster?.fixed ? hullFromHits(monster.fixed.hits) : null;
 }

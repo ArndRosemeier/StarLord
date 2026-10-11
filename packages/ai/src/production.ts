@@ -1,6 +1,6 @@
 import {
   BUILDINGS_BY_ID, availableBuildings, availableDesigns, availableProjects, buyCost, colonyOutput, commandPointsAvailable,
-  commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasStarDock, relation,
+  commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasStarDock, queuedAnywhere, relation,
   type BuildItem, type Colony, type Command, type PlayerView,
 } from "@starlord/sim";
 import { colonizationTargets, outpostTargets } from "./colonization.js";
@@ -256,7 +256,8 @@ function chooseItem(
     wants.warships--;
     return ship(warship);
   }
-  if (projects.has("dimensionalPortal") && industry >= 40 && !wants.portalQueued) {
+  // One portal is enough: the strike force gathers there.
+  if (projects.has("dimensionalPortal") && industry >= 40 && !wants.portalQueued && !me(view).hasPortal && !queuedAnywhere(view, view.viewer, "dimensionalPortal")) {
     wants.portalQueued = true;
     return { kind: "project", id: "dimensionalPortal" };
   }

@@ -90,6 +90,13 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
       return { text: `Raiders strike at ${starName(view, e.starId)}!`, starId: e.starId, tone: "bad" };
     case "eliminated":
       return { text: `${playerName(view, e.playerId)} has been eliminated.`, tone: "bad" };
+    case "raidersDefeated":
+      return {
+        text: e.by === view.viewer
+          ? "Your fleet has destroyed the Vexari in their own dimension. The galaxy bows to you."
+          : `The ${playerName(view, e.by)} have destroyed the Vexari in their own dimension. Every empire capitulates to them.`,
+        tone: e.by === view.viewer ? "good" : "bad",
+      };
     case "victory":
       return { text: `${playerName(view, e.playerId)} wins the game (${e.how}).`, tone: "good" };
   }

@@ -1,19 +1,17 @@
-import { LAIR_MONSTERS, MONSTER_DESIGNS, RAID_INTERVAL, RAID_START, RAIDER_DESIGNS, raidFleet } from "./data/monsters.js";
+import { LAIR_MONSTERS, MONSTER_DESIGNS } from "./data/monsters.js";
 import { TIER_OF_TECH, emptyHyperLevels } from "./data/techs.js";
 import { newId, type TurnContext } from "./context.js";
 import { distance } from "./galaxy.js";
 import { maxPopulation } from "./economy.js";
-import { getRace, hasTrait } from "./data/races.js";
-import { TRAIT_EFFECTS } from "./data/racePicks.js";
+import { getRace } from "./data/races.js";
 import { heroJoins } from "./leaders.js";
+import { setupRaiders } from "./raiders.js";
 import type { Rng } from "./rng.js";
 import type { Fleet, GameState, Player, Star } from "./types.js";
 
 /** Monsters, Orion's guardian and the raiders from another dimension. */
 
-export const RAIDER_HOME_NAME = "Vex Prime";
-
-function npcPlayer(id: number, kind: "monsters" | "raiders"): Player {
+export function npcPlayer(id: number, kind: "monsters" | "raiders"): Player {
   return {
     id,
     kind,
@@ -33,7 +31,7 @@ function npcPlayer(id: number, kind: "monsters" | "raiders"): Player {
     explored: [],
     contacts: [],
     homeStarId: "",
-    designs: kind === "monsters" ? MONSTER_DESIGNS : RAIDER_DESIGNS,
+    designs: kind === "monsters" ? MONSTER_DESIGNS : [],
     spies: { home: 0, abroad: {} },
     leaderOffers: [],
     councilVote: "abstain",
@@ -108,47 +106,7 @@ export function setupNpcs(state: GameState, rng: Rng): void {
     }
   }
 
-  if (state.settings.raiders) {
-    const raiders = npcPlayer(state.players.length, "raiders");
-    state.players.push(raiders);
-    const home: Star = {
-      id: newId(state, "s"), name: RAIDER_HOME_NAME, x: -6, y: state.galaxy.height / 2, color: "blackHole",
-      planetIds: [], special: "raiderHome",
-    };
-    state.galaxy.stars.push(home);
-    raiders.homeStarId = home.id;
-    spawn(state, raiders.id, home, [
-      { designId: "raiderFortress", count: 1 },
-      { designId: "raiderDreadnought", count: 4 },
-      { designId: "raiderDestroyer", count: 6 },
-    ], "Vexari Home Fleet");
-    state.raiders.nextRaid = RAID_START + rng.int(0, 10);
-  }
-}
-
-/** Raiders strike a random empire colony, fight, and vanish the following turn. */
-export function raidTick(ctx: TurnContext): void {
-  const { state, rng } = ctx;
-  const rid = raidersId(state);
-  if (rid === null || state.raiders.defeated) return;
-  const home = state.players[rid]!.homeStarId;
-  for (const f of Object.values(state.fleets)) {
-    if (f.ownerId === rid && f.starId !== home) delete state.fleets[f.id];
-  }
-  if (state.turn < state.raiders.nextRaid) return;
-  state.raiders.nextRaid = state.turn + rng.int(RAID_INTERVAL[0], RAID_INTERVAL[1]);
-  // Lucky races are usually overlooked by raiders.
-  const lucky = (c: { ownerId: number }) => hasTrait(getRace(state.players[c.ownerId]!.raceId), "lucky");
-  const targets = Object.values(state.colonies).filter(
-    (c) => state.players[c.ownerId]!.kind === "empire" && !c.outpost && !(lucky(c) && rng.chance(TRAIT_EFFECTS.luckyOverlook)),
-  );
-  if (targets.length === 0) return;
-  // Raiders prefer the most populous colonies.
-  targets.sort((a, b) => b.farmers + b.workers + b.scientists - (a.farmers + a.workers + a.scientists));
-  const victim = rng.pick(targets.slice(0, Math.max(1, Math.ceil(targets.length / 3))));
-  const star = state.galaxy.stars.find((s) => s.id === state.planets[victim.planetId]!.starId)!;
-  spawn(state, rid, star, raidFleet(state.turn), "Vexari Raid");
-  ctx.emit({ kind: "raid", playerId: victim.ownerId, starId: star.id });
+  if (state.settings.raiders) setupRaiders(state, rng);
 }
 
 /** Rewards for clearing monster lairs: Orion's guardian drops the Death Ray. */
