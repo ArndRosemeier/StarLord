@@ -1,4 +1,4 @@
-import { ANDROID_PROJECTS, ARTIFICIAL_PLANET, BUILDINGS_BY_ID, PROJECT_UPKEEP, TERRAFORM_STEP } from "./data/buildings.js";
+import { ANDROID_PROJECTS, ARTIFICIAL_PLANET, BASE_SCRAP_REFUND, BUILDINGS_BY_ID, PROJECT_UPKEEP, TERRAFORM_STEP } from "./data/buildings.js";
 import { DIFFICULTIES } from "./data/galaxy.js";
 import { FREIGHTERS, GROWTH, TRADE_GOODS_RATE } from "./data/economy.js";
 import { GOVERNMENTS } from "./data/governments.js";
@@ -36,11 +36,11 @@ import { raidTick, returnThroughPortal, salvageTech, syncPortals } from "./raide
 import { absorbResearch, payBribe, randomEventTick, systemFrozen } from "./randomEvents.js";
 import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
-import { colonyRoom, freePlanetsInSystem, isContinuous, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
+import { PLACED_PROJECTS, baseTargets, colonyRoom, freePlanetsInSystem, isContinuous, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
 import { applyMutation } from "./mutation.js";
 import { applyDebug } from "./debug.js";
 import { score } from "./score.js";
-import type { BuildItem, Colony, Fleet, GameState, Id, Player, PlayerId } from "./types.js";
+import type { BuildItem, Colony, Fleet, GameState, Id, Planet, Player, PlayerId } from "./types.js";
 
 export type TurnOrders = Partial<Record<PlayerId, Command[]>>;
 
@@ -162,6 +162,13 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       // Like MoO2, progress carries over when the head of the queue changes.
       c.queue = cmd.queue.map((i) => ({ ...i }));
       if (c.queue.length === 0) c.progress = 0;
+      break;
+    }
+    case "placeBase": {
+      const c = state.colonies[cmd.colonyId]!;
+      c.readyBases!.splice(c.readyBases!.indexOf(cmd.projectId), 1);
+      if (c.readyBases!.length === 0) delete c.readyBases;
+      placeBase(ctx, c, cmd.projectId, state.planets[cmd.planetId]!);
       break;
     }
     case "buy": {
@@ -600,6 +607,7 @@ function runEconomy(ctx: TurnContext): void {
     let research = 0;
     let bc = food.saleBC - food.upkeep - list.filter((x) => x.colony.portal).length * PROJECT_UPKEEP.dimensionalPortal;
     for (const { colony, out } of list) {
+      scrapStrandedBases(ctx, colony);
       // A plague or a threatened supernova claims the colony's research.
       research += absorbResearch(state, colony, out.research);
       bc += out.bc - out.maintenance;
@@ -855,35 +863,16 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
   }
   switch (id) {
     case "colonyBase":
-    case "outpostBase": {
-      const free = freePlanetsInSystem(state, colony, "habitable");
-      const target = free.find((p) => p.id === planetId) ?? free[0];
-      if (target) foundColony(ctx, colony.ownerId, target.id, id === "colonyBase" ? 1 : 0, player.raceId);
-      return;
-    }
-    case "freighterFleet":
-      player.freighters = (player.freighters ?? 0) + FREIGHTERS.perFleet;
-      return;
-    case "terraform": {
-      const options = TERRAFORM_STEP[planet.type];
-      if (options?.length) {
-        planet.type = (options.length > 1 ? rng.pick(options) : options[0]!) as PlanetType;
-        colony.terraformed += 1;
-      }
-      return;
-    }
-    case "gaiaTransform":
-      if (planet.type === "terran") planet.type = "gaia";
-      return;
+    case "outpostBase":
     case "artificialPlanet": {
-      const free = freePlanetsInSystem(state, colony, "unsettleable");
-      const target = free.find((p) => p.id === planetId) ?? free[0];
-      if (target && (target.type === "asteroids" || target.type === "gasGiant")) {
-        target.size = ARTIFICIAL_PLANET[target.type];
-        target.type = ARTIFICIAL_PLANET.type;
-        target.minerals = ARTIFICIAL_PLANET.minerals;
-        target.gravity = ARTIFICIAL_PLANET.gravity;
-      }
+      // MoO2 asks where a finished base goes; with one choice there is nothing to ask.
+      const free = baseTargets(state, colony, id);
+      const target = free.find((p) => p.id === planetId) ?? (free.length === 1 ? free[0] : undefined);
+      if (target) placeBase(ctx, colony, id, target);
+      else if (free.length > 1) {
+        (colony.readyBases ??= []).push(id);
+        ctx.emit({ kind: "baseReady", playerId: colony.ownerId, colonyId: colony.id, projectId: id });
+      } else scrapBase(ctx, colony, id);
       return;
     }
     case "dimensionalPortal":
@@ -894,6 +883,40 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
       player.spies.home += 1;
       return;
   }
+}
+
+/** Settles or converts the chosen planet with a finished Colony Base, Outpost Base or Artificial Planet. */
+function placeBase(ctx: TurnContext, colony: Colony, id: string, target: Planet): void {
+  if (id === "artificialPlanet") {
+    if (target.type === "asteroids" || target.type === "gasGiant") {
+      target.size = ARTIFICIAL_PLANET[target.type];
+      target.type = ARTIFICIAL_PLANET.type;
+      target.minerals = ARTIFICIAL_PLANET.minerals;
+      target.gravity = ARTIFICIAL_PLANET.gravity;
+    }
+    return;
+  }
+  const player = ctx.state.players[colony.ownerId]!;
+  foundColony(ctx, colony.ownerId, target.id, id === "colonyBase" ? 1 : 0, player.raceId);
+}
+
+/** A finished base with no planet left to use is scrapped for part of its cost, never lost silently. */
+function scrapBase(ctx: TurnContext, colony: Colony, id: string): void {
+  const refund = Math.floor(itemCost(ctx.state, colony.ownerId, { kind: "project", id }, colony) * BASE_SCRAP_REFUND);
+  ctx.state.players[colony.ownerId]!.bc += refund;
+  ctx.emit({ kind: "baseScrapped", playerId: colony.ownerId, colonyId: colony.id, projectId: id, refund });
+}
+
+/** Bases waiting for a target are scrapped once every planet they could use is gone. */
+function scrapStrandedBases(ctx: TurnContext, colony: Colony): void {
+  if (!colony.readyBases) return;
+  const keep: string[] = [];
+  for (const id of colony.readyBases) {
+    if (baseTargets(ctx.state, colony, id).length > keep.filter((k) => PLACED_PROJECTS[k] === PLACED_PROJECTS[id]).length) keep.push(id);
+    else scrapBase(ctx, colony, id);
+  }
+  if (keep.length) colony.readyBases = keep;
+  else delete colony.readyBases;
 }
 
 /**

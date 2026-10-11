@@ -20,6 +20,7 @@ import { GameMenu } from "./GameMenu";
 import { DebugMenu } from "./DebugMenu";
 import { GameOver } from "./GameOver";
 import { ResearchPrompt } from "./ResearchPrompt";
+import { BasePrompt, coloniesWithReadyBases } from "./BasePrompt";
 import { audio } from "../audio/sound";
 import { MuteButton } from "../ui/AudioControls";
 import { useHelp } from "../help/HelpDialog";
@@ -67,6 +68,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [overSeen, setOverSeen] = useState(view.over);
   const [colonyFocus, setColonyFocus] = useState<string | null>(null);
   const [researchWarning, setResearchWarning] = useState(false);
+  const [basePrompt, setBasePrompt] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   /** Audiences waiting to be held, the current one first. */
   const [audiences, setAudiences] = useState<AudienceRequest[]>([]);
@@ -108,6 +110,12 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     if (autoplay) return;
     audio.play("turn");
     if (session.lastTurnEvents(me.id).some((e) => ALERT_EVENTS.has(e.kind))) setTimeout(() => audio.play("alert"), 700);
+  }, [view.turn]);
+
+  // A finished base with several possible planets waits for the player to pick one, as in MoO2.
+  useEffect(() => {
+    if (readOnly || autoplay || view.over || me.automation.includes("production")) return;
+    if (coloniesWithReadyBases(view.colonies, me.id).length > 0) setBasePrompt(true);
   }, [view.turn]);
 
   // Other empires ask for an audience when they first meet us, declare war or bring a proposal.
@@ -244,6 +252,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
           onSkip={() => { setResearchWarning(false); session.endTurn(); }}
           onOpenScreen={() => { setResearchWarning(false); go("research"); }} />
       )}
+      {basePrompt && !researchWarning && !audiences[0] && <BasePrompt onClose={() => setBasePrompt(false)} />}
       {audiences[0] && !(view.over && !overSeen) && (
         <Audience key={`${view.turn}:${audiences.length}:${audiences[0].themId}:${audiences[0].opening.kind}`} request={audiences[0]}
           onClose={() => setAudiences((q) => q.slice(1))} />

@@ -52,6 +52,10 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
       return { text: `Hyper-advanced ${FIELD_NAMES[e.field]} reached level ${e.level}.`, tone: "good" };
     case "built":
       return { text: `${colonyName(view, e.colonyId)} finished ${itemName(view, e.item)}.`, starId: colonyStar(e.colonyId), tone: "info" };
+    case "baseReady":
+      return { text: `${colonyName(view, e.colonyId)} finished a ${PROJECTS_BY_ID[e.projectId]?.name ?? e.projectId}. Choose which planet it goes to.`, starId: colonyStar(e.colonyId), tone: "good" };
+    case "baseScrapped":
+      return { text: `${colonyName(view, e.colonyId)} finished a ${PROJECTS_BY_ID[e.projectId]?.name ?? e.projectId}, but no free planet was left in the system. It was scrapped for ${fmt(e.refund)} BC.`, starId: colonyStar(e.colonyId), tone: "bad" };
     case "starvation":
       return { text: `${colonyName(view, e.colonyId)} is starving.`, starId: colonyStar(e.colonyId), tone: "bad" };
     case "explored":

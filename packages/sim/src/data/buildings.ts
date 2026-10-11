@@ -266,6 +266,12 @@ export const PROJECT_COSTS = {
   spy: 25,
 } as const;
 
+/**
+ * Share of its cost a finished Colony Base, Outpost Base or Artificial Planet
+ * pays back when no planet is left to use it on (MoO2: scrapped for half).
+ */
+export const BASE_SCRAP_REFUND = 0.5;
+
 /** BC upkeep per turn of one-off projects that stay in place. */
 export const PROJECT_UPKEEP = {
   dimensionalPortal: 2,
