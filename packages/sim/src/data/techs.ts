@@ -237,6 +237,9 @@ export const XENON_TECHS = [
   "reflectionField", "spatialCompressor", "xentroniumArmor",
 ];
 
+/** The xenon field proper: the Phase Shifter belongs to no field, so the Guardian never yields it. */
+export const XENON_FIELD_TECHS = XENON_TECHS.filter((t) => t !== "phaseShifter");
+
 /**
  * Descriptions and empire bonuses. Techs not listed here unlock something in
  * another table and get a generated name.

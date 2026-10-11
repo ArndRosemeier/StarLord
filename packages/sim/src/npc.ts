@@ -1,5 +1,6 @@
-import { LAIR_MONSTERS, MONSTER_DESIGNS } from "./data/monsters.js";
-import { TIER_OF_TECH, emptyHyperLevels } from "./data/techs.js";
+import { GUARDIAN_RANDOM_XENON, LAIR_MONSTERS, MONSTER_DESIGNS } from "./data/monsters.js";
+import { TIER_OF_TECH, XENON_FIELD_TECHS, emptyHyperLevels } from "./data/techs.js";
+import { grantTech } from "./empire.js";
 import { newId, type TurnContext } from "./context.js";
 import { distance } from "./galaxy.js";
 import { maxPopulation } from "./economy.js";
@@ -109,16 +110,24 @@ export function setupNpcs(state: GameState, rng: Rng): void {
   if (state.settings.raiders) setupRaiders(state, rng);
 }
 
-/** Rewards for clearing monster lairs: Orion's guardian drops the Death Ray. */
+/**
+ * Rewards for clearing monster lairs. Orion's guardian guards Loknar's ship:
+ * the victor learns the Death Ray plus up to three other xenon technologies
+ * it lacks, and the last of the elders joins if a captain's post is free.
+ */
 export function guardianSlain(ctx: TurnContext, killer: number, starId: string): void {
   const star = ctx.state.galaxy.stars.find((s) => s.id === starId);
+  if (star?.special !== "orion") return;
   const p = ctx.state.players[killer]!;
-  if (star?.special === "orion" && !p.techs.includes("deathRay")) {
-    p.techs.push("deathRay");
-    ctx.emit({ kind: "techLearned", playerId: killer, techId: "deathRay", tierId: "orion", source: "salvage" });
+  const learn = (tech: string) => {
+    if (grantTech(p, tech)) ctx.emit({ kind: "techLearned", playerId: killer, techId: tech, tierId: TIER_OF_TECH[tech]?.id ?? "xenon", source: "salvage" });
+  };
+  learn("deathRay");
+  const pool = XENON_FIELD_TECHS.filter((t) => !p.techs.includes(t));
+  for (let i = 0; i < GUARDIAN_RANDOM_XENON && pool.length > 0; i++) {
+    learn(pool.splice(ctx.rng.int(0, pool.length - 1), 1)[0]!);
   }
-  // The last of the elders, freed with the guardian's fall, joins the victors.
-  if (star?.special === "orion" && p.kind === "empire") heroJoins(ctx.state, killer, "guardian", ctx.emit);
+  if (p.kind === "empire") heroJoins(ctx.state, killer, "guardian", ctx.emit);
 }
 
 /** Every NPC weapon tech resolves to a tier or "never"; keep the helper close to its data. */
