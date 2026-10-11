@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CREW, Rng, buyPrice, crewLevel, crewTick, getRace, growthPerTurn, missileSpeed, newGame, raceMaxPopulation,
-  canBuildShips, computeOutput, fireEvent, processTurn, findDesign, fleetFuelRange, fleetRange, levelFromXp, planetDefense, resolveCombat, spyCountBonus, troopUnit, WEAPONS_BY_ID, type Colony, type Fleet, type GameState,
+  canBuildShips, computeOutput, fireEvent, processTurn, repairTick, findDesign, fleetFuelRange, fleetRange, levelFromXp, planetDefense, resolveCombat, spyCountBonus, troopUnit, WEAPONS_BY_ID, type Colony, type Fleet, type GameState,
 } from "@starlord/sim";
 
 /** Numbers recovered from the original program; each case was worked out by hand from the decoded formulas. */
@@ -241,5 +241,50 @@ describe("original random events", () => {
     expect(s.activeEvents!.some((e) => e.kind === "hyperspaceFlux")).toBe(true);
     for (let i = 0; i < 17; i++) s = processTurn(s, {});
     expect(s.activeEvents!.some((e) => e.kind === "hyperspaceFlux")).toBe(false);
+  });
+});
+
+describe("ship damage and repair", () => {
+  const battle = () => {
+    const s = newGame({ seed: "dmg", races: ["terran", "felhari"], monsters: false, raiders: false, council: false, randomEvents: false });
+    s.relations["0-1"] = { status: "war", trade: false, research: false, since: 1 };
+    const star = s.galaxy.stars.find((x) => x.id !== s.players[0]!.homeStarId && x.id !== s.players[1]!.homeStarId)!;
+    const mk = (ownerId: number, count: number, stance: Fleet["stance"]): Fleet => {
+      const f: Fleet = { id: `d${s.nextId++}`, ownerId, x: star.x, y: star.y, starId: star.id, destStarId: null, ships: [{ designId: "frigate", count }], stance, name: "D" };
+      s.fleets[f.id] = f;
+      return f;
+    };
+    return { s, star, a: mk(0, 8, "attack"), b: mk(1, 1, "defend") };
+  };
+
+  it("keeps the damage survivors took", () => {
+    let found = false;
+    for (let seed = 1; seed <= 20 && !found; seed++) {
+      const { s, star, a, b } = battle();
+      const out = resolveCombat(s, new Rng({ s: seed }), star.id, { ownerId: 0, fleets: [a], attacksPlanet: false }, { ownerId: 1, fleets: [b], attacksPlanet: false }, "r");
+      const left = out.survivors.get(a.id)!;
+      found = left.some((x) => (x.damage?.length ?? 0) > 0 && x.damage!.length <= x.count);
+    }
+    expect(found).toBe(true);
+  });
+
+  it("starts damaged ships with less armor and repairs them fully with Advanced Damage Control", () => {
+    const { s, star, a, b } = battle();
+    a.ships = [{ designId: "frigate", count: 2, damage: [5] }];
+    const out = resolveCombat(s, new Rng({ s: 3 }), star.id, { ownerId: 0, fleets: [a], attacksPlanet: false }, { ownerId: 1, fleets: [b], attacksPlanet: false }, "r");
+    const snap = out.report.ships.filter((x) => x.ownerId === 0);
+    expect(snap.filter((x) => x.armor !== undefined)).toHaveLength(1);
+    s.players[0]!.techs.push("advancedDamageControl");
+    const again = resolveCombat(s, new Rng({ s: 3 }), star.id, { ownerId: 0, fleets: [a], attacksPlanet: false }, { ownerId: 1, fleets: [b], attacksPlanet: false }, "r");
+    expect(again.survivors.get(a.id)!.every((x) => !x.damage)).toBe(true);
+  });
+
+  it("repairs ships at a system with their own colony", () => {
+    const s = newGame({ seed: "dock", races: ["terran", "felhari"], monsters: false, raiders: false, council: false, randomEvents: false });
+    const home = s.players[0]!.homeStarId;
+    const f = Object.values(s.fleets).find((x) => x.ownerId === 0 && x.starId === home)!;
+    f.ships[0]!.damage = [3];
+    repairTick(s);
+    expect(f.ships[0]!.damage).toBeUndefined();
   });
 });

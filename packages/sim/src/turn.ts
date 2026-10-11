@@ -21,7 +21,8 @@ import {
 } from "./economy.js";
 import { espionageTick } from "./espionage.js";
 import { distance } from "./galaxy.js";
-import { addShips, deleteFleet, removeShips } from "./fleetOps.js";
+import { repairTick } from "./repair.js";
+import { addShips, deleteFleet, removeShips, takeShips } from "./fleetOps.js";
 import { builtCrewXp, crewTick } from "./crew.js";
 import { captureColony, destroyColony, exterminate, groundPhase, troopUnit, type Silenced } from "./ground.js";
 import { assignDefaultJobs, newUnitJob, removePopulation } from "./jobs.js";
@@ -62,6 +63,8 @@ export function processTurn(prev: GameState, orders: TurnOrders): GameState {
     for (const cmd of orders[player.id] ?? []) applyCommand(ctx, player.id, cmd);
   }
 
+  // Ships that spent the last turn at one of their own systems leave it repaired.
+  repairTick(state);
   raidTick(ctx);
   moveFleets(ctx);
   const silenced = combatPhase(ctx);
@@ -208,8 +211,8 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       // The split-off ships keep their crews' experience.
       const ships = cmd.ships.map((s) => {
         const from = f.ships.find((x) => x.designId === s.designId)!;
-        from.count -= s.count;
-        return from.xp ? { designId: s.designId, count: s.count, xp: from.xp } : { designId: s.designId, count: s.count };
+        const damage = takeShips(from, s.count);
+        return { designId: s.designId, count: s.count, ...(from.xp ? { xp: from.xp } : {}), ...(damage.length > 0 ? { damage } : {}) };
       });
       f.ships = f.ships.filter((s) => s.count > 0);
       const nf: Fleet = { ...f, id: splitFleetId(state, f.id), ships, name: `${f.name} II` };
@@ -220,7 +223,7 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "mergeFleets": {
       const [first, ...rest] = cmd.fleetIds.map((id) => state.fleets[id]!);
       for (const f of rest) {
-        for (const s of f.ships) addShips(first!, s.designId, s.count, s.xp ?? 0);
+        for (const s of f.ships) addShips(first!, s.designId, s.count, s.xp ?? 0, s.damage);
         deleteFleet(state, f.id);
       }
       break;

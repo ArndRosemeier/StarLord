@@ -173,9 +173,9 @@ export function initialStates(report: CombatReport): UnitStates {
   return new Map(unitsOf(report).map((s) => [s.key, {
     x: s.x,
     y: s.y,
-    hits: s.maxHits,
-    armor: s.maxArmor ?? null,
-    structure: s.maxStructure ?? null,
+    hits: s.armor !== undefined && s.structure !== undefined ? s.armor + s.structure : s.maxHits,
+    armor: s.armor ?? s.maxArmor ?? null,
+    structure: s.structure ?? s.maxStructure ?? null,
     heading: s.ownerId === report.sides[1] ? Math.PI : 0,
     alive: true,
     gone: false,

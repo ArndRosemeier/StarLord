@@ -165,7 +165,14 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
             return (
               <tr key={s.designId}>
                 <td>{d?.name ?? s.designId} <small className="muted">{d && !d.fixed ? words(d.hull) : ""}</small></td>
-                <td>{s.count}</td>
+                <td>
+                  {s.count}
+                  {s.damage?.length ? (
+                    <small className="muted" title={`Hit points lost: ${s.damage.join(", ")}. Ships are repaired after a turn at any system with a colony of yours.`}>
+                      {" "}({s.damage.length} damaged)
+                    </small>
+                  ) : null}
+                </td>
                 <td>{stats ? fmt(stats.strength) : "?"}</td>
                 {mine && <td title={`${s.xp ?? 0} XP`}>{d?.fixed ? "–" : crewName(crewLevel(s.xp ?? 0, owner))}</td>}
                 {mine && (

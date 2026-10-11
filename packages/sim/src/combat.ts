@@ -10,7 +10,7 @@ import {
   MISSILE_DEFENSE_BONUS, MISSILE_DEFENSE_PER_SPEED, MISSILE_HP, MISSILE_SPEED, PLANET_BEAM_DAMAGE,
   PLANET_INSTALLATION_ARMOR_STEP, PLANET_INSTALLATION_HP, PLANET_TORPEDO_DAMAGE, PLASMA_WEB_DECAY, RANGE_BANDS,
   SHIELD_FACINGS, SHIELD_REGEN, SQUADRON_SIZE, STATION_FLEET_BONUS, STATION_TURN_DEG, TORPEDO_DISSIPATION, TORPEDO_HP,
-  TURN_COST_PER_STEP,
+  TURN_COST_PER_STEP, REPAIR,
 } from "./data/combat.js";
 import { ARMORS, DRIVES } from "./data/components.js";
 import { crewLevel } from "./crew.js";
@@ -265,6 +265,18 @@ function captainSkills(state: GameState, fleetId: string): LeaderSkills {
   return {};
 }
 
+/**
+ * Advanced Damage Control, a cybernetic race or an Engineer captain repair
+ * every ship completely after a battle (an Automated Repair Unit does it for
+ * its own ship).
+ */
+function fullRepairAfterBattle(state: GameState, ownerId: PlayerId, fleetId: string): boolean {
+  const player = state.players[ownerId]!;
+  if (player.kind !== "empire") return true;
+  if (knows(player, REPAIR.fullRepairTech) || raceCombatRepair(getRace(player.raceId)).hull > 0) return true;
+  return (captainSkills(state, fleetId).shieldRecharge ?? 0) > 0;
+}
+
 function scannerEccm(player: Player): number {
   return Math.max(0, ...SCANNER_ECCM.filter((s) => knows(player, s.tech)).map((s) => s.value));
 }
@@ -329,8 +341,11 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
       const monster = !!design.fixed;
       // A fixed design that never moves (the raiders' citadel) fights like an orbital station.
       const fortress = !!design.fixed?.immobile;
+      // Damaged ships come last in a stack; they start with the armor, then structure, they lost.
+      const intact = stack.count - (stack.damage?.length ?? 0);
       for (let i = 0; i < stack.count; i++) {
         const row = n++;
+        const lost = i < intact ? 0 : stack.damage![i - intact]!;
         const mounts = makeMounts(player, s.weapons, false, false);
         const u: Unit = {
           ...baseUnit(player, sideIdx),
@@ -343,7 +358,8 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
           sizeClass: s.sizeClass,
           x: DEPLOY_COLUMNS[sideIdx] + (sideIdx === 0 ? -1 : 1) * (row % 3) * 1.5,
           y: FIELD_HEIGHT / 2 + (((Math.floor(row / 3) % 9) + 1) >> 1) * 3 * ((Math.floor(row / 3) % 2) * 2 - 1),
-          armor: s.armor, maxArmor: s.armor, structure: s.structure, maxStructure: s.structure,
+          armor: Math.max(0, s.armor - lost), maxArmor: s.armor,
+          structure: Math.max(1, s.structure - Math.max(0, lost - s.armor)), maxStructure: s.structure,
           shieldClass: s.shield, shieldMax: s.shieldStrength, shields: Array(SHIELD_FACINGS).fill(s.shieldStrength),
           hardShields: s.effects.hardShields > 0,
           mounts,
@@ -601,6 +617,7 @@ class Battle {
       key: u.key, ownerId: u.ownerId, designId: u.designId, name: u.name, maxHits: u.maxArmor + u.maxStructure,
       x: u.x, y: u.y, isPlanet: u.kind === "planet", kind: u.kind, hullId: u.hullId, sizeClass: u.sizeClass,
       maxArmor: u.maxArmor, maxStructure: u.maxStructure, maxShield: u.shieldMax,
+      ...(u.kind === "ship" && u.armor + u.structure < u.maxArmor + u.maxStructure ? { armor: u.armor, structure: u.structure } : {}),
     }));
     const rounds: CombatRoundEvent[][] = [];
     const retreated = new Set<PlayerId>();
@@ -646,11 +663,20 @@ class Battle {
     const survivors = new Map<string, ShipStack[]>();
     for (const s of sides) {
       for (const f of s.fleets) {
-        const counts = new Map<string, number>();
-        for (const u of units) if (u.fleetId === f.id && u.alive) counts.set(u.designId, (counts.get(u.designId) ?? 0) + 1);
-        survivors.set(f.id, [...counts].map(([designId, count]) => {
+        // Damage stays on the survivors unless something repairs it all after the battle.
+        const repairs = fullRepairAfterBattle(state, s.ownerId, f.id);
+        const counts = new Map<string, { count: number; damage: number[] }>();
+        for (const u of units) {
+          if (u.fleetId !== f.id || !u.alive) continue;
+          const c = counts.get(u.designId) ?? { count: 0, damage: [] };
+          c.count++;
+          const lost = u.maxArmor - u.armor + u.maxStructure - u.structure;
+          if (lost > 0 && u.kind === "ship" && !repairs && u.fx.repair <= 0) c.damage.push(Math.round(lost));
+          counts.set(u.designId, c);
+        }
+        survivors.set(f.id, [...counts].map(([designId, { count, damage }]) => {
           const xp = f.ships.find((x) => x.designId === designId)?.xp;
-          return xp ? { designId, count, xp } : { designId, count };
+          return { designId, count, ...(xp ? { xp } : {}), ...(damage.length > 0 ? { damage } : {}) };
         }));
       }
     }
