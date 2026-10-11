@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FIELD_HEIGHT, FIELD_WIDTH, WEAPONS_BY_ID, type CombatReport, type PlayerView } from "@starlord/sim";
-import { STEP_MS, isProjectile, type CombatEvent, type Frames, type UnitInfo } from "./replayModel";
+import { STEP_MS, isProjectile, leftOwner, type CombatEvent, type Frames, type UnitInfo } from "./replayModel";
 
 /**
  * The flat canvas battle view: the fallback when WebGL is unavailable. It can
@@ -174,7 +174,7 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
         else if (u.kind === "station") drawStation(ctx, p.x, p.y, CELL * (0.45 + u.size * 0.3), color);
         else if (u.kind === "monster") drawMonster(ctx, p.x, p.y, CELL * 0.55, t, reduced);
         else {
-          const dir = s.ownerId === report.sides[0] ? 1 : -1;
+          const dir = s.ownerId === leftOwner(report) ? 1 : -1;
           const size = 0.32 + Math.min(0.32, Math.log10(Math.max(1, s.maxHits)) * 0.12);
           const flicker = reduced ? 1 : 0.75 + 0.25 * Math.sin(t / 60 + s.x * 3 + s.y);
           drawShip(ctx, p.x, p.y, dir, size * CELL, color, st.alive ? flicker : 0, event?.kind === "fire" && event.ship === s.key && k < 0.6);

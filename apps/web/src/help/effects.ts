@@ -1,4 +1,7 @@
-import { FIGHTER_GARRISON, type BuildingEffects, type EmpireBonus, type PlanetDefense, type SpecialEffects } from "@starlord/sim";
+import {
+  BOARDING, FIGHTER_GARRISON, GROUND_BATTERY_SPACE, HULLS_BY_ID, MISSILE_BASE, SIDE_ATTACK_BY_IMMOBILE_SIZE, hullIndex,
+  type BuildingEffects, type EmpireBonus, type PlanetDefense, type SpecialEffects,
+} from "@starlord/sim";
 import { fmt, pct, signed } from "../ui/format";
 
 /**
@@ -11,17 +14,20 @@ type Explain<T> = { [K in keyof Required<T>]: (v: NonNullable<T[K]>) => string }
 
 const STATION_NAMES = { starBase: "star base", battlestation: "battlestation", starFortress: "star fortress" } as const;
 const INSTALLATION_NAMES = {
-  groundBatteries: "ground batteries: 300 space of your best beam weapon on the planet",
-  missileBase: "missile base: 300 space of your best missile, never out of ammunition",
+  groundBatteries: `ground batteries: ${GROUND_BATTERY_SPACE.beam} space of heavy mounts of your best beam (with the refinements you know) and ${GROUND_BATTERY_SPACE.pointDefense} space of point-defense beams`,
+  missileBase: `missile base: ${MISSILE_BASE.space} space of your best missile in ${MISSILE_BASE.rack}-shot racks, with ECCM and the Fast and Armored refinements you know, ${MISSILE_BASE.shots} shots each`,
   stellarConverter: "stellar converter: 400 damage to every shield of a ship in orbit each combat turn",
 } as const;
 
 const PLANET_DEFENSE: Explain<PlanetDefense> = {
-  station: (v) => `orbital ${STATION_NAMES[v]} that fights in every battle here and lets the colony build cruisers and larger hulls`,
+  station: (v) => {
+    const bonus = SIDE_ATTACK_BY_IMMOBILE_SIZE[hullIndex(HULLS_BY_ID[v].asHull ?? "cruiser")] ?? 0;
+    return `orbital ${STATION_NAMES[v]} that fights in every battle here and lets the colony build cruisers and larger hulls${bonus ? `; +${bonus} beam attack for your side` : ""}`;
+  },
   installation: (v) => INSTALLATION_NAMES[v],
   mines: () => "space mines that strike attacking ships before the battle starts",
   shield: (v) => `planetary shield stops ${v} damage per hit`,
-  fighters: (v) => `${v} interceptors based on the planet (${FIGHTER_GARRISON.bombers} bombers or ${FIGHTER_GARRISON.heavyFighters} heavy fighters once known)`,
+  fighters: () => `${FIGHTER_GARRISON.interceptors} interceptors based on the planet (${FIGHTER_GARRISON.bombers} bombers once you know Bomber Bays, ${FIGHTER_GARRISON.heavyFighters} heavy fighters once you know Heavy Fighter Bays), sent up again every ${FIGHTER_GARRISON.replenishRounds} combat turns`,
 };
 
 const BUILDING: Explain<BuildingEffects> = {
@@ -113,11 +119,11 @@ const SPECIAL: Explain<SpecialEffects> = {
   teleport: (v) => `can jump up to ${v} squares once a round`,
   hullSpacePct: (v) => `${signed(v)}% hull space`,
   fuelRangePct: (v) => `${signed(v)}% fuel range`,
-  warpDissipator: () => "enemies cannot retreat from the battle",
-  detonator: (v) => `explodes with ×${v} force when destroyed`,
+  warpDissipator: () => "enemy ships cannot be ordered to retreat while it works",
+  detonator: (v) => `explodes with ×${v} force however it is destroyed, and blows itself up half the time when boarders take it`,
   monsterAttackPerSize: (v) => `${signed(v)} attack per size class against monsters, for the whole fleet`,
   scoutLab: () => "produces research each turn, more on bigger hulls",
-  transporters: (v) => `beams marines aboard enemy ships up to ${v} squares away`,
+  transporters: (v) => `beams half the marines aboard an enemy ship up to about ${v} squares away once the shield facing this ship is down (not through hard shields; a damper field stops ${BOARDING.damperDivisor - 1} in ${BOARDING.damperDivisor} of them)`,
   stealth: () => "hidden from enemy scanners on the galaxy map",
   turnCost: (v) => (v === 0 ? "turns for free" : `turning costs ${pct(v)} of normal`),
 };

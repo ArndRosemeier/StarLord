@@ -1,6 +1,6 @@
 import {
   ARCS, ARMORS_BY_ID, COMPUTERS_BY_ID, HULLS_BY_ID, MISSILE_RACKS, MOD_EFFECTS, MODULES, SHIELDS_BY_ID,
-  SHIP_STYLES_BY_ID, SPECIALS_BY_ID, WEAPON_MODS_BY_ID, WEAPONS_BY_ID, bestDrive, designStats, refinement, weaponUnitCost,
+  EXPLOSION, SHIP_STYLES_BY_ID, SPECIALS_BY_ID, WEAPON_MODS_BY_ID, WEAPONS_BY_ID, bestDrive, designStats, refinement, weaponUnitCost,
   type DesignModule, type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponDef, type WeaponEffect,
   type WeaponKind, type WeaponModId, type WeaponMount, type WeaponTrait,
 } from "@starlord/sim";
@@ -52,7 +52,7 @@ const EFFECT_TEXT: Record<WeaponEffect, string> = {
   fighters: "Launches interceptors that dogfight missiles, craft and ships.",
   bombers: "Launches bombers that strike ships and planets hard but cannot stop craft.",
   heavyFighters: "Launches heavy fighters: tougher interceptors with stronger guns.",
-  shuttles: "Launches assault shuttles that land marines on enemy ships to capture them.",
+  shuttles: "Launches assault shuttles that land marines on an enemy ship to capture it, or to wreck its systems in a hit-and-run raid when capture looks hopeless.",
 };
 
 const MOD_TEXT: Record<WeaponModId, string> = {
@@ -108,6 +108,7 @@ export function hullTip(player: Player, draft: ShipDesign, hull: HullSize): TipC
     text: [
       "Bigger hulls hold more space for weapons and parts and take more punishment, but cost more and use more command points.",
       "Shields, computers and specials grow with the hull; shield strength scales with the size class.",
+      `A ship whose drive is shot out explodes for up to ${fmt(EXPLOSION.perDriveHP * h.driveHP)} damage (${EXPLOSION.detonatorMult} times that with a Quantum Detonator), less with distance, to everything within about ${EXPLOSION.radius} squares, friend or foe.`,
       ...(hull !== "frigate" && hull !== "destroyer" ? ["Colonies need an orbital star base to build this hull."] : []),
     ],
   };
@@ -267,7 +268,7 @@ export function statTip(player: Player, label: string): TipCard {
     "Attack": "Bonus to the chance that beams hit, from the computer, specials, race and leaders.",
     "Defense": `How hard the ship is to hit with beams. Rises with combat speed, plus specials and race bonuses.`,
     "Combat speed": `Squares the ship moves each battle round. Comes from your ${drive.name} drive and the hull size; ships with free space move faster.`,
-    "Marines": "Boarding crew for capturing enemy ships and repelling boarders.",
+    "Marines": "Boarding crew. Half of them cross at a time: next to an enemy ship that cannot move, or by Transporters once its shield is down. They capture the ship when the odds are good and raid its systems when they are not; they also repel boarders.",
     "Troops": "Ground troops carried for invading colonies.",
     "Strength": "A rough fighting value used by the AI and automation to compare designs.",
     "Missile evasion": "Chance to make incoming missiles miss, from jammers and inertial devices.",

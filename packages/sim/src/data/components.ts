@@ -24,16 +24,22 @@ export interface HullDef<Id extends HullId = HullId> {
   computerHP: number;
   driveHP: number;
   shieldGenHP: number;
-  /** Frigate 1 … titan 5, doom star 7, stations 8-10; scales shields and several weapons. */
+  /**
+   * Frigate 1 … titan 5, doom star 7; scales shields and several weapons. Stations fight as the ship hull named
+   * by `asHull` (Star Base a cruiser, Battlestation a battleship, Star Fortress a titan) and take its size class.
+   */
   sizeClass: number;
+  /** Orbital stations: the ship hull whose size, internal hit points and explosion they use in combat. */
+  asHull?: HullSize;
   /** Command points a ship uses, or a station adds. */
   commandPoints: number;
   requires: string | null;
-  /** Fixed beam defense for immobile hulls (stations); ships get theirs from combat speed. */
+  /** Beam defense of an immobile hull before its crew (stations): -20, as for any ship that cannot move. */
   fixedDefense?: number;
   /**
    * Weapon groups the game's automatic designs give this hull: beams, missiles, torpedoes and special weapons.
-   * Orbital stations split their space between their best beam and missile by these.
+   * (The original's station rows carry these too, but only its auto-designer and auto-resolve read them; in
+   * tactical combat a station splits its space as in `STATION_ARMS`.)
    */
   autoSlots: [beam: number, missile: number, torpedo: number, special: number];
 }
@@ -49,9 +55,9 @@ export const HULLS: HullDef<HullSize>[] = [
 
 /** Orbital stations: built as colony buildings, fought as immobile units fitted with the owner's best weapons. */
 export const STATION_HULLS: HullDef<StationHull>[] = [
-  { id: "starBase", name: "Star Base", space: 300, cost: 400, armor: 60, structure: 60, marines: 20, computerHP: 10, driveHP: 0, shieldGenHP: 15, sizeClass: 8, commandPoints: 1, requires: "starBase", fixedDefense: -10, autoSlots: [3, 3, 0, 0] },
-  { id: "battlestation", name: "Battlestation", space: 600, cost: 1000, armor: 90, structure: 90, marines: 40, computerHP: 15, driveHP: 0, shieldGenHP: 20, sizeClass: 9, commandPoints: 2, requires: "battlestation", fixedDefense: -10, autoSlots: [6, 6, 0, 0] },
-  { id: "starFortress", name: "Star Fortress", space: 1200, cost: 2500, armor: 120, structure: 120, marines: 80, computerHP: 20, driveHP: 0, shieldGenHP: 30, sizeClass: 10, commandPoints: 3, requires: "starFortress", fixedDefense: -10, autoSlots: [10, 10, 0, 0] },
+  { id: "starBase", name: "Star Base", space: 300, cost: 400, armor: 60, structure: 60, marines: 20, computerHP: 5, driveHP: 0, shieldGenHP: 6, sizeClass: 3, asHull: "cruiser", commandPoints: 1, requires: "starBase", fixedDefense: -20, autoSlots: [3, 3, 0, 0] },
+  { id: "battlestation", name: "Battlestation", space: 600, cost: 1000, armor: 90, structure: 90, marines: 40, computerHP: 7, driveHP: 0, shieldGenHP: 7, sizeClass: 4, asHull: "battleship", commandPoints: 2, requires: "battlestation", fixedDefense: -20, autoSlots: [6, 6, 0, 0] },
+  { id: "starFortress", name: "Star Fortress", space: 1200, cost: 2500, armor: 120, structure: 120, marines: 80, computerHP: 10, driveHP: 0, shieldGenHP: 10, sizeClass: 5, asHull: "titan", commandPoints: 3, requires: "starFortress", fixedDefense: -20, autoSlots: [10, 10, 0, 0] },
 ];
 
 /** Ships no colony can build without an orbital station: anything larger than a destroyer. */

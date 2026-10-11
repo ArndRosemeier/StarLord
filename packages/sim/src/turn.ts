@@ -27,7 +27,7 @@ import { builtCrewXp, crewTick } from "./crew.js";
 import { captureColony, destroyColony, exterminate, groundPhase, revoltFight, type Silenced } from "./ground.js";
 import { assignDefaultJobs, newUnitJob, removeAndroids, removePopulation } from "./jobs.js";
 import {
-  assignLeader, captainLost, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
+  assignLeader, captainLost, captainOf, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
 } from "./leaders.js";
 import { moveFleet } from "./movement.js";
 import { tradeGoodsMult } from "./raceEffects.js";
@@ -461,7 +461,9 @@ function nextBattle(state: GameState, starId: Id, silenced: Silenced, fought: Se
       if (!isHostile(state, list[i]!, list[j]!) || fought.has(`${list[i]}:${list[j]}`)) continue;
       const a = sideAt(state, starId, list[i]!, silenced);
       const b = sideAt(state, starId, list[j]!, silenced);
-      if (wantsFight(state, a, b) || wantsFight(state, b, a)) return [a, b];
+      a.initiates = wantsFight(state, a, b);
+      b.initiates = wantsFight(state, b, a);
+      if (a.initiates || b.initiates) return [a, b];
     }
   }
   return null;
@@ -490,13 +492,25 @@ function applyCombat(
     const c = state.colonies[colonyId];
     if (c) c.buildings = c.buildings.filter((b) => !BUILDINGS_BY_ID[b]?.effects.defense?.station);
   }
-  // Boarded ships join the captor's fleet under a copy of their design.
+  // Boarded ships join the captor's fleet under a copy of their design, or a new fleet if none of its ships is left.
   for (const cap of outcome.captured) {
     const from = state.players[cap.fromOwner]!;
     const to = state.players[cap.ownerId]!;
     const design = findDesign(from, cap.designId);
-    const fleetShips = outcome.survivors.get(cap.fleetId);
-    if (!design || !fleetShips || design.fixed) continue;
+    if (!design || design.fixed) continue;
+    let fleetId = cap.fleetId;
+    if (fleetId === null) {
+      const star = state.galaxy.stars.find((x) => x.id === starId)!;
+      const prize: Fleet = {
+        id: newId(state, "f"), ownerId: cap.ownerId, x: star.x, y: star.y, starId, destStarId: null, ships: [], stance: "defend", name: "Prize",
+      };
+      state.fleets[prize.id] = prize;
+      outcome.survivors.set(prize.id, []);
+      fleetId = prize.id;
+      cap.fleetId = fleetId;
+    }
+    const fleetShips = outcome.survivors.get(fleetId);
+    if (!fleetShips) continue;
     const id = `cap${cap.fromOwner}-${design.id}`;
     if (!findDesign(to, id)) to.designs.push({ ...structuredClone(design), id, name: `${design.name} (captured)`, obsolete: true, capturedFrom: cap.fromOwner });
     const stack = fleetShips.find((x) => x.designId === id);
@@ -534,8 +548,39 @@ function applyCombat(
   if (state.galaxy.stars.find((s) => s.id === starId)?.special === "raiderHome" && !state.raiders.defeated) {
     returnThroughPortal(state, starId);
   }
+  // Boarders killed the captain aboard a ship they took.
+  for (const fleetId of outcome.captainsKilled) {
+    const captain = captainOf(state, fleetId);
+    if (captain) {
+      ctx.emit({ kind: "leader", playerId: captain.ownerId!, leaderId: captain.id, what: `${captain.name}, ${captain.title}, was killed when boarders took their ship` });
+      captain.status = "dead";
+      captain.ownerId = null;
+      captain.offeredTo = null;
+      captain.assignedTo = null;
+      captain.travel = null;
+    }
+  }
+  // Ships that retreated head for the nearest colony: whole fleets, or the ships that left a fleet whose others stayed.
+  for (const [fleetId, stacks] of outcome.retreatedShips) {
+    const f = state.fleets[fleetId];
+    if (!f || f.starId !== starId) continue;
+    const home = nearestOwnStar(state, f.ownerId, starId);
+    if (!home || home === starId) continue;
+    const nf: Fleet = { ...f, id: splitFleetId(state, f.id), ships: [], name: `${f.name} II`, destStarId: home, starId: null };
+    delete nf.invadeTarget;
+    for (const st of stacks) {
+      const from = f.ships.find((x) => x.designId === st.designId);
+      if (!from) continue;
+      const n = Math.min(st.count, from.count);
+      const damage = takeShips(from, n);
+      addShips(nf, st.designId, n, from.xp ?? 0, damage);
+    }
+    f.ships = f.ships.filter((x) => x.count > 0);
+    if (nf.ships.length > 0) state.fleets[nf.id] = nf;
+    if (f.ships.length === 0) deleteFleet(state, f.id);
+  }
   for (const f of Object.values(state.fleets)) {
-    if (f.starId !== starId || !(outcome.retreated.has(f.ownerId) || outcome.fled.has(f.id))) continue;
+    if (f.starId !== starId || !outcome.fled.has(f.id)) continue;
     const home = nearestOwnStar(state, f.ownerId, starId);
     if (home && home !== starId) {
       f.destStarId = home;

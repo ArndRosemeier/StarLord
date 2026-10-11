@@ -5,7 +5,7 @@ import {
   WEAPON_MODS_BY_ID, hullIndex, type DriveDef, type FiringArc, type HullDef, type HullSize, type SpecialEffects,
   type WeaponDef, type WeaponModId,
 } from "./data/components.js";
-import { BEAM_HIT, DEFENSE_PER_SPEED, PLANET_WEAPON_SPACE, RANGE_BANDS } from "./data/combat.js";
+import { BEAM_HIT, DEFENSE_PER_SPEED, GROUND_BATTERY_SPACE, MISSILE_BASE, RANGE_BANDS, STATION_ARMS } from "./data/combat.js";
 import { NPC_WEAPONS } from "./data/monsters.js";
 import { getRace } from "./data/races.js";
 import { isShipStyle } from "./data/shipStyles.js";
@@ -418,39 +418,96 @@ export function bestMissile(player: Player): WeaponDef {
   return missiles.at(-1) ?? WEAPONS.find((w) => w.kind === "missile")!;
 }
 
-function fill(player: Player, mount: Omit<WeaponMount, "count">, space: number): WeaponMount | null {
-  const unit = weaponUnitCost(player, { ...mount, count: 1 }).space;
-  const count = Math.floor(space / unit);
-  return count > 0 ? { ...mount, count } : null;
+/** The modifications of `wanted` a weapon takes and the player has refined it far enough for. */
+export function refinedMods(player: Player, w: WeaponDef, wanted: readonly WeaponModId[]): WeaponModId[] {
+  const level = refinement(player, w.requires);
+  return wanted.filter((id) => {
+    const def = WEAPON_MODS_BY_ID[id];
+    return w.mods.includes(id) && level >= def.refinement && (!def.requires || knows(player, def.requires));
+  });
 }
 
-/** Weapons of an orbital station: its space split between the best beam and missile by the hull's auto slots. */
+/** The player's best beam that can be fitted as point defense, if any. */
+export function bestPointDefenseBeam(player: Player): WeaponDef | null {
+  const beams = WEAPONS.filter((w) => w.kind === "beam" && w.mods.includes("pointDefense") && knows(player, w.requires));
+  if (beams.length === 0) return null;
+  return beams.reduce((best, w) => (weaponValue(player, w, ["pointDefense"]) > weaponValue(player, best, ["pointDefense"]) ? w : best));
+}
+
+/** Splits a weapon count into mounts of at most `perSlot`. */
+function slots(mount: Omit<WeaponMount, "count">, count: number, perSlot: number): WeaponMount[] {
+  const out: WeaponMount[] = [];
+  for (let left = count; left > 0; left -= perSlot) out.push({ ...mount, count: Math.min(perSlot, left) });
+  return out;
+}
+
+/**
+ * Weapons of an orbital station, as the original arms it: its space (x1.25
+ * with Megafluxers) goes a quarter to heavy mounts of the best beam, an eighth
+ * to plain mounts of it, an eighth to point-defense mounts of the best
+ * point-defense beam, and half to 20-shot racks of the best missile with ECCM
+ * (plus Fast and Armored once refined that far, for free). Beams fire all
+ * round but are priced as an extended arc (likely: the original's arc mask
+ * for "all four sectors" costs what an extended arc does). At least one of
+ * each, at most 99 per mount and 90 missiles.
+ */
 export function stationWeapons(player: Player, hull: HullDef): WeaponMount[] {
-  const [beams, missiles] = hull.autoSlots;
-  const total = beams + missiles || 1;
-  return [
-    fill(player, { weaponId: bestBeam(player).id, arc: "full" }, (hull.space * beams) / total),
-    fill(player, { weaponId: bestMissile(player).id, ammo: DEFAULT_MISSILE_SHOTS }, (hull.space * missiles) / total),
-  ].filter((m): m is WeaponMount => m !== null);
-}
-
-/** Ground batteries: heavy-mount and point-defense versions of the best beam, as many as fit. */
-export function groundBatteryWeapons(player: Player): WeaponMount[] {
+  const A = STATION_ARMS;
+  const space = hull.space * (knows(player, "megafluxers") ? A.megafluxerMult : 1);
+  const out: WeaponMount[] = [];
+  const beamMounts = (w: WeaponDef, mods: WeaponModId[], share: number) => {
+    const unit = weaponUnitCost(player, { weaponId: w.id, count: 1, mods, arc: "forwardExtended" }).space;
+    const count = Math.max(1, Math.floor((space * share) / unit));
+    out.push(...slots({ weaponId: w.id, arc: "full", ...(mods.length > 0 ? { mods } : {}) }, count, A.maxPerSlot));
+  };
   const beam = bestBeam(player);
-  const half = PLANET_WEAPON_SPACE / 2;
-  const hv = beam.mods.includes("heavyMount");
-  const pd = beam.mods.includes("pointDefense");
-  const mounts = [
-    fill(player, { weaponId: beam.id, arc: "full", mods: hv ? ["heavyMount"] : [] }, pd ? half : PLANET_WEAPON_SPACE),
-    pd ? fill(player, { weaponId: beam.id, arc: "full", mods: ["pointDefense"] }, half) : null,
-  ];
-  return mounts.filter((m): m is WeaponMount => m !== null);
+  beamMounts(beam, refinedMods(player, beam, ["heavyMount"]), A.heavyBeamShare);
+  beamMounts(beam, [], A.plainBeamShare);
+  const pd = bestPointDefenseBeam(player);
+  if (pd) beamMounts(pd, ["pointDefense"], A.pointDefenseShare);
+  const missile = bestMissile(player);
+  const rack = weaponUnitCost(player, { weaponId: missile.id, count: 1, ammo: A.missileRack }).space;
+  const missiles = Math.min(A.maxMissiles, Math.max(1, Math.floor((space * A.missileShare) / rack)));
+  const mods: WeaponModId[] = ["eccm", ...refinedMods(player, missile, ["fast", "armored"])];
+  out.push(...slots({ weaponId: missile.id, ammo: A.missileRack, mods }, missiles, A.missilesPerSlot));
+  return out;
 }
 
-/** Missile base: the best missile, as many launchers as fit; they never run out. */
+/**
+ * Ground batteries: 225 space of heavy mounts of the best beam with Armor
+ * Piercing, Continuous, Shield Piercing and No Range Dissipation once refined
+ * that far, and 75 space of the best point-defense beam with Continuous and
+ * Shield Piercing. Priced with their mods but no arc premium; they fire all round.
+ */
+export function groundBatteryWeapons(player: Player): WeaponMount[] {
+  const out: WeaponMount[] = [];
+  const add = (w: WeaponDef, mods: WeaponModId[], space: number) => {
+    const unit = weaponUnitCost(player, { weaponId: w.id, count: 1, mods }).space;
+    const count = Math.floor(space / unit);
+    if (count > 0) out.push({ weaponId: w.id, count, arc: "full", ...(mods.length > 0 ? { mods } : {}) });
+  };
+  const beam = bestBeam(player);
+  add(beam, refinedMods(player, beam, ["heavyMount", "armorPiercing", "continuous", "shieldPiercing", "noRangeDissipation"]), GROUND_BATTERY_SPACE.beam);
+  const pd = bestPointDefenseBeam(player);
+  if (pd) add(pd, refinedMods(player, pd, ["pointDefense", "continuous", "shieldPiercing"]), GROUND_BATTERY_SPACE.pointDefense);
+  return out;
+}
+
+/**
+ * Missile base: 300 space of the best missile in 5-shot racks with Fast and
+ * Armored once refined that far, plus ECCM for free; from 11 launchers on they
+ * are split over two mounts of half as many. Each launcher has 125 shots.
+ */
 export function missileBaseWeapons(player: Player): WeaponMount[] {
-  const m = fill(player, { weaponId: bestMissile(player).id, ammo: DEFAULT_MISSILE_SHOTS }, PLANET_WEAPON_SPACE);
-  return m ? [m] : [];
+  const missile = bestMissile(player);
+  const refined = refinedMods(player, missile, ["fast", "armored"]);
+  const unit = weaponUnitCost(player, { weaponId: missile.id, count: 1, ammo: MISSILE_BASE.rack, mods: refined }).space;
+  const count = Math.floor(MISSILE_BASE.space / unit);
+  if (count <= 0) return [];
+  const mount: Omit<WeaponMount, "count"> = { weaponId: missile.id, ammo: MISSILE_BASE.shots, mods: ["eccm", ...refined] };
+  if (count < MISSILE_BASE.splitFrom) return [{ ...mount, count }];
+  const half = Math.floor(count / 2);
+  return [{ ...mount, count: half }, { ...mount, count: half }];
 }
 
 export function bestArmor(player: Player) {

@@ -2,8 +2,33 @@
 
 export const FIELD_WIDTH = 81;
 export const FIELD_HEIGHT = 68;
-/** Columns the attacking and defending fleets deploy around; about 30 squares apart. */
-export const DEPLOY_COLUMNS = [25, 55] as const;
+/**
+ * Deployment, as the original sets up a battle, in two columns about 30
+ * squares apart. The attacker takes the right
+ * column and the defender the left, unless the attacker is a human player, who
+ * is always drawn on the left. The defending planet sits 15 squares behind a
+ * left-hand column (10 behind a right-hand one), its station 11 squares in
+ * front of a left-hand planet (4 in front of a right-hand one). Ships go in by
+ * size, largest first, filling the column outward from its centre row
+ * alternately below and above; the rows are 2 apart for frigates, 3 for
+ * destroyers and cruisers, 4 for battleships and larger. A full column steps
+ * 3 squares back. These are the original's top-left squares, used here as
+ * positions.
+ */
+export const DEPLOY = {
+  leftColumn: 25,
+  rightColumn: 55,
+  planetOffset: { left: -15, right: 10 },
+  planetRow: 34,
+  stationOffset: { left: 11, right: -4 },
+  stationRow: 35,
+  centreRow: 34,
+  minRow: 4,
+  maxRow: 64,
+  columnStepBack: 3,
+  /** Row spacing by hull, frigate … doom star. */
+  rowStep: [2, 3, 3, 4, 4, 4],
+} as const;
 /** After this many combat turns a battle ends and the defender holds the field. */
 export const MAX_ROUNDS = 51;
 
@@ -100,11 +125,71 @@ export const BLACK_HOLE_TURNS = 2;
 /** Plasma web damage fades by this much each turn. */
 export const PLASMA_WEB_DECAY = 5;
 
-/** Fleet bonuses of the side whose orbital station is in the fight. */
-export const STATION_FLEET_BONUS: Record<string, { attack: number; defense: number }> = {
-  battlestation: { attack: 10, defense: 0 },
-  starFortress: { attack: 20, defense: 20 },
-};
+/**
+ * Beam attack points every unit of a side gets from an immobile unit of that
+ * side, by the immobile unit's hull size (frigate 0 … titan 4): a station
+ * fighting as a battleship (Battlestation) gives +10, as a titan (Star
+ * Fortress) +20, as a cruiser (Star Base) nothing. Flat points, beam attack
+ * only, recomputed every combat turn; the last such unit in battle order
+ * counts. The planet fights as size 3, so (likely, as the original's code
+ * reads) a defended planet with no station gives +10, and a Star Base after it
+ * resets that to 0.
+ */
+export const SIDE_ATTACK_BY_IMMOBILE_SIZE: readonly number[] = [0, 0, 0, 10, 20, 0];
+
+/** Stations and the planet are crewed by Regulars (crew level 1). */
+export const DEFENSE_CREW_LEVEL = 1;
+/** Hull size (0x25) the original gives the planet unit once it is deployed: a battleship. */
+export const PLANET_SIZE_INDEX = 3;
+
+/**
+ * How an orbital station is armed: its hull space (x1.25 with Megafluxers),
+ * a quarter as heavy mounts of the best beam, an eighth as plain mounts of it
+ * and an eighth as point-defense mounts of the best point-defense beam (all
+ * firing all round, but priced as an extended arc), and half as 20-shot racks
+ * of the best missile with ECCM, plus Fast and Armored once refined that far.
+ */
+export const STATION_ARMS = {
+  megafluxerMult: 1.25,
+  heavyBeamShare: 1 / 4,
+  plainBeamShare: 1 / 8,
+  pointDefenseShare: 1 / 8,
+  missileShare: 1 / 2,
+  missileRack: 20,
+  maxMissiles: 90,
+  missilesPerSlot: 30,
+  maxPerSlot: 99,
+} as const;
+
+/**
+ * Specials a station gets for free when its owner knows them, in this order,
+ * at most `STATION_MAX_SPECIALS`. A group lists alternatives, best first: only
+ * the first one known is fitted.
+ */
+export const STATION_FREE_SPECIALS: readonly (string | readonly string[])[] = [
+  "heavyArmor", "reinforcedHull", "shieldCapacitors", "hardShields", "multiPhasedShields",
+  ["wideAreaJammer", "multiWaveEcm", "ecmJammer"],
+  "warpDissipator", "securityStations", "battleScanner", "highEnergyFocus", "structuralAnalyzer",
+  "achillesTargetingUnit", "rangemasterUnit", "transporters",
+];
+export const STATION_MAX_SPECIALS = 8;
+/** Heavy Armor triples a station's armor, Reinforced Hull its structure. */
+export const STATION_HEAVY_ARMOR_MULT = 3;
+export const STATION_REINFORCED_MULT = 3;
+
+/**
+ * Ground Batteries: 225 space of heavy mounts of the best beam, with Armor
+ * Piercing, Continuous, Shield Piercing and No Range Dissipation once refined
+ * that far, and 75 space of the best point-defense beam with Continuous and
+ * Shield Piercing. Priced without an arc premium; they fire all round.
+ */
+export const GROUND_BATTERY_SPACE = { beam: 225, pointDefense: 75 } as const;
+/**
+ * Missile Base: 300 space of the best missile in 5-shot racks with Fast and
+ * Armored once refined that far (ECCM is free). From 11 launchers up they are
+ * split over two slots of half as many each. Each has 125 shots.
+ */
+export const MISSILE_BASE = { space: 300, rack: 5, shots: 125, splitFrom: 11 } as const;
 
 /**
  * Planets have no armor or structure. Damage past the planetary shield fills a
@@ -113,8 +198,45 @@ export const STATION_FLEET_BONUS: Record<string, { attack: number; defense: numb
  */
 export const PLANET_INSTALLATION_HP = 100;
 export const PLANET_INSTALLATION_ARMOR_STEP = 50;
-/** Ground batteries and missile bases each hold this much space of weapons. */
-export const PLANET_WEAPON_SPACE = 300;
+
+/**
+ * Retreat. A ship ordered to retreat escapes at the start of its next
+ * activation; until then it can still be shot or boarded. Computer empires
+ * order their side out when one volley of the enemy would take more than this
+ * many times the share of their hit points that their own volley takes of the
+ * enemy's. An armed planet's hit points count this many times over.
+ */
+export const RETREAT = { volleyRatio: 5, planetHpMult: 3 } as const;
+
+/**
+ * Boarding. Transporters reach targets up to range band 4 (about 12 squares)
+ * whose facing shield is down; without them a ship boards only a target in
+ * band 1 (3 squares) that cannot move, ignoring shields. A party is half the
+ * ship's marines; transporters beaming into a Damper Field at range lose two
+ * thirds of it. The game picks capture or hit-and-run from an estimate of
+ * one marine against one: hopeless at 20 below the defender, capture when the
+ * party is not outnumbered and within 10 of the defender.
+ */
+export const BOARDING = {
+  transporterBand: 4,
+  adjacentBand: 1,
+  partyShare: 0.5,
+  damperDivisor: 3,
+  hopelessBelow: 20,
+  captureWithin: 10,
+  /** Hit-and-run: each marine rolls against a defender; past these margins it sabotages, kills or dies. */
+  raid: { sabotageAbove: 20, systems: 2, systemDamage: 50, killAbove: 50, dieBelow: -50 },
+  /** Chance a ship with a Quantum Detonator blows itself up when taken. */
+  detonatorChance: 0.5,
+} as const;
+
+/**
+ * A ship whose drive is destroyed (and any ship with a Quantum Detonator)
+ * explodes: 5 x the drive hit points of its hull row (x3 with the detonator),
+ * falling off as 1 - d^2 / R^2 with distance d. The original takes R from the
+ * explosion sprite; 5 squares is an estimate.
+ */
+export const EXPLOSION = { perDriveHP: 5, detonatorMult: 3, radius: 5 } as const;
 
 /**
  * Artemis System Net mines, from the original's help: the chance (%) to strike
