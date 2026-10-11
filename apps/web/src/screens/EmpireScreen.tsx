@@ -117,6 +117,7 @@ export function EmpireScreen() {
           Hand any part of running your empire to the same advisors the computer empires use.
           Automated areas are played for you when you end the turn; you can still step in at any time.
           Each area follows a strategy; Balanced plays like the computer empires.
+          Your choices carry over to your next game; Nothing and All balanced go back to the defaults.
         </div>
         {ALL_DOMAINS.map((d) => {
           const strategy = STRATEGIES[d].find((s) => s.id === strategyOf(d)) ?? STRATEGIES[d][0]!;

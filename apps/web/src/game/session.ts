@@ -1,4 +1,5 @@
 import { audienceAnswer, automationOrders } from "@starlord/ai";
+import { saveAutomationPrefs } from "./automationPrefs";
 import {
   newGame, newRecord, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
   type CombatReport, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type TurnOrders,
@@ -120,6 +121,8 @@ export class GameSession {
       this.pending.push(cmd);
     }
     this.refresh();
+    // Automation choices carry over to the next game.
+    if (cmds.some((c) => c.type === "setAutomation" || c.type === "setAutomationStrategy")) saveAutomationPrefs(this.view.players[this.me]!);
   }
 
   /**

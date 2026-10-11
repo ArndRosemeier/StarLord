@@ -9,6 +9,7 @@ import {
 import { customRaceDefs, loadCustomRaces, saveCustomRaces } from "../game/customRaces";
 import { RaceBuilder, blankRace } from "./RaceBuilder";
 import { GameSession } from "../game/session";
+import { savedAutomationOrders } from "../game/automationPrefs";
 import { deleteSave, listSaves, readSave, readSaveFile } from "../game/saves";
 import { useHold } from "../ui/touch";
 import { words } from "../ui/format";
@@ -65,10 +66,14 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
     const others = shuffled(RACES.map((r) => r.id).filter((id) => id !== raceId)).slice(0, opponents);
     const races = spectate ? shuffled(RACES.map((r) => r.id)).slice(0, opponents + 1) : [raceId, ...others];
     const customRaces = !spectate && chosenCustom ? [chosenCustom.spec] : [];
-    onStart(GameSession.create({
+    const session = GameSession.create({
       seed, galaxySize: galaxy, races, maxTurns, monsters, raiders, council, customRaces, difficulty, galaxyAge, techLevel, randomEvents, shipInitiative,
       ...(debug ? { debug: true } : {}),
-    }, spectate ? null : 0));
+    }, spectate ? null : 0);
+    // Start with the automation the player chose last game.
+    const automation = spectate ? [] : savedAutomationOrders();
+    if (automation.length > 0) session.issue(...automation);
+    onStart(session);
   };
 
   const load = (data: unknown) => {

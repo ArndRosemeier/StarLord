@@ -1,0 +1,2 @@
+- Your automation choices, both which areas are automated and their strategies, now carry over: every new game starts the way you played the last one.
+- Use Nothing and All balanced on the Empire & automation screen to go back to the defaults.
