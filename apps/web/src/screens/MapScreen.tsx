@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isTradeGoodsOnly } from "@starlord/sim";
 import { PixiMapRenderer } from "../map/pixiRenderer";
 import type { MapRenderer } from "../map/renderer";
 import { buildScene, routeTo } from "../map/scene";
@@ -6,7 +7,11 @@ import { useGame } from "../ui/hooks";
 import { FleetPanel, StarPanel, fleetShips, plural } from "../ui/panels";
 import { SystemView } from "./system/SystemView";
 
-export function MapScreen({ focusStar, onFocused }: { focusStar: string | null; onFocused: () => void }) {
+export function MapScreen({ focusStar, onFocused, onOpenColony }: {
+  focusStar: string | null;
+  onFocused: () => void;
+  onOpenColony: (colonyId: string) => void;
+}) {
   const { session, view, me, readOnly } = useGame();
   const host = useRef<HTMLDivElement>(null);
   const renderer = useRef<MapRenderer | null>(null);
@@ -131,6 +136,7 @@ export function MapScreen({ focusStar, onFocused }: { focusStar: string | null; 
             }}
           />
         )}
+        {!readOnly && <TradeGoodsList onOpen={onOpenColony} />}
         <MyFleetsList onSelect={(id) => { setFleetId(id); const f = view.fleets[id]; if (f?.starId) setStarId(f.starId); }} selected={fleetId} />
       </aside>
     </div>
@@ -147,6 +153,23 @@ function MyFleetsList({ onSelect, selected }: { onSelect: (id: string) => void; 
       {fleets.map((f) => (
         <button key={f.id} className={`small${f.id === selected ? " active" : ""}`} style={{ textAlign: "left" }} onClick={() => onSelect(f.id)}>
           {f.name} <span className="muted">· {plural(fleetShips(f), "ship")} · {f.destStarId ? `→ ${view.galaxy.stars.find((s) => s.id === f.destStarId)?.name}` : view.galaxy.stars.find((s) => s.id === f.starId)?.name}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Colonies with nothing to build, whose industry all goes to Trade Goods; they wait for orders. */
+function TradeGoodsList({ onOpen }: { onOpen: (colonyId: string) => void }) {
+  const { view, me } = useGame();
+  const idle = Object.values(view.colonies).filter((c) => c.ownerId === me.id && isTradeGoodsOnly(c));
+  if (idle.length === 0) return null;
+  return (
+    <div className="panel col trade-goods-list" style={{ gap: 4 }}>
+      <h4 className="warn">Producing only Trade Goods ({idle.length})</h4>
+      {idle.map((c) => (
+        <button key={c.id} className="small" style={{ textAlign: "left" }} onClick={() => onOpen(c.id)} title="Open the colony to give it something to build">
+          {c.name}
         </button>
       ))}
     </div>

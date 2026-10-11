@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  commandPointsAvailable, commandPointsUsed, empireIncome, empireTotals, empires, treatyIncome,
+  availableTiers, commandPointsAvailable, commandPointsUsed, empireIncome, empireTotals, empires, treatyIncome,
   TIERS_BY_ID, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -62,6 +62,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [autoplay, setAutoplay] = useState(false);
   const [seenTurn, setSeenTurn] = useState(view.turn);
   const [overSeen, setOverSeen] = useState(view.over);
+  const [colonyFocus, setColonyFocus] = useState<string | null>(null);
+  const [researchWarning, setResearchWarning] = useState(false);
   const lastTurn = useRef(view.turn);
 
   const totals = empireTotals(view, me.id);
@@ -72,7 +74,15 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const cpMax = commandPointsAvailable(view, me.id);
   const reportBadge = view.turn !== seenTurn ? view.events.filter((e) => e.kind !== "explored" && e.kind !== "built").length : 0;
 
-  const endTurn = () => session.endTurn();
+  // Nothing to research is worth a warning unless automation picks the next field or none is left.
+  const noResearch = !readOnly && !me.research.tierId && !me.automation.includes("research") && availableTiers(view, me.id).length > 0;
+  const endTurn = () => {
+    if (noResearch) setResearchWarning(true);
+    else session.endTurn();
+  };
+  // Ctrl+Enter is bound once, so it calls the latest endTurn through a ref.
+  const endTurnRef = useRef(endTurn);
+  endTurnRef.current = endTurn;
   const won = view.over && view.winner === me.id && !readOnly;
 
   useEffect(() => {
@@ -99,7 +109,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
-      endTurn();
+      endTurnRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -107,7 +117,12 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
 
   const go = (t: Tab) => {
     if (t === "events") setSeenTurn(view.turn);
+    setColonyFocus(null);
     setTab(t);
+  };
+  const openColony = (colonyId: string) => {
+    setColonyFocus(colonyId);
+    setTab("colonies");
   };
   const showStar = (starId: string) => {
     setFocusStar(starId);
@@ -176,8 +191,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
               {session.rejected.length > 0 && tab !== "map" && (
                 <div className="panel bad" style={{ marginBottom: 12 }}>Some orders are invalid: {session.rejected.join("; ")}</div>
               )}
-              {tab === "map" && <MapScreen focusStar={focusStar} onFocused={() => setFocusStar(null)} />}
-              {tab === "colonies" && <ColoniesScreen onShowStar={showStar} />}
+              {tab === "map" && <MapScreen focusStar={focusStar} onFocused={() => setFocusStar(null)} onOpenColony={openColony} />}
+              {tab === "colonies" && <ColoniesScreen onShowStar={showStar} initialColony={colonyFocus} />}
               {tab === "research" && <ResearchScreen />}
               {tab === "designs" && <DesignScreen />}
               {tab === "fleets" && <FleetsScreen onShowStar={showStar} />}
@@ -192,6 +207,18 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         </div>
         {view.over && !overSeen && <GameOver won={won} spectating={readOnly} onClose={() => setOverSeen(true)} onQuit={onQuit} />}
       </div>
+      {researchWarning && (
+        <div className="modal-back" onClick={() => setResearchWarning(false)}>
+          <div className="modal research-warning" role="alertdialog" aria-label="No research target" onClick={(e) => e.stopPropagation()}>
+            <h3>No research target</h3>
+            <p>Your scientists have no technology to work on. Their points are kept, but nothing gets discovered until you choose one.</p>
+            <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+              <button onClick={() => { setResearchWarning(false); session.endTurn(); }}>End turn anyway</button>
+              <button className="primary" autoFocus onClick={() => { setResearchWarning(false); go("research"); }}>Choose research</button>
+            </div>
+          </div>
+        </div>
+      )}
       <TurnBanner turn={view.turn} quiet={autoplay} />
     </div>
   );
