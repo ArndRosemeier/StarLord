@@ -242,6 +242,8 @@ export interface FixedStats {
   sizeClass?: number;
   /** Fights as an immobile fortress, like an orbital station. */
   immobile?: boolean;
+  /** Crew level (index into CREW); monsters have none. */
+  crew?: number;
 }
 
 export type PlayerKind = "empire" | "monsters" | "raiders";
@@ -565,19 +567,27 @@ export interface CouncilState {
 }
 
 export interface RaidersState {
-  /** First turn raids can come (the end of the grace period). */
+  /** End of the grace period: the raiders' budgets grow from here. Infinity without raiders. */
   nextRaid: number;
   defeated: boolean;
-  /** Turn of the first raid; raider technology advances from it. */
-  firstRaid?: number;
-  /** Index into RAIDER_ERAS: how far raider technology has come. */
-  era?: number;
   /** Build points not yet spent on raid ships. */
   budget?: number;
-  /** Raid ships bought and waiting to launch. */
-  fleet?: ShipStack[];
-  /** Turns the ready raid fleet has waited; each makes the launch likelier. */
+  /** Build points not yet spent on the home fleet. */
+  homeBudget?: number;
+  /** Raid ships owned, by hull, including those out on a raid. */
+  pool?: Partial<Record<HullSize, number>>;
+  /** Raid ships out on a raid this turn, by hull. */
+  deployed?: Partial<Record<HullSize, number>>;
+  /** Home fleet ships, by hull. */
+  home?: Partial<Record<HullSize, number>>;
+  /** Raid pool cap per hull; the small hulls' caps drop to 0 for good once reached. */
+  caps?: Partial<Record<HullSize, number>>;
+  /** Hull prices have been cut (Hard and Impossible, once the first titan is bought). */
+  discounted?: boolean;
+  /** Launch counter: each turn raid ships wait with the launch gate open makes the launch likelier. */
   launch?: number;
+  /** Turn of the last raid. */
+  lastRaid?: number;
   /** Empire that destroyed the raiders at home. */
   defeatedBy?: PlayerId;
   /** Empire the next raid goes for, set by the debug menu; cleared once the raid launches. */

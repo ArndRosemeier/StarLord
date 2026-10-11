@@ -385,7 +385,7 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
           noArmorPierce: design.specials.includes("heavyArmor") || design.armor === "xentroniumArmor",
           phasingLeft: s.effects.phasing,
           strength: s.strength,
-          crew: monster ? 0 : crewLevel(player.kind === "raiders" ? Math.max(stack.xp ?? 0, CREW.raiderXp) : stack.xp ?? 0, player),
+          crew: design.fixed?.crew ?? (monster ? 0 : crewLevel(player.kind === "raiders" ? Math.max(stack.xp ?? 0, CREW.raiderXp) : stack.xp ?? 0, player)),
           hullRank: monster ? hullIndex(design.hull) : fortress ? 6 + STATION_HULLS.findIndex((h) => h.id === "starFortress") : hullIndex(design.hull),
         };
         if (!monster) {

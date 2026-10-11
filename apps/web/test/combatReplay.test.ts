@@ -33,9 +33,9 @@ group("combat replay model", () => {
     const citadel = units.find((u) => u.snap.designId === "vexariCitadel")!;
     expect(citadel.kind).toBe("station");
     expect(citadel.station).toBe("starFortress");
-    const cruiser = units.find((u) => u.snap.designId === raiderDesignId("cruiser"))!;
-    expect(cruiser.kind).toBe("ship");
-    expect(cruiser.hull).toBe("cruiser");
+    const titan = units.find((u) => u.snap.designId === raiderDesignId("titan"))!;
+    expect(titan.kind).toBe("ship");
+    expect(titan.hull).toBe("titan");
   });
 
   it("reads old reports: isPlanet, ship hulls from designs, monsters by owner", () => {

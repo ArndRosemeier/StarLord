@@ -24,12 +24,11 @@ export const MONSTER_DESIGNS: ShipDesign[] = [
   fixed("guardian", "The Guardian", 4000, 1000, 150, 25, 15, 5, 10, [{ weaponId: "deathRay", count: 10 }, { weaponId: "monsterFire", count: 8 }]),
 ];
 
-/** Weapons only monsters and raiders use. */
+/** Weapons only monsters use. */
 export const NPC_WEAPONS: WeaponDef[] = [
   { id: "monsterAcid", name: "Corrosive Acid", kind: "beam", damageMin: 6, damageMax: 20, space: 0, cost: 0, mods: [], requires: "never" },
   { id: "monsterRay", name: "Energy Lash", kind: "beam", damageMin: 8, damageMax: 24, space: 0, cost: 0, mods: [], requires: "never" },
   { id: "monsterFire", name: "Stellar Breath", kind: "beam", damageMin: 15, damageMax: 45, space: 0, cost: 0, traits: ["doubleRangePenalty"], mods: [], requires: "never" },
-  { id: "raiderTorpedo", name: "Void Torpedo", kind: "torpedo", damageMin: 75, damageMax: 75, space: 0, cost: 0, reload: 2, speed: 30, traits: ["alwaysHits"], mods: [], requires: "never" },
 ];
 
 /** Monster mix by how deep into the galaxy (0..1 of max home distance) a lair is. */
