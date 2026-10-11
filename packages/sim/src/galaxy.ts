@@ -1,13 +1,13 @@
 import {
   BLACK_HOLE_CLEARANCE, BLACK_HOLE_RADIUS, CLIMATE_TABLE_BY_AGE, GALAXY_SIZE_ORDER, HOME_FOOD_RANGE, HOME_MIN_PLANETS,
   HOME_PLANET_RANGE, HOME_SPACING, LAIR_CHANCE, MAP_LAYOUT, MAX_HERO_SYSTEMS, MAX_LAIRS, MAX_WORMHOLES, MINERAL_STEPS,
-  NATIVES_FRACTION, NEBULAE, ORBIT_WEIGHTS_BY_AGE, ORION_PLACEMENT, SPECIAL_CHANCE, SPECIAL_TRIES, SPECIAL_WEIGHTS,
+  NATIVES_POP, NEBULAE, ORBIT_WEIGHTS_BY_AGE, ORION_PLACEMENT, SPECIAL_CHANCE, SPECIAL_TRIES, SPECIAL_WEIGHTS,
   STAR_COLORS_BY_AGE, STAR_COUNTS, STAR_PLACEMENT, WORMHOLE_MIN_DISTANCE, WORMHOLE_PARTNER_POOL, type SpecialKind,
 } from "./data/galaxy.js";
 import { STAR_NAMES } from "./data/names.js";
 import {
   BODY_BY_ORBIT_D10, CLIMATES, CLIMATE_BY_ZONE, MINERAL_WEIGHTS_BY_STAR, ORBIT_ZONES, PLANETS_PER_STAR_D10, PLANET_SIZES,
-  PLANET_SIZE_WEIGHTS, climatePopulation, gravityOf, type BodyKind, type Minerals, type NaturalClimate, type PlanetSize,
+  PLANET_SIZE_WEIGHTS, gravityOf, type BodyKind, type Minerals, type NaturalClimate, type PlanetSize,
   type PlanetType, type StarColor,
 } from "./data/planets.js";
 import { hasTrait, type RaceDef } from "./data/races.js";
@@ -232,7 +232,7 @@ function rollSpecials(
         if (fit.length === 0) continue;
         const p = rng.pick(fit);
         p.special = kind;
-        if (kind === "natives") p.natives = nativesOf(p);
+        if (kind === "natives") p.natives = NATIVES_POP;
       } else if (kind === "artifacts") {
         const fit = real.filter(isFarmable);
         if (fit.length === 0) continue;
@@ -253,9 +253,6 @@ function rollSpecials(
   return { wormholes, lairs: Math.min(MAX_LAIRS, lairs) };
 }
 
-function nativesOf(p: Planet): number {
-  return Math.max(2, Math.floor(climatePopulation(CLIMATES[p.type].popPercent, p.size) * NATIVES_FRACTION));
-}
 
 /**
  * Picks the home stars: sets of stars pairwise at least the home spacing

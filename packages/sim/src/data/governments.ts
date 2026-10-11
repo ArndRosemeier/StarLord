@@ -19,7 +19,7 @@ export interface GovernmentDef {
   noMorale: boolean;
   /** Morale penalty on every colony while the empire has lost its Capitol; 0 means no capital is needed. */
   capitalLossMorale: number;
-  /** Turns to assimilate one unit of conquered population. */
+  /** Turns to assimilate one unit of conquered population (see ASSIMILATION.pointsPerUnit). */
   assimilationTurns: number;
   /** Populations taken from this empire join the conqueror at once. */
   assimilatesInstantly: boolean;
@@ -78,9 +78,13 @@ export const ASSIMILATION = {
   alienPenalty: 25,
   /** Morale penalty on a colony of another race than its ruler's, unless it has an Alien Management Center. */
   multiRacePenalty: 20,
-  /** Charismatic rulers assimilate twice as fast, repulsive ones half as fast. */
-  charismaticMult: 0.5,
-  repulsiveMult: 2,
+  /**
+   * Assimilation points one unit needs, as in the original: each turn a
+   * colony earns pointsPerUnit / assimilationTurns of its government (or of
+   * its Alien Management Center), doubled for charismatic rulers and halved
+   * (rounded down) for repulsive ones, and the remainder carries over.
+   */
+  pointsPerUnit: 240,
   /** Chance per turn and unassimilated unit that the aliens revolt (the original's 10 in 1000). */
   revoltChancePerAlien: 0.01,
   /** Extra chance per difficulty level above easy when aliens from a computer empire live under a human ruler. */

@@ -1,18 +1,20 @@
 import { HEROES } from "./data/leaders.js";
-import { CACHE_BC, DEBRIS_BC, SPLINTER_POP } from "./data/galaxy.js";
+import { ARTIFACTS_SECOND_TECH_CHANCE, CACHE_BC, DEBRIS_BC, SPLINTER_POP } from "./data/galaxy.js";
 import { TECH_TIERS } from "./data/techs.js";
 import { newId, type TurnContext } from "./context.js";
 import { grantTech } from "./empire.js";
+import { maxPopulation } from "./economy.js";
+import { getRace } from "./data/races.js";
 import { assignDefaultJobs, assignJobsForFood } from "./jobs.js";
 import { hasRoomFor, hireLeader, hirePrice } from "./leaders.js";
 import { learnsWholeField, researchOptions } from "./rules.js";
-import type { Colony, Id, PlayerId } from "./types.js";
+import type { Colony, Id, Player, PlayerId } from "./types.js";
 
 /**
- * One-time system specials, triggered when an empire first explores a system
- * (pirate cache, ship debris, a marooned hero, a lost splinter colony) or
- * first settles a planet (natives join the colony, artifacts give a
- * breakthrough).
+ * One-time system specials, as in the original: the first empire to explore
+ * a system finds a pirate cache, ship debris, a marooned hero, a lost
+ * splinter colony or ancient artifacts (one or two technologies); natives
+ * join whoever first settles their planet.
  */
 
 /** Marks a star explored by an empire, triggering its one-time specials. */
@@ -32,8 +34,7 @@ export function onExplore(ctx: TurnContext, playerId: PlayerId, starId: Id): voi
   switch (star.feature) {
     case "cache":
     case "debris": {
-      const [lo, hi] = star.feature === "cache" ? CACHE_BC : DEBRIS_BC;
-      const bc = rng.int(lo, hi);
+      const bc = star.feature === "cache" ? CACHE_BC : DEBRIS_BC;
       player.bc += bc;
       const what = star.feature === "cache"
         ? `Explorers found a pirate cache at ${star.name}: +${bc} BC.`
@@ -65,7 +66,7 @@ export function onExplore(ctx: TurnContext, playerId: PlayerId, starId: Id): voi
     const planet = state.planets[pid]!;
     if (planet.special !== "splinter" || planet.colonyId) continue;
     planet.special = "none";
-    const pop = rng.int(SPLINTER_POP[0], SPLINTER_POP[1]);
+    const pop = Math.min(SPLINTER_POP, maxPopulation(planet, getRace(player.raceId), [], player));
     const colony: Colony = {
       id: newId(state, "c"), planetId: pid, ownerId: playerId, raceId: player.raceId, name: `${star.name} Splinter`, outpost: false,
       farmers: 0, workers: pop, scientists: 0, growthK: 0, buildings: [], queue: [], progress: 0, founded: state.turn,
@@ -77,13 +78,45 @@ export function onExplore(ctx: TurnContext, playerId: PlayerId, starId: Id): voi
     ctx.emit({ kind: "colonyFounded", playerId, colonyId: colony.id, planetId: pid });
     ctx.emit({ kind: "random", playerId, what: `Long-lost kin at ${star.name} rejoined your empire as a splinter colony.`, starId });
   }
+  // Ancient artifacts: the first explorer deciphers one technology, sometimes two.
+  for (const pid of star.planetIds) {
+    const planet = state.planets[pid]!;
+    if (planet.special !== "artifacts" || planet.artifactsClaimed) continue;
+    planet.artifactsClaimed = true;
+    const count = rng.chance(ARTIFACTS_SECOND_TECH_CHANCE) ? 2 : 1;
+    for (let i = 0; i < count; i++) {
+      const tier = artifactBreakthrough(ctx, player);
+      if (tier) ctx.emit({ kind: "random", playerId, what: `Relics found at ${star.name} gave your scientists a breakthrough in ${tier}.`, starId });
+    }
+  }
+}
+
+/**
+ * Learns one random application from the empire's open fields (each
+ * application equally likely), which completes its field. Returns the
+ * field's name, or null when nothing is open.
+ */
+function artifactBreakthrough(ctx: TurnContext, player: Player): string | null {
+  const choices: { tier: (typeof TECH_TIERS)[number]; tech: string }[] = [];
+  for (const tier of TECH_TIERS) {
+    if (tier.hyper || player.tiers.includes(tier.id) || (tier.prev !== null && !player.tiers.includes(tier.prev))) continue;
+    for (const tech of researchOptions(player, tier)) if (!player.techs.includes(tech)) choices.push({ tier, tech });
+  }
+  if (choices.length === 0) return null;
+  const { tier, tech } = ctx.rng.pick(choices);
+  const learned = learnsWholeField(player, tier) ? researchOptions(player, tier) : [tech];
+  player.tiers.push(tier.id);
+  if (player.research.tierId === tier.id) player.research.tierId = null;
+  for (const t of learned) {
+    if (grantTech(player, t)) ctx.emit({ kind: "techLearned", playerId: player.id, techId: t, tierId: tier.id, source: "event" });
+  }
+  return tier.name;
 }
 
 /** Effects of settling a special planet. */
 export function onColonize(ctx: TurnContext, colony: Colony): void {
-  const { state, rng } = ctx;
+  const { state } = ctx;
   const planet = state.planets[colony.planetId]!;
-  const player = state.players[colony.ownerId]!;
   if (planet.special === "natives" && (planet.natives ?? 0) > 0 && !colony.outpost) {
     // The natives join the colony, farming only.
     colony.farmers += planet.natives!;
@@ -91,21 +124,5 @@ export function onColonize(ctx: TurnContext, colony: Colony): void {
     planet.natives = 0;
     assignJobsForFood(state, colony);
     ctx.emit({ kind: "random", playerId: colony.ownerId, what: `The natives of ${colony.name} joined the colony as farmers.`, starId: planet.starId });
-  }
-  if (planet.special === "artifacts" && !planet.artifactsClaimed && !colony.outpost) {
-    planet.artifactsClaimed = true;
-    // The first settlers decipher the relics: an immediate breakthrough in the cheapest open field.
-    const open = TECH_TIERS.filter((t) => !t.hyper && !player.tiers.includes(t.id) && (t.prev === null || player.tiers.includes(t.prev)))
-      .sort((a, b) => a.cost - b.cost || (a.id < b.id ? -1 : 1));
-    const tier = open[0];
-    if (!tier) return;
-    const options = researchOptions(player, tier);
-    const learned = learnsWholeField(player, tier) ? options : options.length ? [rng.pick(options)] : [];
-    player.tiers.push(tier.id);
-    if (player.research.tierId === tier.id) player.research.tierId = null;
-    for (const t of learned) {
-      if (grantTech(player, t)) ctx.emit({ kind: "techLearned", playerId: player.id, techId: t, tierId: tier.id, source: "event" });
-    }
-    ctx.emit({ kind: "random", playerId: player.id, what: `Relics on ${colony.name} gave your scientists a breakthrough in ${tier.name}.`, starId: planet.starId });
   }
 }

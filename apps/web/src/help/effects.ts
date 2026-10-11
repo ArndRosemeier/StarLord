@@ -49,7 +49,7 @@ const BUILDING: Explain<BuildingEffects> = {
   foodReplicator: (v) => `turns ${v} industry into 1 food whenever the colony is short`,
   growthK: (v) => `${signed(v)}k population growth per turn`,
   troops: (v) => `${signed(v)} defending troops when built`,
-  training: (v) => `trains another ${v.kind === "marines" ? "marine" : "tank battalion"} every ${v.every} turns, up to ${pct(v.capOfMaxPop)} of the max population`,
+  training: (v) => `trains another ${v.kind === "marines" ? "marine" : "tank battalion"} every ${v.every} turns while there are fewer than ${pct(v.popShare)} of the colony's population (at least 1); above ${pct(v.popShare)} of the planet's size base one leaves each turn (warlords: twice the share)`,
   garrison: () => "lifts the morale penalty for colonies without barracks",
   commandPoints: (v) => `${signed(v)} command point${v === 1 ? "" : "s"}`,
   security: (v) => `${signed(v)} spy defense, empire-wide`,

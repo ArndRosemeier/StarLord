@@ -213,12 +213,23 @@ export interface OutputContext {
   difficulty?: Difficulty;
   /** Growth percent from events (population boom, plague). */
   growthPercent?: number;
+  /** A time-space anomaly holds the system: the colony makes, eats, pays and grows nothing. */
+  frozen?: boolean;
+}
+
+/**
+ * A time-space anomaly holds a system: its colonies stand still (no output,
+ * upkeep, growth or building, as in the original) and nobody fights there.
+ */
+export function systemFrozen(state: GameState, starId: string | null | undefined): boolean {
+  return !!starId && (state.activeEvents ?? []).some((e) => e.kind === "timeSpaceAnomaly" && e.starId === starId);
 }
 
 export function colonyOutput(state: GameState, colony: Colony): ColonyOutput {
   const planet = state.planets[colony.planetId]!;
   const player = state.players[colony.ownerId]!;
   return computeOutput(planet, player, colony, {
+    frozen: systemFrozen(state, planet.starId),
     turn: state.turn,
     leader: administratorSkills(state, planet.starId, colony.ownerId),
     blockaded: isBlockaded(state, colony),
@@ -277,9 +288,10 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   const max = colony.outpost ? 0 : maxPopulation(planet, race, b, player);
   const troops = colonyTroops(colony);
 
-  if (colony.outpost) {
+  if (colony.outpost || ctx.frozen) {
+    const frozen = !colony.outpost;
     return {
-      population: 0, androids: 0, maxPopulation: 0, morale: 0, aliens: 0, foodProduced: 0, foodEaten: 0, foodReplicated: 0,
+      population: frozen ? pop : 0, androids: frozen ? nAndroids : 0, maxPopulation: max, morale: 0, aliens: 0, foodProduced: 0, foodEaten: 0, foodReplicated: 0,
       foodNet: 0, industryGross: 0, pollution: 0, industry: 0, taxes: 0, research: 0, bc: 0, maintenance: 0,
       growthK: 0, troops, blockaded: false, cyberShortHalf: 0, androidsUnfed: 0,
     };
@@ -320,12 +332,16 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   const androidFood = (climate.foodPerFarmer > 0 || bonus.hostileFarming > 0 ? Math.max(0, androidLand) : 0) + ANDROIDS.bonus;
   const foodPct = 100 + gravPct + (lead.food ?? 0) + morale + (gov.foodMult - 1) * 100 + blockadePct;
   const androidFoodPct = 100 + androidGravPct + (lead.food ?? 0) + (gov.foodMult - 1) * 100 + blockadePct;
-  // Native farmers grow extra food on top of the normal rate.
+  // Natives farm the plain climate (no race picks) plus their own bonus, before morale and the other modifiers.
   const nativeFarmers = Math.min(colony.farmers, colony.natives ?? 0);
+  const settlerFarmers = colony.farmers - nativeFarmers;
+  const nativeFood = farmable ? Math.max(MIN_FOOD_PER_FARMER, androidLand + NATIVE_FOOD_BONUS) : 0;
+  const nativeFoodPct = 100 + androidGravPct + (lead.food ?? 0) + morale + (gov.foodMult - 1) * 100 + blockadePct;
   const foodProduced =
-    Math.round(2 * (units(colony.farmers, colony.farmers * alienShare, perFarmer, foodPct, farmable ? aiFlat / 2 : 0) +
+    Math.round(2 * (units(settlerFarmers, settlerFarmers * alienShare, perFarmer, foodPct, farmable ? aiFlat / 2 : 0) +
+      units(nativeFarmers, 0, nativeFood, nativeFoodPct, farmable ? aiFlat / 2 : 0) +
       units(andr.farmers, 0, androidFood, androidFoodPct, androidFood > 0 ? aiFlat / 2 : 0))) / 2 +
-    nativeFarmers * NATIVE_FOOD_BONUS + sumEffect(b, "foodFlat");
+    sumEffect(b, "foodFlat");
   const foodEaten = lithovore ? 0 : (cyber ? CYBERNETIC_FOOD : FOOD_PER_POP) * pop;
 
   // Industry
@@ -385,7 +401,9 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
 
   // Growth: housing turns production per colonist into growth percent.
   const housing = colony.queue[0]?.kind === "project" && colony.queue[0].id === "housing";
-  const growthPct = (lead.growth ?? 0) + (aiLevel?.aiGrowthPercent ?? 0) + (ctx.growthPercent ?? 0) +
+  // The computer players' growth bonus skips a foreign race that still has unassimilated people.
+  const aiGrowth = colony.raceId === player.raceId || aliens === 0 ? aiLevel?.aiGrowthPercent ?? 0 : 0;
+  const growthPct = (lead.growth ?? 0) + aiGrowth + (ctx.growthPercent ?? 0) +
     (housing && pop + nAndroids > 0 ? Math.floor((GROWTH.housingPercent * production) / (pop + nAndroids)) : 0);
 
   return {
@@ -525,7 +543,7 @@ export function foodPlan(state: GameState, playerId: PlayerId, outputs?: { colon
     shortfall,
     sold,
     saleBC: sold * surplusFoodBc(getRace(player.raceId)),
-    upkeep: (carryingFood + movingColonists) * FREIGHTERS.upkeepInUse,
+    upkeep: Math.floor(Math.min(freighters, carryingFood + movingColonists) * FREIGHTERS.upkeepInUse),
   };
 }
 
@@ -582,14 +600,24 @@ export interface EmpireIncome {
   net: number;
 }
 
-/** Turns to assimilate one alien unit at a colony. */
-export function assimilationTurns(player: Player, colony: Colony): number {
+/**
+ * Assimilation points a colony earns each turn (ASSIMILATION.pointsPerUnit
+ * make one unit): set by the government or an Alien Management Center,
+ * doubled for charismatic rulers and halved for repulsive ones.
+ */
+export function assimilationPoints(player: Player, colony: Colony): number {
   const amc = colony.buildings.map((id) => BUILDINGS_BY_ID[id]?.effects.alienManagement).find((x) => x);
-  let turns = amc ? amc.assimilationTurns : government(player).assimilationTurns;
+  const turns = amc ? amc.assimilationTurns : government(player).assimilationTurns;
+  let points = Math.floor(ASSIMILATION.pointsPerUnit / turns);
   const race = getRace(player.raceId);
-  if (hasTrait(race, "charismatic")) turns *= ASSIMILATION.charismaticMult;
-  if (hasTrait(race, "repulsive")) turns *= ASSIMILATION.repulsiveMult;
-  return Math.max(1, Math.round(turns));
+  if (hasTrait(race, "charismatic")) points *= 2;
+  else if (hasTrait(race, "repulsive")) points = Math.floor(points / 2);
+  return Math.max(1, points);
+}
+
+/** Turns to assimilate one alien unit at a colony, on average (it may alternate, e.g. 7 and 8 for 7.5). */
+export function assimilationTurns(player: Player, colony: Colony): number {
+  return ASSIMILATION.pointsPerUnit / assimilationPoints(player, colony);
 }
 
 /**

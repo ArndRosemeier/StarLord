@@ -64,8 +64,12 @@ export interface TroopTraining {
   kind: "marines" | "tanks";
   /** One new unit every this many turns. */
   every: number;
-  /** Cap as a fraction of the colony's maximum population. */
-  capOfMaxPop: number;
+  /**
+   * Trains while the troops number less than this share of the colony's
+   * population (at least 1); above the same share of the planet's size base
+   * (`SIZE_POP_BASE`) one unit leaves each turn. Warlords double the share.
+   */
+  popShare: number;
 }
 
 export interface PlanetDefense {
@@ -126,11 +130,11 @@ export const BUILDINGS: BuildingDef[] = [
 
   // Defense and military
   { id: "marineBarracks", name: "Marine Barracks", cost: 60, maintenance: 1, requires: "marineBarracks",
-    effects: { troops: 4, training: { kind: "marines", every: 5, capOfMaxPop: 0.5 }, garrison: true },
-    description: "Starts with 4 marines and trains one more every 5 turns, up to half the colony's maximum population (warlike races twice as fast and as many). Troop ships can only be built here. Lifts the feudal and dictatorial morale penalty." },
+    effects: { troops: 4, training: { kind: "marines", every: 5, popShare: 0.5 }, garrison: true },
+    description: "Starts with 4 marines and trains one more every 5 turns, up to half the colony's population (warlords: all of it). Above half the planet's size base (5 per size step) one marine leaves each turn. Troop ships can only be built here. Lifts the feudal and dictatorial morale penalty." },
   { id: "armorBarracks", name: "Armor Barracks", cost: 150, maintenance: 2, requires: "armorBarracks",
-    effects: { troops: 2, training: { kind: "tanks", every: 10, capOfMaxPop: 0.25 }, garrison: true },
-    description: "Starts with 2 tank battalions and adds one every 10 turns, up to a quarter of the maximum population (warlike races twice as fast and as many). Lifts the feudal and dictatorial morale penalty." },
+    effects: { troops: 2, training: { kind: "tanks", every: 5, popShare: 0.25 }, garrison: true },
+    description: "Starts with 2 tank battalions and adds one every 5 turns, up to a quarter of the colony's population (warlords: half). Above a quarter of the planet's size base one battalion leaves each turn. Lifts the feudal and dictatorial morale penalty." },
   { id: "starBase", name: "Star Base", cost: 400, maintenance: 2, requires: "starBase",
     effects: { commandPoints: 1, scanRange: 2, defense: { station: "starBase" } }, description: "Armed orbital station and star dock: ships larger than destroyers can be built here. +1 command point, +2 parsec scanner range." },
   { id: "battlestation", name: "Battlestation", cost: 1000, maintenance: 3, requires: "battlestation", replaces: ["starBase"],
@@ -259,8 +263,8 @@ export const ANDROID_PROJECTS: Record<string, AndroidJob> = {
 };
 
 /**
- * Freighter Fleets, Android and Spy costs are not in the reference tables;
- * these are our estimates.
+ * Project costs. Freighter Fleet 50, each android 50 and a spy 100 come from
+ * the original's item cost routine; the Outpost Base is ours.
  */
 export const PROJECT_COSTS = {
   colonyBase: 200,
@@ -271,12 +275,14 @@ export const PROJECT_COSTS = {
   gaiaTransform: 500,
   artificialPlanet: 800,
   dimensionalPortal: 500,
-  spy: 25,
+  spy: 100,
 } as const;
 
 /**
  * Share of its cost a finished Colony Base, Outpost Base or Artificial Planet
- * pays back when no planet is left to use it on (MoO2: scrapped for half).
+ * pays back when no planet is left to use it on. Our number: the original
+ * never lets such a base finish without a target. Half matches its other
+ * forced sales (see BANKRUPTCY).
  */
 export const BASE_SCRAP_REFUND = 0.5;
 
@@ -302,4 +308,23 @@ export const ARTIFICIAL_PLANET = {
   type: "barren",
   minerals: "abundant",
   gravity: "normal",
+} as const;
+
+/**
+ * Debt forces buildings to be sold, as in the original: first those with
+ * upkeep, then any (never the Capitol), always the one of lowest worth first,
+ * where worth is the cost times the multiplier below. Each sale pays back
+ * `refund` of the cost; computer players also get their difficulty index
+ * (0 Tutor .. 4 Impossible) in BC.
+ */
+export const BANKRUPTCY = {
+  refund: 0.5,
+  /** Worth multipliers; buildings not listed are worth their cost. */
+  worth: {
+    automatedFactory: 8, biospheres: 8, deepCoreMining: 7, hydroponicFarm: 6, gravityGenerator: 4,
+  } as Record<string, number>,
+  /** Holo Simulator and Pleasure Dome, except under governments without morale. */
+  moraleWorth: 7,
+  /** A Marine or Armor Barracks that is the colony's only barracks, under governments with the garrison penalty. */
+  soleBarracksWorth: 8,
 } as const;
