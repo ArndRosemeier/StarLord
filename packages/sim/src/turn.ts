@@ -21,7 +21,7 @@ import { espionageTick } from "./espionage.js";
 import { distance } from "./galaxy.js";
 import { addShips, deleteFleet, removeShips } from "./fleetOps.js";
 import { captureColony, destroyColony, exterminate, groundPhase, troopUnit, type Silenced } from "./ground.js";
-import { assignJobsForFood, removePopulation } from "./jobs.js";
+import { assignDefaultJobs, newUnitJob, removePopulation } from "./jobs.js";
 import {
   assignLeader, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
 } from "./leaders.js";
@@ -322,7 +322,7 @@ function foundColony(ctx: TurnContext, playerId: PlayerId, planetId: Id, pop: nu
   };
   planet.colonyId = colony.id;
   state.colonies[colony.id] = colony;
-  if (pop > 0) assignJobsForFood(state, colony);
+  if (pop > 0) assignDefaultJobs(state, colony);
   ctx.emit({ kind: "colonyFounded", playerId, colonyId: colony.id, planetId });
   onColonize(ctx, colony);
   return colony;
@@ -870,9 +870,9 @@ function grow(colony: Colony, out: ColonyOutput): void {
   colony.growthK += out.growthK;
   if (colony.growthK >= 1000) {
     colony.growthK -= 1000;
-    // New colonists farm if the colony is short of food, otherwise they work.
+    // New colonists farm if the colony is short of food, otherwise they keep industry and research even.
     if (out.foodNet < 0) colony.farmers++;
-    else colony.workers++;
+    else colony[newUnitJob(colony)]++;
   }
 }
 

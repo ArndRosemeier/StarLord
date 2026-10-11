@@ -3,7 +3,7 @@ import { CACHE_BC, DEBRIS_BC, SPLINTER_POP } from "./data/galaxy.js";
 import { TECH_TIERS } from "./data/techs.js";
 import { newId, type TurnContext } from "./context.js";
 import { grantTech } from "./empire.js";
-import { assignJobsForFood } from "./jobs.js";
+import { assignDefaultJobs, assignJobsForFood } from "./jobs.js";
 import { hasRoomFor, hireLeader, hirePrice } from "./leaders.js";
 import { learnsWholeField, researchOptions } from "./rules.js";
 import type { Colony, Id, PlayerId } from "./types.js";
@@ -73,7 +73,7 @@ export function onExplore(ctx: TurnContext, playerId: PlayerId, starId: Id): voi
     };
     planet.colonyId = colony.id;
     state.colonies[colony.id] = colony;
-    assignJobsForFood(state, colony);
+    assignDefaultJobs(state, colony);
     ctx.emit({ kind: "colonyFounded", playerId, colonyId: colony.id, planetId: pid });
     ctx.emit({ kind: "random", playerId, what: `Long-lost kin at ${star.name} rejoined your empire as a splinter colony.`, starId });
   }

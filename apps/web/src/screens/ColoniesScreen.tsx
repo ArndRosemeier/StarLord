@@ -10,10 +10,12 @@ import { climateName, fmt, itemName, signed, words } from "../ui/format";
 import { PlanetIcon, PlanetOrb, viewStarOfColony } from "../ui/panels";
 import { Icon } from "../ui/fx";
 
-export function ColoniesScreen({ onShowStar }: { onShowStar: (starId: string) => void }) {
+export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (starId: string) => void; initialColony?: string | null }) {
   const { view, me } = useGame();
   const colonies = Object.values(view.colonies).filter((c) => c.ownerId === me.id);
-  const [selected, setSelected] = useState<string | null>(colonies[0]?.id ?? null);
+  const [selected, setSelected] = useState<string | null>(
+    initialColony && view.colonies[initialColony]?.ownerId === me.id ? initialColony : colonies[0]?.id ?? null,
+  );
   const colony = selected ? view.colonies[selected] : undefined;
 
   return (
@@ -42,7 +44,7 @@ export function ColoniesScreen({ onShowStar }: { onShowStar: (starId: string) =>
                   <td className={o.foodNet < 0 ? "bad" : ""}>{c.outpost ? "" : signed(o.foodNet)}</td>
                   <td>{c.outpost ? "" : fmt(o.industry)}</td>
                   <td>{c.outpost ? "" : fmt(o.research)}</td>
-                  <td className="muted">{head ? `${itemName(view, head)}${turns !== null && !isContinuous(head) ? ` (${Math.max(1, turns)})` : ""}` : c.outpost ? "" : <span className="warn">idle</span>}</td>
+                  <td className="muted">{head ? `${itemName(view, head)}${turns !== null && !isContinuous(head) ? ` (${Math.max(1, turns)})` : ""}` : c.outpost ? "" : <span className="warn">Trade Goods</span>}</td>
                 </tr>
               );
             })}

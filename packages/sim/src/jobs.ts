@@ -1,3 +1,4 @@
+import { DEFAULT_RESEARCH_SHARE } from "./data/economy.js";
 import { computeOutput, population } from "./economy.js";
 import type { Colony, GameState } from "./types.js";
 
@@ -44,4 +45,22 @@ export function assignJobsForFood(state: GameState, colony: Colony, scientists =
       return;
     }
   }
+}
+
+/**
+ * Default jobs for a colony nobody has managed yet: the fewest farmers that
+ * keep it fed, and everyone else split between industry and research by
+ * `DEFAULT_RESEARCH_SHARE` (an odd unit works in industry).
+ */
+export function assignDefaultJobs(state: GameState, colony: Colony): void {
+  assignJobsForFood(state, colony, 0);
+  const rest = colony.workers;
+  colony.scientists = Math.floor(rest * DEFAULT_RESEARCH_SHARE);
+  colony.workers = rest - colony.scientists;
+}
+
+/** The job a newly grown non-farming unit takes: whichever of industry and research is behind the default split. */
+export function newUnitJob(colony: Colony): "workers" | "scientists" {
+  const after = colony.workers + colony.scientists + 1;
+  return colony.scientists < Math.floor(after * DEFAULT_RESEARCH_SHARE) ? "scientists" : "workers";
 }

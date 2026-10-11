@@ -151,7 +151,15 @@ export function isContinuous(item: BuildItem): boolean {
   return item.kind === "tradeGoods" || (item.kind === "project" && item.id === "housing");
 }
 
+/** A settled colony with nothing to build or Trade Goods at the head of its queue, so all its industry becomes BC. */
+export function isTradeGoodsOnly(colony: Colony): boolean {
+  if (colony.outpost) return false;
+  const head = colony.queue[0];
+  return !head || head.kind === "tradeGoods";
+}
+
 /** Whether a colony has an orbital station, whose star dock builds ships larger than destroyers. */
+
 export function hasStarDock(colony: Colony): boolean {
   return colony.buildings.some((b) => !!BUILDINGS_BY_ID[b]?.effects.defense?.station);
 }
