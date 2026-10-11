@@ -7,7 +7,7 @@ import { pct, playerName, signed, words } from "../ui/format";
 import { Envoy } from "../ui/panels";
 import { describeProposal } from "../diplomacy/terms";
 import { mood, type AudienceRequest } from "./Audience";
-import { activeEffects, incomingEffect } from "../diplomacy/effects";
+import { activeEffects, incomingEffect, TIRED_TEXT, temperamentText } from "../diplomacy/effects";
 
 /** How they feel about you, why, and where it is heading. */
 function AttitudeBreakdown({ them }: { them: number }) {
@@ -103,7 +103,7 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
                 </button>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row"><span className="dot" style={{ background: p.color }} /><b>{p.name}</b></div>
-                  <div className="muted">{race.plural} · {government(p).name}</div>
+                  <div className="muted">{race.plural} · {government(p).name}{temperamentText(view, p.id) && <> · <span className="explained" title={temperamentText(view, p.id)!.text}>{temperamentText(view, p.id)!.name}</span></>}</div>
                   <div className="mood-meter" style={{ marginTop: 10 }} title={`Attitude toward you: ${feel.text}`}>
                     <span style={{ left: `${(attitude(view, p.id, me.id) + 100) / 2}%` }} />
                   </div>
@@ -129,7 +129,7 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
                     <button className="primary" onClick={() => onAudience({ themId: p.id, opening: { kind: "visit" } })}>
                       {readOnly ? "View audience" : "Request audience"}
                     </button>
-                    {tired && <small className="muted">They will hear no more proposals this turn.</small>}
+                    {tired && <small className="muted">{TIRED_TEXT}</small>}
                   </div>
                 </>
               )}

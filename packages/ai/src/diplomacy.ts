@@ -1,5 +1,5 @@
 import {
-  TIER_OF_TECH, attitude, canSign, empireBonus, empireTotals, isDemand, monsterDemands, relation, type Command, type PlayerView,
+  TIER_OF_TECH, TREATY_ANSWER, attitude, audienceTired, patience, treatyScore, canSign, empireBonus, empireTotals, isDemand, monsterDemands, relation, type Command, type PlayerView,
   type Proposal, type ProposalKind, type ProposalTerms,
 } from "@starlord/sim";
 import { strategyOf } from "./strategies.js";
@@ -58,10 +58,13 @@ export function answerProposal(view: PlayerView, p: Proposal): boolean {
   let accept = false;
   if (p.kind === "peace" || p.kind === "ceasefire") {
     const theirPower = militaryPower(view, p.from);
-    accept = peaceful ? view.turn - r.since > 5 : view.turn - r.since > 15 && (feel > -50 || theirPower > myPower);
-  } else if (p.kind === "trade" || p.kind === "research") accept = feel > -15;
-  else if (p.kind === "nonAggression") accept = feel > 0;
-  else if (p.kind === "alliance") accept = feel > 40;
+    const war = view.turn - r.since;
+    accept = war >= TREATY_ANSWER.peaceMinWarTurns && (peaceful || (war > 15 && (feel > -50 || theirPower > myPower)));
+  } else if (p.kind === "trade" || p.kind === "research" || p.kind === "nonAggression" || p.kind === "alliance") {
+    // The original's rule: attitude + d100 - need + temperament + patience + the proposer's bonuses >= 0.
+    const t = treatyScore(view, p.from, view.viewer, p.kind, p.roll ?? 50, p.patience ?? 0);
+    accept = !t.blocked && t.score + warmth >= 0;
+  }
   else if (p.kind === "techExchange") accept = feel > -10 && techValue(p.wantTechId) <= techValue(p.techId) * 1.25;
   else if (isDemand(p.kind)) accept = acceptDemand(view, p, feel, myPower);
   return accept && !canSign(view, p.from, p.to, p.kind, p);
@@ -100,8 +103,10 @@ export function diplomacyOrders(view: PlayerView): Command[] {
     if (!them.alive) continue;
     const r = relation(view, view.viewer, other);
     const feel = attitude(view, view.viewer, other);
+    // Computer rulers wait until the other side's patience has recovered before asking again.
     const offer = (kind: ProposalKind, terms: ProposalTerms = {}) =>
-      !canSign(view, view.viewer, other, kind, terms) && !view.proposals.some((p) => p.from === view.viewer && p.to === other && p.kind === kind);
+      !canSign(view, view.viewer, other, kind, terms) && !view.proposals.some((p) => p.from === view.viewer && p.to === other && p.kind === kind) &&
+      patience(view, other, view.viewer) >= 0 && !audienceTired(view, view.viewer, other);
     if (r.status === "war") {
       const tired = peaceful ? view.turn - r.since > 10 : view.turn - r.since > 30 && militaryPower(view, other) >= myPower * 0.8;
       if (tired && offer("peace")) {
@@ -122,7 +127,7 @@ export function diplomacyOrders(view: PlayerView): Command[] {
       out.push({ type: "propose", to: other, kind: "nonAggression" });
       return out;
     }
-    if (feel > 50 && (r.status === "peace" || r.status === "nonAggression") && offer("alliance")) {
+    if (feel > 50 && r.status === "nonAggression" && offer("alliance")) {
       out.push({ type: "propose", to: other, kind: "alliance" });
       return out;
     }

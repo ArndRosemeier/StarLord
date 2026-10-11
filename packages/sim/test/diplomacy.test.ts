@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  COUNCIL, TIER_OF_TECH, TREATY_YIELD, attitude, destructibleBuildings, empireIncome, empireTotals,
+  COUNCIL, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, TIER_OF_TECH, audienceTired, canSign, previewOrders, validateCommand, patience, temperament, treatyAcceptChance, treatyScore, TREATY_YIELD, attitude, destructibleBuildings, empireIncome, empireTotals,
   newGame, playerView, processTurn, relKey, relation, spyEdge, treatyTotals, treatyYield, type GameState,
 } from "@starlord/sim";
 
@@ -160,5 +160,63 @@ describe("galactic council", () => {
     s = processTurn(s, {});
     expect(s.council.convened).toBe(true);
     expect(s.council.lastResult?.winner).toBe(0);
+  });
+});
+
+describe("how computer rulers answer treaties", () => {
+  it("scores attitude + roll - need + temperament + patience + bonuses", () => {
+    const s = met("score");
+    s.players[0]!.isHuman = true;
+    s.attitude[1] = { ...(s.attitude[1] ?? {}), 0: 10 };
+    const t = treatyScore(s, 0, 1, "nonAggression", 40);
+    expect(t.score).toBe(t.parts.reduce((x, p) => x + p.value, 0));
+    expect(t.parts.find((p) => p.why.startsWith("their attitude"))!.value).toBe(10);
+    expect(t.parts.find((p) => p.why.includes("d100"))!.value).toBe(40);
+    expect(t.parts.some((p) => p.value === -TREATY_ANSWER.need.nonAggression!)).toBe(true);
+    const temper = temperament(s, 1)!;
+    expect(t.parts.some((p) => p.value === TEMPERAMENTS[temper].treaty || TEMPERAMENTS[temper].treaty === 0)).toBe(true);
+    expect(temperament(s, 0)).toBeNull();
+  });
+
+  it("odds match the d100 and an alliance needs a pact and warm feelings", () => {
+    const s = met("odds");
+    s.attitude[1] = { ...(s.attitude[1] ?? {}), 0: 0 };
+    const base = treatyScore(s, 0, 1, "trade", null).score;
+    expect(treatyAcceptChance(s, 0, 1, "trade")).toBeCloseTo(Math.max(0, Math.min(100, 101 + base)) / 100, 5);
+    expect(canSign(s, 0, 1, "alliance")).toMatch(/non-aggression pact/);
+    s.attitude[1]![0] = 40;
+    expect(treatyScore(s, 0, 1, "alliance", 100).blocked).toMatch(/attitude/);
+    expect(treatyAcceptChance(s, 0, 1, "alliance")).toBe(0);
+  });
+
+  it("every ask wears down patience until they will hear no more, and it recovers", () => {
+    let s = met("patience");
+    s = processTurn(s, { 0: [{ type: "propose", to: 1, kind: "trade" }] });
+    const p = s.proposals.find((x) => x.kind === "trade")!;
+    expect(p.patience).toBe(0);
+    expect(p.roll).toBeGreaterThanOrEqual(1);
+    expect(p.roll).toBeLessThanOrEqual(100);
+    // Patience recovered a turn's worth at the end of the turn but not all of it.
+    const after = patience(s, 1, 0);
+    expect(after).toBeLessThan(0);
+    expect(after).toBeGreaterThanOrEqual(-(PATIENCE.perAsk + PATIENCE.firstAsk + PATIENCE.firstAskRoll) + PATIENCE.recovery);
+    // A stream of demands soon has them refuse audiences.
+    let s2 = met("tired");
+    const asks = [{ type: "propose", to: 1, kind: "demandTribute", percent: 5 }, { type: "propose", to: 1, kind: "research" }, { type: "propose", to: 1, kind: "trade" }, { type: "propose", to: 1, kind: "nonAggression" }] as const;
+    const mid = previewOrders(s2, 0, [...asks]);
+    expect(mid.rejected).toHaveLength(0);
+    expect(audienceTired(mid.state, 0, 1)).toBe(true);
+    expect(validateCommand(mid.state, 0, { type: "propose", to: 1, kind: "techExchange" })).toMatchObject({ ok: false });
+    s2 = processTurn(s2, { 0: [...asks] });
+    for (let i = 0; i < 10; i++) s2 = processTurn(s2, {});
+    expect(audienceTired(s2, 0, 1)).toBe(false);
+    expect(patience(s2, 1, 0)).toBe(0);
+  });
+
+  it("breaking a treaty exhausts patience on both sides", () => {
+    let s = signTreaties(met("exhaust"));
+    s = processTurn(s, { 0: [{ type: "breakTreaty", target: 1, treaty: "trade" }] });
+    expect(audienceTired(s, 0, 1)).toBe(true);
+    expect(patience(s, 1, 0)).toBeLessThanOrEqual(PATIENCE.broken + PATIENCE.recovery);
   });
 });

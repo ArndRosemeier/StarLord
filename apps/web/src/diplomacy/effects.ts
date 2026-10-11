@@ -1,5 +1,5 @@
 import {
-  ATTITUDE, ATTITUDE_EVENTS, PEACE_TREATY_TURNS, TREATY_YIELD, empireTotals, empires, isDemand, relation, treatyPotential, treatyTotals,
+  ATTITUDE, ATTITUDE_EVENTS, PATIENCE, PEACE_TREATY_TURNS, TEMPERAMENTS, TREATY_ANSWER, TREATY_YIELD, temperament, treatyAcceptChance, treatyScore, empireTotals, empires, isDemand, relation, treatyPotential, treatyTotals,
   treatyYield, tributeAmount, type PlayerView, type Proposal, type ProposalKind, type TreatyName,
 } from "@starlord/sim";
 import { fmt, playerName, signed, starName } from "../ui/format";
@@ -20,7 +20,36 @@ function alliesOf(view: PlayerView, who: number, except: number): string[] {
     .map((p) => p.name);
 }
 
+/** How likely a computer ruler is to accept a treaty now, and why; empty for a human ruler or other kinds. */
+export function answerOdds(view: PlayerView, me: number, them: number, kind: ProposalKind): string {
+  if (view.players[them]?.isHuman) return "";
+  if (kind === "peace" || kind === "ceasefire") {
+    const war = view.turn - relation(view, me, them).since;
+    return war < TREATY_ANSWER.peaceMinWarTurns ? ` They hear no peace before ${TREATY_ANSWER.peaceMinWarTurns} turns of war (${war} so far).` : "";
+  }
+  if (!(kind in TREATY_ANSWER.need)) return "";
+  const t = treatyScore(view, me, them, kind, null);
+  const parts = t.parts.map((p) => `${p.why} ${signed(p.value)}`).join(", ");
+  if (t.blocked) return ` They refuse: ${t.blocked}.`;
+  return ` Chance they accept now: ${Math.round(treatyAcceptChance(view, me, them, kind) * 100)}% (${parts}, plus a d100; accepted at 0 or more).`;
+}
+
+/** A computer ruler's temperament and what it does to treaty answers. */
+export function temperamentText(view: PlayerView, them: number): { name: string; text: string } | null {
+  const t = temperament(view, them);
+  if (!t) return null;
+  const d = TEMPERAMENTS[t];
+  return { name: d.name, text: `${d.name}: ${signed(d.treaty)} to every treaty answer.` };
+}
+
+/** Why they will hear no more, and when they will again. */
+export const TIRED_TEXT = `They will hear no more proposals for now; their patience recovers by ${PATIENCE.recovery} a turn.`;
+
 export function proposalEffect(view: PlayerView, me: number, them: number, kind: ProposalKind): string {
+  return baseEffect(view, me, them, kind) + answerOdds(view, me, them, kind);
+}
+
+function baseEffect(view: PlayerView, me: number, them: number, kind: ProposalKind): string {
   switch (kind) {
     case "peace":
     case "ceasefire":

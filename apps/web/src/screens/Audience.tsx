@@ -9,7 +9,7 @@ import { Envoy } from "../ui/panels";
 import { audio } from "../audio/sound";
 import { speak, type Moment } from "../diplomacy/voices";
 import { describeProposal, techName, tradableTechs } from "../diplomacy/terms";
-import { GIFT_EFFECT, SURRENDER_EFFECT, endTreatyEffect, incomingEffect, proposalEffect, warEffect } from "../diplomacy/effects";
+import { GIFT_EFFECT, SURRENDER_EFFECT, endTreatyEffect, incomingEffect, proposalEffect, warEffect, TIRED_TEXT } from "../diplomacy/effects";
 
 /** What an option does, under it. */
 const Effect = ({ children }: { children: string }) => <small className="audience-effect">{children}</small>;
@@ -218,7 +218,7 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
               <SubMenu menu={menu} them={them} onPropose={propose} onSay={say} onBack={() => setMenu("main")} />
             )}
           </div>
-          {tired && !incoming && !lateWar && <div className="muted">They will hear no more proposals this turn.</div>}
+          {tired && !incoming && !lateWar && <div className="muted">{TIRED_TEXT}</div>}
         </div>
       </div>
     </div>

@@ -2,8 +2,50 @@
 
 /** Proposals not answered within this many turns lapse. */
 export const PROPOSAL_LIFETIME = 2;
-/** An emperor tires after this many agenda items from the same empire in one turn. */
-export const AUDIENCE_ITEMS = 3;
+/**
+ * How a computer empire answers a treaty, after the original: it accepts when
+ * attitude + d100 − need + temperament + patience + the proposer's diplomatic
+ * bonuses comes to 0 or more. An alliance also needs a non-aggression pact in
+ * force and attitude of at least `allianceMinAttitude`; peace needs the war to
+ * have lasted `peaceMinWarTurns`.
+ */
+export const TREATY_ANSWER = {
+  need: { nonAggression: 75, alliance: 125, trade: 60, research: 40 } as Record<string, number>,
+  allianceMinAttitude: 50,
+  peaceMinWarTurns: 10,
+} as const;
+
+/** The original's six computer personalities and what each adds to its treaty answers. */
+export const TEMPERAMENTS = {
+  xenophobic: { name: "Xenophobic", treaty: -50 },
+  ruthless: { name: "Ruthless", treaty: -20 },
+  aggressive: { name: "Aggressive", treaty: -20 },
+  erratic: { name: "Erratic", treaty: 0 },
+  honorable: { name: "Honorable", treaty: 20 },
+  pacifistic: { name: "Pacifistic", treaty: 30 },
+} as const;
+export type Temperament = keyof typeof TEMPERAMENTS;
+
+/**
+ * Patience: how much more an empire will hear. Every proposal costs the
+ * listener `perAsk` (and `firstAsk` plus up to `firstAskRoll` more for the
+ * first one in a turn), which counts against the next answers. The asker keeps
+ * four tallies (pacts, trade, research, everything else): each ask lowers all
+ * four by `perAsk` and its own by `sameKind` more; a demand lowers all four by
+ * `demand`. Once any tally reaches
+ * `refuse` they will hear no more. Patience recovers by `recovery` a turn up
+ * to 0, and breaking a treaty sets it to `broken`.
+ */
+export const PATIENCE = {
+  perAsk: 10,
+  firstAsk: 20,
+  firstAskRoll: 30,
+  sameKind: 20,
+  demand: 50,
+  refuse: -100,
+  recovery: 16,
+  broken: -200,
+} as const;
 /** A peace treaty forbids attacks for this many turns (the original says "a set number"). */
 export const PEACE_TREATY_TURNS = 20;
 
