@@ -49,3 +49,5 @@ export * from "./data/movement.js";
 export * from "./data/diplomacy.js";
 export * from "./data/ground.js";
 export * from "./data/events.js";
+export * from "./debug.js";
+export * from "./data/debug.js";

@@ -243,6 +243,11 @@ img.planet-img { display: block; justify-self: center; object-fit: contain; flex
 .title-hero.leaving .title-version { opacity: 0; }
 .modal.whats-new { max-width: 680px; }
 .modal.research-warning { max-width: 440px; }
+.modal.debug-menu { max-width: 760px; }
+.debug-menu section { margin-top: 14px; }
+.debug-menu h3 { margin: 0 0 6px; }
+.debug-row { flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+.debug-button { color: var(--warn); border-color: currentColor; }
 .whats-new-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .whats-new-head h2 { margin: 0; }
 .whats-new-release { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }

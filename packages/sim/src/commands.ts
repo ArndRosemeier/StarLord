@@ -19,6 +19,7 @@ import {
   availableBuildings, canBuildShips, availableDesigns, availableProjects, availableTiers, itemCost, researchOptions,
 } from "./rules.js";
 import { validateMutation } from "./mutation.js";
+import { debugProblem, type DebugAction } from "./debug.js";
 import type { RacePicks } from "./data/races.js";
 import type {
   BuildItem, Colony, CombatDoctrine, Fleet, FleetStance, GameState, Id, PlayerId, ProposalKind, ShipDesign, SpyMission,
@@ -75,7 +76,9 @@ export type Command =
   | { type: "setCouncilVote"; vote: PlayerId | "abstain" | "auto" }
   | { type: "setAutomation"; domains: string[] }
   /** Picks the strategy an automated area follows; "balanced" is the default. */
-  | { type: "setAutomationStrategy"; domain: string; strategy: string };
+  | { type: "setAutomationStrategy"; domain: string; strategy: string }
+  /** Cheats, accepted only in games started in debug mode. */
+  | { type: "debug"; action: DebugAction };
 
 export type CommandType = Command["type"];
 
@@ -341,6 +344,10 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       return typeof cmd.domain === "string" && /^[a-zA-Z]{1,32}$/.test(cmd.domain) && typeof cmd.strategy === "string" && /^[a-zA-Z]{1,32}$/.test(cmd.strategy)
         ? OK
         : fail("bad automation strategy");
+    case "debug": {
+      const why = debugProblem(state, playerId, cmd.action);
+      return why ? fail(why) : OK;
+    }
   }
 }
 

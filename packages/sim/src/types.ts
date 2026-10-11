@@ -37,6 +37,8 @@ export interface GameSettings {
    * attacker's whole side first. Missing means off.
    */
   shipInitiative?: boolean;
+  /** Started with Ctrl+Alt held: the debug menu's commands are allowed. */
+  debug?: boolean;
 }
 
 export type Difficulty = "tutor" | "easy" | "average" | "hard" | "impossible";
@@ -549,6 +551,8 @@ export interface RaidersState {
   launch?: number;
   /** Empire that destroyed the raiders at home. */
   defeatedBy?: PlayerId;
+  /** Empire the next raid goes for, set by the debug menu; cleared once the raid launches. */
+  forcedTarget?: PlayerId;
 }
 
 export interface GameState {
