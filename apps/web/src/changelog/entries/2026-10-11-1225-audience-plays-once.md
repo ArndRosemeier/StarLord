@@ -1,0 +1,1 @@
+- In an audience, the leader's animation now plays once and stays on its final frame instead of looping.
