@@ -36,6 +36,11 @@ export class GameSession {
     this.refresh();
   }
 
+  /** What the last turn produced for one empire. `view.events` is always empty: previewing orders clears it. */
+  lastTurnEvents(playerId: PlayerId): GameEvent[] {
+    return this.state.events.filter((e) => e.playerId === playerId);
+  }
+
   static create(opts: NewGameOptions, me: PlayerId | null): GameSession {
     const options = { ...opts, humanPlayers: me === null ? [] : [me] };
     return new GameSession(newGame(options), me, [], newRecord(options));

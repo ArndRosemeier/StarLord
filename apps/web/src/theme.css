@@ -517,3 +517,17 @@
 .system-colony .panel { padding: 12px; }
 @media (max-width: 860px) { .modal.system-modal.wide { grid-template-columns: 1fr; } }
 .modal .system-skip { position: absolute; right: 12px; bottom: 12px; z-index: 3; }
+
+/* Last-turn summary in the galaxy sidebar. */
+/* .shell prefix to win over the themed button rules. */
+.shell .last-turn-head { display: flex; align-items: center; gap: 6px; background: none; border: none; padding: 0; color: inherit; cursor: pointer; box-shadow: none; }
+.shell .last-turn-head:hover:not(:disabled) { background: none; box-shadow: none; }
+.last-turn-caret { width: 10px; color: var(--muted); }
+.last-turn-body { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow: auto; padding-right: 2px; }
+.last-turn-group { display: flex; flex-direction: column; gap: 2px; }
+.last-turn-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.last-turn-line { font-size: 12.5px; line-height: 1.35; padding: 2px 6px; border-left: 2px solid var(--line); border-radius: 0 4px 4px 0; text-align: left; }
+.last-turn-line.good { border-left-color: var(--good); }
+.last-turn-line.bad { border-left-color: var(--bad); }
+.shell button.last-turn-line { background: none; border-top: none; border-right: none; border-bottom: none; border-radius: 0 4px 4px 0; color: inherit; font-weight: normal; cursor: pointer; width: 100%; box-shadow: none; }
+.shell button.last-turn-line:hover:not(:disabled) { background: rgba(60, 100, 200, 0.14); box-shadow: none; border-left-color: var(--accent); }
