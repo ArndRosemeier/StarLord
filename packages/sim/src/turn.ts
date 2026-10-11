@@ -38,6 +38,7 @@ import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
 import { colonyRoom, freePlanetsInSystem, isContinuous, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
 import { applyMutation } from "./mutation.js";
+import { applyDebug } from "./debug.js";
 import { score } from "./score.js";
 import type { BuildItem, Colony, Fleet, GameState, Id, PlayerId } from "./types.js";
 
@@ -330,6 +331,9 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       else delete player.automationStrategies;
       break;
     }
+    case "debug":
+      applyDebug(ctx, playerId, cmd.action);
+      break;
   }
 }
 

@@ -16,6 +16,7 @@ import { LeadersScreen } from "./LeadersScreen";
 import { EmpireScreen } from "./EmpireScreen";
 import { EventsScreen } from "./EventsScreen";
 import { GameMenu } from "./GameMenu";
+import { DebugMenu } from "./DebugMenu";
 import { GameOver } from "./GameOver";
 import { audio } from "../audio/sound";
 import { MuteButton } from "../ui/AudioControls";
@@ -64,6 +65,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [overSeen, setOverSeen] = useState(view.over);
   const [colonyFocus, setColonyFocus] = useState<string | null>(null);
   const [researchWarning, setResearchWarning] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const debug = !!view.settings.debug && !readOnly;
   const lastTurn = useRef(view.turn);
 
   const totals = empireTotals(view, me.id);
@@ -83,6 +86,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   // Ctrl+Enter is bound once, so it calls the latest endTurn through a ref.
   const endTurnRef = useRef(endTurn);
   endTurnRef.current = endTurn;
+  const debugRef = useRef(debug);
+  debugRef.current = debug;
   const won = view.over && view.winner === me.id && !readOnly;
 
   useEffect(() => {
@@ -107,6 +112,11 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F9" && debugRef.current) {
+        e.preventDefault();
+        setDebugOpen((o) => !o);
+        return;
+      }
       if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
       endTurnRef.current();
@@ -153,6 +163,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         <div className="stat"><small><Icon name="command" size={12} /> Command</small><span className={cpUsed > cpMax ? "bad" : ""}>{cpUsed}/{cpMax}</span></div>
         <div className="stat"><small><Icon name="population" size={12} /> Population</small><span><AnimatedNumber value={totals.population} format={fmt} /></span></div>
         <div className="spacer" />
+        {debug && <button className="small debug-button" onClick={() => setDebugOpen(true)} title="Debug menu (F9)">Debug</button>}
         <button className="help-button" onClick={() => openHelp()} title="Encyclopedia (F1)">?</button>
         <MuteButton />
         {view.over && <span className="chip warn">Game over: {view.players[view.winner!]?.name} wins ({view.victory})</span>}
@@ -220,6 +231,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
           </div>
         </div>
       )}
+      {debug && debugOpen && <DebugMenu onClose={() => setDebugOpen(false)} />}
       <TurnBanner turn={view.turn} quiet={autoplay} />
     </div>
   );

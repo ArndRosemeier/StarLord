@@ -55,12 +55,14 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
 
   const editCustom = (spec: CustomRaceSpec) => setEditing({ spec, index: customSpecs.indexOf(spec) });
 
-  const start = (spectate: boolean) => {
+  /** Holding Ctrl+Alt while starting turns on the debug menu for that game. */
+  const start = (spectate: boolean, debug = false) => {
     const others = shuffled(RACES.map((r) => r.id).filter((id) => id !== raceId)).slice(0, opponents);
     const races = spectate ? shuffled(RACES.map((r) => r.id)).slice(0, opponents + 1) : [raceId, ...others];
     const customRaces = !spectate && chosenCustom ? [chosenCustom.spec] : [];
     onStart(GameSession.create({
       seed, galaxySize: galaxy, races, maxTurns, monsters, raiders, council, customRaces, difficulty, galaxyAge, techLevel, randomEvents, shipInitiative,
+      ...(debug ? { debug: true } : {}),
     }, spectate ? null : 0));
   };
 
@@ -175,7 +177,7 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
             </div>
             {customBlocked && <div className="bad">Custom races need Average difficulty or harder.</div>}
             <div className="row">
-              <button className="primary" disabled={customBlocked} onClick={() => start(false)}>Play as the {race.plural}</button>
+              <button className="primary" disabled={customBlocked} onClick={(e) => start(false, e.ctrlKey && e.altKey)}>Play as the {race.plural}</button>
 
               <button onClick={() => start(true)} title="All empires are run by the computer; you watch.">Watch an AI game</button>
               <label className="row" style={{ gap: 6 }}>

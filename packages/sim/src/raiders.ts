@@ -189,6 +189,28 @@ function raidTarget(state: GameState, rng: Rng): { ownerId: PlayerId; planetId: 
   return { ownerId: pick.p.id, planetId: colony.planetId };
 }
 
+/** The forced target's most populous colony, if the debug menu picked one that still has colonies. */
+function forcedRaidTarget(state: GameState): { ownerId: PlayerId; planetId: Id } | null {
+  const id = state.raiders.forcedTarget;
+  if (id === undefined) return null;
+  const colony = Object.values(state.colonies)
+    .filter((c) => c.ownerId === id && !c.outpost)
+    .sort((a, b) => b.farmers + b.workers + b.scientists - (a.farmers + a.workers + a.scientists) || (a.id < b.id ? -1 : 1))[0];
+  return colony ? { ownerId: id, planetId: colony.planetId } : null;
+}
+
+/**
+ * Debug: makes the raiders strike an empire this turn, buying a fleet with
+ * extra build points if none is waiting.
+ */
+export function forceRaid(state: GameState, targetId: PlayerId, budget: number): void {
+  state.raiders.nextRaid = Math.min(state.raiders.nextRaid, state.turn);
+  state.raiders.budget = (state.raiders.budget ?? 0) + budget;
+  // A counter at the roll's top makes the launch certain.
+  state.raiders.launch = RAID_LAUNCH_ROLL;
+  state.raiders.forcedTarget = targetId;
+}
+
 /**
  * Raiders strike one empire colony at a time and vanish the turn after.
  * After the grace period they buy raid ships from a growing budget and launch
@@ -212,8 +234,9 @@ export function raidTick(ctx: TurnContext): void {
   if (fleet.length === 0) return;
   state.raiders.launch = (state.raiders.launch ?? 0) + 1;
   if (rng.int(1, RAID_LAUNCH_ROLL) > state.raiders.launch) return;
-  const target = raidTarget(state, rng);
+  const target = forcedRaidTarget(state) ?? raidTarget(state, rng);
   if (!target) return;
+  delete state.raiders.forcedTarget;
 
   state.raiders.firstRaid ??= state.turn;
   const since = state.turn - state.raiders.firstRaid;
