@@ -630,3 +630,12 @@ html, body { overscroll-behavior: none; }
   .help-list .help-item { padding-left: 26px; }
   .map-hint { right: 160px; }
 }
+
+/* What things do, spelled out. */
+.audience-effect { display: block; color: var(--muted); font-size: 12px; line-height: 1.4; margin: -2px 0 4px 2px; }
+.audience-outcomes { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+.audience-outcomes li { margin: 2px 0; }
+.effect-list { margin: 0; padding-left: 16px; font-size: 13px; line-height: 1.45; }
+.effect-list li { margin: 1px 0; }
+.attitude-breakdown summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.attitude-breakdown[open] summary { margin-bottom: 4px; }

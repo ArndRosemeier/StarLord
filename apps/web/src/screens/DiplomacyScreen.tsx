@@ -1,12 +1,36 @@
 import {
-  COUNCIL, COUNCIL_INTERVAL, COUNCIL_MAJORITY, attitude, audienceTired, canSign, getRace, government, nextCouncilTurn, relation,
+  ATTITUDE, COUNCIL, COUNCIL_INTERVAL, COUNCIL_MAJORITY, attitude, attitudeParts, audienceTired, canSign, getRace, government, nextCouncilTurn, relation,
   settledShare,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
-import { pct, playerName, words } from "../ui/format";
+import { pct, playerName, signed, words } from "../ui/format";
 import { Envoy } from "../ui/panels";
 import { describeProposal } from "../diplomacy/terms";
 import { mood, type AudienceRequest } from "./Audience";
+import { activeEffects, incomingEffect } from "../diplomacy/effects";
+
+/** How they feel about you, why, and where it is heading. */
+function AttitudeBreakdown({ them }: { them: number }) {
+  const { view, me } = useGame();
+  const now = attitude(view, them, me.id);
+  const parts = attitudeParts(view, them, me.id);
+  const target = parts.reduce((s, x) => s + x.value, 0);
+  return (
+    <details className="attitude-breakdown">
+      <summary>
+        Attitude {signed(now)}{target !== now ? `, drifting ${ATTITUDE.driftPerTurn} a turn toward ${signed(target)}` : ""}
+      </summary>
+      <ul className="effect-list">
+        {parts.length === 0 && <li className="muted">Nothing pushes their feelings either way.</li>}
+        {parts.map((x) => <li key={x.why}><span className={x.value > 0 ? "good" : "bad"}>{signed(x.value)}</span> {x.why}</li>)}
+        <li className="muted">
+          Events shift it at once (gifts, accepted or refused deals, wars, spies caught) and then it drifts back. Computer empires accept
+          treaties more readily the higher it is.
+        </li>
+      </ul>
+    </details>
+  );
+}
 
 
 export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceRequest) => void }) {
@@ -19,7 +43,6 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
   const pending = council.pending;
   const myAnswer = session.pending.find((c) => c.type === "councilResponse");
   const nextSession = nextCouncilTurn(view);
-  const tributes = view.tributes ?? [];
 
   return (
     <div className="col">
@@ -48,6 +71,7 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
             <div className="row" key={p.id}>
               <span className="dot" style={{ background: view.players[p.from]!.color }} />
               <b>{view.players[p.from]!.name}</b> {describeProposal(view, p)}.
+              <small className="muted" style={{ flexBasis: "100%" }}>Accepting: {incomingEffect(view, p).accept} Refusing: {incomingEffect(view, p).refuse}</small>
               <span className="spacer" />
               {responded.has(p.id) ? <span className="muted">answered</span> : (
                 <>
@@ -70,8 +94,6 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
           const r = relation(view, me.id, p.id);
           const feel = mood(attitude(view, p.id, me.id));
           const race = getRace(p.raceId);
-          const paysMe = tributes.find((t) => t.from === p.id && t.to === me.id);
-          const iPay = tributes.find((t) => t.from === me.id && t.to === p.id);
           const tired = audienceTired(view, me.id, p.id);
           return (
             <div className={`panel col empire-card ${r.status}`} key={p.id} style={{ opacity: p.alive ? 1 : 0.5 }}>
@@ -95,13 +117,14 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
               </div>
               {!p.alive ? <div className="muted">Eliminated.</div> : (
                 <>
-                  <div className="row">
-                    {r.trade && <span className="chip">Trade</span>}
-                    {r.research && <span className="chip">Research</span>}
-                    {paysMe && <span className="chip good">Pays you {paysMe.percent}% tribute</span>}
-                    {iPay && <span className="chip warn">You pay {iPay.percent}% tribute</span>}
-                    {(r.peaceUntil ?? 0) > view.turn && <span className="chip">Peace holds until turn {r.peaceUntil}</span>}
-                  </div>
+                  {activeEffects(view, me.id, p.id).length > 0 && (
+                    <ul className="effect-list">
+                      {activeEffects(view, me.id, p.id).map((e, i) => (
+                        <li key={i}><b className={e.tone ?? ""}>{e.label}:</b> {e.text}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <AttitudeBreakdown them={p.id} />
                   <div className="row">
                     <button className="primary" onClick={() => onAudience({ themId: p.id, opening: { kind: "visit" } })}>
                       {readOnly ? "View audience" : "Request audience"}

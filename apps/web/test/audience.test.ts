@@ -43,3 +43,15 @@ describe("audiences", () => {
     expect(speak("terran", "greet", 3, { you: "Kordex", us: "Terrans" })).not.toMatch(/[{}]/);
   });
 });
+
+describe("diplomatic effects", () => {
+  it("spells out treaties with the sim's numbers", async () => {
+    const { proposalEffect, warEffect, activeEffects } = await import("../src/diplomacy/effects");
+    const s = metSession();
+    expect(proposalEffect(s.view, 0, 1, "alliance")).toMatch(/refuel/);
+    expect(proposalEffect(s.view, 0, 1, "trade")).toMatch(/0\.25 per population/);
+    expect(warEffect(s.view, 0, 1)).toMatch(/fight on sight/);
+    s.audience({ type: "propose", to: 1, kind: "trade" });
+    expect(activeEffects(s.view, 0, 1).map((e) => e.label)).toContain("Trade");
+  });
+});
