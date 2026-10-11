@@ -509,3 +509,10 @@
 .system-action.bad { color: var(--bad); }
 .three-tag em { font-style: normal; font-size: 10px; font-weight: 600; color: var(--good); }
 .three-tag.settle { border-color: rgba(79, 209, 139, 0.55); border-left-color: var(--good); opacity: 1; }
+
+/* colony controls beside the 3D system view */
+.modal.system-modal.wide { grid-template-columns: minmax(0, 1fr) 480px; }
+.system-colony { gap: 10px; }
+.modal .system-back-link { align-self: flex-start; margin-right: 40px; }
+.system-colony .panel { padding: 12px; }
+@media (max-width: 860px) { .modal.system-modal.wide { grid-template-columns: 1fr; } }

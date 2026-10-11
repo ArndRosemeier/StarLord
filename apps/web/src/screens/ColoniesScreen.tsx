@@ -56,7 +56,8 @@ export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (sta
   );
 }
 
-function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar: (starId: string) => void }) {
+/** One colony's jobs, output, buildings and production queue; also shown inside the 3D system view. */
+export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar?: (starId: string) => void }) {
   const { session, view, me, readOnly } = useGame();
   const planet = view.planets[colony.planetId]!;
   const star = viewStarOfColony(view, colony.id);
@@ -104,7 +105,7 @@ function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowStar: (sta
           <div className="col" style={{ gap: 4 }}>
             <div className="row">
               <h2 style={{ margin: 0 }}>{colony.name}</h2>
-              {star && <button className="small" onClick={() => onShowStar(star.id)}>Show on map</button>}
+              {star && onShowStar && <button className="small" onClick={() => onShowStar(star.id)}>Show on map</button>}
             </div>
             <div className="muted">
               {words(planet.size)} {climateName(planet.type)}, {words(planet.minerals)} minerals, {planet.gravity} gravity
