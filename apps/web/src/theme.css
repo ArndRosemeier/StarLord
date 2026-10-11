@@ -493,3 +493,19 @@
 @media (prefers-reduced-motion: reduce) {
   .system-back, .modal.system-modal { animation: none; }
 }
+
+/* settle prompt over the 3D system view */
+.system-action {
+  position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 3;
+  display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 16px; max-width: calc(100% - 32px);
+  background: var(--glass); border: 1px solid var(--glass-line); border-radius: 10px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px); animation: system-fade 0.2s ease-out both;
+}
+.system-action > div { display: flex; flex-direction: column; gap: 2px; }
+.system-action .muted { font-size: 12px; }
+.system-action button { white-space: nowrap; }
+.system-action.hint { font-size: 12px; padding: 8px 14px; color: var(--muted); }
+.system-action.hint b { color: var(--good); }
+.system-action.bad { color: var(--bad); }
+.three-tag em { font-style: normal; font-size: 10px; font-weight: 600; color: var(--good); }
+.three-tag.settle { border-color: rgba(79, 209, 139, 0.55); border-left-color: var(--good); opacity: 1; }

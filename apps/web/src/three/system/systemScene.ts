@@ -176,7 +176,7 @@ export class SystemScene {
           body.models.push(station);
         }
       }
-      this.labels.set(`planet:${p.id}`, this.bodies.get(`planet:${p.id}`)!.anchor, planetTag(p), this.bodies.get(`planet:${p.id}`)!.radius + 0.35, `three-tag${p.colony ? " owned" : ""}`)
+      this.labels.set(`planet:${p.id}`, this.bodies.get(`planet:${p.id}`)!.anchor, planetTag(p), this.bodies.get(`planet:${p.id}`)!.radius + 0.35, `three-tag${p.colony ? " owned" : ""}${p.settle && !p.settle.blocked ? " settle" : ""}`)
         .style.setProperty("--tag-color", p.colony?.color ?? "");
     }
 
@@ -436,7 +436,10 @@ export class SystemScene {
 
 function planetTag(p: SystemPlanet): string {
   const kind = p.type === "asteroids" ? "Asteroids" : p.type === "gasGiant" ? "Gas giant" : `${cap(p.size)} ${words(p.type)}`;
-  if (!p.colony) return `<b>${kind}</b>`;
+  if (!p.colony) {
+    const settle = p.settle && !p.settle.blocked ? `<em>✚ ${p.settle.outpost ? "Outpost" : "Colonize"}</em>` : "";
+    return `<b>${kind}</b>${settle}`;
+  }
   const what = p.colony.outpost ? "outpost" : `pop ${p.colony.population}`;
   const station = p.colony.station ? ` · ${words(p.colony.station)}` : "";
   return `<b>${esc(p.colony.name)}</b><span>${kind} · ${what}${station}</span>`;

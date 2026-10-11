@@ -21,9 +21,9 @@ export function SystemView({ starId, fleetId, onClose, onSelectFleet }: {
   /** Picking a fleet closes the view so the fleet can be ordered on the map. */
   onSelectFleet: (id: string) => void;
 }) {
-  const { view } = useGame();
+  const { session, view, readOnly } = useGame();
   const reduced = useReducedMotion();
-  const model = useMemo(() => buildSystemModel(view, starId), [view, starId]);
+  const model = useMemo(() => buildSystemModel(view, starId, fleetId, !readOnly), [view, starId, fleetId, readOnly]);
   const [selected, setSelected] = useState<SystemPick | null>(null);
   const [failed, setFailed] = useState(false);
   const show3d = webglAvailable() && !failed;
@@ -42,6 +42,9 @@ export function SystemView({ starId, fleetId, onClose, onSelectFleet }: {
 
   if (!model) return null;
   const planetId = selected?.kind === "planet" ? selected.id : null;
+  const picked = planetId ? model.planets.find((p) => p.id === planetId) : undefined;
+  const settleable = model.planets.filter((p) => p.settle && !p.settle.blocked);
+  const blocked = model.planets.find((p) => p.settle?.blocked)?.settle?.blocked;
 
   // Portalled to the body, so screen entrance animations (transforms) cannot offset the fixed overlay.
   return createPortal(
@@ -66,6 +69,34 @@ export function SystemView({ starId, fleetId, onClose, onSelectFleet }: {
           ) : (
             <div className="system-loading muted">3D view unavailable in this browser.</div>
           )}
+          {picked?.settle ? (
+            <div className="system-action">
+              <div>
+                <b>{picked.settle.outpost ? "Build an outpost here" : "Settle this planet"}</b>
+                <span className="muted">
+                  {picked.settle.blocked
+                    ? `Can't settle: ${picked.settle.blocked}.`
+                    : `${picked.settle.fleetName} lands when you end the turn.`}
+                </span>
+              </div>
+              <button
+                className="primary"
+                disabled={!!picked.settle.blocked}
+                onClick={() => session.issue({ type: "colonize", fleetId: picked.settle!.fleetId, planetId: picked.id })}
+              >
+                ✚ {picked.settle.outpost ? "Outpost" : "Colonize"}
+              </button>
+            </div>
+          ) : settleable.length > 0 ? (
+            <div className="system-action hint">
+              <span>
+                Your colony ship is here: click a planet marked <b>✚</b> to settle it,
+                {" "}or use Colonize in the list.
+              </span>
+            </div>
+          ) : blocked ? (
+            <div className="system-action hint bad"><span>Your colony ship can't land: {blocked}.</span></div>
+          ) : null}
           <div className="system-title">
             <h2>{model.name}</h2>
             <span className="muted">
