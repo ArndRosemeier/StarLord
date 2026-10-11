@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useGame } from "../../ui/hooks";
 import { useReducedMotion } from "../../ui/fx";
 import { StarPanel } from "../../ui/panels";
+import { ColonyDetail } from "../ColoniesScreen";
 import { webglAvailable } from "../../three/webgl";
 import { buildSystemModel } from "../../three/system/systemModel";
 import type { SystemPick } from "../../three/system/systemScene";
@@ -22,7 +23,7 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
   /** Picking a fleet closes the view so the fleet can be ordered on the map; a shift-click (`additive`) adds it to the selection. */
   onSelectFleet: (id: string, additive: boolean) => void;
 }) {
-  const { session, view, readOnly } = useGame();
+  const { session, view, me, readOnly } = useGame();
   const reduced = useReducedMotion();
   const model = useMemo(() => buildSystemModel(view, starId, fleetId, !readOnly), [view, starId, fleetId, readOnly]);
   const [selected, setSelected] = useState<SystemPick | null>(null);
@@ -46,11 +47,14 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
   const picked = planetId ? model.planets.find((p) => p.id === planetId) : undefined;
   const settleable = model.planets.filter((p) => p.settle && !p.settle.blocked);
   const blocked = model.planets.find((p) => p.settle?.blocked)?.settle?.blocked;
+  // Picking one of your own colonies opens its colony controls beside the view.
+  const colonyId = planetId ? view.planets[planetId]?.colonyId : null;
+  const colony = colonyId && view.colonies[colonyId]?.ownerId === me.id ? view.colonies[colonyId] : undefined;
 
   // Portalled to the body, so screen entrance animations (transforms) cannot offset the fixed overlay.
   return createPortal(
     <div className="modal-back system-back" onClick={onClose}>
-      <div className="modal system-modal" role="dialog" aria-label={`${model.name} system`} onClick={(e) => e.stopPropagation()}>
+      <div className={`modal system-modal${colony ? " wide" : ""}`} role="dialog" aria-label={`${model.name} system`} onClick={(e) => e.stopPropagation()}>
         <div className="system-stage">
           {show3d ? (
             <SceneBoundary onError={() => setFailed(true)}>
@@ -88,7 +92,7 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
                 ✚ {picked.settle.outpost ? "Outpost" : "Colonize"}
               </button>
             </div>
-          ) : settleable.length > 0 ? (
+          ) : colony ? null : settleable.length > 0 ? (
             <div className="system-action hint">
               <span>
                 Your colony ship is here: click a planet marked <b>✚</b> to settle it,
@@ -110,14 +114,21 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
         </div>
         <aside className="system-side">
           <button className="system-close" onClick={onClose} aria-label="Close system view" title="Close (Esc)">✕</button>
-          <StarPanel
-            starId={starId}
-            fleetId={fleetId}
-            selectedFleetIds={selectedFleetIds}
-            selectedPlanetId={planetId}
-            onSelectPlanet={(id) => setSelected({ kind: "planet", id })}
-            onSelectFleet={onSelectFleet}
-          />
+          {colony ? (
+            <div className="col system-colony">
+              <button className="small system-back-link" onClick={() => setSelected(null)}>← {model.name} system</button>
+              <ColonyDetail key={colony.id} colony={colony} />
+            </div>
+          ) : (
+            <StarPanel
+              starId={starId}
+              fleetId={fleetId}
+              selectedFleetIds={selectedFleetIds}
+              selectedPlanetId={planetId}
+              onSelectPlanet={(id) => setSelected({ kind: "planet", id })}
+              onSelectFleet={onSelectFleet}
+            />
+          )}
         </aside>
       </div>
     </div>,
