@@ -1,4 +1,4 @@
-import { TECH_LEVELS } from "./data/galaxy.js";
+import { STARTING_SHIPS, STARTING_STATION, TECH_LEVELS } from "./data/galaxy.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import { gravityOf, type Minerals, type PlanetSize, type PlanetType } from "./data/planets.js";
 import { RACES, getRace, hasTrait } from "./data/races.js";
@@ -40,7 +40,7 @@ export interface NewGameOptions {
 
 export const HOMEWORLD_POP = 8;
 export const STARTING_BC = 50;
-export const HOMEWORLD_BUILDINGS = TECH_LEVELS.average.buildings;
+export const HOMEWORLD_BUILDINGS = [STARTING_STATION, ...TECH_LEVELS.average.buildings];
 
 export function newGame(opts: NewGameOptions): GameState {
   const seed = String(opts.seed);
@@ -165,13 +165,13 @@ export function newGame(opts: NewGameOptions): GameState {
       id: newId("c"), planetId: hw.id, ownerId: i, raceId, name: home.name, outpost: false,
       farmers: 0, workers: HOMEWORLD_POP, scientists: 0, growthK: 0,
       // Unified governments neither have nor need a capital.
-      buildings: [...(needsCapitol ? ["capitol"] : []), ...level.buildings], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
+      buildings: [...(needsCapitol ? ["capitol"] : []), STARTING_STATION, ...level.buildings], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
     };
     hw.colonyId = colony.id;
     state.colonies[colony.id] = colony;
     assignJobsForFood(state, colony);
 
-    for (const s of level.ships) {
+    for (const s of STARTING_SHIPS) {
       const f: Fleet = {
         id: newId("f"), ownerId: i, x: home.x, y: home.y, starId: home.id, destStarId: null,
         ships: [{ designId: s.designId, count: s.count }], stance: "defend", name: s.name,
