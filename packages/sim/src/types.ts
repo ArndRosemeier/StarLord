@@ -149,6 +149,12 @@ export interface ShipStack {
   count: number;
   /** Crew experience the stack shares; missing means a green crew. */
   xp?: number;
+  /**
+   * Hit points (armor, then structure) each damaged ship of the stack has
+   * lost, one entry per damaged ship; the rest are intact. Damage stays until
+   * the ship is repaired.
+   */
+  damage?: number[];
 }
 
 export type FleetStance = "defend" | "attack";
@@ -450,6 +456,9 @@ export interface CombatShipSnapshot {
   /** Damage layers, when the combat model tracks them separately. maxHits is their sum. */
   maxArmor?: number;
   maxStructure?: number;
+  /** Armor and structure at the start when the unit came in already damaged. */
+  armor?: number;
+  structure?: number;
   /** Shield points per facing at the start of the battle. */
   maxShield?: number;
 }

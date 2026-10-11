@@ -316,6 +316,13 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li>Armor-piercing and shield-piercing weapons skip part of this, and some specials change it further.</li>
         <li>Repair units fix armor, structure and systems every round.</li>
       </Ul>
+      <h3>Damage and repair</h3>
+      <P>
+        Armor and structure damage stays on a ship after the battle; the fleet panel counts the damaged ships. A ship
+        that spends a turn in orbit at a system where you have a colony or outpost is repaired completely; in deep space
+        or at foreign systems it stays damaged. Advanced Damage Control, a cybernetic race or an Engineer captain repair every ship fully after
+        each battle, and an Automated Repair Unit does the same for its own ship.
+      </P>
       <h3>Crews</h3>
       <P>
         Every ship's crew gains {CREW.xpPerTurn} experience a turn, plus the best Instructor's bonus, and more while in

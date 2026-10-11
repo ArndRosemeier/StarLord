@@ -118,3 +118,13 @@ export const PLANET_WEAPON_SPACE = 300;
 
 /** Artemis System Net mines: chance per size class to strike an attacking ship, and damage per size class. */
 export const ARTEMIS = { chancePerSize: 0.2, damagePerSize: 100 } as const;
+
+/**
+ * Ship damage stays between battles. Advanced Damage Control (and a cybernetic
+ * race, an Engineer captain or an Automated Repair Unit) repairs it all after a
+ * battle; otherwise ships are repaired once they spend a turn at a system with
+ * one of their owner's colonies (repair.ts).
+ */
+export const REPAIR = {
+  fullRepairTech: "advancedDamageControl",
+} as const;
