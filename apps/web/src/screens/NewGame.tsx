@@ -37,6 +37,7 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
   const [galaxyAge, setGalaxyAge] = useState<GalaxyAge>("average");
   const [techLevel, setTechLevel] = useState<TechLevel>("average");
   const [randomEvents, setRandomEvents] = useState(true);
+  const [shipInitiative, setShipInitiative] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saves, setSaves] = useState(listSaves);
   const [customSpecs, setCustomSpecs] = useState<CustomRaceSpec[]>(loadCustomRaces);
@@ -59,7 +60,7 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
     const races = spectate ? shuffled(RACES.map((r) => r.id)).slice(0, opponents + 1) : [raceId, ...others];
     const customRaces = !spectate && chosenCustom ? [chosenCustom.spec] : [];
     onStart(GameSession.create({
-      seed, galaxySize: galaxy, races, maxTurns, monsters, raiders, council, customRaces, difficulty, galaxyAge, techLevel, randomEvents,
+      seed, galaxySize: galaxy, races, maxTurns, monsters, raiders, council, customRaces, difficulty, galaxyAge, techLevel, randomEvents, shipInitiative,
     }, spectate ? null : 0));
   };
 
@@ -155,6 +156,9 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
               <label><input type="checkbox" checked={raiders} onChange={(e) => setRaiders(e.target.checked)} /> Raiders</label>
               <label><input type="checkbox" checked={council} onChange={(e) => setCouncil(e.target.checked)} /> Galactic council</label>
               <label><input type="checkbox" checked={randomEvents} onChange={(e) => setRandomEvents(e.target.checked)} /> Random events</label>
+              <label title="In battle, every ship of both sides acts in order of combat speed plus beam attack / 10, instead of the attacker's whole side first">
+                <input type="checkbox" checked={shipInitiative} onChange={(e) => setShipInitiative(e.target.checked)} /> Ship initiative
+              </label>
             </div>
             <div className="row">
               <label>Difficulty <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as Difficulty)}>

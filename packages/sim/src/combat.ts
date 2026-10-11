@@ -635,11 +635,19 @@ class Battle {
       if (this.round === 0) this.mines();
       this.startRound();
       let acted = false;
-      for (const side of order) {
-        // Units act in their fixed order.
-        const mine = units.filter((u) => u.side === side && active(u));
-        for (const u of mine) if (this.act(u)) acted = true;
-        if (this.moveProjectiles(side)) acted = true;
+      if (state.settings.shipInitiative) {
+        // Ship initiative: everyone in one list, fastest and best-aimed first (combat speed + beam attack / 10).
+        const initiative = (u: Unit) => this.currentSpeed(u) + this.attackOf(u, u) / 10;
+        const all = units.filter((u) => active(u)).sort((a, b) => initiative(b) - initiative(a));
+        for (const u of all) if (active(u) && this.act(u)) acted = true;
+        for (const side of order) if (this.moveProjectiles(side)) acted = true;
+      } else {
+        for (const side of order) {
+          // Units act in their fixed order.
+          const mine = units.filter((u) => u.side === side && active(u));
+          for (const u of mine) if (this.act(u)) acted = true;
+          if (this.moveProjectiles(side)) acted = true;
+        }
       }
       // Time Warp Facilitators give their ships an extra turn once both sides have moved.
       for (const side of order) {

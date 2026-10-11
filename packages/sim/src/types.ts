@@ -31,6 +31,12 @@ export interface GameSettings {
   techLevel?: TechLevel;
   /** Random events (disasters, windfalls, invading monsters). Missing means on. */
   randomEvents?: boolean;
+  /**
+   * The original's "ship initiative" option: in battle every unit of both
+   * sides acts in order of combat speed + beam attack / 10, instead of the
+   * attacker's whole side first. Missing means off.
+   */
+  shipInitiative?: boolean;
 }
 
 export type Difficulty = "tutor" | "easy" | "average" | "hard" | "impossible";

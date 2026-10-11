@@ -34,6 +34,7 @@ export interface NewGameOptions {
   galaxyAge?: GalaxyAge;
   techLevel?: TechLevel;
   randomEvents?: boolean;
+  shipInitiative?: boolean;
   /** Player-built races; their ids (from buildCustomRace) may appear in `races`. */
   customRaces?: CustomRaceSpec[];
 }
@@ -67,6 +68,7 @@ export function newGame(opts: NewGameOptions): GameState {
     techLevel: opts.techLevel ?? "average",
     randomEvents: opts.randomEvents ?? true,
   };
+  if (opts.shipInitiative) settings.shipInitiative = true;
   if (customRaces.length > 0) settings.customRaces = customRaces;
   const level = TECH_LEVELS[settings.techLevel!];
 

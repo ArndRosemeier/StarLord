@@ -318,3 +318,20 @@ describe("revolts", () => {
     expect(revoltFight(ctx, c, 3)).toEqual({ won: true, killed: 0 });
   });
 });
+
+describe("ship initiative option", () => {
+  it("still fights a deterministic battle with every unit in one initiative list", () => {
+    const s = newGame({ seed: "ini", races: ["terran", "felhari"], monsters: false, raiders: false, council: false, shipInitiative: true });
+    s.relations["0-1"] = { status: "war", trade: false, research: false, since: 1 };
+    const star = s.players[1]!.homeStarId;
+    const st = s.galaxy.stars.find((x) => x.id === star)!;
+    const a: Fleet = { id: "ia", ownerId: 0, x: st.x, y: st.y, starId: star, destStarId: null, ships: [{ designId: "frigate", count: 10 }], stance: "attack", name: "A" };
+    const b: Fleet = { id: "ib", ownerId: 1, x: st.x, y: st.y, starId: star, destStarId: null, ships: [{ designId: "frigate", count: 1 }], stance: "defend", name: "B" };
+    s.fleets[a.id] = a;
+    s.fleets[b.id] = b;
+    const run = () => resolveCombat(s, new Rng({ s: 9 }), star, { ownerId: 0, fleets: [a], attacksPlanet: true }, { ownerId: 1, fleets: [b], attacksPlanet: false }, "r");
+    expect(s.settings.shipInitiative).toBe(true);
+    expect(run()).toEqual(run());
+    expect(run().report.rounds.length).toBeGreaterThan(0);
+  });
+});
