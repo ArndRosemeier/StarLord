@@ -1,5 +1,5 @@
 import {
-  ARTIFACTS_RESEARCH, CLIMATES, INDUSTRY_PER_WORKER, NATIVE_FOOD_BONUS, NATIVES_FRACTION, POLLUTION_TOLERANCE, SIZE_POP_BASE,
+  ARTIFACTS_RESEARCH, ARTIFACTS_SECOND_TECH_CHANCE, CLIMATES, INDUSTRY_PER_WORKER, NATIVE_FOOD_BONUS, NATIVES_POP, POLLUTION_TOLERANCE, SIZE_POP_BASE,
   SPECIAL_INCOME, SPLINTER_POP, TERRAFORM_STEP, climatePopulation, colonyMoraleParts, colonyOutput, getRace, government,
   gravityMultiplier, ADVANCED_START, CLIMATE_TABLE_BY_AGE, CREW, FIRST_FIELDS, TIERS_BY_ID, bodyMix, meanPlanets, DIFFICULTIES, DIFFICULTY_ORDER, JEALOUSY, GOVERNMENTS, PICK_OPTIONS, STAR_COLORS_BY_AGE, TAX_BC_PER_INDUSTRY,
   BUILDINGS_BY_ID, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
@@ -64,15 +64,15 @@ export function specialTip(planet: Planet): TipCard | null {
     case "gems": return { title: "Gem deposits", kind: "Special", text: [`+${SPECIAL_INCOME.gems} BC a turn for a populated colony here, raised by income bonuses.`] };
     case "artifacts": return {
       title: "Ancient artifacts", kind: "Special",
-      text: [`+${ARTIFACTS_RESEARCH} research per scientist here. The first settlers also get an instant breakthrough in the cheapest open research field.`],
+      text: [`+${ARTIFACTS_RESEARCH} research per scientist here. The first empire to explore the system learns a random technology from its open research fields (${pct(ARTIFACTS_SECOND_TECH_CHANCE)} chance of two).`],
     };
     case "natives": return {
       title: "Natives", kind: "Special",
-      text: [`About ${pct(NATIVES_FRACTION)} of the planet's population lives here already. Colonize it and they join as farmers growing ${NATIVE_FOOD_BONUS} extra food each; they pay no tax and never grow.`],
+      text: [`${NATIVES_POP} population of natives live here. Colonize the planet and they join as farmers growing ${NATIVE_FOOD_BONUS} food each on top of the land's plain rate (before morale and other modifiers); they pay no tax and never grow.`],
     };
     case "splinter": return {
       title: "Splinter colony", kind: "Special",
-      text: [`Long-lost kin of the first empire to explore here: ${SPLINTER_POP[0]} to ${SPLINTER_POP[1]} population join that empire as a free colony.`],
+      text: [`Long-lost kin of the first empire to explore here: ${SPLINTER_POP} population (fewer if the planet holds fewer of them) join that empire as a free colony.`],
     };
     default: return null;
   }
@@ -120,7 +120,7 @@ export function governmentTip(id: keyof typeof GOVERNMENTS): TipCard {
       ["Morale", g.noMorale ? "none: never rises or falls" : g.morale ? `${signed(g.morale)}%` : "normal"],
       ["Without barracks", g.ungarrisonedPenalty ? `−${g.ungarrisonedPenalty}% morale` : "no penalty"],
       ["Capitol lost", g.capitalLossMorale ? `−${g.capitalLossMorale}% morale everywhere` : "no penalty"],
-      ["Assimilating conquests", g.assimilatesInstantly ? "instant" : `${g.assimilationTurns} turns per unit`],
+      ["Assimilating conquests", g.assimilatesInstantly ? "instant" : `${g.assimilationTurns} turns per unit (charismatic ½, repulsive ×2)`],
       ["Spy defense", signed(g.security * 10)],
     ],
     text: g.advanced ? [`Researching its advanced form upgrades it to ${GOVERNMENTS[g.advanced].name}.`] : undefined,

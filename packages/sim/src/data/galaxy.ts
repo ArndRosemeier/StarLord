@@ -173,15 +173,20 @@ export const MAX_LAIRS = 20;
 /** Tries to find a lair spot at least sqrt((W^2 + H^2) / (2 k)) parsecs from the other lairs, for k lairs. */
 export const LAIR_PLACEMENT_TRIES = 250;
 
-/** One-time BC found by the first explorer. The original gives no amounts; these are ours. */
-export const CACHE_BC: [number, number] = [75, 150];
-export const DEBRIS_BC: [number, number] = [25, 75];
-/** Population of a splinter colony when found. */
-export const SPLINTER_POP: [number, number] = [2, 4];
-/** Native population as a fraction of the planet's maximum for a normal race, at least 2. */
-export const NATIVES_FRACTION = 0.5;
-/** Extra food each native farmer grows on top of the normal farming rate. */
+/** One-time BC the first explorer finds in a pirate cache or in ship debris (the original's fixed amounts). */
+export const CACHE_BC = 100;
+export const DEBRIS_BC = 50;
+/** Population of a splinter colony when found: this many, or the planet's maximum for the finder if lower. */
+export const SPLINTER_POP = 3;
+/** Native population units that join whoever colonizes their planet. */
+export const NATIVES_POP = 3;
+/** Food each native farmer grows on top of the plain land rate, before morale and other modifiers. */
 export const NATIVE_FOOD_BONUS = 2;
+/**
+ * The first empire to explore a system with ancient artifacts learns one
+ * random technology from its open fields, or two with this chance.
+ */
+export const ARTIFACTS_SECOND_TECH_CHANCE = 0.25;
 
 /** Starting civilization. */
 export interface TechLevelDef {

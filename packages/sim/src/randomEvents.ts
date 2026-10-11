@@ -8,7 +8,7 @@ import { newId, type TurnContext } from "./context.js";
 import { findDesign } from "./designs.js";
 import { relation } from "./diplomacy.js";
 import { REASON, relationEvent } from "./relations.js";
-import { colonyOutput, destructibleBuildings, population } from "./economy.js";
+import { colonyOutput, destructibleBuildings, population, systemFrozen } from "./economy.js";
 
 import { grantTech } from "./empire.js";
 import { blockedByBlackHole, distance } from "./galaxy.js";
@@ -495,7 +495,7 @@ const HANDLERS: Record<EventId, Handler> = {
     const star = randomColonySystem(ctx, p!);
     if (!star || starBusy(ctx.state, star)) return false;
     addEvent(ctx.state, { kind: "timeSpaceAnomaly", playerId: p!.id, starId: star, until: lastingUntil(ctx.state) });
-    news(ctx, p!.id, `A time-space anomaly engulfed the ${starName(ctx.state, star)} system: nothing can be built or fought there until it passes.`, star);
+    news(ctx, p!.id, `A time-space anomaly engulfed the ${starName(ctx.state, star)} system: its colonies stand still (no food, industry, research, income, upkeep or growth) and nobody can fight there until it passes.`, star);
     return true;
   },
   warpBeast(ctx, p) {
@@ -869,10 +869,7 @@ export function monsterDemands(state: GameState, playerId: PlayerId): ActiveEven
   );
 }
 
-/** A time-space anomaly stops building and fighting in a system. */
-export function systemFrozen(state: GameState, starId: Id | null | undefined): boolean {
-  return !!starId && (state.activeEvents ?? []).some((e) => e.kind === "timeSpaceAnomaly" && e.starId === starId);
-}
+export { systemFrozen };
 
 /** Pirates prey on an empire: it has a colony in their system. */
 export function piratesActive(state: GameState, playerId: PlayerId): boolean {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeOutput, newGame, newUnitJob, type Colony } from "@starlord/sim";
+import { Rng, computeOutput, newColonistJob, newGame, seedRng, type Colony, type NewColonistContext } from "@starlord/sim";
 
 describe("start conditions", () => {
   for (const techLevel of ["preWarp", "average", "advanced"] as const) {
@@ -33,9 +33,30 @@ describe("default jobs", () => {
     }
   });
 
-  it("grown units keep industry and research even", () => {
-    const c = { workers: 3, scientists: 3 } as Colony;
-    expect(newUnitJob(c)).toBe("workers");
-    expect(newUnitJob({ ...c, workers: 4 })).toBe("scientists");
+  const fed: NewColonistContext = { canFarm: true, foodNet: 2, foodNeed: 1, empireFoodNet: 3, industry: 10, upkeepAfter: 0 };
+  const rng = () => new Rng(seedRng("jobs"));
+
+  it("a newcomer farms when the colony or the empire would go hungry", () => {
+    const c = { farmers: 2, workers: 3, scientists: 3 } as Colony;
+    expect(newColonistJob(c, { ...fed, foodNet: 0.5 }, rng())).toBe("farmers");
+    expect(newColonistJob(c, { ...fed, empireFoodNet: -1 }, rng())).toBe("farmers");
+    expect(newColonistJob(c, { ...fed, empireFoodNet: 0 }, rng())).toBe("farmers");
+    // Where nothing grows, food never decides.
+    expect(newColonistJob(c, { ...fed, canFarm: false, foodNet: -3 }, rng())).not.toBe("farmers");
+  });
+
+  it("a newcomer works when industry can't cover cybernetic or android upkeep", () => {
+    const c = { farmers: 2, workers: 0, scientists: 5 } as Colony;
+    expect(newColonistJob(c, { ...fed, industry: 2, upkeepAfter: 3 }, rng())).toBe("workers");
+  });
+
+  it("otherwise newcomers follow the current mix of workers and scientists", () => {
+    const r = rng();
+    const count = { workers: 0, scientists: 0, farmers: 0 };
+    for (let i = 0; i < 4000; i++) count[newColonistJob({ farmers: 2, workers: 1, scientists: 3 } as Colony, fed, r)]++;
+    expect(count.farmers).toBe(0);
+    expect(count.scientists / 4000).toBeGreaterThan(0.7);
+    expect(count.scientists / 4000).toBeLessThan(0.8);
+    expect(newColonistJob({ farmers: 4, workers: 0, scientists: 0 } as Colony, fed, rng())).toBe("workers");
   });
 });

@@ -1,5 +1,6 @@
 import { DEFAULT_RESEARCH_SHARE } from "./data/economy.js";
 import { computeOutput, population } from "./economy.js";
+import type { Rng } from "./rng.js";
 import type { Colony, GameState } from "./types.js";
 
 /**
@@ -59,10 +60,53 @@ export function assignDefaultJobs(state: GameState, colony: Colony): void {
   colony.workers = rest - colony.scientists;
 }
 
-/** The job a newly grown non-farming unit takes: whichever of industry and research is behind the default split. */
-export function newUnitJob(colony: Colony): "workers" | "scientists" {
-  const after = colony.workers + colony.scientists + 1;
-  return colony.scientists < Math.floor(after * DEFAULT_RESEARCH_SHARE) ? "scientists" : "workers";
+/** What the colony looks like when a new colonist arrives, for `newColonistJob`. */
+export interface NewColonistContext {
+  /** Whether farmers grow anything here. */
+  canFarm: boolean;
+  /** The colony's own food surplus (negative when short), before the newcomer eats. */
+  foodNet: number;
+  /** Food the newcomer will eat. */
+  foodNeed: number;
+  /** Food surplus of all the empire's colonies outside blockades. */
+  empireFoodNet: number;
+  /** Industry left after pollution, and the cybernetic and android upkeep it must cover once the newcomer arrives. */
+  industry: number;
+  upkeepAfter: number;
+}
+
+/**
+ * The job a newly grown colonist takes, as in the original: a farmer if the
+ * colony can farm and would be short of food with the newcomer, or the empire
+ * as a whole has no food to spare; a worker if industry can't cover the
+ * colony's cybernetic and android upkeep; otherwise a worker or scientist at
+ * random, weighted by how many hold each job now (a worker if there are none).
+ */
+export function newColonistJob(colony: Colony, ctx: NewColonistContext, rng: Rng): "farmers" | "workers" | "scientists" {
+  if (ctx.canFarm) {
+    if (ctx.foodNet - ctx.foodNeed < -1e-9 || ctx.empireFoodNet < -1e-9) return "farmers";
+    if (Math.abs(ctx.empireFoodNet) <= 1e-9 && ctx.foodNeed > 0) return "farmers";
+  }
+  if (ctx.industry < ctx.upkeepAfter) return "workers";
+  const a = colony.androids;
+  const workers = colony.workers + (a?.workers ?? 0);
+  const scientists = colony.scientists + (a?.scientists ?? 0);
+  if (workers + scientists === 0) return "workers";
+  return rng.int(1, workers + scientists) <= workers ? "workers" : "scientists";
+}
+
+/**
+ * Removes one colonist who starved: a random worker or scientist, a settler
+ * farmer only when nobody else is left, natives last (as in the original,
+ * where non-farmers die first).
+ */
+export function starveOne(colony: Colony, rng: Rng): void {
+  const others = colony.workers + colony.scientists;
+  if (others > 0) {
+    if (rng.int(1, others) <= colony.workers) colony.workers--;
+    else colony.scientists--;
+  } else removePopulation(colony, 1);
+  if (colony.aliens !== undefined) colony.aliens = Math.min(colony.aliens, population(colony));
 }
 
 /** Shuts down androids that lack industry upkeep: workers first, then scientists, then farmers. */

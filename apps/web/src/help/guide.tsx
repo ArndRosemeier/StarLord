@@ -6,7 +6,7 @@ import {
   BOARDING, DEPLOY, EXPLOSION, HULLS_BY_ID, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE, STATION_ARMS, ANTI_MISSILE, BOMBARD_ROUNDS,
   COMBAT_BOMB_RANGE, CRAFT, DAMAGE, PLANET_POPULATION_HP,
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES, EVENT_NUMBERS,
-  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, GUARDIAN_SCORE,
+  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, GUARDIAN_SCORE, BANKRUPTCY,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
   SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
   TRADE_GOODS_RATE, TRAIT_EFFECTS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, abilityValue, type HeroSkill, type HeroSkillGroup,
@@ -91,7 +91,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li>Bombing and invasions of colonies whose defenses are down (<HelpLink to="guide:invasion" />).</li>
         <li>Colonies produce food, industry, research and BC; queues advance, populations grow, research completes.</li>
         <li>Spies act, diplomatic relations drift, leaders offer their services, the council may vote.</li>
-        <li>Random events, then empires with no colonies or colony ships left are eliminated.</li>
+        <li>Random events, then empires with no populated colonies left are eliminated (outposts and colony ships don't count).</li>
       </ol>
     </>
   ),
@@ -118,7 +118,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>
         Industry, after pollution and taxes, goes into the colony's build queue (up to {MAX_QUEUE} items). A colony
         finishes at most one item per turn; extra production carries into the next. With an empty queue, or with
-        Trade Goods first, production becomes BC at {pct(TRADE_GOODS_RATE)}. Housing turns production into population
+        Trade Goods first, the turn's production becomes BC at {pct(TRADE_GOODS_RATE)}; production already stored stays
+        for the next item. Housing turns production into population
         growth instead. <b>Buy</b> completes the first item for BC: each missing point costs {BUY_PRICE_PER_POINT[0]} BC in the
         item's last half, {BUY_PRICE_PER_POINT[1]} BC from 10% to half done and {BUY_PRICE_PER_POINT[2]} BC below 10%,
         so buying from scratch costs about four times the item. Upgrading a station or planetary shield costs only the
@@ -128,7 +129,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Growth</h3>
       <P>
         Population grows fastest when a colony is half full and stops at its maximum. Each 1,000k of growth adds one
-        population unit; new colonists farm if the colony is short of food, otherwise they work.
+        population unit. A newcomer farms if the colony would be short of food with one more mouth or your empire has
+        no food to spare; works in industry if the colony can't cover its cybernetic or android upkeep; and otherwise
+        joins industry or research at random, in the proportion those jobs already have. A newly founded colony splits
+        its non-farmers evenly between industry and research.
       </P>
       <h3>Morale</h3>
       <P>
@@ -141,8 +145,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Conquered people</h3>
       <P>
-        People on a captured colony are aliens at first and work at half their normal rate. They join your empire one
-        unit at a time: every 8 turns under feudal rule or dictatorship, 4 under democracy, confederation or imperium,
+        People on a captured colony are aliens at first and work at {ASSIMILATION.alienPenalty}% less than normal. They join
+        your empire one unit at a time: every 8 turns under feudal rule or dictatorship, 4 under democracy, confederation or imperium,
         2 under federation, 20 under unification and 15 under galactic unification. An Alien Management Center makes it
         every 2 turns for anyone; charismatic rulers are twice as fast, repulsive ones half as fast, and telepaths
         assimilate them at once, as does anyone taking a feudal colony. Until then aliens may revolt, more often the more
@@ -179,20 +183,22 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Costs</h3>
       <Ul>
         <li>Every building has BC upkeep each turn: a quarter more on radiated and desert worlds, half more on toxic ones.</li>
-        <li>Freighters cost {fmt(FREIGHTERS.upkeepInUse, 1)} BC each for every turn they are carrying something; idle ones are free.</li>
+        <li>Freighters cost {fmt(FREIGHTERS.upkeepInUse, 1)} BC each (rounded down in total) for every turn they are carrying something; idle ones are free.</li>
         <li>Hired leaders draw a salary (<HelpLink to="guide:leaders" />).</li>
         <li>Every command point your ships use over your limit costs {COMMAND_OVERAGE_COST} BC a turn (<HelpLink to="guide:fleets" />).</li>
       </Ul>
       <P>
-        If the treasury goes below zero, buildings are sold off, highest upkeep first, for a quarter of their cost until
-        the books balance.
+        If the treasury goes below zero, buildings are sold off for {pct(BANKRUPTCY.refund)} of their cost until the
+        books balance (computer empires also get their difficulty level in BC per sale): first buildings with upkeep,
+        then any but the Capitol, always the least valuable first. Farms, factories, Biospheres, morale buildings and a
+        colony's only barracks count as more valuable than their cost.
       </P>
       <h3>Food and freighters</h3>
       <P>
         Each population eats 1 food (cybernetic races half, lithovores and androids none). Food doesn't move by itself:
         a Freighter Fleet ({PROJECT_COSTS.freighterFleet} production) adds {FREIGHTERS.perFleet} freighters, and each
         carries {FREIGHTERS.foodPerShip} food a turn from colonies with a surplus to hungry ones. A colony whose need is not
-        met loses {GROWTH.starvationK}k population a turn for each food it lacks, workers and scientists first. Food nobody needs is sold for {fmt(TRAIT_EFFECTS.normalFoodBc, 1)}{" "}
+        met loses {GROWTH.starvationK}k population a turn for each food it lacks; a random worker or scientist dies first, farmers only when nobody else is left. Food nobody needs is sold for {fmt(TRAIT_EFFECTS.normalFoodBc, 1)}{" "}
         BC a unit ({fmt(TRAIT_EFFECTS.traderFoodBc, 1)} for fantastic traders). A blockaded system can neither send nor receive.
       </P>
       <P>
@@ -625,7 +631,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
           <li><b>Windfalls</b>: a donation of {N.donation.base} BC plus {N.donation.step} for every {N.donation.perTurns} turns played; a derelict ship that teaches the beam weapon closest above the strongest any empire has and the best armor any empire has; a breakthrough that completes your current research at once; new mineral deposits ({N.depositSteps} steps richer); a planet's axis shifting to a terran climate; a population boom (+{GROWTH.boomPercent}% growth); a diplomatic marriage (a +{N.relationShift} relation event with an empire you know).</li>
           <li><b>Disasters</b>: an earthquake ((d3 + d2) × (buildings + population) / 10 hits on buildings and colonists); an industrial accident ((d3 + d3) × population / 10 colonists die, plus one hit; tolerant races are spared); depletion (an ultra rich world drops to rich); a computer virus ({N.virus.base} + d{N.virus.die} stored research lost); a ship explosion; an assassination (a −{N.relationShift} relation event); a pirate raid ({N.pirateLootPercent.base + 1} to {N.pirateLootPercent.base + N.pirateLootPercent.die}% of the treasury).</li>
           <li><b>Threats you can fight</b>: a comet ((d{N.cometHp.die} + {N.cometHp.base} + difficulty) × {N.cometHp.mult} hit points, striking in d{N.cometTurns.die} + {N.cometTurns.base} − difficulty turns for (d3 + d3) × (buildings + population) / 10 hits), which every ship in orbit, of any empire, wears down by its hull size (frigate 1 … doom star 6) each turn. Pirates (only against an empire with {N.pirates.minFreighters} or more freighters) take freighters from every empire with a colony in their system and halve its trade, until ships in orbit wear their base down the same way. A plague (−{-GROWTH.plaguePercent}% growth) lasts until the colony's research finds a cure: its research times (d{N.plague.die} + {N.plague.perDifficulty} × difficulty). A supernova threatens a colonised star: unless the system's research adds up to its research when the threat began times the turns given, its colonies die and its worlds turn radiated.</li>
-          <li><b>Hyperspace trouble</b>: flux that stops all ships, a beast that destroys a ship in flight every turn (a new victim each time), unstable wormholes that carry a fleet to its destination at once, and time-space anomalies where nothing can be built or fought. Flux, the beast, anomalies and population booms end with a 1 in {N.lasting.endDie} chance each turn from their {N.lasting.minTurns}th turn on, and always by their {N.lasting.maxTurns}nd. A warp funnel can be drawn but does nothing, as in the original.</li>
+          <li><b>Hyperspace trouble</b>: flux that stops all ships, a beast that destroys a ship in flight every turn (a new victim each time), unstable wormholes that carry a fleet to its destination at once, and time-space anomalies that freeze a system: its colonies make, pay and grow nothing and nobody can fight there. Flux, the beast, anomalies and population booms end with a 1 in {N.lasting.endDie} chance each turn from their {N.lasting.minTurns}th turn on, and always by their {N.lasting.maxTurns}nd. A warp funnel can be drawn but does nothing, as in the original.</li>
           <li><b>Monsters</b> from beyond the rim: one turns a system toxic, one kills every colonist, one blockades, one ravages the population, and one demands BC or pillages the system.</li>
         </Ul>
       </>
@@ -635,7 +641,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
   victory: () => (
     <>
       <Ul>
-        <li><b>Conquest</b>: be the last empire standing. An empire is out when it has no colonies and no colony ships.</li>
+        <li><b>Conquest</b>: be the last empire standing. An empire is out when it has no populated colonies left; outposts and colony ships don't keep it alive.</li>
         <li><b>Council</b>: be elected by the <HelpLink to="guide:council">galactic council</HelpLink>.</li>
         <li><b>Raiders</b>: build a Dimensional Portal and send a fleet from that system to destroy the raiders' home fleet and citadel. Every other empire then capitulates (<HelpLink to="page:monsters" />).</li>
         <li><b>Score</b>: only in games started with a turn limit (off by default; the original has none): when it is reached, the highest score wins. Score counts population, colonies, outposts, techs, industry, research and ships, plus {GUARDIAN_SCORE} for slaying the guardian of Orion.</li>
