@@ -7,6 +7,8 @@ import { useHelp } from "../help/HelpDialog";
 import { HeroScene } from "../title/heroScene";
 import { RaceShowcase } from "../title/RaceShowcase";
 import { NewsTicker } from "../title/NewsTicker";
+import { VERSION } from "../changelog/changelog";
+import { WhatsNew } from "../changelog/WhatsNew";
 
 const KONAMI = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
 
@@ -27,6 +29,7 @@ function usePrefersReducedMotion(): boolean {
 export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: string) => void; onStart: (s: GameSession) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState(false);
+  const [whatsNew, setWhatsNew] = useState(false);
   const [toast, setToast] = useState<{ text: string; id: number } | null>(null);
   const [leaving, setLeaving] = useState(false);
   const openHelp = useHelp();
@@ -116,6 +119,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
             }} />
           </label>
           <button className="title-button" onClick={() => openHelp()}>Encyclopedia</button>
+          <button className="title-button" onClick={() => setWhatsNew(true)}>What's new <small>v{VERSION}</small></button>
           <button className="title-button" onClick={() => setSettings(!settings)}>Sound</button>
           {settings && <div className="panel title-settings"><AudioControls /></div>}
           {error && <div className="bad">{error}</div>}
@@ -123,7 +127,9 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
         <RaceShowcase onPick={newGame} reduced={reduced} />
         {!reduced && <div className="title-hint">Psst: the ships can be clicked. So can empty space.</div>}
       </div>
+      <div className="title-version">v{VERSION}</div>
       <NewsTicker reduced={reduced} />
+      {whatsNew && <WhatsNew onClose={() => setWhatsNew(false)} />}
     </div>
   );
 }
