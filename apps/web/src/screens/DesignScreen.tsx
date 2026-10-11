@@ -7,6 +7,10 @@ import {
 import { useGame } from "../ui/hooks";
 import { fmt, pct, words } from "../ui/format";
 import { ShipModelView, ShipThumb } from "../ui/ShipModel";
+import { Tip, tipText } from "../ui/Tip";
+import {
+  arcTip, armorTip, computerTip, designTip, hullTip, modTip, moduleTip, rackTip, shieldTip, spaceTip, specialTip, statTip, weaponTip,
+} from "./designTips";
 
 export function DesignScreen() {
   const { session, view, me, readOnly } = useGame();
@@ -53,49 +57,67 @@ export function DesignScreen() {
         <div className="row">
           <h2 style={{ margin: 0 }}>Ship designer</h2>
           <span className="spacer" />
-          <button className="small" onClick={() => setDraft(blank())}>New</button>
+          <Tip card={{ title: "New design", text: ["Start over with an empty frigate and your best armor."] }}>
+            <button className="small" onClick={() => setDraft(blank())}>New</button>
+          </Tip>
         </div>
         <div className="blueprint">
           <span className="blueprint-label">Schematic · {draft.name || "unnamed"}</span>
           <ShipModelView className="blueprint-model" hull={draft.hull} color={me.color} />
           <span className="blueprint-hull">{HULLS_BY_ID[draft.hull]?.name} · {words(stats.role)}</span>
         </div>
-        <input type="text" value={draft.name} onChange={(e) => update({ name: e.target.value })} />
+        <Tip block card={{ title: "Design name", text: ["Shown in build lists and fleets. Saving again adds a new Mk number, so older ships keep their design."] }}>
+          <input type="text" value={draft.name} onChange={(e) => update({ name: e.target.value })} style={{ width: "100%" }} />
+        </Tip>
         <div className="row">
           {hulls.map((h) => (
-            <button key={h.id} className={`small${draft.hull === h.id ? " active" : ""}`} onClick={() => update({ hull: h.id as HullSize })}>
-              {h.name} <span className="muted">{h.space}</span>
-            </button>
+            <Tip key={h.id} card={() => hullTip(me, draft, h.id as HullSize)}>
+              <button className={`small${draft.hull === h.id ? " active" : ""}`} onClick={() => update({ hull: h.id as HullSize })}>
+                {h.name} <span className="muted">{h.space}</span>
+              </button>
+            </Tip>
           ))}
         </div>
         <div className="row">
-          <label>Armor <select value={draft.armor} onChange={(e) => update({ armor: e.target.value })}>
-            {armors.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select></label>
-          <label>Shield <select value={draft.shield ?? ""} onChange={(e) => update({ shield: e.target.value || null })}>
-            <option value="">None</option>
-            {shields.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select></label>
-          <label>Computer <select value={draft.computer ?? ""} onChange={(e) => update({ computer: e.target.value || null })}>
-            <option value="">None</option>
-            {computers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select></label>
-          <label>Module <select value={draft.module ?? ""} onChange={(e) => update({ module: (e.target.value || null) as DesignModule | null })}>
-            <option value="">None</option>
-            {modules.map((m) => <option key={m} value={m}>{MODULES[m].name}</option>)}
-          </select></label>
+          <Tip card={() => armorTip(me, draft, draft.armor)}>
+            <label>Armor <select value={draft.armor} onChange={(e) => update({ armor: e.target.value })}>
+              {armors.map((a) => <option key={a.id} value={a.id} title={tipText(armorTip(me, draft, a.id))}>{a.name}</option>)}
+            </select></label>
+          </Tip>
+          <Tip card={() => shieldTip(me, draft, draft.shield)}>
+            <label>Shield <select value={draft.shield ?? ""} onChange={(e) => update({ shield: e.target.value || null })}>
+              <option value="">None</option>
+              {shields.map((s) => <option key={s.id} value={s.id} title={tipText(shieldTip(me, draft, s.id))}>{s.name}</option>)}
+            </select></label>
+          </Tip>
+          <Tip card={() => computerTip(me, draft, draft.computer)}>
+            <label>Computer <select value={draft.computer ?? ""} onChange={(e) => update({ computer: e.target.value || null })}>
+              <option value="">None</option>
+              {computers.map((c) => <option key={c.id} value={c.id} title={tipText(computerTip(me, draft, c.id))}>{c.name}</option>)}
+            </select></label>
+          </Tip>
+          <Tip card={() => moduleTip(me, draft, draft.module)}>
+            <label>Module <select value={draft.module ?? ""} onChange={(e) => update({ module: (e.target.value || null) as DesignModule | null })}>
+              <option value="">None</option>
+              {modules.map((m) => <option key={m} value={m} title={tipText(moduleTip(me, draft, m))}>{MODULES[m].name}</option>)}
+            </select></label>
+          </Tip>
         </div>
 
         <h4>Weapons</h4>
         {draft.weapons.map((w, i) => (
-          <MountRow key={i} player={me} mount={w} onChange={(patch) => editMount(i, patch)} />
+          <MountRow key={i} player={me} draft={draft} mount={w} onChange={(patch) => editMount(i, patch)} />
         ))}
         <div className="row">
-          <select value={addWeapon} onChange={(e) => setAddWeapon(e.target.value)}>
-            <option value="">Add weapon…</option>
-            {weapons.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.damageMin}-{w.damageMax})</option>)}
-          </select>
-          <button className="small" disabled={!addWeapon} onClick={() => { addMount(addWeapon); setAddWeapon(""); }}>Add</button>
+          <Tip card={() => addWeapon ? weaponTip(me, draft, addWeapon) : { title: "Add a weapon", text: ["Pick a weapon you know to add a new mount. Each mount can have its own modifications, arc or missile rack."] }}>
+            <select value={addWeapon} onChange={(e) => setAddWeapon(e.target.value)}>
+              <option value="">Add weapon…</option>
+              {weapons.map((w) => <option key={w.id} value={w.id} title={tipText(weaponTip(me, draft, w.id))}>{w.name} ({w.damageMin}-{w.damageMax})</option>)}
+            </select>
+          </Tip>
+          <Tip card={{ title: "Add mount", text: ["Adds one of the chosen weapon as a new mount. Use + and − on the mount to change how many it holds."] }}>
+            <button className="small" disabled={!addWeapon} onClick={() => { addMount(addWeapon); setAddWeapon(""); }}>Add</button>
+          </Tip>
         </div>
 
         {specials.length > 0 && (
@@ -105,23 +127,29 @@ export function DesignScreen() {
               {specials.map((s) => {
                 const on = draft.specials.includes(s.id);
                 return (
-                  <button key={s.id} className={`small${on ? " active" : ""}`}
-                    onClick={() => update({ specials: on ? draft.specials.filter((x) => x !== s.id) : [...draft.specials, s.id] })}>
-                    {s.name}
-                  </button>
+                  <Tip key={s.id} card={() => specialTip(me, draft, s.id)}>
+                    <button className={`small${on ? " active" : ""}`}
+                      onClick={() => update({ specials: on ? draft.specials.filter((x) => x !== s.id) : [...draft.specials, s.id] })}>
+                      {s.name}
+                    </button>
+                  </Tip>
                 );
               })}
             </div>
           </>
         )}
 
+        <Tip block card={() => spaceTip(stats.spaceUsed, stats.spaceTotal)}>
         <div className="col" style={{ gap: 4 }}>
           <div className="row"><span>Space</span><span className="spacer" /><span className={stats.spaceUsed > stats.spaceTotal ? "bad" : ""}>{fmt(stats.spaceUsed)} / {fmt(stats.spaceTotal)}</span></div>
           <div className="bar"><div style={{ width: `${space}%`, background: stats.spaceUsed > stats.spaceTotal ? "var(--bad)" : "var(--accent)" }} /></div>
         </div>
-        <StatsTable stats={stats} />
+        </Tip>
+        <StatsTable player={me} stats={stats} />
         {error && <div className="bad">{error}</div>}
-        <button className="primary" disabled={readOnly || !!error || !draft.name.trim()} onClick={save}>Save design</button>
+        <Tip block card={{ title: "Save design", text: ["Adds this design to your list so colonies can build it. Existing ships are not changed."], note: error ?? (!draft.name.trim() ? "Give the design a name first." : undefined) }}>
+          <button className="primary" style={{ width: "100%" }} disabled={readOnly || !!error || !draft.name.trim()} onClick={save}>Save design</button>
+        </Tip>
       </div>
 
       <div className="panel col">
@@ -132,6 +160,7 @@ export function DesignScreen() {
           return (
             <div key={d.id} className="row design-row" style={{ opacity: d.obsolete ? 0.5 : 1, borderBottom: "1px solid var(--line)", paddingBottom: 6 }}>
               <ShipThumb hull={d.hull} color={me.color} size={64} />
+              <Tip block card={() => designTip(me, d)}>
               <div style={{ flex: 1 }}>
                 <b>{d.name}</b> <span className="muted">{HULLS_BY_ID[d.hull]?.name} · {words(s.role)}</span>
                 <div className="muted" style={{ fontSize: 12 }}>
@@ -139,10 +168,17 @@ export function DesignScreen() {
                   {!valid && <span className="bad"> · outdated parts</span>}
                 </div>
               </div>
-              <button className="small" onClick={() => setDraft({ ...structuredClone(d), id: "", name: `${d.name}`, obsolete: false })}>Copy</button>
-              <button className="small" disabled={readOnly} onClick={() => session.issue({ type: "obsoleteDesign", designId: d.id, obsolete: !d.obsolete })}>
-                {d.obsolete ? "Restore" : "Obsolete"}
-              </button>
+              </Tip>
+              <Tip card={{ title: "Copy", text: ["Loads this design into the designer so you can change it and save it as a new design."] }}>
+                <button className="small" onClick={() => setDraft({ ...structuredClone(d), id: "", name: `${d.name}`, obsolete: false })}>Copy</button>
+              </Tip>
+              <Tip card={d.obsolete
+                ? { title: "Restore", text: ["Puts this design back in build lists."] }
+                : { title: "Obsolete", text: ["Hides this design from build lists and automation. Ships already built keep flying."] }}>
+                <button className="small" disabled={readOnly} onClick={() => session.issue({ type: "obsoleteDesign", designId: d.id, obsolete: !d.obsolete })}>
+                  {d.obsolete ? "Restore" : "Obsolete"}
+                </button>
+              </Tip>
             </div>
           );
         })}
@@ -151,7 +187,7 @@ export function DesignScreen() {
   );
 }
 
-function MountRow({ player, mount, onChange }: { player: Player; mount: WeaponMount; onChange: (patch: Partial<WeaponMount>) => void }) {
+function MountRow({ player, draft, mount, onChange }: { player: Player; draft: ShipDesign; mount: WeaponMount; onChange: (patch: Partial<WeaponMount>) => void }) {
   const def = WEAPONS.find((x) => x.id === mount.weaponId);
   if (!def) return null;
   const level = refinement(player, def.requires);
@@ -166,32 +202,44 @@ function MountRow({ player, mount, onChange }: { player: Player; mount: WeaponMo
   return (
     <div className="col" style={{ gap: 2, borderBottom: "1px solid var(--line)", paddingBottom: 4 }}>
       <div className="row">
-        <span style={{ flex: 1 }}>
-          {def.name} <small className="muted">{def.damageMin}-{def.damageMax} dmg, {words(def.kind)} · {fmt(unit.space)} space, {fmt(unit.cost)} BC each</small>
-        </span>
-        <button className="small" onClick={() => onChange({ count: mount.count - 1 })}>−</button>
+        <Tip card={() => weaponTip(player, draft, mount.weaponId, mount)}>
+          <span style={{ flex: 1 }}>
+            {def.name} <small className="muted">{def.damageMin}-{def.damageMax} dmg, {words(def.kind)} · {fmt(unit.space)} space, {fmt(unit.cost)} BC each</small>
+          </span>
+        </Tip>
+        <span className="spacer" />
+        <Tip card={{ title: "Remove one", text: [mount.count === 1 ? "Removes this mount." : "One fewer weapon on this mount."] }}>
+          <button className="small" onClick={() => onChange({ count: mount.count - 1 })}>−</button>
+        </Tip>
         <b style={{ width: 24, textAlign: "center" }}>{mount.count}</b>
-        <button className="small" onClick={() => onChange({ count: mount.count + 1 })}>+</button>
+        <Tip card={{ title: "Add one", text: [`One more ${def.name}: ${fmt(unit.space)} space and ${fmt(unit.cost)} BC.`] }}>
+          <button className="small" onClick={() => onChange({ count: mount.count + 1 })}>+</button>
+        </Tip>
       </div>
       <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
         {def.kind === "beam" && (
-          <select value={mount.arc ?? "forward"} onChange={(e) => onChange({ arc: e.target.value as FiringArc })}>
-            {(Object.keys(ARCS) as FiringArc[]).map((a) => <option key={a} value={a}>{ARCS[a].name}</option>)}
-          </select>
+          <Tip card={() => arcTip(mount.arc ?? "forward")}>
+            <select value={mount.arc ?? "forward"} onChange={(e) => onChange({ arc: e.target.value as FiringArc })}>
+              {(Object.keys(ARCS) as FiringArc[]).map((a) => <option key={a} value={a} title={tipText(arcTip(a))}>{ARCS[a].name}</option>)}
+            </select>
+          </Tip>
         )}
         {def.kind === "missile" && (
-          <select value={mount.ammo ?? DEFAULT_MISSILE_SHOTS} onChange={(e) => onChange({ ammo: Number(e.target.value) })}>
-            {MISSILE_RACKS.map((r) => <option key={r.shots} value={r.shots}>{r.shots} shots</option>)}
-          </select>
+          <Tip card={() => rackTip(player, mount, mount.ammo ?? DEFAULT_MISSILE_SHOTS)}>
+            <select value={mount.ammo ?? DEFAULT_MISSILE_SHOTS} onChange={(e) => onChange({ ammo: Number(e.target.value) })}>
+              {MISSILE_RACKS.map((r) => <option key={r.shots} value={r.shots} title={tipText(rackTip(player, mount, r.shots))}>{r.shots} shots</option>)}
+            </select>
+          </Tip>
         )}
         {WEAPON_MODS.filter((m) => def.mods.includes(m.id)).map((m) => {
           const ready = level >= m.refinement && (!m.requires || knows(player, m.requires));
           return (
-            <button key={m.id} className={`small${mods.has(m.id) ? " active" : ""}`} disabled={!ready && !mods.has(m.id)}
-              title={ready ? m.name : `${m.name}: needs ${m.refinement} refinement level${m.refinement === 1 ? "" : "s"} beyond this weapon's tech`}
-              onClick={() => toggle(m.id)}>
-              {m.abbr}
-            </button>
+            <Tip key={m.id} card={() => modTip(player, mount, m.id)}>
+              <button className={`small${mods.has(m.id) ? " active" : ""}`} disabled={!ready && !mods.has(m.id)}
+                onClick={() => toggle(m.id)}>
+                {m.abbr}
+              </button>
+            </Tip>
           );
         })}
       </div>
@@ -199,7 +247,7 @@ function MountRow({ player, mount, onChange }: { player: Player; mount: WeaponMo
   );
 }
 
-function StatsTable({ stats }: { stats: ReturnType<typeof designStats> }) {
+function StatsTable({ player, stats }: { player: Player; stats: ReturnType<typeof designStats> }) {
   const rows: [string, string][] = [
     ["Cost", fmt(stats.cost)],
     ["Armor", fmt(stats.armor)],
@@ -218,8 +266,9 @@ function StatsTable({ stats }: { stats: ReturnType<typeof designStats> }) {
   return (
     <table>
       <tbody>
-        {rows.map(([k, v]) => <tr key={k}><td className="muted">{k}</td><td>{v}</td></tr>)}
-        <tr><td className="muted">Role</td><td>{words(stats.role)}</td></tr>
+        {[...rows, ["Role", words(stats.role)] as [string, string]].map(([k, v]) => (
+          <tr key={k}><td className="muted"><Tip card={() => statTip(player, k)}><span>{k}</span></Tip></td><td>{v}</td></tr>
+        ))}
       </tbody>
     </table>
   );
