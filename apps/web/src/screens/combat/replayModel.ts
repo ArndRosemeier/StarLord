@@ -147,8 +147,7 @@ function hullFromHits(maxHits: number): HullSize {
 }
 
 function npcHull(designId: string): HullSize | null {
-  const monster = MONSTER_DESIGNS.find((d) => d.id === designId);
-  return monster?.fixed ? hullFromHits(monster.fixed.hits) : null;
+  return MONSTER_DESIGNS.find((d) => d.id === designId)?.hull ?? null;
 }
 
 function planetTypeOf(s: UnitSnapshot, report: CombatReport, view: PlayerView): PlanetType | null {

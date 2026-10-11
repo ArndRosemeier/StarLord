@@ -33,23 +33,23 @@ export interface HeroSkillDef {
 
 export const HERO_SKILLS: Record<HeroSkill, HeroSkillDef> = {
   assassin: { name: "Assassin", group: "common", mult: [30, 45], weight: [2, 4], text: "{v}% chance each turn to kill an enemy spy in your empire." },
-  commando: { name: "Commando", group: "common", mult: [20, 30], weight: [3, 6], text: "+{v} ground combat for all your troops in the same system, on planets and ships." },
+  commando: { name: "Commando", group: "common", mult: [20, 30], weight: [3, 6], text: "+{v} for marines fighting boarding actions. A captain gives troops landing from orbit more (5 a level, 7.5 improved); an administrator gives the system's defenders this much." },
   diplomat: { name: "Diplomat", group: "common", mult: [100, 150], weight: [1, 2], text: "+{v} diplomatic points in every negotiation." },
   famous: { name: "Famous", group: "common", mult: [600, 900], weight: [2, 4], text: "Other leaders apply more often and cost {v} BC less to hire." },
-  megawealth: { name: "Megawealth", group: "common", mult: [100, 100], weight: [1, 2], text: "Needs no upkeep and pays {v} BC into the treasury each turn." },
+  megawealth: { name: "Megawealth", group: "common", mult: [100, 100], weight: [1, 2], text: "Needs no upkeep and pays {v} BC into the treasury each turn, whatever the leader's level." },
   operations: { name: "Operations", group: "common", mult: [20, 30], weight: [2, 4], text: "+{v} command points." },
   researcher: { name: "Researcher", group: "common", mult: [50, 75], weight: [2, 4], text: "+{v} research points each turn." },
   spyMaster: { name: "Spy Master", group: "common", mult: [20, 30], weight: [3, 6], text: "+{v} on the rolls of all your spies abroad." },
   telepath: { name: "Telepath", group: "common", mult: [20, 30], weight: [2, 4], text: "+{v} on the rolls of all your spies defending at home." },
   trader: { name: "Trader", group: "common", mult: [100, 150], weight: [2, 4], text: "+{v}% income from trade treaties." },
   engineer: { name: "Engineer", group: "ship", mult: [20, 30], weight: [3, 6], text: "Shields recharge {v}% faster; repairs all damage after a battle." },
-  fighterPilot: { name: "Fighter Pilot", group: "ship", mult: [50, 75], weight: [3, 6], text: "+{v} attack and defense for the fleet's fighters." },
-  galacticLore: { name: "Galactic Lore", group: "ship", mult: [50, 75], weight: [2, 4], text: "Knows every star system; +{v} attack and defense against monsters and raiders." },
-  helmsman: { name: "Helmsman", group: "ship", mult: [50, 75], weight: [4, 8], text: "+{v} beam defense for the fleet." },
+  fighterPilot: { name: "Fighter Pilot", group: "ship", mult: [50, 75], weight: [3, 6], text: "+{v} attack and defense for your fighters in battle (the best officer in the battle counts)." },
+  galacticLore: { name: "Galactic Lore", group: "ship", mult: [50, 75], weight: [2, 4], text: "Knows every star system; +{v} beam attack for every ship in battles against space monsters (the best officer in the battle counts)." },
+  helmsman: { name: "Helmsman", group: "ship", mult: [50, 75], weight: [4, 8], text: "+{v} beam defense and half that against missiles for every ship and station on your side in battle (the best officer in the battle counts)." },
   navigator: { name: "Navigator", group: "ship", mult: [10, 15], halfLevels: true, weight: [1, 2], text: "Fleet moves +{v} parsecs per turn and ignores nebulae." },
-  ordnance: { name: "Ordnance", group: "ship", mult: [50, 75], weight: [3, 6], text: "+{v}% maximum weapon damage for the fleet." },
+  ordnance: { name: "Ordnance", group: "ship", mult: [50, 75], weight: [3, 6], text: "+{v}% damage for every weapon on your side in battle: beams, missiles, torpedoes and fighters (the best officer in the battle counts)." },
   security: { name: "Security", group: "ship", mult: [20, 30], weight: [1, 2], text: "+{v} for the fleet's marines against boarders." },
-  weaponry: { name: "Weaponry", group: "ship", mult: [50, 75], weight: [3, 6], text: "+{v} beam attack for the fleet." },
+  weaponry: { name: "Weaponry", group: "ship", mult: [50, 75], weight: [3, 6], text: "+{v} beam attack for every ship and station on your side in battle (the best officer in the battle counts)." },
   environmentalist: { name: "Environmentalist", group: "colony", mult: [100, 150], weight: [2, 4], text: "-{v}% pollution in the system." },
   farmingLeader: { name: "Farming Leader", group: "colony", mult: [100, 150], weight: [3, 6], text: "+{v}% food in the system." },
   financialLeader: { name: "Financial Leader", group: "colony", mult: [100, 150], weight: [3, 6], text: "+{v}% BC income in the system." },
@@ -58,16 +58,29 @@ export const HERO_SKILLS: Record<HeroSkill, HeroSkillDef> = {
   medicine: { name: "Medicine", group: "colony", mult: [100, 150], weight: [2, 4], text: "+{v}% population growth in the system." },
   scienceLeader: { name: "Science Leader", group: "colony", mult: [100, 150], weight: [3, 6], text: "+{v}% research in the system." },
   spiritualLeader: { name: "Spiritual Leader", group: "colony", mult: [50, 75], weight: [4, 8], text: "+{v}% morale in the system." },
-  tactics: { name: "Tactics", group: "colony", mult: [20, 30], weight: [2, 4], text: "+{v} initiative for your ships in the system." },
+  tactics: { name: "Tactics", group: "colony", mult: [20, 30], weight: [2, 4], text: "+{v} initiative for your ships in the system (not used in battle yet: the original's use of it is not decoded)." },
 };
 
 /** Commando's hiring weight depends on the leader: ship officers pay full, colony leaders a third. */
 export const COMMANDO_ADMIN_WEIGHT: [number, number] = [1, 2];
 
-/** Experience needed for each level (level 1 at 0). The top level needs the Warlord trait. */
+/**
+ * Experience needed for each level (level 1 at 0). The top level, at 1000,
+ * only counts for Warlord races; everyone else stops at level 5 (500).
+ */
 export const LEVEL_XP = [0, 60, 150, 300, 500, 1000];
 export const MAX_LEVEL = 5;
 export const WARLORD_MAX_LEVEL = 6;
+
+/** Megawealth pays this flat amount each turn, normal and improved, whatever the leader's level. */
+export const MEGAWEALTH_INCOME: [number, number] = [10, 15];
+
+/**
+ * Commando for troops landing from orbit: the best captain at the star gives
+ * 5 a level, improved floor((15 x level + 1) / 2). Defenders get the system
+ * administrator's normal Commando value; boarding actions use the normal value too.
+ */
+export const COMMANDO_INVASION = { perLevel: 5, improvedPerLevel: 15, improvedPlus: 1, improvedDivisor: 2 } as const;
 
 export const LEADER_RULES = {
   /** No offers before this turn. */
@@ -80,7 +93,10 @@ export const LEADER_RULES = {
   repulsiveOfferBonus: -10,
   /** Famous leaders add their level (improved: 1.5x) to the offer chance. */
   famousOfferPerLevel: [1, 1.5] as [number, number],
-  /** Heroes are drawn from the first (turn / poolTurns + poolBase) of the roster; charismatic widens it, repulsive halves it. */
+  /**
+   * Heroes are drawn from the first (turn / poolTurns + poolBase + number of
+   * empires) of the roster; charismatic widens it, repulsive halves it.
+   */
   poolBase: 10,
   poolTurns: 5,
   charismaticPool: 10,

@@ -50,8 +50,8 @@ group("combat replay model", () => {
     expect(a!.kind).toBe("ship");
     expect(a!.hull).toBe("cruiser");
     expect(m!.kind).toBe("monster");
-    // Monster designs all sit on titan hulls; they are sized by their hit points instead.
-    expect(m!.hull).toBe("doomStar");
+    // Monsters are drawn at the size of the hull they are built on.
+    expect(m!.hull).toBe("cruiser");
   });
 
   it("reads new reports: kinds, hull ids, size classes and station tiers", () => {

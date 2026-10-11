@@ -29,7 +29,7 @@ const BEAM_COLORS: Record<string, number> = {
   laserCannon: 0xff4a5a, massDriver: 0xffd27a, fusionBeam: 0xff8a3d, ionPulseCannon: 0x7ad7ff,
   neutronBlaster: 0x7dffb0, gravitonBeam: 0xc08aff, gaussCannon: 0xd8e4ff, phasor: 0x5ab0ff,
   plasmaCannon: 0x4dffea, disruptorCannon: 0xff5ae0, deathRay: 0xff2a2a, stellarConverter: 0xffffff,
-  monsterAcid: 0x9aff3d, monsterRay: 0xc77dff, monsterFire: 0xff9a3d,
+  amoebaCloud: 0x9aff3d, crystalLance: 0xc77dff, wyrmFire: 0xff9a3d, wyrmFang: 0xffc36b, hydraBreath: 0xff6b3d, eelDischarge: 0x6bd5ff,
 };
 
 const SPARK = ["#ffe7a3", "#ffb347", "#ffffff"];

@@ -410,12 +410,14 @@ describe("monsters from beyond the rim", () => {
     return { ...g, outer, ev, f };
   };
 
-  it("need the monsters setting and a colony away from home", () => {
+  it("need the monsters setting, and may head for the homeworld", () => {
     const off = game();
     outerColony(off.s, 0);
     expect(fireEvent(off.ctx, "hydra", off.s.players[0]!)).toBe(false);
     const homeOnly = game({ monsters: true });
-    expect(fireEvent(homeOnly.ctx, "hydra", homeOnly.s.players[0]!)).toBe(false);
+    expect(fireEvent(homeOnly.ctx, "hydra", homeOnly.s.players[0]!)).toBe(true);
+    const ev = homeOnly.s.activeEvents!.find((e) => e.kind === "hydra")!;
+    expect(ev.starId).toBe(homeOnly.s.players[0]!.homeStarId);
   });
 
   it("hydra kills half the colonists", () => {

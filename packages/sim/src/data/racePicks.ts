@@ -119,8 +119,6 @@ export const TRAIT_EFFECTS = {
   traderFoodBc: 1,
   normalFoodBc: 0.5,
   traderGoodsMult: 2,
-  /** Chance a raid or monster skips a lucky empire's colony and picks another target. */
-  luckyOverlook: 0.75,
 } as const;
 
 /** Traits that can't be taken together. */

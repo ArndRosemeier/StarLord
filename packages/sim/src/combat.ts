@@ -313,6 +313,17 @@ function normAngle(a: number): number {
   return x;
 }
 
+interface OfficerBonus {
+  attack: number;
+  defense: number;
+  damagePct: number;
+  fighters: number;
+}
+
+function noOfficers(): OfficerBonus {
+  return { attack: 0, defense: 0, damagePct: 0, fighters: 0 };
+}
+
 function captainSkills(state: GameState, fleetId: string): LeaderSkills {
   for (const l of Object.values(state.leaders)) {
     if (l.kind === "captain" && l.ownerId !== null && l.assignedTo === fleetId) return l.skills;
@@ -437,9 +448,9 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
           shieldClass: s.shield, shieldMax: s.shieldStrength, shields: Array(SHIELD_FACINGS).fill(s.shieldStrength),
           hardShields: s.effects.hardShields > 0,
           mounts,
-          attackBase: s.attack - (design.computer && !monster ? computerBonus(design.computer) : 0) + (cap.attack ?? 0),
+          attackBase: s.attack - (design.computer && !monster ? computerBonus(design.computer) : 0),
           computerAttack: design.computer && !monster ? computerBonus(design.computer) : 0,
-          defenseBonus: monster ? 0 : s.defense - s.combatSpeed * DEFENSE_PER_SPEED + (cap.defense ?? 0),
+          defenseBonus: monster ? 0 : s.defense - s.combatSpeed * DEFENSE_PER_SPEED,
           fixedDefense: monster ? s.defense : null,
           speed: s.combatSpeed,
           missileEvasion: s.missileEvasion,
@@ -715,6 +726,13 @@ export class Battle {
   sideAttack = [0, 0];
   /** Scout labs give the whole fleet an attack bonus against monsters. */
   monsterBonus = [0, 0];
+  /**
+   * The best ship officers' combat skills on each side, as in the original:
+   * Weaponry (beam attack), Helmsman (beam defense, half against missiles),
+   * Ordnance (% weapon damage), Fighter Pilot (fighters' attack and defense).
+   * Only officers whose fleet still has a ship in the battle count.
+   */
+  officers: OfficerBonus[] = [noOfficers(), noOfficers()];
   fleetEvasion = [0, 0];
   /** The battle is inside a nebula: only hard shields work. */
   nebula = false;
@@ -758,7 +776,7 @@ export class Battle {
     for (const side of [0, 1] as const) {
       const mine = this.units.filter((u) => u.side === side);
       this.monsterBonus[side] = Math.max(0, ...mine.filter((u) => u.fx.scoutLab).map((u) => u.fx.monsterAttackPerSize * u.sizeClass))
-        // Captains with Galactic Lore know how monsters fight.
+        // Captains with Galactic Lore know how monsters fight: the best one in the battle counts.
         + Math.max(0, ...this.sides[side].fleets.map((f) => captainSkills(state, f.id).monsterBonus ?? 0));
       this.mayRetreat[side] = this.retreatAllowed(side);
     }
@@ -838,6 +856,7 @@ export class Battle {
    * counting, as in the original.
    */
   updateSideAttack(): void {
+    this.updateOfficers();
     for (const side of [0, 1] as const) {
       let bonus = 0;
       for (const u of this.units) {
@@ -845,6 +864,22 @@ export class Battle {
         bonus = SIDE_ATTACK_BY_IMMOBILE_SIZE[u.hullRank] ?? 0;
       }
       this.sideAttack[side] = bonus;
+    }
+  }
+
+  /** Recomputes each side's best officer skills from the fleets that still have a ship in the battle. */
+  updateOfficers(): void {
+    for (const side of [0, 1] as const) {
+      const o = noOfficers();
+      for (const f of this.sides[side].fleets) {
+        if (!this.units.some((u) => u.fleetId === f.id && active(u))) continue;
+        const cap = captainSkills(this.state, f.id);
+        o.attack = Math.max(o.attack, cap.attack ?? 0);
+        o.defense = Math.max(o.defense, cap.defense ?? 0);
+        o.damagePct = Math.max(o.damagePct, cap.maxDamage ?? 0);
+        o.fighters = Math.max(o.fighters, cap.fighters ?? 0);
+      }
+      this.officers[side] = o;
     }
   }
 
@@ -1190,17 +1225,18 @@ export class Battle {
   }
 
   attackOf(u: Unit, target: Unit): number {
-    let ba = u.attackBase + this.sideAttack[u.side]! + CREW.attack[u.crew]!;
+    let ba = u.attackBase + this.sideAttack[u.side]! + this.officers[u.side]!.attack + CREW.attack[u.crew]!;
     if (u.computer === null || u.computer.hp > 0) ba += u.computerAttack;
-    if (target.kind === "monster" || target.player.kind === "raiders") ba += this.monsterBonus[u.side]!;
+    // Scout labs and Galactic Lore count only in battles against space monsters (not the raiders), as in the original.
+    if (target.player.kind === "monsters") ba += this.monsterBonus[u.side]!;
     return ba;
   }
 
   defenseOf(u: Unit): number {
-    if (u.fixedDefense !== null) return u.fixedDefense;
+    if (u.fixedDefense !== null) return u.fixedDefense + this.officers[u.side]!.defense;
     const speed = this.currentSpeed(u);
     let bd = speed > 0 ? speed * DEFENSE_PER_SPEED : IMMOBILE_DEFENSE;
-    bd += u.defenseBonus + CREW.defense[u.crew]!;
+    bd += u.defenseBonus + this.officers[u.side]!.defense + CREW.defense[u.crew]!;
     if (this.cloaked(u)) bd += u.fx.cloakDefense;
     return bd;
   }
@@ -1225,7 +1261,9 @@ export class Battle {
 
   missileEvasionOf(u: Unit): number {
     // Trained crews dodge missiles too, with half their beam defense bonus.
-    return Math.max(u.missileEvasion, this.fleetEvasion[u.side]!) + Math.floor(CREW.defense[u.crew]! / 2);
+    // A Helmsman helps against missiles with half his skill.
+    return Math.max(u.missileEvasion, this.fleetEvasion[u.side]!) + Math.floor(CREW.defense[u.crew]! / 2)
+      + Math.floor(this.officers[u.side]!.defense / 2);
   }
 
   // ------------------------------------------------------------ geometry
@@ -1536,6 +1574,7 @@ export class Battle {
     if (m.mods.has("heavyMount")) pct += MOD_EFFECTS.heavyMountDamagePct;
     if (m.mods.has("pointDefense")) pct += MOD_EFFECTS.pointDefenseDamagePct;
     if (u.fx.beamDamagePct && this.specialWorks(u, "highEnergyFocus")) pct += u.fx.beamDamagePct;
+    pct += this.officers[u.side]!.damagePct;
     const lo = Math.max(1, Math.round((m.def.damageMin * pct) / 100));
     const hi = Math.max(1, Math.round((m.def.damageMax * pct) / 100));
     let dmg = Math.min(hi, lo + Math.floor(((hi - lo + 1) * (r - threshold)) / Math.max(1, DIE - threshold)));
@@ -1578,6 +1617,8 @@ export class Battle {
     const w = m.def;
     let damage = w.damageMax;
     if (m.mods.has("overloaded")) damage = Math.round(damage * (1 + MOD_EFFECTS.overloadedDamagePct / 100));
+    // An Ordnance officer adds his percentage to missiles and torpedoes too.
+    damage = Math.round((damage * (100 + this.officers[u.side]!.damagePct)) / 100);
     m.shots -= 1;
     if (w.reload) m.cooldown = w.reload;
     const base = missileSpeed(u.player, w);
@@ -1609,7 +1650,7 @@ export class Battle {
     const hp = Math.floor((CRAFT[craft].hp * (100 + CRAFT_ARMOR_STEP * armorClass(u.player))) / 100);
     this.projectiles.push({
       owner: u, mount: mi, weapon: m.def, mods: new Set(), target, x: u.x, y: u.y, speed,
-      defense: speed * MISSILE_DEFENSE_PER_SPEED + u.craftDefenseBonus,
+      defense: speed * MISSILE_DEFENSE_PER_SPEED + u.craftDefenseBonus + this.officers[u.side]!.fighters,
       count: m.garrison ?? SQUADRON_SIZE * m.count, hp, frontDamage: 0, damage: 0, travelled: 0, craft, passes: CRAFT[craft].shots,
     });
     this.log.push({ kind: "launch", ship: u.key, target: target.key, weapon: m.def.id });
@@ -1742,7 +1783,9 @@ export class Battle {
     if (this.cloaked(t)) jam = 100 - (100 - jam) / 2;
     const ev: CombatRoundEvent = { kind: "fire", ship: u.key, target: t.key, weapon: p.weapon.id, hit: false, damage: 0, absorbed: 0, armorDamage: 0, structureDamage: 0 };
     let damage = p.damage;
-    if (p.weapon.traits?.includes("dissipates") && !p.mods.has("noRangeDissipation")) damage = Math.max(0, damage - TORPEDO_DISSIPATION * Math.max(0, Math.floor(p.travelled) - 1));
+    if (p.weapon.traits?.includes("dissipates") && !p.mods.has("noRangeDissipation")) {
+      damage = Math.max(0, damage - (p.weapon.dissipation ?? TORPEDO_DISSIPATION) * Math.max(0, Math.floor(p.travelled) - 1));
+    }
     if (t.kind === "planet" && p.weapon.kind === "torpedo") damage = Math.floor(damage * PLANET_TORPEDO_DAMAGE);
     const warheads = p.mods.has("mirv") ? MOD_EFFECTS.mirvWarheads : 1;
     const env = p.mods.has("enveloping");
@@ -1776,7 +1819,7 @@ export class Battle {
     const facing = t.shields.indexOf(Math.min(...t.shields));
     const strafe = p.craft === "fighters" || p.craft === "heavyFighters";
     const bomb = (p.craft === "bombers" || p.craft === "heavyFighters") && u.craftBomb;
-    const attack = u.craftAttack + this.sideAttack[u.side]!;
+    const attack = u.craftAttack + this.sideAttack[u.side]! + this.officers[u.side]!.fighters;
     const beam = u.craftBeam;
     for (let c = 0; c < p.count && t.alive; c++) {
       if (strafe) {
@@ -1786,11 +1829,12 @@ export class Battle {
         r += attack - this.defenseOf(t);
         if (r >= CRAFT.hitAt) {
           let dmg = Math.min(beam.damageMax, beam.damageMin + Math.floor(((r - CRAFT.hitAt) * (beam.damageMax - beam.damageMin + 1)) / (DIE - CRAFT.hitAt)));
+          dmg = Math.round((dmg * (100 + this.officers[u.side]!.damagePct)) / 100);
           if (t.kind === "planet") dmg = Math.floor(dmg / 2);
           if (dmg > 0) this.tally(ev, this.hit(u, t, dmg, { facing, shieldPiercing: beam.traits?.includes("shieldPiercing") }));
         }
       }
-      if (bomb && t.alive) this.tally(ev, this.hit(u, t, this.rng.int(bomb.damageMin, bomb.damageMax), { facing }));
+      if (bomb && t.alive) this.tally(ev, this.hit(u, t, Math.round((this.rng.int(bomb.damageMin, bomb.damageMax) * (100 + this.officers[u.side]!.damagePct)) / 100), { facing }));
     }
     this.log.push(ev);
   }
@@ -2445,6 +2489,7 @@ export class Battle {
         if (m.mods.has("heavyMount")) pct += MOD_EFFECTS.heavyMountDamagePct;
         if (m.mods.has("pointDefense")) pct += MOD_EFFECTS.pointDefenseDamagePct;
         if (u.fx.beamDamagePct) pct += u.fx.beamDamagePct;
+        pct += this.officers[u.side]!.damagePct;
         let dmg = ((w.damageMin + w.damageMax) / 2) * pct / 100;
         if (t.kind === "planet") dmg *= PLANET_BEAM_DAMAGE;
         const pierce = m.traits.has("shieldPiercing") || m.mods.has("shieldPiercing");

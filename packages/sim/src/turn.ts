@@ -32,7 +32,8 @@ import {
 } from "./leaders.js";
 import { moveFleet } from "./movement.js";
 import { tradeGoodsMult } from "./raceEffects.js";
-import { guardianSlain } from "./npc.js";
+import { PASSIVE_MONSTERS } from "./data/monsters.js";
+import { guardianSlain, refreshMonsterDesigns } from "./npc.js";
 import { raidersReturn, raidTick, returnThroughPortal, salvageTech, syncPortals } from "./raiders.js";
 import { absorbResearch, payBribe, randomEventTick, systemFrozen } from "./randomEvents.js";
 import { explore, onColonize } from "./specials.js";
@@ -68,6 +69,7 @@ export function processTurn(prev: GameState, orders: TurnOrders): GameState {
 
   // Ships that spent the last turn at one of their own systems leave it repaired.
   repairTick(state);
+  refreshMonsterDesigns(state);
   raidTick(ctx);
   moveFleets(ctx);
   const silenced = combatPhase(ctx);
@@ -462,8 +464,8 @@ function nextBattle(state: GameState, starId: Id, silenced: Silenced, fought: Se
       if (!isHostile(state, list[i]!, list[j]!) || fought.has(`${list[i]}:${list[j]}`)) continue;
       const a = sideAt(state, starId, list[i]!, silenced);
       const b = sideAt(state, starId, list[j]!, silenced);
-      a.initiates = wantsFight(state, a, b);
-      b.initiates = wantsFight(state, b, a);
+      a.initiates = wantsFight(state, a, b) && !passesBy(state, starId, a, b, list);
+      b.initiates = wantsFight(state, b, a) && !passesBy(state, starId, b, a, list);
       if (a.initiates || b.initiates) return [a, b];
     }
   }
@@ -471,6 +473,23 @@ function nextBattle(state: GameState, starId: Id, silenced: Silenced, fought: Se
 }
 
 const hasDefenses = hasArmedDefenses;
+
+/**
+ * Monsters and raiders leave a lucky empire alone while another empire they
+ * could attack is at the same star, as in the original; ion eels never start
+ * a fight at all.
+ */
+function passesBy(state: GameState, starId: Id, me: CombatSide, them: CombatSide, parties: PlayerId[]): boolean {
+  const npc = state.players[me.ownerId]!;
+  if (npc.kind === "empire") return false;
+  const owner = (id: PlayerId) => state.players[id]!;
+  if (me.fleets.length > 0 && me.fleets.every((f) => f.ships.every((s) => PASSIVE_MONSTERS.includes(s.designId)))) return true;
+  const isLucky = (id: PlayerId) => owner(id).kind === "empire" && hasTrait(getRace(owner(id).raceId), "lucky");
+  if (!isLucky(them.ownerId)) return false;
+  return parties.some((id) => id !== them.ownerId && owner(id).kind === "empire" && !isLucky(id) && isHostile(state, me.ownerId, id)
+    && (Object.values(state.fleets).some((f) => f.ownerId === id && f.starId === starId)
+      || Object.values(state.colonies).some((c) => c.ownerId === id && state.planets[c.planetId]!.starId === starId)));
+}
 
 function wantsFight(state: GameState, me: CombatSide, them: CombatSide): boolean {
   const armedFleets = me.fleets.some((f) => isArmed(state, f));

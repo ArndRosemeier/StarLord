@@ -40,9 +40,9 @@ function report(kind: string): CombatReport {
       { kind: "fire", ship: "c", target: "m", weapon: "nuclearMissile", hit: true, damage: 16 },
       { kind: "fire", ship: "a", target: "m", weapon: "laserCannon", hit: true, damage: 4 },
       { kind: "move", ship: "m", x: 18, y: 9 },
-      { kind: "fire", ship: "m", target: "b", weapon: "monsterAcid", hit: true, damage: 40 },
+      { kind: "fire", ship: "m", target: "b", weapon: "hydraBreath", hit: true, damage: 40 },
       { kind: "destroyed", ship: "b" },
-      { kind: "fire", ship: "m", target: "a", weapon: "monsterAcid", hit: false },
+      { kind: "fire", ship: "m", target: "a", weapon: "hydraBreath", hit: false },
     ]);
   } else if (kind === "legacy") {
     add(`planet:${colony.id}`, 0, colony.name, 29.5, 10, 120, { isPlanet: true, designId: "planet" });
