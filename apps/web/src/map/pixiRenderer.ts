@@ -1,6 +1,6 @@
 import { Application, Assets, Circle, Container, Graphics, Sprite, Text, Texture, type Ticker } from "pixi.js";
 import type { MapInput, MapRenderer } from "./renderer";
-import type { MapScene } from "./scene";
+import type { FleetLook, MapScene } from "./scene";
 import { prefersReducedMotion } from "../ui/fx";
 
 /** Pixels per galaxy unit at zoom 1. */
@@ -88,6 +88,55 @@ function glowSprite(color: number, size: number, alpha: number): Sprite {
   s.width = s.height = size;
   s.blendMode = "add";
   return s;
+}
+
+const OUTLINE = { width: 1, color: 0x000000, alpha: 0.7 };
+const SHINE = { color: 0xffffff, alpha: 0.28 };
+/** Warship silhouettes grow with the hull; points are mirrored below the axis, nose toward +x. */
+const WARSHIP_HALF: Record<Exclude<FleetLook["hull"], "doomStar">, number[]> = {
+  frigate: [7, 0, -5, -4.5, -2, 0],
+  destroyer: [9, 0, -1, -3, -6, -6.5, -4, 0],
+  cruiser: [11, 0, 3, -3, -1, -7, -7, -7, -5, -3, -7, 0],
+  battleship: [13, 0, 5, -4, 0, -9, -8, -9, -5, -4, -9, -2, -9, 0],
+  titan: [15, 0, 7, -4, 3, -11, -9, -11, -11, -7, -6, -4, -11, -2, -11, 0],
+};
+const mirror = (half: number[]): number[] => {
+  const pts = [...half];
+  for (let i = half.length - 4; i >= 2; i -= 2) pts.push(half[i]!, -half[i + 1]!);
+  return pts;
+};
+
+/** A distinct vector icon per ship role and warship hull, nose toward +x; `tail` is where the engine glow sits, `r` its rough radius. */
+function shipIcon(look: FleetLook, color: number): { g: Graphics; tail: number; r: number } {
+  const g = new Graphics();
+  switch (look.role) {
+    case "scout":
+      g.poly([7, 0, 0, -2.5, -5, -4.5, -3, 0, -5, 4.5, 0, 2.5]).fill({ color }).stroke(OUTLINE).circle(1, 0, 1.4).fill({ color: 0xffffff, alpha: 0.85 });
+      return { g, tail: -4, r: 7 };
+    case "colony":
+      g.ellipse(0, 0, 7.5, 4.5).fill({ color }).stroke(OUTLINE).circle(1.5, 0, 2.6).fill({ color: 0xbfffd0, alpha: 0.9 });
+      return { g, tail: -7, r: 8 };
+    case "outpost":
+      g.rect(-5, -4.5, 9, 9).fill({ color }).stroke(OUTLINE).rect(-2.5, -2, 4, 4).fill({ color: 0xffffff, alpha: 0.6 })
+        .moveTo(4, 0).lineTo(8, 0).stroke({ width: 1.5, color }).circle(8, 0, 1.3).fill({ color: 0xffffff });
+      return { g, tail: -5, r: 8 };
+    case "transport":
+      g.roundRect(-7, -3.5, 14, 7, 2).fill({ color }).stroke(OUTLINE);
+      for (const x of [-3.5, 0, 3.5]) g.circle(x, 0, 1.1).fill({ color: 0xffffff, alpha: 0.85 });
+      return { g, tail: -7, r: 8 };
+    case "warship": {
+      if (look.hull === "doomStar") {
+        g.poly([17, 0, 9, -3, 9, 3]).fill({ color }).stroke(OUTLINE).circle(0, 0, 10).fill({ color }).stroke(OUTLINE)
+          .circle(4, -3, 3.2).fill({ color: 0x000000, alpha: 0.45 }).arc(0, 0, 10, Math.PI, Math.PI * 1.5).lineTo(0, 0).fill(SHINE);
+        return { g, tail: -10, r: 12 };
+      }
+      const half = WARSHIP_HALF[look.hull];
+      g.poly(mirror(half)).fill({ color }).stroke(OUTLINE).poly(half).fill(SHINE);
+      const xs = half.filter((_, i) => i % 2 === 0);
+      const back = Math.min(...xs);
+      return { g, tail: back + 2, r: Math.max(half[0]!, -back, ...half.filter((_, i) => i % 2 === 1).map((y) => -y)) };
+    }
+  }
 }
 
 /** Things the ticker keeps moving between renders. */
@@ -433,31 +482,39 @@ export class PixiMapRenderer implements MapRenderer {
 
     // Idle fleets orbiting a star are stacked to its right; fleets with orders to leave are stacked
     // on the left, nose toward their destination; fleets in transit sit on their path.
-    const orbitIndex = new Map<string, number>();
+    // Each row of a stack is packed by icon size, so big hulls don't cover their neighbours.
+    const stacks = new Map<string, { i: number; dx: number }>();
     for (const f of scene.fleets) {
+      const icon = f.kind === "empire" ? shipIcon(f.look, hex(f.color)) : null;
+      // Big hulls are drawn bigger, but shrunk a little so stacks around a star stay readable.
+      const shrink = icon && icon.r > 9 ? 0.8 : 1;
+      const r = icon ? icon.r * shrink : 7;
       let x = f.x * UNIT;
       let y = f.y * UNIT;
       if (f.starId) {
         const leaving = !!f.dest;
         const key = `${f.starId}:${leaving}`;
-        const i = orbitIndex.get(key) ?? 0;
-        orbitIndex.set(key, i + 1);
-        const dx = 16 + (i % 3) * 11;
+        const stack = stacks.get(key) ?? { i: 0, dx: 0 };
+        if (stack.i % 3 === 0) stack.dx = 10;
+        const dx = stack.dx + r;
+        stack.dx = dx + r + 3;
+        y += -12 + Math.floor(stack.i / 3) * 18;
+        stack.i++;
+        stacks.set(key, stack);
         x += leaving ? -dx : dx;
-        y += -10 + Math.floor(i / 3) * 11;
       }
       const node = new Container();
       node.position.set(x, y);
       const color = hex(f.color);
       const body = new Container();
       if (f.dest) body.rotation = Math.atan2(f.dest.y * UNIT - y, f.dest.x * UNIT - x);
-      if (f.kind === "empire") {
-        const engine = glowSprite(color, f.dest ? 18 : 12, 0.9);
-        engine.x = -5;
+      if (icon) {
+        icon.g.scale.set(shrink);
+        const engine = glowSprite(color, (f.dest ? 18 : 12) * Math.max(1, r / 8), 0.9);
+        engine.x = icon.tail * shrink;
         body.addChild(engine);
         if (f.dest) this.pulses.push({ obj: engine, base: engine.scale.x, amp: 0.25, speed: 14, phase: rand(f.id) * 6, prop: "scale" });
-        body.addChild(new Graphics().poly([8, 0, -5, -5.5, -2, 0, -5, 5.5]).fill({ color }).stroke({ width: 1, color: 0x000000, alpha: 0.7 })
-          .poly([8, 0, -2, 0, -5, -5.5]).fill({ color: 0xffffff, alpha: 0.28 }));
+        body.addChild(icon.g);
       } else {
         const c = f.kind === "monsters" ? 0xff4d4d : 0xb04dff;
         const aura = glowSprite(c, 26, 0.7);
@@ -467,14 +524,24 @@ export class PixiMapRenderer implements MapRenderer {
       }
       node.addChild(body);
       if (f.starId) this.pulses.push({ obj: body, base: 1, amp: 0.06, speed: 2, phase: rand(f.id) * 6, prop: "scale" });
+      if (f.ships > 1) {
+        const badge = new Text({
+          text: String(f.ships),
+          style: { fontFamily: "Inter, system-ui, sans-serif", fontSize: 9, fill: 0xffffff, fontWeight: "700", stroke: { color: 0x000000, width: 3 } },
+        });
+        badge.anchor.set(0, 1);
+        badge.resolution = 2;
+        badge.position.set(r * 0.55, -r * 0.45);
+        node.addChild(badge);
+      }
       if (scene.selectedFleetIds.has(f.id)) {
-        const sel = dashedRing(new Graphics(), 10, 8, 0.6).stroke({ width: 1.5, color: 0xffffff });
+        const sel = dashedRing(new Graphics(), r + 3, 8, 0.6).stroke({ width: 1.5, color: 0xffffff });
         node.addChild(sel);
         this.spins.push({ obj: sel, speed: 1.4 });
       }
       node.eventMode = "static";
       node.cursor = "pointer";
-      node.hitArea = new Circle(0, 0, 9);
+      node.hitArea = new Circle(0, 0, Math.max(9, r + 2));
       node.on("pointertap", (e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
