@@ -6,7 +6,7 @@ import {
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, pct, words } from "../ui/format";
-import { ShipSprite } from "../ui/panels";
+import { ShipModelView, ShipThumb } from "../ui/ShipModel";
 
 export function DesignScreen() {
   const { session, view, me, readOnly } = useGame();
@@ -57,7 +57,7 @@ export function DesignScreen() {
         </div>
         <div className="blueprint">
           <span className="blueprint-label">Schematic · {draft.name || "unnamed"}</span>
-          <span className="blueprint-ship" key={draft.hull}><ShipSprite hull={draft.hull} variantKey={draft.name} size={124} /></span>
+          <ShipModelView className="blueprint-model" hull={draft.hull} color={me.color} />
           <span className="blueprint-hull">{HULLS_BY_ID[draft.hull]?.name} · {words(stats.role)}</span>
         </div>
         <input type="text" value={draft.name} onChange={(e) => update({ name: e.target.value })} />
@@ -131,7 +131,7 @@ export function DesignScreen() {
           const valid = validateDesign(me, d) === null;
           return (
             <div key={d.id} className="row design-row" style={{ opacity: d.obsolete ? 0.5 : 1, borderBottom: "1px solid var(--line)", paddingBottom: 6 }}>
-              <ShipSprite hull={d.hull} variantKey={d.name} />
+              <ShipThumb hull={d.hull} color={me.color} size={64} />
               <div style={{ flex: 1 }}>
                 <b>{d.name}</b> <span className="muted">{HULLS_BY_ID[d.hull]?.name} · {words(s.role)}</span>
                 <div className="muted" style={{ fontSize: 12 }}>

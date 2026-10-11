@@ -23,6 +23,7 @@ export class TextureCache {
   private loader = new THREE.TextureLoader();
   private textures = new Map<string, THREE.Texture>();
   private disposed = false;
+  private pending: Promise<void>[] = [];
 
   constructor(private maxAnisotropy = 4) {}
 
@@ -31,7 +32,10 @@ export class TextureCache {
     const key = `${path}|${opts.color ?? true}|${opts.repeat?.join("x") ?? ""}`;
     const hit = this.textures.get(key);
     if (hit) return hit;
-    const tex = this.loader.load(assetUrl(path), undefined, undefined, () => {
+    let settle = () => {};
+    this.pending.push(new Promise<void>((resolve) => (settle = resolve)));
+    const tex = this.loader.load(assetUrl(path), settle, undefined, () => {
+      settle();
       if (!this.disposed) opts.onError?.();
     });
     tex.colorSpace = opts.color === false ? THREE.NoColorSpace : THREE.SRGBColorSpace;
@@ -51,6 +55,11 @@ export class TextureCache {
     const tex = make();
     this.textures.set(key, tex);
     return tex;
+  }
+
+  /** Resolves once every image asked for so far has loaded or failed. */
+  async ready(): Promise<void> {
+    await Promise.all(this.pending);
   }
 
   dispose(): void {
