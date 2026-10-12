@@ -1,0 +1,1 @@
+- Wormholes now stay hidden on the galaxy map, in the system view and in route planning until you have explored one of the two stars they join.
