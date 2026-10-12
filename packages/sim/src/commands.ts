@@ -80,6 +80,8 @@ export type Command =
   | { type: "setAutomation"; domains: string[] }
   /** Picks the strategy an automated area follows; "balanced" is the default. */
   | { type: "setAutomationStrategy"; domain: string; strategy: string }
+  /** Whether the end-turn check lists colonies that only make Trade Goods; a per-game choice, on by default. */
+  | { type: "setIdleAlert"; on: boolean }
   /** Cheats, accepted only in games started in debug mode. */
   | { type: "debug"; action: DebugAction };
 
@@ -360,6 +362,8 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       return typeof cmd.domain === "string" && /^[a-zA-Z]{1,32}$/.test(cmd.domain) && typeof cmd.strategy === "string" && /^[a-zA-Z]{1,32}$/.test(cmd.strategy)
         ? OK
         : fail("bad automation strategy");
+    case "setIdleAlert":
+      return typeof cmd.on === "boolean" ? OK : fail("bad idle alert setting");
     case "debug": {
       const why = debugProblem(state, playerId, cmd.action);
       return why ? fail(why) : OK;

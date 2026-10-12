@@ -267,6 +267,7 @@ function commandKey(cmd: Command): string | null {
     case "setCouncilVote":
     case "councilResponse":
     case "setAutomation":
+    case "setIdleAlert":
       return cmd.type;
     case "moveFleet":
     case "setStance":

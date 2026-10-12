@@ -3,7 +3,7 @@ import { useGame } from "../ui/hooks";
 import { downloadSave, listSaves, writeSave } from "../game/saves";
 
 export function GameMenu({ onQuit }: { onQuit: () => void }) {
-  const { session, view, me } = useGame();
+  const { session, view, me, readOnly } = useGame();
   const [name, setName] = useState(`${me.name} turn ${view.turn}`);
   const [message, setMessage] = useState<string | null>(null);
   const saves = listSaves();
@@ -37,6 +37,13 @@ export function GameMenu({ onQuit }: { onQuit: () => void }) {
           <button onClick={() => setMessage(session.verifyRecord().message)}>Verify replay</button>
           <button className="danger" onClick={() => confirm("Quit to the title screen? Unsaved progress is lost.") && onQuit()}>Quit to title</button>
         </div>
+        {!readOnly && (
+          <label className="row" style={{ gap: 6 }}
+            title="Only for this game. Early on every colony should build something; with many colonies Trade Goods are often fine.">
+            <input type="checkbox" checked={!me.idleAlertOff} onChange={(e) => session.issue({ type: "setIdleAlert", on: e.target.checked })} />
+            Before ending the turn, warn me about colonies making only Trade Goods (this game only)
+          </label>
+        )}
         {message && <div>{message}</div>}
         {saves.length > 0 && <div className="muted">{saves.length} saved game{saves.length === 1 ? "" : "s"} in this browser; load them from the title screen.</div>}
       </div>

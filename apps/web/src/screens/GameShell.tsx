@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   availableTiers, commandPointsAvailable, commandPointsUsed, empireIncome, empireTotals, empires, treatyIncome,
-  TIERS_BY_ID, extraResearch, nextBreakthroughChance, researchCost, type PlayerView,
+  TIERS_BY_ID, extraResearch, isTradeGoodsOnly, nextBreakthroughChance, researchCost, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, signed } from "../ui/format";
@@ -19,7 +19,7 @@ import { EventsScreen } from "./EventsScreen";
 import { GameMenu } from "./GameMenu";
 import { DebugMenu } from "./DebugMenu";
 import { GameOver } from "./GameOver";
-import { ResearchPrompt } from "./ResearchPrompt";
+import { EndTurnPrompt } from "./EndTurnPrompt";
 import { BasePrompt, coloniesWithReadyBases } from "./BasePrompt";
 import { audio } from "../audio/sound";
 import { MuteButton } from "../ui/AudioControls";
@@ -66,7 +66,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [seenTurn, setSeenTurn] = useState(view.turn);
   const [overSeen, setOverSeen] = useState(view.over);
   const [colonyFocus, setColonyFocus] = useState<string | null>(null);
-  const [researchWarning, setResearchWarning] = useState(false);
+  /** The end-turn check being shown: research points that would be lost and colonies making only Trade Goods. */
+  const [endCheck, setEndCheck] = useState<{ points: number | null; idle: string[] } | null>(null);
   const [basePrompt, setBasePrompt] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   /** Audiences waiting to be held, the current one first. */
@@ -86,8 +87,11 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
 
   // Research points with no field are lost, so ask unless there are none, automation picks the field, or none is left.
   const noResearch = !readOnly && research > 0 && !me.research.tierId && !me.automation.includes("research") && availableTiers(view, me.id).length > 0;
+  // Colonies with nothing queued sell their industry as Trade Goods; the player can ask to be told, per game.
+  const idleColonies = readOnly || me.idleAlertOff || me.automation.includes("production") ? []
+    : Object.values(view.colonies).filter((c) => c.ownerId === me.id && isTradeGoodsOnly(c)).map((c) => c.id);
   const endTurn = () => {
-    if (noResearch) setResearchWarning(true);
+    if (noResearch || idleColonies.length > 0) setEndCheck({ points: noResearch ? research : null, idle: idleColonies });
     else session.endTurn();
   };
   // Ctrl+Enter is bound once, so it calls the latest endTurn through a ref.
@@ -245,13 +249,14 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         </div>
         {view.over && !overSeen && <GameOver won={won} spectating={readOnly} onClose={() => setOverSeen(true)} onQuit={onQuit} />}
       </div>
-      {researchWarning && (
-        <ResearchPrompt points={research}
-          onPick={(cmd) => { setResearchWarning(false); session.issue(cmd); session.endTurn(); }}
-          onSkip={() => { setResearchWarning(false); session.endTurn(); }}
-          onOpenScreen={() => { setResearchWarning(false); go("research"); }} />
+      {endCheck && (
+        <EndTurnPrompt points={endCheck.points} idle={endCheck.idle.flatMap((id) => (view.colonies[id] ? [view.colonies[id]!] : []))}
+          onPick={(cmd) => { setEndCheck(null); session.issue(cmd); session.endTurn(); }}
+          onEndTurn={() => { setEndCheck(null); session.endTurn(); }}
+          onOpenResearch={() => { setEndCheck(null); go("research"); }}
+          onOpenColony={(id) => { setEndCheck(null); openColony(id); }} />
       )}
-      {basePrompt && !researchWarning && !audiences[0] && <BasePrompt onClose={() => setBasePrompt(false)} />}
+      {basePrompt && !endCheck && !audiences[0] && <BasePrompt onClose={() => setBasePrompt(false)} />}
       {audiences[0] && !(view.over && !overSeen) && (
         <Audience key={`${view.turn}:${audiences.length}:${audiences[0].themId}:${audiences[0].opening.kind}`} request={audiences[0]}
           onClose={() => setAudiences((q) => q.slice(1))} />

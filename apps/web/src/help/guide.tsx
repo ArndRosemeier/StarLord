@@ -61,7 +61,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <Ul>
         <li>Send your scouts to nearby stars from the <b>Galaxy</b> map: click the fleet, then click a star.</li>
         <li>Pick a technology on the <b>Research</b> screen. The <HelpLink to="page:techTree" /> shows everything ahead. If you end a turn with no field chosen, you are asked for one so no research is lost.</li>
-        <li>Queue buildings or a colony ship on the <b>Colonies</b> screen and balance farmers, workers and scientists.</li>
+        <li>Queue buildings or a colony ship on the <b>Colonies</b> screen and balance farmers, workers and scientists. A colony with nothing queued sells its industry as Trade Goods; ending the turn lists such colonies until you turn that alert off for the game (in the alert itself or the <b>Game</b> menu).</li>
         <li>Send your colony ship to a good planet, open its star and press <b>Colonize</b> on the planet you want.</li>
         <li>End the turn with the button at the top right or <Key>Ctrl</Key>+<Key>Enter</Key>.</li>
       </Ul>
