@@ -1004,6 +1004,20 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
       } else scrapBase(ctx, colony, id);
       return;
     }
+    case "freighterFleet":
+      player.freighters = (player.freighters ?? 0) + FREIGHTERS.perFleet;
+      return;
+    case "terraform": {
+      const options = TERRAFORM_STEP[planet.type];
+      if (options?.length) {
+        planet.type = (options.length > 1 ? rng.pick(options) : options[0]!) as PlanetType;
+        colony.terraformed += 1;
+      }
+      return;
+    }
+    case "gaiaTransform":
+      if (planet.type === "terran") planet.type = "gaia";
+      return;
     case "dimensionalPortal":
       colony.portal = true;
       player.hasPortal = true;
