@@ -108,8 +108,8 @@ function build(): HelpEntry[] {
   for (const c of COMPUTERS) e.push({ id: `computer:${c.id}`, group: "ships", title: `${c.name} computer`, subtitle: "Combat computer" });
   page("specials", "ships", "Special systems", "special equipment ecm repair cloak");
   for (const s of SPECIALS) e.push({ id: `special:${s.id}`, group: "ships", title: s.name, subtitle: "Special system" });
-  page("modules", "ships", "Modules", "colony ship outpost ship transport troop");
-  for (const [id, m] of Object.entries(MODULES)) e.push({ id: `module:${id}`, group: "ships", title: m.name, subtitle: "Module" });
+  page("modules", "ships", "Support ships", "colony ship outpost ship transport troop");
+  for (const [id, m] of Object.entries(MODULES)) e.push({ id: `module:${id}`, group: "ships", title: m.name, subtitle: "Support ship" });
   page("drives", "ships", "Drives & fuel cells", "speed engine fuel range parsec");
 
   page("planets", "planets", "Planet types", "climate environment habitable hostile");

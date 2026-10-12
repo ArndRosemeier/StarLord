@@ -3,7 +3,7 @@ import {
   CREW, DEFENSE_CREW_LEVEL, SIDE_ATTACK_BY_IMMOBILE_SIZE, hullIndex,
   ALL_WEAPONS, ARMORS, ARMORS_BY_ID, BUILDINGS, BUILDINGS_BY_ID, CLIMATES, COMPUTERS, COMPUTERS_BY_ID, CUSTOM_RACE_POINTS,
   DRIVES, EXCLUSIVE_TRAITS, FIELD_NAMES, FUEL_RANGES, GOVERNMENTS, GOVERNMENT_COSTS, HULLS, HULLS_BY_ID, INDUSTRY_PER_WORKER,
-  AVENGER_DESIGN, GUARDIAN_SCORE, LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
+  AVENGER_DESIGN, GUARDIAN_SCORE, LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, SUPPORT_HULL, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
   PLANETS_PER_STAR_D10, PLANET_SIZE_WEIGHTS, PROJECTS, PROJECTS_BY_ID, PROJECT_COSTS, RACES, RACES_BY_ID,
   RAIDER_CITADEL, RAIDER_CITADEL_ID, RAIDER_DESIGNS, RAIDER_HULLS, RAIDER_SHIP_NAMES, RAID_BUDGET_MULT, RAID_BUDGET_PERIOD, RAID_DESTROYER_WINDOW, RAID_FLEET_CAP,
   RAID_FRIGATE_WINDOW, RAID_GRACE_TURNS, RAID_HOME_MIN_TITANS, RAID_HOME_QUOTA, RAID_HUMAN_POP_MULT, RAID_LAUNCH_ROLL, RAID_LAUNCH_VALUE_MULT, RAID_MAX_SHIPS,
@@ -143,7 +143,7 @@ export function unlockSummary(u: Unlock): string {
     }
     case "module": {
       const m = MODULES[u.id as keyof typeof MODULES];
-      return `Space ${m.space}, cost ${m.cost}, needs at least a ${HULLS_BY_ID[m.minHull].name} hull.`;
+      return `${m.name}: fixed design, ${m.cost} BC before government.`;
     }
   }
 }
@@ -486,7 +486,7 @@ function HullPage({ id }: { id: string }) {
         <thead><tr>{ARMORS.map((a) => <th key={a.id}><HelpLink to={`armor:${a.id}`}>{a.name}</HelpLink></th>)}</tr></thead>
         <tbody><tr>{ARMORS.map((a) => <td key={a.id}>{hullHits(h, a.mult)}</td>)}</tr></tbody>
       </table>
-      <p className="muted">Heavy Armor and Reinforced Hull raise these further. Modules that fit: {Object.entries(MODULES).filter(([, m]) => HULLS.findIndex((x) => x.id === m.minHull) <= index).map(([, m]) => m.name).join(", ") || "none"}.</p>
+      <p className="muted">Heavy Armor and Reinforced Hull raise these further.</p>
     </div>
   );
 }
@@ -647,7 +647,7 @@ function ModulePage({ id }: { id: keyof typeof MODULES }) {
     <div className="col">
       <p>{text[id]}</p>
       <Facts rows={[
-        ["Space", m.space], ["Cost", m.cost], ["Smallest hull", <HelpLink to={`hull:${m.minHull}`} />],
+        ["Hull", <HelpLink to={`hull:${SUPPORT_HULL}`} />], ["Armor", "your best"], ["Weapons", "none"], ["Cost", `${m.cost} BC before government`],
         ...(m.troops ? [["Troops", m.troops] as [string, ReactNode]] : []),
         ["Requires", <Requires tech={tech} />],
       ]} />
@@ -1149,11 +1149,15 @@ const PAGES: Record<string, () => ReactNode> = {
   ),
   modules: () => (
     <div className="col">
-      <p>A module turns a hull into a colony ship, outpost ship or troop transport.</p>
+      <p>
+        Colony ships, outpost ships and transports are fixed designs, as in the original: you pick them straight from a
+        colony's build list instead of designing them. Each is a {HULLS_BY_ID[SUPPORT_HULL].name.toLowerCase()} hull with
+        your best armor and drive and no weapons, so it can't defend itself.
+      </p>
       <table className="help-table">
-        <thead><tr><th>Module</th><th>Space</th><th>Cost</th><th>Smallest hull</th></tr></thead>
+        <thead><tr><th>Ship</th><th>Cost (BC)</th><th>Troops</th></tr></thead>
         <tbody>{(Object.keys(MODULES) as (keyof typeof MODULES)[]).map((id) => (
-          <tr key={id}><td><HelpLink to={`module:${id}`} /></td><td>{MODULES[id].space}</td><td>{MODULES[id].cost}</td><td><HelpLink to={`hull:${MODULES[id].minHull}`} /></td></tr>
+          <tr key={id}><td><HelpLink to={`module:${id}`} /></td><td>{MODULES[id].cost}</td><td>{MODULES[id].troops || "-"}</td></tr>
         ))}</tbody>
       </table>
     </div>

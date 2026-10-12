@@ -1,15 +1,15 @@
 import { useMemo, useState } from "react";
 import {
-  ARCS, ARMORS, COMPUTERS, HULLS, HULLS_BY_ID, MISSILE_RACKS, MODULES, SHIELDS, SPECIALS, WEAPONS, WEAPON_MODS,
+  ARCS, ARMORS, COMPUTERS, HULLS, HULLS_BY_ID, MISSILE_RACKS, SHIELDS, SPECIALS, WEAPONS, WEAPON_MODS,
   DEFAULT_MISSILE_SHOTS, SHIP_STYLES, designStats, designStyle, raceShipStyle, knows, refinement, validateDesign, weaponUnitCost,
-  type DesignModule, type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponModId, type WeaponMount,
+  type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponModId, type WeaponMount,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, pct, words } from "../ui/format";
 import { ShipModelView, ShipThumb } from "../ui/ShipModel";
 import { Tip, tipText } from "../ui/Tip";
 import {
-  arcTip, armorTip, computerTip, designTip, styleTip, hullTip, modTip, moduleTip, rackTip, shieldTip, spaceTip, specialTip, statTip, weaponTip,
+  arcTip, armorTip, computerTip, designTip, styleTip, hullTip, modTip, rackTip, shieldTip, spaceTip, specialTip, statTip, weaponTip,
 } from "./designTips";
 
 export function DesignScreen() {
@@ -22,14 +22,12 @@ export function DesignScreen() {
   const [draft, setDraft] = useState<ShipDesign>(blank);
   const [addWeapon, setAddWeapon] = useState("");
 
-  // Colony, outpost and troop ships may use hulls not yet researched, like MoO2's fixed colony ship.
-  const hulls = HULLS.filter((h) => knows(me, h.requires) || draft.module);
+  const hulls = HULLS.filter((h) => knows(me, h.requires));
   const armors = ARMORS.filter((a) => knows(me, a.requires));
   const shields = SHIELDS.filter((s) => knows(me, s.requires));
   const computers = COMPUTERS.filter((c) => knows(me, c.requires));
   const weapons = WEAPONS.filter((w) => knows(me, w.requires));
   const specials = SPECIALS.filter((s) => knows(me, s.requires));
-  const modules = (Object.keys(MODULES) as DesignModule[]).filter((m) => m !== "outpost" || knows(me, "outpostShip"));
 
   const stats = useMemo(() => designStats(me, draft), [me, draft]);
   const style = designStyle(me, draft);
@@ -54,7 +52,8 @@ export function DesignScreen() {
     setDraft({ ...draft, name: `${draft.name.replace(/ Mk \d+$/, "")} Mk ${n + 1}` });
   };
 
-  const designs = me.designs.filter((d) => !d.fixed);
+  // Colony ships, outpost ships and transports are fixed designs built straight from the build list.
+  const designs = me.designs.filter((d) => !d.fixed && !d.module);
   const space = Math.min(100, (stats.spaceUsed / stats.spaceTotal) * 100);
 
   return (
@@ -114,12 +113,6 @@ export function DesignScreen() {
               {SHIP_STYLES.map((s) => (
                 <option key={s.id} value={s.id} title={tipText(styleTip(s.id, ownStyle))}>{s.name}{s.id === ownStyle ? " (your race)" : ""}</option>
               ))}
-            </select></label>
-          </Tip>
-          <Tip card={() => moduleTip(me, draft, draft.module)}>
-            <label>Module <select value={draft.module ?? ""} onChange={(e) => update({ module: (e.target.value || null) as DesignModule | null })}>
-              <option value="">None</option>
-              {modules.map((m) => <option key={m} value={m} title={tipText(moduleTip(me, draft, m))}>{MODULES[m].name}</option>)}
             </select></label>
           </Tip>
         </div>

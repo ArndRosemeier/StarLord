@@ -508,16 +508,18 @@ export function hullIndex(hull: HullId): number {
 // ---------------------------------------------------------------- support ships
 
 /**
- * Colony, outpost and troop modules. Support ships are fixed designs in the
- * original, priced 500 (colony ship), 100 (outpost ship) and 100 (transport)
- * before the government's ship cost; here they are a module on a hull, and
- * the module carries that whole price (the hull itself is free). They use
- * command points like the smallest warship.
+ * Colony ships, outpost ships and transports are fixed designs, as in the
+ * original: they are not built in the ship designer but picked straight from
+ * the build list. Each is a frigate hull with the empire's best armor and
+ * drive and no weapons, priced 500 (colony ship), 100 (outpost ship) and 100
+ * (transport) before the government's ship cost; the hull itself is free.
+ * They use command points like the smallest warship.
  */
-export const MODULES: Record<"colony" | "outpost" | "transport", { name: string; space: number; cost: number; minHull: HullSize; troops: number }> = {
-  colony: { name: "Colony Module", space: 90, cost: 500, minHull: "cruiser", troops: 0 },
-  outpost: { name: "Outpost Module", space: 40, cost: 100, minHull: "destroyer", troops: 0 },
-  transport: { name: "Troop Module", space: 40, cost: 100, minHull: "destroyer", troops: 4 },
+export const MODULES: Record<"colony" | "outpost" | "transport", { name: string; cost: number; troops: number }> = {
+  colony: { name: "Colony Ship", cost: 500, troops: 0 },
+  outpost: { name: "Outpost Ship", cost: 100, troops: 0 },
+  transport: { name: "Transport", cost: 100, troops: 4 },
 };
-export const SUPPORT_HULL_COST_SHARE = 0;
+/** The hull every support ship is built on. */
+export const SUPPORT_HULL: HullSize = "frigate";
 export const SUPPORT_SHIP_COMMAND_POINTS = 1;

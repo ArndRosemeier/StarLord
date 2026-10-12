@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  RACES, RACE_SHIP_STYLE, SHIP_STYLES, Rng, designStats, designStyle, findDesign, newGame, processTurn, relation, resolveCombat, startingDesigns, validateDesign,
+  RACES, RACE_SHIP_STYLE, SHIP_STYLES, Rng, designStats, designStyle, findDesign, newGame, processTurn, relation, resolveCombat, startingDesigns, validateCommand, validateDesign,
   type Fleet, type GameState, type ShipDesign,
 } from "@starlord/sim";
 
@@ -44,6 +44,23 @@ describe("ship design", () => {
     }
     const greedy: ShipDesign = { ...startingDesigns()[1]!, id: "x", weapons: [{ weaponId: "laserCannon", count: 10 }] };
     expect(validateDesign(p, greedy)).toBe("not enough space");
+  });
+
+  it("keeps colony ships, outpost ships and transports as fixed designs", () => {
+    const s = twoEmpires();
+    const p = s.players[0]!;
+    p.techs.push("zortriumArmor");
+    const colony = findDesign(p, "colonyShip")!;
+    // An old save's armed cruiser colony ship still flies as the fixed frigate.
+    const st = designStats(p, { ...colony, hull: "cruiser", weapons: [{ weaponId: "laserCannon", count: 3 }] });
+    const frigate = designStats(p, { ...startingDesigns()[0]!, armor: "zortriumArmor" });
+    expect(st.cost).toBe(designStats(p, colony).cost);
+    expect(st.weapons).toEqual([]);
+    expect(st.hits).toBe(frigate.hits);
+    expect(designStats(p, findDesign(p, "transport")!).troops).toBe(4);
+    const custom: ShipDesign = { ...colony, id: "u1-1", name: "Armed settler", hull: "destroyer" };
+    expect(validateCommand(s, 0, { type: "saveDesign", design: custom }).ok).toBe(false);
+    expect(validateCommand(s, 0, { type: "saveDesign", design: { ...startingDesigns()[1]!, id: "colonyShip" } }).ok).toBe(false);
   });
 
   it("makes old components smaller as a field advances", () => {

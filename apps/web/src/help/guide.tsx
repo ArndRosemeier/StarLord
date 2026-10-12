@@ -279,7 +279,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>
         On the <b>Ship design</b> screen you pick a hull, armor, an optional shield and computer, weapons and special
         systems. Everything must fit in the hull's space. Armor and the computer take no space; shields and specials
-        need more space on bigger hulls. A module turns the hull into a colony ship, outpost ship or transport.
+        need more space on bigger hulls. Colony ships, outpost ships and transports are fixed designs you build straight
+        from the build list.
       </P>
       <Ul>
         <li>The armor grade multiplies the hull's armor and structure (<HelpLink to="page:hulls" />, <HelpLink to="page:armor" />).</li>
