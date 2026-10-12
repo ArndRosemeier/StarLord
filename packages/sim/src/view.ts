@@ -92,10 +92,18 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
   const events = state.events.filter((e) => e.playerId === viewer);
   // Unexplored systems keep their names to themselves, and one-time finds
   // (pirate caches, wrecks, stranded heroes) are only known once a system is explored.
+  // A wormhole is known once either of its two stars is explored.
+  const wormholeKnown = (s: (typeof stars)[number]) =>
+    !!s.wormholeTo && (explored.has(s.id) || explored.has(s.wormholeTo));
   const shownStars = stars.map((s) => {
+    let base = s;
+    if (s.wormholeTo && !wormholeKnown(s)) {
+      const { wormholeTo: _link, feature, ...rest } = s;
+      base = { ...rest, ...(feature && feature !== "wormhole" ? { feature } : {}) };
+    }
     // The raiders' home is only shown once a portal leads there, and the portal tells you its name.
-    if (explored.has(s.id) || s.special === "raiderHome") return s;
-    const { feature, ...rest } = s;
+    if (explored.has(s.id) || s.special === "raiderHome") return base;
+    const { feature, ...rest } = base;
     return { ...rest, name: UNKNOWN_STAR_NAME, ...(feature === "wormhole" ? { feature } : {}) };
   });
   const knownPopulation: Record<PlayerId, number> = {};

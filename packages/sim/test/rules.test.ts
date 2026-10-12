@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  MILITIA_PER_POP, TIER_OF_TECH, garrisonOf, hasTreaty, proposalId, relation, moveProblem, newGame, playerView, population, processTurn, travelTurns,
+  MILITIA_PER_POP, TIER_OF_TECH, UNKNOWN_STAR_NAME, garrisonOf, hasTreaty, proposalId, relation, moveProblem, newGame, playerView, population, processTurn, travelTurns,
   type Fleet, type GameState,
 } from "@starlord/sim";
 
@@ -131,7 +131,7 @@ describe("ground forces", () => {
 });
 
 describe("player view", () => {
-  it("hides one-time finds on unexplored stars but shows wormholes", () => {
+  it("hides one-time finds on unexplored stars but shows known wormholes", () => {
     const s = twoEmpires("view");
     const me = s.players[0]!;
     const unexplored = s.galaxy.stars.filter((x) => !me.explored.includes(x.id) && x.color !== "blackHole");
@@ -140,5 +140,28 @@ describe("player view", () => {
     const v = playerView(s, 0);
     expect(v.galaxy.stars.find((x) => x.id === unexplored[0]!.id)!.feature).toBe("wormhole");
     expect(v.galaxy.stars.find((x) => x.id === unexplored[1]!.id)!.feature).toBeUndefined();
+  });
+
+  it("shows a wormhole only once one of its two stars is explored", () => {
+    const s = twoEmpires("wormhole-view");
+    const me = s.players[0]!;
+    const unexplored = s.galaxy.stars.filter((x) => !me.explored.includes(x.id) && x.color !== "blackHole");
+    const [a, b] = [unexplored[0]!, unexplored[1]!];
+    a.feature = b.feature = "wormhole";
+    a.wormholeTo = b.id;
+    b.wormholeTo = a.id;
+    let v = playerView(s, 0);
+    for (const id of [a.id, b.id]) {
+      const star = v.galaxy.stars.find((x) => x.id === id)!;
+      expect(star.wormholeTo).toBeUndefined();
+      expect(star.feature).toBeUndefined();
+    }
+    me.explored.push(a.id);
+    v = playerView(s, 0);
+    expect(v.galaxy.stars.find((x) => x.id === a.id)!.wormholeTo).toBe(b.id);
+    const far = v.galaxy.stars.find((x) => x.id === b.id)!;
+    expect(far.wormholeTo).toBe(a.id);
+    expect(far.feature).toBe("wormhole");
+    expect(far.name).toBe(UNKNOWN_STAR_NAME);
   });
 });
