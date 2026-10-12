@@ -1,7 +1,7 @@
 import { Tip } from "../ui/Tip";
 import { FOCUS_TIPS, STANCE_TIPS } from "../ui/explain";
 import { useState } from "react";
-import { designStats, distance, findDesign, fleetSpeed, type Fleet } from "@starlord/sim";
+import { FREIGHTERS, PROJECT_COSTS, designStats, distance, findDesign, fleetSpeed, foodPlan, type Fleet } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, pct, words } from "../ui/format";
 import { FleetPanel, fleetShips } from "../ui/panels";
@@ -16,6 +16,24 @@ export function FleetsScreen({ onShowStar }: { onShowStar: (starId: string) => v
     return n + (d ? designStats(me, d).strength * s.count : 0);
   }, 0);
   const doctrine = me.doctrine;
+  const food = foodPlan(view, me.id);
+  const starving = Object.keys(food.shortfall).length;
+  const freighterTip = {
+    title: "Freighters",
+    kind: "Unarmed transports, never in battle",
+    rows: [
+      ["Owned", fmt(food.freighters)],
+      ["Carrying food", `${fmt(food.carryingFood)} (${fmt(food.delivered, 1)} of ${fmt(food.needed, 1)} food needed)`],
+      ["Moving colonists", fmt(food.movingColonists)],
+      ["Idle", fmt(food.free)],
+      ["Upkeep now", `${fmt(food.upkeep, 1)} BC/turn`],
+    ] as [string, string][],
+    text: [
+      `Each freighter carries ${FREIGHTERS.foodPerShip} food a turn from colonies with surplus to hungry ones; moving 1 population ties up ${FREIGHTERS.perColonist} freighters until it arrives.`,
+      `Each one in use costs ${FREIGHTERS.upkeepInUse} BC a turn; idle freighters cost nothing. Blockaded systems neither send nor receive food.`,
+      `Build more as a Freighter Fleet (${FREIGHTERS.perFleet} freighters, ${PROJECT_COSTS.freighterFleet} production) at any colony once you know Freighters.`,
+    ],
+  };
 
   return (
     <div className="grid2" style={{ gridTemplateColumns: "minmax(420px, 1.3fr) minmax(340px, 1fr)" }}>
@@ -40,6 +58,19 @@ export function FleetsScreen({ onShowStar }: { onShowStar: (starId: string) => v
                   </tr>
                 );
               })}
+              <tr className="freighters">
+                <td><Tip card={freighterTip}><span className="explained">Freighters</span></Tip></td>
+                <td className="muted">between your colonies</td>
+                <td>{fmt(food.freighters)}</td>
+                <td className="muted">unarmed</td>
+                <td colSpan={2}>
+                  <small>{food.carryingFood} carrying {fmt(food.delivered, 1)} food, {food.movingColonists} moving colonists, {food.free} idle</small>
+                  {starving > 0 && <div className="bad"><small>{starving} {starving === 1 ? "colony is" : "colonies are"} short of food by {fmt(food.needed - food.delivered, 1)}</small></div>}
+                  {food.free > 0 && !readOnly && (
+                    <button className="small" style={{ marginLeft: 8 }} onClick={() => session.issue({ type: "scrapFreighters", count: food.free })}>Scrap idle</button>
+                  )}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
