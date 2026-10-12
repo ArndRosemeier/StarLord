@@ -2,6 +2,7 @@ import { designStyle, findDesign, population, raceShipStyle, type HullSize, type
 import { STAR_COLORS } from "../../map/scene";
 import type { StationTierId } from "../models/stations";
 import { colonizeOption, type ColonizeOption } from "../../game/colonize";
+import { leadMonster, monsterBehavior, monsterName, monsterSpecies, type MonsterSpecies } from "../../game/monsters";
 
 /**
  * What a star system looks like from the viewer's seat, independent of how it
@@ -43,6 +44,10 @@ export interface SystemFleet {
   style: string;
   /** Under orders to leave. */
   leaving: boolean;
+  /** Which monster this is, for its model; null for other fleets. */
+  species: MonsterSpecies | null;
+  /** What a monster does to ships that come in, for its label. */
+  behavior: string | null;
 }
 
 export interface SystemModel {
@@ -108,9 +113,12 @@ export function buildSystemModel(view: PlayerView, starId: string, preferFleetId
           style = designStyle(owner, d);
         }
       }
+      const lead = owner.kind === "monsters" ? leadMonster(f) : undefined;
       return {
         id: f.id,
-        name: f.ownerId === view.viewer ? f.name : owner.name,
+        name: f.ownerId === view.viewer ? f.name : lead ? monsterName(lead) : owner.name,
+        species: monsterSpecies(lead),
+        behavior: lead ? monsterBehavior(lead) : null,
         color: owner.color,
         style,
         mine: f.ownerId === view.viewer,

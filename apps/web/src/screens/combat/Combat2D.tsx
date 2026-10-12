@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FIELD_HEIGHT, FIELD_WIDTH, WEAPONS_BY_ID, type CombatReport, type PlayerView } from "@starlord/sim";
 import { STEP_MS, isProjectile, leftOwner, type CombatEvent, type Frames, type UnitInfo } from "./replayModel";
+import { MONSTER_COLORS, monsterSpecies } from "../../game/monsters";
 
 /**
  * The flat canvas battle view: the fallback when WebGL is unavailable. It can
@@ -172,7 +173,7 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
         } else ctx.globalAlpha = fading;
         if (u.kind === "planet") drawPlanet(ctx, p.x, p.y, color);
         else if (u.kind === "station") drawStation(ctx, p.x, p.y, CELL * (0.45 + u.size * 0.3), color);
-        else if (u.kind === "monster") drawMonster(ctx, p.x, p.y, CELL * 0.55, t, reduced);
+        else if (u.kind === "monster") drawMonster(ctx, p.x, p.y, CELL * 0.55, t, reduced, MONSTER_COLORS[monsterSpecies(s.designId) ?? "generic"]);
         else {
           const dir = s.ownerId === leftOwner(report) ? 1 : -1;
           const size = 0.32 + Math.min(0.32, Math.log10(Math.max(1, s.maxHits)) * 0.12);
@@ -362,15 +363,17 @@ function drawStation(ctx: CanvasRenderingContext2D, x: number, y: number, r: num
   ctx.stroke();
 }
 
-/** A space creature: a pulsing red core in a writhing ring of tendrils. */
-function drawMonster(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, t: number, still: boolean): void {
+/** A space creature: a pulsing core in a writhing ring of tendrils, in its kind's colours. */
+function drawMonster(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, t: number, still: boolean, c: { body: number; glow: number; light: number }): void {
+  const hex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
+  const rgba = (n: number, a: number) => `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
   const beat = still ? 1 : 1 + 0.08 * Math.sin(t / 220);
   const aura = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2 * beat);
-  aura.addColorStop(0, "rgba(255,80,80,0.55)");
-  aura.addColorStop(1, "rgba(120,0,40,0)");
+  aura.addColorStop(0, rgba(c.glow, 0.55));
+  aura.addColorStop(1, rgba(c.body, 0));
   ctx.fillStyle = aura;
   ctx.fillRect(x - r * 2.4, y - r * 2.4, r * 4.8, r * 4.8);
-  ctx.strokeStyle = "#ff6b6b";
+  ctx.strokeStyle = hex(c.glow);
   ctx.lineWidth = 2;
   for (let i = 0; i < 7; i++) {
     const a = (i / 7) * Math.PI * 2 + (still ? 0 : t / 1800);
@@ -381,9 +384,9 @@ function drawMonster(ctx: CanvasRenderingContext2D, x: number, y: number, r: num
     ctx.stroke();
   }
   const core = ctx.createRadialGradient(x - r * 0.2, y - r * 0.2, 0, x, y, r * 0.8 * beat);
-  core.addColorStop(0, "#ffe0e0");
-  core.addColorStop(0.35, "#ff3d5a");
-  core.addColorStop(1, "#40000f");
+  core.addColorStop(0, hex(c.light));
+  core.addColorStop(0.35, hex(c.glow));
+  core.addColorStop(1, hex(c.body));
   ctx.fillStyle = core;
   ctx.beginPath();
   ctx.arc(x, y, r * 0.8 * beat, 0, Math.PI * 2);

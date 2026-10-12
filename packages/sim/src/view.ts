@@ -48,9 +48,10 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
         return { x: s.x, y: s.y, range: range + colonyScanBonus(c) };
       }),
   ];
-  // Monster lairs are landmarks: once a system is explored its guardian is known.
-  const lair = (f: { ownerId: PlayerId; starId: string | null }) =>
-    state.players[f.ownerId]!.kind === "monsters" && f.starId !== null && explored.has(f.starId);
+  // Monsters sitting in a system are a surprise: nobody sees them, not even by
+  // scanner or omniscience, until the system is explored; from then on the lair is a known landmark.
+  const parkedMonster = (f: { ownerId: PlayerId; starId: string | null }) =>
+    state.players[f.ownerId]!.kind === "monsters" && f.starId !== null;
   // Omniscient races see every fleet. Stealthy races' fleets slip past scanners
   // and only show when they share a system with the viewer's ships or colonies.
   const omniscient = seesAllFleets(getRace(me.raceId));
@@ -75,7 +76,9 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
   };
   const fleets = Object.fromEntries(
     Object.entries(state.fleets).filter(([, f]) => {
-      if (f.ownerId === viewer || omniscient || lair(f)) return true;
+      if (f.ownerId === viewer) return true;
+      if (parkedMonster(f)) return explored.has(f.starId!);
+      if (omniscient) return true;
       const look = fleetLooks(f);
       if (stealthy(f.ownerId) || look.hidden) return eyes.some((e) => distance(e, f) === 0);
       const bonus = (look.size - 1) * TRANSIT_DETECTION_PER_SIZE;

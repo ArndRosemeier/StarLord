@@ -122,6 +122,18 @@ describe("turns", () => {
     expect([...starsWithPlanets]).toEqual([s.players[0]!.homeStarId]);
   });
 
+  it("keeps a monster hidden, even within scanner range, until its system is explored", () => {
+    const s = newGame({ seed: "fog", playerCount: 2, races: ["terran", "kordex"], monsters: true, raiders: false, council: false });
+    const me = s.players[0]!;
+    const lair = Object.values(s.fleets).find((f) => s.players[f.ownerId]!.kind === "monsters" && !me.explored.includes(f.starId!))!;
+    // Park one of our scouts right next to the lair: close enough for any scanner.
+    const scout = Object.values(s.fleets).find((f) => f.ownerId === 0)!;
+    Object.assign(scout, { starId: null, destStarId: null, x: lair.x + 0.1, y: lair.y });
+    expect(playerView(s, 0).fleets[lair.id]).toBeUndefined();
+    me.explored.push(lair.starId!);
+    expect(playerView(s, 0).fleets[lair.id]).toBeDefined();
+  });
+
   it("learns the chosen tech when a tier completes", () => {
     let s = newGame({ seed: "tech", races: ["terran", "kordex"], ...quiet });
     s.players[0]!.research.progress = 1000;
