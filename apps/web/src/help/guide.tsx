@@ -8,8 +8,8 @@ import {
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES, EVENT_NUMBERS,
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, GUARDIAN_SCORE, BANKRUPTCY,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
-  SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
-  TRADE_GOODS_RATE, TRAIT_EFFECTS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, abilityValue, type HeroSkill, type HeroSkillGroup,
+  SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, STARTING_SHIPS, STARTING_STATION, BUILDINGS, BASE_SCRAP_REFUND, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
+  TRADE_GOODS_RATE, TRAIT_EFFECTS, GOVERNMENTS, RESEARCH_PER_SCIENTIST, AI_PEACE, EVENTS, MAX_WEAPON_SLOTS, COMM_REDIRECT_RANGE, HULLS, TECHS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, abilityValue, type HeroSkill, type HeroSkillGroup,
 } from "@starlord/sim";
 import { fmt, pct } from "../ui/format";
 import type { GuideSlug } from "./entries";
@@ -19,6 +19,25 @@ import { HelpLink } from "./HelpDialog";
  * Hand-written rules explanations. Numbers come from the rules modules so the
  * text follows the game when it is rebalanced.
  */
+
+/** Governments grouped by one of their numbers, e.g. "50% under Feudal and Confederation, 35% under …". */
+function byGovernment(value: (g: (typeof GOVERNMENTS)[keyof typeof GOVERNMENTS]) => number, unit: string, skip?: number): string {
+  const groups = new Map<number, string[]>();
+  for (const g of Object.values(GOVERNMENTS)) {
+    const v = value(g);
+    if (v === skip) continue;
+    groups.set(v, [...(groups.get(v) ?? []), g.name]);
+  }
+  return [...groups].map(([v, names]) => `${v}${unit} under ${listAnd(names)}`).join(", ");
+}
+
+function startCount(designId: string): number {
+  return STARTING_SHIPS.filter((s) => s.designId === designId).reduce((n, s) => n + s.count, 0);
+}
+
+function listAnd(items: string[]): string {
+  return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
 
 const P = ({ children }: { children: ReactNode }) => <p>{children}</p>;
 const Ul = ({ children }: { children: ReactNode }) => <ul className="help-ul">{children}</ul>;
@@ -33,11 +52,17 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         (see <HelpLink to="guide:victory" />).
       </P>
       <h3>Your first turns</h3>
+      <P>
+        Every empire starts, at every tech level, with{" "}
+        {startCount("scout")} scouts, {startCount("colonyShip")} colony ship and a{" "}
+        {BUILDINGS.find((b) => b.id === STARTING_STATION)?.name ?? STARTING_STATION} over its homeworld. In a pre-warp start
+        the ships wait at home until a drive is researched.
+      </P>
       <Ul>
         <li>Send your scouts to nearby stars from the <b>Galaxy</b> map: click the fleet, then click a star.</li>
-        <li>Pick a technology on the <b>Research</b> screen. The <HelpLink to="page:techTree" /> shows everything ahead.</li>
+        <li>Pick a technology on the <b>Research</b> screen. The <HelpLink to="page:techTree" /> shows everything ahead. If you end a turn with no field chosen, you are asked for one so no research is lost.</li>
         <li>Queue buildings or a colony ship on the <b>Colonies</b> screen and balance farmers, workers and scientists.</li>
-        <li>Send your colony ship to a good planet and press <b>Colonize</b> in the star panel.</li>
+        <li>Send your colony ship to a good planet, open its star and press <b>Colonize</b> on the planet you want.</li>
         <li>End the turn with the button at the top right or <Key>Ctrl</Key>+<Key>Enter</Key>.</li>
       </Ul>
       <P>
@@ -58,7 +83,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Galaxy map</h3>
       <Ul>
         <li>Drag to pan, mouse wheel to zoom.</li>
-        <li>Click a star to see its planets and fleets in the side panel.</li>
+        <li>Click a star to open its system in 3D: the star, every planet, colonies, stations and fleets. Drag to turn it, scroll to zoom, click a planet to follow it and double-click to see the whole system. From the panel beside it you colonize, invade, pick fleets and run your own colonies.</li>
+        <li>The <b>Last turn</b> panel in the sidebar lists what happened; click a line to jump there.</li>
         <li>Click one of your fleets, then click any star to send it there. Stars in fuel range are highlighted and the route is previewed.</li>
         <li><Key>Esc</Key> or a click on empty space deselects the fleet.</li>
         <li>Shift-click fleets to select several; they all take the next star order.</li>
@@ -101,7 +127,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Jobs</h3>
       <P>
         Every unit of population works as a farmer, worker or scientist. Farmers grow food according to the planet's
-        climate, workers make industry according to its minerals, and scientists make research (3 points each before
+        climate, workers make industry according to its minerals, and scientists make research ({RESEARCH_PER_SCIENTIST} points each before
         bonuses). Race picks, techs, buildings, the government, morale, gravity and an administrator all modify the
         result, but every unit makes at least 1, farmers only where farming is possible at all: barren, radiated and toxic
         worlds grow nothing until Biomorphic Fungi. See <HelpLink to="page:planets" /> and{" "}
@@ -137,17 +163,16 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Morale</h3>
       <P>
         Every 10% of morale adds or removes 10% of a colony's food, industry, research and population taxes. It comes
-        from the government, buildings, techs and administrators. Feudal and dictatorial empires and their advanced forms
-        lose 20% on colonies without a Marine or Armor Barracks. A colony where natives live among settlers loses{" "}
+        from the government, buildings, techs and administrators. {listAnd(Object.values(GOVERNMENTS).filter((g) => g.ungarrisonedPenalty > 0).map((g) => g.name))} empires lose{" "}
+        {Math.max(...Object.values(GOVERNMENTS).map((g) => g.ungarrisonedPenalty))}% on colonies without a Marine or Armor Barracks. A colony where natives live among settlers loses{" "}
         {ASSIMILATION.multiRacePenalty}% unless it has an Alien Management Center. Losing the Capitol costs morale on every
-        colony until it is rebuilt: 50% under feudal rule and confederation, 35% under dictatorship, imperium and
-        federation, 20% under democracy. Unified governments have no morale at all, good or bad. Androids ignore morale.
+        colony until it is rebuilt: {byGovernment((g) => g.capitalLossMorale, "%", 0)}.{" "}
+        {listAnd(Object.values(GOVERNMENTS).filter((g) => g.noMorale).map((g) => g.name))} have no morale at all, good or bad. Androids ignore morale.
       </P>
       <h3>Conquered people</h3>
       <P>
         People on a captured colony are aliens at first and work at {ASSIMILATION.alienPenalty}% less than normal. They join
-        your empire one unit at a time: every 8 turns under feudal rule or dictatorship, 4 under democracy, confederation or imperium,
-        2 under federation, 20 under unification and 15 under galactic unification. An Alien Management Center makes it
+        your empire one unit at a time: every {byGovernment((g) => g.assimilationTurns, " turns")}. An Alien Management Center makes it
         every 2 turns for anyone; charismatic rulers are twice as fast, repulsive ones half as fast, and telepaths
         assimilate them at once, as does anyone taking a feudal colony. Until then aliens may revolt, more often the more
         of them there are and half as often with an Alien Management Center; if they beat your garrison the colony goes
@@ -159,6 +184,12 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         counts only half of the industry, an Atmospheric Renewer a quarter, both together an eighth. Nano Disassemblers
         double every planet's tolerance, Core Waste Dumps end pollution on their colony, the Recyclotron's extra industry
         never pollutes, and tolerant races never pollute at all.
+      </P>
+      <h3>Colony and outpost bases</h3>
+      <P>
+        A finished Colony Base, Outpost Base or Artificial Planet asks which free planet in the system it goes to, showing
+        what each would become; with only one free planet it settles there by itself. A base whose planets were all taken
+        before it is used is scrapped for {pct(BASE_SCRAP_REFUND)} of its cost.
       </P>
       <h3>Outposts</h3>
       <P>
@@ -253,11 +284,12 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <Ul>
         <li>The armor grade multiplies the hull's armor and structure (<HelpLink to="page:hulls" />, <HelpLink to="page:armor" />).</li>
         <li>Each weapon mount has a count, optional modifications (heavy, point defense, autofire and so on) and, for beams, a firing arc. Missile mounts also choose how many shots their rack holds (<HelpLink to="page:weapons" />).</li>
-        <li>A ship can carry at most eight weapon mounts.</li>
+        <li>A ship can carry at most {MAX_WEAPON_SLOTS} weapon mounts.</li>
         <li>Combat speed depends on how full the hull is: an empty hull is fast, a packed one slow. Speed gives beam defense; the computer, specials and race picks give attack.</li>
         <li>Ship cost is scaled by your government (<HelpLink to="page:governments" />).</li>
         <li>Cruisers and larger hulls can only be built at colonies with a star base, battlestation or star fortress.</li>
         <li>Mark old designs obsolete to hide them from build lists.</li>
+        <li>The <b>Style</b> picker changes only how the ship looks. Every race has its own style, new designs start in yours, and any design can use any style.</li>
       </Ul>
       <P>
         See <HelpLink to="page:weapons" />, <HelpLink to="page:shields" />, <HelpLink to="page:computers" />,{" "}
@@ -274,12 +306,12 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         your colonies and outposts, or those of your allies. See <HelpLink to="page:drives" />.
       </P>
       <Ul>
-        <li><b>Nebulae</b> slow every ship inside them to {NEBULA_SPEED} parsec a turn, and no shields work in a battle there.</li>
+        <li><b>Nebulae</b> slow every ship inside them to {NEBULA_SPEED} parsec a turn (not trans-dimensional races or fleets with a Navigator), and no shields work in a battle there.</li>
         <li><b>Black holes</b> cannot be entered, and ships cannot fly close past them.</li>
         <li><b>Wormholes</b> link two distant stars; the trip takes one turn and needs no fuel.</li>
         <li>A <b>Star Gate</b> sends ships between any two of your colonies in one turn; a <b>Jump Gate</b> adds {JUMP_GATE_BONUS} to your speed between your colonies.</li>
         <li>An enemy <b>Warp Interdictor</b> slows your ships near its system to a crawl.</li>
-        <li>Ships already in flight can only change course with communication techs: Tachyon within 3 parsecs of an orbital base, Subspace within 6, Hyperspace anywhere.</li>
+        <li>Ships already in flight can only change course with communication techs: {COMM_REDIRECT_RANGE.map((c) => `${TECHS[c.tech]?.name ?? c.tech} ${Number.isFinite(c.range) ? `within ${c.range} parsecs of an orbital base` : "anywhere"}`).join(", ")}.</li>
       </Ul>
       <h3>Scanners</h3>
       <P>
@@ -295,7 +327,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Command points</h3>
       <P>
-        Every ship uses command points by hull size, from 1 for a frigate up to 6 for a doom star. You have{" "}
+        Every ship uses command points by hull size: {HULLS.map((h) => `${h.name.toLowerCase()} ${h.commandPoints}`).join(", ")}. You have{" "}
         {BASE_COMMAND_POINTS} to start with, more from star bases, battlestations, star fortresses, the space academy
         and communication techs; <HelpLink to="trait:warlord" /> races get {TRAIT_EFFECTS.warlordCommandPerColony} more per colony.
         Each point over the limit costs {COMMAND_OVERAGE_COST} BC a turn.
@@ -320,7 +352,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Moving and firing</h3>
       <Ul>
         <li>Whoever started the fight attacks, unless the battle is at the other side's colony: a colony's owner always defends. The defender deploys on the left, the attacker {DEPLOY.rightColumn - DEPLOY.leftColumn} squares away on the right (a human attacker takes the left instead). Ships line up in a column by size, biggest in the middle; the planet sits behind the defenders with its station in front of it.</li>
-        <li>Every round the attacker's ships act first, one after another, then the defender's.</li>
+        <li>Every round the attacker's ships act first, one after another, then the defender's. With the <b>Ship initiative</b> game option, every ship of both sides acts in order of combat speed plus a tenth of its beam attack instead.</li>
         <li>Ships spend their combat speed to move and turn. Each beam fires only into its arc, so facing matters.</li>
         <li>A beam's hit chance is its attack against the target's beam defense, minus a penalty that grows with range. Damage also drops with range unless the mount ignores it.</li>
         <li>Better rolls do more damage: a shot that barely hits does its minimum, a near-certain one close to its maximum.</li>
@@ -465,7 +497,9 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
   diplomacy: () => (
     <>
       <P>
-        Once you meet an empire you can trade proposals on the <b>Diplomacy</b> screen. Proposals expire after{" "}
+        Once you meet an empire you can request an audience with its ruler on the <b>Diplomacy</b> screen and trade
+        proposals face to face; computer rulers answer on the spot. They also ask for an audience themselves when you
+        first meet, when they declare war and when they bring a proposal or demand. Proposals expire after{" "}
         {PROPOSAL_LIFETIME} turns.
       </P>
       <Ul>
@@ -503,7 +537,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Peace comes only after {TREATY_ANSWER.peaceMinWarTurns} turns of war, and relations do not count: the longer the
         war, the more other wars they fight, the stronger you are, the more ships they have lost and the more of their
         systems your ships hold, the likelier they agree. Their strength counts half for every other war they fight; their
-        ships in your systems make them bolder. Computer rulers also offer peace themselves once a war has run ten turns.
+        ships in your systems make them bolder. Computer rulers also offer peace themselves once a war has run {AI_PEACE.minTurns} turns.
       </P>
       <P>
         Every proposal wears down their patience: {PATIENCE.perAsk} points, and {PATIENCE.firstAsk} to{" "}
@@ -527,7 +561,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>
         A computer ruler you hurt (spying, threats, refused demands) may count strikes against you: the first is a
         warning, a second ends your treaties or asks for compensation, and a third means war when its fleets can stand
-        up to yours. Computer rulers also make treaties and wars among themselves. Charisma (+50), telepathy (+25),
+        up to yours. Computer rulers also make treaties and wars among themselves. Charisma (+{TRAIT_EFFECTS.charismaticDiplomacy}), telepathy (+{TRAIT_EFFECTS.telepathicDiplomacy}),
         Xeno Psychology and Diplomat leaders add diplomatic points to every deal an empire offers.
       </P>
     </>
@@ -547,9 +581,9 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         spies is caught or one of theirs dies; spies told only to hide are safer. Missions that work hurt relations.
       </P>
       <P>
-        Spying comes from race picks (10 per level), techs and Spy Master leaders; security from the same race picks and
+        Spying comes from race picks ({PICK_VALUES.spyingPerLevel} per level), techs and Spy Master leaders; security from the same race picks and
         techs, government, security buildings and Telepath leaders. <HelpLink to="trait:telepathic" /> races add
-        10 to both. Assassin leaders kill enemy spies before they act.
+        {TRAIT_EFFECTS.telepathicSpy} to both. Assassin leaders kill enemy spies before they act.
       </P>
     </>
   ),
@@ -623,7 +657,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
           {EVENT_TIMING.dieSides} more per turn, a little less on easier levels), and after an event the galaxy stays calm
           for {EVENT_TIMING.cooldown} turns. Each time, up to {EVENT_TIMING.tries} kinds of event are drawn, all equally likely,
           and the first that can happen strikes. Each kind happens at most once a game. Disasters strike the most populous
-          empires, never the smallest; windfalls go to the smaller ones. Comets and supernovas don't come before turn 200, and
+          empires, never the smallest; windfalls go to the smaller ones. Comets don't come before turn {EVENTS.comet.fromTurn} and supernovas not before turn {EVENTS.supernova.fromTurn}, and
           a comet only during hyperspace flux. On Tutor there are no disasters. Random events can be switched off when
           starting a game. <HelpLink to="trait:lucky" /> races are spared the disasters and build up to windfalls of their own.
         </P>

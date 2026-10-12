@@ -33,6 +33,6 @@ describe("encyclopedia cross-references", () => {
     expect(techHasEffect("laserCannon")).toBe(true);
     expect(techHasEffect("microbiotics")).toBe(true);
     const all = TECH_TIERS.flatMap((t) => t.techs);
-    expect(all.filter(techHasEffect).length).toBeGreaterThan(all.length * 0.8);
+    expect(all.filter((t) => !techHasEffect(t))).toEqual([]);
   });
 });
