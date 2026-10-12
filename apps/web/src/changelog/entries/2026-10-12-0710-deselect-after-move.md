@@ -1,0 +1,1 @@
+- Fleets are deselected once you send them to a star, so the next click selects something new instead of re-routing them. Fleets that cannot reach the star stay selected.
