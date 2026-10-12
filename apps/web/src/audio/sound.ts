@@ -36,25 +36,69 @@ function loadSettings(): AudioSettings {
   }
 }
 
-class AudioDirector {
+/** The slice of HTMLAudioElement the music player uses, so tests can drive it with a fake. */
+export interface MusicTrack {
+  src: string;
+  loop: boolean;
+  volume: number;
+  readonly paused: boolean;
+  play(): Promise<void>;
+  pause(): void;
+  addEventListener(type: "ended" | "error" | "playing", fn: () => void): void;
+}
+
+/** Browser hooks the director needs; tests pass fakes. */
+export interface AudioEnv {
+  createTrack(src: string): MusicTrack;
+  /** Gesture and visibility events; null when there is no window (tests, SSR). */
+  events: Pick<Window, "addEventListener"> | null;
+  isVisible(): boolean;
+  setTimeout(fn: () => void, ms: number): unknown;
+  now(): number;
+  nextFrame(fn: () => void): void;
+}
+
+function browserEnv(): AudioEnv {
+  const hasWindow = typeof window !== "undefined";
+  return {
+    createTrack: (src) => new Audio(src),
+    events: hasWindow ? window : null,
+    isVisible: () => typeof document === "undefined" || document.visibilityState !== "hidden",
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    now: () => performance.now(),
+    nextFrame: (fn) => requestAnimationFrame(fn),
+  };
+}
+
+/** Wait before retrying a track that failed to load, doubling up to the cap. */
+const RETRY_MS = 2000;
+const RETRY_MAX_MS = 30000;
+
+export class AudioDirector {
   settings = loadSettings();
   private listeners = new Set<() => void>();
   private mood: Mood = "none";
-  private current: HTMLAudioElement | null = null;
+  private current: MusicTrack | null = null;
   private trackIndex = 0;
-  private fades = new WeakMap<HTMLAudioElement, number>();
+  /** A one-shot playlist (victory, defeat) that has played to its end stays quiet. */
+  private finished = false;
+  private failures = 0;
+  private fades = new WeakMap<MusicTrack, number>();
   private ctx: AudioContext | null = null;
 
-  constructor() {
-    if (typeof window === "undefined") return;
-    const unlock = () => {
-      if (this.current?.paused && this.mood !== "none") void this.current.play().catch(() => {});
+  constructor(private env: AudioEnv = browserEnv()) {
+    // Browsers refuse play() until a click or key press, and some (Safari, tablets) refuse it again for a
+    // track started outside a gesture, or pause music on their own. Every gesture or return to the tab
+    // therefore restarts music that should be playing but is not.
+    const resume = () => {
+      this.resume();
       void this.ctx?.resume();
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("keydown", unlock);
     };
-    window.addEventListener("pointerdown", unlock);
-    window.addEventListener("keydown", unlock);
+    env.events?.addEventListener("pointerdown", resume);
+    env.events?.addEventListener("keydown", resume);
+    env.events?.addEventListener("visibilitychange", () => {
+      if (env.isVisible()) resume();
+    });
   }
 
   subscribe = (fn: () => void) => {
@@ -63,6 +107,8 @@ class AudioDirector {
   };
 
   getSettings = () => this.settings;
+
+  getMood = () => this.mood;
 
   update(patch: Partial<AudioSettings>): void {
     this.settings = { ...this.settings, ...patch };
@@ -82,54 +128,93 @@ class AudioDirector {
     return this.settings.muted ? 0 : this.settings.music;
   }
 
-  /** Switch the background music; the same mood again keeps the current track playing. */
-  setMood(mood: Mood): void {
-    if (mood === this.mood) return;
+  /**
+   * Switch the background music and return the mood it replaces; the same mood again keeps the current
+   * track playing.
+   */
+  setMood(mood: Mood): Mood {
+    const previous = this.mood;
+    if (mood === previous) return previous;
     this.mood = mood;
     this.trackIndex = 0;
+    this.finished = false;
+    this.failures = 0;
     this.fadeOut(this.current);
     this.current = null;
     if (mood !== "none") this.start();
+    return previous;
+  }
+
+  /** Restart music that should be playing but is paused (blocked autoplay, a browser pause). */
+  resume(): void {
+    const track = this.current;
+    if (!track || this.mood === "none" || this.finished || !track.paused) return;
+    void track.play().catch(() => {});
+  }
+
+  private trackSrc(): string {
+    const list = PLAYLISTS[this.mood as Exclude<Mood, "none">];
+    return list.tracks[this.trackIndex % list.tracks.length]!;
   }
 
   private start(): void {
     if (this.mood === "none") return;
     const list = PLAYLISTS[this.mood];
-    const audio = new Audio(list.tracks[this.trackIndex % list.tracks.length]);
-    audio.loop = list.loop && list.tracks.length === 1;
-    audio.volume = 0;
-    audio.addEventListener("ended", () => {
-      if (audio !== this.current || !list.loop) return;
+    const track = this.env.createTrack(this.trackSrc());
+    track.loop = list.loop && list.tracks.length === 1;
+    track.volume = 0;
+    track.addEventListener("ended", () => {
+      if (track !== this.current) return;
+      if (!list.loop) {
+        this.finished = true;
+        return;
+      }
+      // Next track on the same element: a browser that unlocked it for a gesture keeps it unlocked,
+      // whereas a fresh element started from this event can be refused and leave the game silent.
       this.trackIndex++;
-      this.current = null;
-      this.start();
+      track.src = this.trackSrc();
+      void track.play().catch(() => {});
     });
-    this.current = audio;
-    // Rejected until the first gesture; the unlock listener retries.
-    void audio.play().catch(() => {});
-    this.fade(audio, this.musicVolume());
+    track.addEventListener("playing", () => {
+      if (track === this.current) this.failures = 0;
+    });
+    track.addEventListener("error", () => {
+      if (track !== this.current) return;
+      // A download that failed or broke off: try the next track (or this one again) after a pause.
+      const delay = Math.min(RETRY_MAX_MS, RETRY_MS * 2 ** this.failures++);
+      this.env.setTimeout(() => {
+        if (track !== this.current) return;
+        this.trackIndex++;
+        track.src = this.trackSrc();
+        void track.play().catch(() => {});
+      }, delay);
+    });
+    this.current = track;
+    // Rejected until the first gesture; the gesture listener retries.
+    void track.play().catch(() => {});
+    this.fade(track, this.musicVolume());
   }
 
-  private fade(audio: HTMLAudioElement, to: number, done?: () => void): void {
-    const from = audio.volume;
-    const t0 = performance.now();
-    const id = (this.fades.get(audio) ?? 0) + 1;
-    this.fades.set(audio, id);
+  private fade(track: MusicTrack, to: number, done?: () => void): void {
+    const from = track.volume;
+    const t0 = this.env.now();
+    const id = (this.fades.get(track) ?? 0) + 1;
+    this.fades.set(track, id);
     const tick = () => {
-      if (this.fades.get(audio) !== id) return; // A newer fade on this track took over.
-      const k = Math.min(1, (performance.now() - t0) / FADE_MS);
-      audio.volume = Math.max(0, Math.min(1, from + (to - from) * k));
-      if (k < 1) requestAnimationFrame(tick);
+      if (this.fades.get(track) !== id) return; // A newer fade on this track took over.
+      const k = Math.min(1, (this.env.now() - t0) / FADE_MS);
+      track.volume = Math.max(0, Math.min(1, from + (to - from) * k));
+      if (k < 1) this.env.nextFrame(tick);
       else done?.();
     };
-    requestAnimationFrame(tick);
+    this.env.nextFrame(tick);
   }
 
-  private fadeOut(audio: HTMLAudioElement | null): void {
-    if (!audio) return;
-    this.fade(audio, 0, () => {
-      audio.pause();
-      audio.src = "";
+  private fadeOut(track: MusicTrack | null): void {
+    if (!track) return;
+    this.fade(track, 0, () => {
+      track.pause();
+      track.src = "";
     });
   }
 

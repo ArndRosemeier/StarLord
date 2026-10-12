@@ -1,0 +1,2 @@
+- Background music no longer stops partway through a game. If the browser pauses it or a track fails to load, it comes back on your next click or key press, or when you return to the tab.
+- After a battle replay the music goes back to what was playing before, including the victory or defeat tune.
