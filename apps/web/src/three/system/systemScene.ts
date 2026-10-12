@@ -331,7 +331,7 @@ export class SystemScene {
 
   private fleetModels(f: SystemFleet, i: number): UnitModel[] {
     if (f.kind === "monsters") {
-      const m = buildMonster(this.kit, 2, hash(f.id) % 7);
+      const m = buildMonster(this.kit, 2, hash(f.id) % 7, f.species);
       return [m];
     }
     const cls = f.hull ?? "destroyer";
@@ -526,6 +526,7 @@ function planetTag(p: SystemPlanet): string {
 
 function fleetTag(f: SystemFleet): string {
   const ships = `${f.ships} ship${f.ships === 1 ? "" : "s"}`;
+  if (f.behavior) return `<b>${esc(f.name)}</b><span>${esc(f.behavior)}</span>`;
   return `<b>${esc(f.name)}</b><span>${ships}${f.leaving ? " · leaving" : ""}</span>`;
 }
 

@@ -9,6 +9,7 @@ import { ModelKit, disposeModel, type UnitModel } from "../../three/models/kit";
 import { buildShip } from "../../three/models/ships";
 import { buildStation, STATION_RADIUS } from "../../three/models/stations";
 import { buildMonster } from "../../three/models/monster";
+import { monsterSpecies } from "../../game/monsters";
 import { buildPlanet } from "../../three/models/planet";
 import {
   STEP_MS, starPlanetType, systemName, weaponLook,
@@ -172,7 +173,7 @@ export class BattleScene {
           model = buildStation(this.kit, info.station ?? "starBase", color);
           break;
         case "monster":
-          model = buildMonster(this.kit, 0.45 + info.size * 0.7, i);
+          model = buildMonster(this.kit, 0.45 + info.size * 0.7, i, monsterSpecies(info.snap.designId));
           break;
         default:
           model = buildShip(this.kit, info.hull, color, info.style);

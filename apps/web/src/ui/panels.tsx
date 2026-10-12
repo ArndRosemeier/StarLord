@@ -9,6 +9,7 @@ import { useGame } from "./hooks";
 import { climateName, fmt, words } from "./format";
 import { additive } from "./touch";
 import { colonizeOption, type ColonizeOption } from "../game/colonize";
+import { leadMonster, monsterBehavior, monsterName } from "../game/monsters";
 
 /** Painted planet art in public/planets, scaled by planet size. */
 export function PlanetIcon({ planet, size }: { planet: Planet; size?: number }) {
@@ -20,6 +21,13 @@ export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" :
 
 export function fleetShips(f: Fleet) {
   return f.ships.reduce((n, s) => n + s.count, 0);
+}
+
+/** How a fleet is listed: yours by name, monsters by kind, others by owner. */
+function fleetLabel(view: PlayerView, me: number, f: Fleet): string {
+  if (f.ownerId === me) return f.name;
+  const owner = view.players[f.ownerId]!;
+  return owner.kind === "monsters" ? monsterName(leadMonster(f)) : owner.name;
 }
 
 /** Planets of a star with colonies, plus colonize/invade buttons for the selected fleet. */
@@ -116,7 +124,7 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
           {fleets.map((f) => (
             <button key={f.id} className={(selectedFleetIds ?? [fleetId]).includes(f.id) ? "active" : ""} style={{ textAlign: "left" }} onClick={(e) => onSelectFleet(f.id, additive(e))}>
               <span className="dot" style={{ background: view.players[f.ownerId]!.color, marginRight: 6 }} />
-              {f.ownerId === me.id ? f.name : view.players[f.ownerId]!.name} <span className="muted">· {plural(fleetShips(f), "ship")}</span>
+              {fleetLabel(view, me.id, f)} <span className="muted">· {plural(fleetShips(f), "ship")}</span>
             </button>
           ))}
         </div>
@@ -152,7 +160,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
         ) : (
           <>
             <h3 style={{ margin: 0 }} onDoubleClick={() => mine && setRenaming(fleet.name)} title={mine ? "Double-click to rename" : undefined}>
-              {owner.id === me.id ? fleet.name : `${owner.name} fleet`}
+              {owner.id === me.id ? fleet.name : owner.kind === "monsters" ? monsterName(leadMonster(fleet)) : `${owner.name} fleet`}
             </h3>
             {mine && <button className="small touch-only" aria-label="Rename fleet" title="Rename this fleet" onClick={() => setRenaming(fleet.name)}>✎</button>}
           </>
@@ -161,6 +169,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
       </div>
       <div className="muted">
         {fleet.starId ? <>At {view.galaxy.stars.find((s) => s.id === fleet.starId)?.name}</> : "In deep space"}
+        {owner.kind === "monsters" && <> · {monsterBehavior(leadMonster(fleet))}</>}
         {dest && <> · heading to {dest.name}, {eta} turn{eta === 1 ? "" : "s"}</>}
         {captain && <> · Captain {captain.name}</>}
       </div>
