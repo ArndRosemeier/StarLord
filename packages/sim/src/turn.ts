@@ -352,6 +352,10 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       else delete player.automationStrategies;
       break;
     }
+    case "setIdleAlert":
+      if (cmd.on) delete player.idleAlertOff;
+      else player.idleAlertOff = true;
+      break;
     case "debug":
       applyDebug(ctx, playerId, cmd.action);
       break;

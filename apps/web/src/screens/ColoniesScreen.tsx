@@ -10,7 +10,7 @@ import { climateName, fmt, itemName, signed, words } from "../ui/format";
 import { PlanetIcon, PlanetOrb, viewStarOfColony } from "../ui/panels";
 import { Icon } from "../ui/fx";
 import { Tip } from "../ui/Tip";
-import { PlanetFacts, buildingTip, moraleTip, projectTip, tradeGoodsTip } from "../ui/explain";
+import { PlanetFacts, buildingTip, moraleTip, projectTip, tradeGoodsBC, tradeGoodsTip } from "../ui/explain";
 import { designTip } from "./designTips";
 import { BaseChoices } from "./BasePrompt";
 
@@ -195,7 +195,11 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
               </button>
             )}
           </div>
-          {colony.queue.length === 0 && <div className="warn">Nothing is being built. Industry is wasted.</div>}
+          {colony.queue.length === 0 && (
+            <Tip card={() => tradeGoodsTip(colony.raceId, o.industry)}>
+              <div className="muted">Nothing queued: the industry goes to Trade Goods, +{fmt(tradeGoodsBC(colony.raceId, o.industry))} BC a turn.</div>
+            </Tip>
+          )}
           {colony.queue.map((item, i) => {
             const cost = itemCost(view, me.id, item, colony);
             return (

@@ -301,6 +301,8 @@ export interface Player {
   automation: string[];
   /** Strategy each automated area follows, by area; areas not listed play the balanced strategy. */
   automationStrategies?: Record<string, string>;
+  /** Set when the player turned off the end-turn alert about colonies making only Trade Goods; this game only. */
+  idleAlertOff?: boolean;
   /** Whether any colony of the empire has a Dimensional Portal (kept in step with `Colony.portal`). */
   hasPortal: boolean;
   eliminatedTurn: number | null;
