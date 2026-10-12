@@ -1,7 +1,7 @@
 import {
   ARCS, ARMORS, ARMORS_BY_ID, COMPUTERS, COMPUTERS_BY_ID, COMPUTER_COST_BY_HULL, DEFAULT_MISSILE_SHOTS, DRIVES,
   HULLS, HULLS_BY_ID, MEGAFLUXER_SPACE_PCT, MINIATURIZATION, MISSILE_RACKS, MODULES, MOD_EFFECTS, NEVER_SHRINKS, SHIELDS,
-  SHIELDS_BY_ID, SHIELD_COST_BY_HULL, SHIELD_SPACE_BY_HULL, SPECIALS_BY_ID, SUPPORT_HULL_COST_SHARE, WEAPONS,
+  SHIELDS_BY_ID, SHIELD_COST_BY_HULL, SHIELD_SPACE_BY_HULL, SPECIALS_BY_ID, SUPPORT_HULL, WEAPONS,
   WEAPON_MODS_BY_ID, hullIndex, type DriveDef, type FiringArc, type HullDef, type HullSize, type SpecialEffects,
   type WeaponDef, type WeaponModId,
 } from "./data/components.js";
@@ -192,7 +192,16 @@ function hullSpace(player: Player, design: ShipDesign): number {
   return total;
 }
 
+/**
+ * The ship a colony, outpost or troop design really is: a fixed frigate with the
+ * empire's best armor and nothing else, whatever an older save stored.
+ */
+export function supportDesign(player: Player, design: ShipDesign): ShipDesign {
+  return { ...design, hull: SUPPORT_HULL, armor: bestArmor(player).id, shield: null, computer: null, weapons: [], specials: [] };
+}
+
 export function designStats(player: Player, design: ShipDesign): DesignStats {
+  if (design.module) design = supportDesign(player, design);
   if (design.fixed) {
     const f = design.fixed;
     // Specials on a fixed design (the raiders' citadel) work as on a ship; its armor and structure are already final.
@@ -212,7 +221,8 @@ export function designStats(player: Player, design: ShipDesign): DesignStats {
   const bonus = empireBonus(player);
   const fx = mergeEffects(design.specials);
   let space = 0;
-  let cost = design.module ? hull.cost * SUPPORT_HULL_COST_SHARE : hull.cost;
+  // A support ship costs its fixed price; the hull is free.
+  let cost = design.module ? 0 : hull.cost;
 
   for (const m of design.weapons) {
     const u = weaponUnitCost(player, m);
@@ -239,7 +249,6 @@ export function designStats(player: Player, design: ShipDesign): DesignStats {
   let troops = 0;
   if (design.module) {
     const mod = MODULES[design.module];
-    space += mod.space;
     cost += mod.cost;
     troops += mod.troops;
   }
@@ -352,12 +361,9 @@ export function validateDesign(player: Player, design: ShipDesign): string | nul
   if (!HULLS.some((h) => h.id === design.hull)) return "unknown hull";
   if (design.style !== undefined && !isShipStyle(design.style)) return "unknown ship style";
   const hull = HULLS_BY_ID[design.hull];
-  if (!design.module && !knows(player, hull.requires)) return "hull not researched";
-  if (design.module) {
-    const order: HullSize[] = ["frigate", "destroyer", "cruiser", "battleship", "titan", "doomStar"];
-    if (order.indexOf(design.hull) < order.indexOf(MODULES[design.module].minHull)) return "hull too small for module";
-    if (design.module === "outpost" && !knows(player, "outpostShip")) return "outposts not researched";
-  }
+  // Support ships are fixed designs: nothing to check but the outpost tech.
+  if (design.module) return design.module === "outpost" && !knows(player, "outpostShip") ? "outposts not researched" : null;
+  if (!knows(player, hull.requires)) return "hull not researched";
   const armor = ARMORS_BY_ID[design.armor];
   if (!armor || !knows(player, armor.requires)) return "armor not available";
   if (design.shield && (!SHIELDS_BY_ID[design.shield] || !knows(player, SHIELDS_BY_ID[design.shield]!.requires))) return "shield not available";
@@ -531,9 +537,9 @@ export function startingDesigns(): ShipDesign[] {
   return [
     { ...base, id: "scout", name: "Scout", hull: "frigate", weapons: [], module: null },
     { ...base, id: "frigate", name: "Frigate", hull: "frigate", computer: "electronicComputer", weapons: [{ weaponId: "laserCannon", count: 2 }], module: null },
-    { ...base, id: "colonyShip", name: "Colony Ship", hull: "cruiser", weapons: [], module: "colony" },
-    { ...base, id: "outpostShip", name: "Outpost Ship", hull: "destroyer", weapons: [], module: "outpost" },
-    { ...base, id: "transport", name: "Transport", hull: "destroyer", weapons: [], module: "transport" },
+    { ...base, id: "colonyShip", name: "Colony Ship", hull: "frigate", weapons: [], module: "colony" },
+    { ...base, id: "outpostShip", name: "Outpost Ship", hull: "frigate", weapons: [], module: "outpost" },
+    { ...base, id: "transport", name: "Transport", hull: "frigate", weapons: [], module: "transport" },
   ];
 }
 

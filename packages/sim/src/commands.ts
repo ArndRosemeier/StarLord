@@ -262,6 +262,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
         return fail("too many designs; mark some obsolete");
       }
       const existing = findDesign(player, cmd.design.id);
+      if (cmd.design.module || existing?.module) return fail("colony ships, outpost ships and transports are fixed designs");
       if (existing && shipsBuilt(state, playerId, existing.id)) return fail("design is in use; save it under a new id");
       return validateDesign(player, cmd.design) === null ? OK : fail(validateDesign(player, cmd.design)!);
     }

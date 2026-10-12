@@ -48,7 +48,7 @@ group("combat replay model", () => {
     expect(planet!.kind).toBe("planet");
     expect(planet!.planetType).toBe(view.planets[colony.planetId]!.type);
     expect(a!.kind).toBe("ship");
-    expect(a!.hull).toBe("cruiser");
+    expect(a!.hull).toBe("frigate");
     expect(m!.kind).toBe("monster");
     // Monsters are drawn at the size of the hull they are built on.
     expect(m!.hull).toBe("cruiser");

@@ -18,7 +18,7 @@ import { ARMORS, DRIVES } from "./data/components.js";
 import { crewLevel } from "./crew.js";
 import {
   ALL_WEAPONS, bestArmor, bestBeam, bestComputer, bestDrive, bestShield, designStats, findDesign, groundBatteryWeapons,
-  mergeEffects, missileBaseWeapons, mountFirepower, noEffects, rackShots, stationWeapons, strengthOf, weaponHP,
+  mergeEffects, missileBaseWeapons, mountFirepower, noEffects, rackShots, stationWeapons, strengthOf, supportDesign, weaponHP,
   weaponUnitCost, type MergedEffects,
 } from "./designs.js";
 import { empireBonus, knows } from "./empire.js";
@@ -419,8 +419,9 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
     const cyber = raceCombatRepair(getRace(player.raceId));
     let first = true;
     for (const stack of f.ships) {
-      const design = findDesign(player, stack.designId);
-      if (!design) continue;
+      const stored = findDesign(player, stack.designId);
+      if (!stored) continue;
+      const design = stored.module ? supportDesign(player, stored) : stored;
       const s = designStats(player, design);
       const monster = !!design.fixed;
       // A fixed design that never moves (the raiders' citadel) fights like an orbital station.

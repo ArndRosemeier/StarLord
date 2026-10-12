@@ -1,7 +1,7 @@
 import {
   ARCS, ARMORS_BY_ID, COMPUTERS_BY_ID, HULLS_BY_ID, MISSILE_RACKS, MOD_EFFECTS, MODULES, SHIELDS_BY_ID,
-  EXPLOSION, SHIP_STYLES_BY_ID, SPECIALS_BY_ID, WEAPON_MODS_BY_ID, WEAPONS_BY_ID, bestDrive, designStats, refinement, weaponUnitCost,
-  type DesignModule, type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponDef, type WeaponEffect,
+  EXPLOSION, SHIP_STYLES_BY_ID, SPECIALS_BY_ID, WEAPON_MODS_BY_ID, WEAPONS_BY_ID, bestDrive, designStats, refinement, supportDesign, weaponUnitCost,
+  type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponDef, type WeaponEffect,
   type WeaponKind, type WeaponModId, type WeaponMount, type WeaponTrait,
 } from "@starlord/sim";
 import { specialEffects } from "../help/effects";
@@ -72,12 +72,6 @@ const MOD_TEXT: Record<WeaponModId, string> = {
   overloaded: `${signed(MOD_EFFECTS.overloadedDamagePct)}% damage.`,
 };
 
-const MODULE_TEXT: Record<DesignModule, string> = {
-  colony: "Settles a new colony on an empty planet; the ship is used up.",
-  outpost: "Founds an outpost on any planet, asteroid belt or gas giant, claiming the system; the ship is used up.",
-  transport: "Carries ground troops to invade enemy colonies.",
-};
-
 /** Space and cost a part adds to this design: the design with it minus the design without it. */
 function partDelta(player: Player, without: ShipDesign, withIt: ShipDesign): { space: number; cost: number } {
   const a = designStats(player, without);
@@ -146,20 +140,6 @@ export function computerTip(player: Player, draft: ShipDesign, id: string | null
     title: `${c.name} computer`, kind: "Computer",
     rows: [["Beam attack", signed(c.attack)], ...spaceRow(partDelta(player, { ...draft, computer: null }, { ...draft, computer: id }), draft.hull)],
     text: ["Raises the chance that beams hit. Takes no space. It can be knocked out by system damage, losing the bonus."],
-  };
-}
-
-export function moduleTip(player: Player, draft: ShipDesign, id: DesignModule | null): TipCard {
-  if (!id) return { title: "No module", kind: "Module", text: ["A warship or scout. Add a colony, outpost or troop module to make a support ship."] };
-  const m = MODULES[id];
-  return {
-    title: m.name, kind: "Module",
-    rows: [
-      ["Space", fmt(m.space)], ["Cost", `${fmt(m.cost)} BC`],
-      ["Smallest hull", HULLS_BY_ID[m.minHull].name],
-      ...(m.troops ? [["Troops carried", fmt(m.troops)] as [string, string]] : []),
-    ],
-    text: [MODULE_TEXT[id], "A support ship costs its module's fixed price (the hull is free) and may use hulls you have not researched yet."],
   };
 }
 
@@ -286,7 +266,8 @@ export function spaceTip(used: number, total: number): TipCard {
   };
 }
 
-export function designTip(player: Player, d: ShipDesign): TipCard {
+export function designTip(player: Player, design: ShipDesign): TipCard {
+  const d = design.module ? supportDesign(player, design) : design;
   const parts = [
     `${ARMORS_BY_ID[d.armor]?.name ?? "No"} armor`,
     d.shield ? `${SHIELDS_BY_ID[d.shield]?.name} shield` : null,
@@ -302,6 +283,7 @@ export function designTip(player: Player, d: ShipDesign): TipCard {
     ],
     text: [
       parts.join(", ") + ".",
+      ...(d.module ? [`A fixed design, as in the original: a frigate hull with your best armor and drive, no weapons.${MODULES[d.module].troops ? ` Lands ${MODULES[d.module].troops} troops.` : ""}`] : []),
       d.weapons.length ? `Weapons: ${d.weapons.map((m) => `${m.count}× ${WEAPONS_BY_ID[m.weaponId]?.name ?? m.weaponId}${m.mods?.length ? ` (${m.mods.map((x) => WEAPON_MODS_BY_ID[x].abbr).join(" ")})` : ""}`).join(", ")}.` : "No weapons.",
       ...(d.specials.length ? [`Specials: ${d.specials.map((x) => SPECIALS_BY_ID[x]?.name ?? x).join(", ")}.`] : []),
     ],
