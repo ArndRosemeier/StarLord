@@ -104,7 +104,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   useEffect(() => {
     audio.setMood(!view.over ? "galaxy" : readOnly || won ? "victory" : "defeat");
   }, [view.over, won, readOnly]);
-  useEffect(() => () => audio.setMood("none"), []);
+  useEffect(() => () => { audio.setMood("none"); }, []);
 
   // Sound for a new turn, plus an alert when something bad or big happened to us.
   useEffect(() => {

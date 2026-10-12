@@ -38,8 +38,11 @@ export function CombatReplay({ report }: { report: CombatReport }) {
   const event = steps[step - 1]?.e;
 
   useEffect(() => {
-    audio.setMood("combat");
-    return () => audio.setMood("galaxy");
+    // Back to whatever played before (galaxy, or victory/defeat when the battle ended the game).
+    const before = audio.setMood("combat");
+    return () => {
+      if (audio.getMood() === "combat") audio.setMood(before === "none" ? "galaxy" : before);
+    };
   }, []);
 
   useEffect(() => {
