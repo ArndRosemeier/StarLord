@@ -93,6 +93,9 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
             text += ` ${failed.map((r) => r.f.name).join(", ")} cannot reach it.`;
           }
           setNotice({ text, bad: failed.length > 0, at: Date.now() });
+          // Fleets with their orders drop out of the selection; any that could not go stay picked.
+          const sent = new Set(ok.map((r) => r.f.id));
+          setFleetIds(sel.current.fleetIds.filter((fid) => !sent.has(fid)));
           return;
         }
         setStarId(id);
