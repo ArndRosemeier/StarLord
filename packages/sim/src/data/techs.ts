@@ -244,6 +244,9 @@ export const XENON_FIELD_TECHS = XENON_TECHS.filter((t) => t !== "phaseShifter")
  * Descriptions and empire bonuses. Techs not listed here unlock something in
  * another table and get a generated name.
  */
+import { MEGAFLUXER_SPACE_PCT } from "./components.js";
+import { STATION_ARMS } from "./combat.js";
+
 const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> = {
   // Starting tech
   capitol: { description: "Seat of your government on the homeworld; it can be rebuilt if lost." },
@@ -265,7 +268,9 @@ const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> 
   coreWasteDump: { name: "Core Waste Dumps", description: "Colonies can build Core Waste Dumps, which end their pollution." },
   poweredArmor: { description: "Marines: +10 troop rating and one more hit." },
   battleoids: { description: "Tanks: +10 troop rating and one more hit." },
+  advancedDamageControl: { description: "Every ship is repaired fully after each battle instead of only at your own systems." },
   // Power
+  megafluxers: { description: `Ships get ${MEGAFLUXER_SPACE_PCT}% more hull space and stations ${Math.round((STATION_ARMS.megafluxerMult - 1) * 100)}% more room for weapons.` },
   freighters: { description: "Colonies can build Freighter Fleets to carry food and colonists between your colonies." },
   colonyShip: { description: "Ships that settle planets in other systems." },
   outpostShip: { description: "Ships that place outposts on any free planet." },
@@ -314,6 +319,7 @@ const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> 
   galacticNetwork: { name: "Galactic Cybernet", description: "" },
   virtualRealityNetwork: { description: "+20% morale.", bonus: { morale: 20 } },
   pleasureDome: { description: "Colonies can build a Pleasure Dome: +30% morale." },
+  emissionsGuidance: { description: "Missiles can take the Emissions Guidance modification: their damage skips armor and goes straight into the target's drive." },
   // Biology
   microbiotics: { description: "+25% population growth (not cumulative with Universal Antidote).", group: "antidote", bonus: { growth: 0.25 } },
   telepathicTraining: { description: "+5 on all spy rolls.", bonus: { spying: 0.5 } },
