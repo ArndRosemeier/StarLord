@@ -103,6 +103,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
           <span className="title-glint" aria-hidden="true" />
         </h1>
         <div className="title-tagline">Forge an empire among the stars</div>
+        <div className="title-tribute">A tribute to the masterful Master of Orion II</div>
         {toast && <div className="title-toast" key={toast.id}>{toast.text}</div>}
         <div className="title-menu">
           <button className="title-button primary" onClick={() => newGame()}>New game</button>
