@@ -9,6 +9,7 @@ import { RaceShowcase } from "../title/RaceShowcase";
 import { NewsTicker } from "../title/NewsTicker";
 import { VERSION } from "../changelog/changelog";
 import { WhatsNew } from "../changelog/WhatsNew";
+import { openContactMail } from "../title/contact";
 
 const KONAMI = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
 
@@ -122,6 +123,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
           <button className="title-button" onClick={() => openHelp()}>Encyclopedia</button>
           <button className="title-button" onClick={() => setWhatsNew(true)}>What's new <small>v{VERSION}</small></button>
           <button className="title-button" onClick={() => setSettings(!settings)}>Sound</button>
+          <button className="title-button" onClick={() => openContactMail(VERSION)} title="Write an email to the developer: feedback, bugs, ideas">Contact</button>
           {settings && <div className="panel title-settings"><AudioControls /></div>}
           {error && <div className="bad">{error}</div>}
         </div>

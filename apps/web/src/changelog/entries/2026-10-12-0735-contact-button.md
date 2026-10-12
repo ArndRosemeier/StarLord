@@ -1,0 +1,1 @@
+- New "Contact" button on the title screen opens an email to the developer, so you can send feedback, bug reports and ideas.
