@@ -342,7 +342,7 @@ function offerHero(state: GameState, rng: Rng, playerId: PlayerId, emit?: Emit):
     l.offeredTo = playerId;
     l.availableUntil = state.turn + LEADER_RULES.queueTurns;
     state.players[playerId]!.lastLeaderOffer = state.turn;
-    emit?.({ kind: "leader", playerId, leaderId: l.id, what: `${l.name}, ${l.title}, offers their services` });
+    emit?.({ kind: "leader", playerId, leaderId: l.id, what: `${l.name}, ${l.title}, offers their services`, offer: true });
     return;
   }
 }

@@ -645,7 +645,7 @@ export type GameEvent =
   }
   | { turn: number; kind: "diplomacy"; playerId: PlayerId; other: PlayerId; what: string }
   | { turn: number; kind: "spy"; playerId: PlayerId; other: PlayerId; what: string }
-  | { turn: number; kind: "leader"; playerId: PlayerId; leaderId: Id; what: string }
+  | { turn: number; kind: "leader"; playerId: PlayerId; leaderId: Id; what: string; /** A hero offering their services. */ offer?: true }
   | { turn: number; kind: "council"; playerId: PlayerId; what: string }
   | { turn: number; kind: "random"; playerId: PlayerId; what: string; starId?: Id }
   | { turn: number; kind: "raid"; playerId: PlayerId; starId: Id }
