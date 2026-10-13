@@ -18,7 +18,7 @@ import {
 } from "./diplomacy.js";
 import { COMMAND_OVERAGE_COST, commandPointsAvailable, commandPointsUsed, fleetSpeed, grantTech } from "./empire.js";
 import {
-  androids, assimilationPoints, canFarm, colonyOutput, foodPlan, population, revoltChance, systemFrozen, totalPopulation,
+  androids, assimilationPoints, colonyOutput, farmerFood, foodPlan, population, revoltChance, systemFrozen, totalPopulation,
   type ColonyOutput,
 } from "./economy.js";
 import { espionageTick } from "./espionage.js";
@@ -1116,7 +1116,7 @@ function grow(ctx: TurnContext, colony: Colony, out: ColonyOutput, foodShort: nu
     }
     colony.growthK -= 1000;
     const job = newColonistJob(colony, {
-      canFarm: canFarm(ctx.state.planets[colony.planetId]!, ctx.state.players[colony.ownerId], race),
+      canFarm: farmerFood(ctx.state, colony) > 0,
       foodNet, foodNeed, empireFoodNet: empireFood,
       industry: out.industryGross - out.pollution,
       upkeepAfter: Math.ceil((cyber ? (population(colony) + 1) * CYBERNETIC_INDUSTRY : 0) + out.androids * ANDROIDS.industryUpkeep - 1e-9),

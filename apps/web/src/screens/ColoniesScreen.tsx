@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   exterminateProblem,
   BUILDINGS_BY_ID, MAX_QUEUE, PLACED_PROJECTS, PROJECTS_BY_ID, baseTargets, availableBuildings, availableDesigns, availableProjects, buyCost,
-  FREIGHTERS, androids, colonyOutput, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
+  FREIGHTERS, androids, colonyOutput, farmerFood, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
   type BuildItem, type Colony,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -66,6 +66,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
   const planet = view.planets[colony.planetId]!;
   const star = viewStarOfColony(view, colony.id);
   const o = colonyOutput(view, colony);
+  const perFarmer = farmerFood(view, colony);
   const food = foodPlan(view, me.id);
   const shortfall = food.shortfall[colony.id] ?? 0;
   const andr = androids(colony);
@@ -155,6 +156,9 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
                 <span className={`pips ${k === "farmers" ? "food" : k === "workers" ? "industry" : "research"}`}>
                   {Array.from({ length: jobs[k] }, (_, i) => <i key={i} />)}
                 </span>
+                {k === "farmers" && (perFarmer > 0
+                  ? <small className="muted">+{fmt(perFarmer, 1)} food per extra farmer</small>
+                  : <small className="bad">Farming grows no food here</small>)}
               </div>
             ))}
           </>

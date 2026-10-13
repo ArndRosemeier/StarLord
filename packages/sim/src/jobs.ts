@@ -27,25 +27,30 @@ export function removePopulation(colony: Colony, n: number): number {
 /**
  * Uses the fewest farmers that keep the colony fed, keeping the current number
  * of scientists, and makes everyone else a worker. If the colony can't feed
- * itself, every non-scientist farms and the empire food pool covers the rest.
+ * itself, every non-scientist farms and the empire food pool covers the rest,
+ * but nobody farms where another farmer would grow no food.
  */
 export function assignJobsForFood(state: GameState, colony: Colony, scientists = colony.scientists): void {
   const planet = state.planets[colony.planetId]!;
   const player = state.players[colony.ownerId]!;
+  const output = (c: Colony) => computeOutput(planet, player, c);
   const pop = population(colony);
   // Natives only ever farm.
   const natives = Math.min(pop, colony.natives ?? 0);
   const sci = Math.min(scientists, pop - natives);
   const others = pop - sci;
-  for (let farmers = natives; farmers <= others; farmers++) {
-    const trial: Colony = { ...colony, farmers, workers: others - farmers, scientists: sci };
-    if (computeOutput(planet, player, trial).foodNet >= 0 || farmers === others) {
-      colony.farmers = trial.farmers;
-      colony.workers = trial.workers;
-      colony.scientists = trial.scientists;
-      return;
-    }
+  let best: Colony = { ...colony, farmers: natives, workers: others - natives, scientists: sci };
+  let out = output(best);
+  while (out.foodNet < 0 && best.farmers < others) {
+    const next: Colony = { ...best, farmers: best.farmers + 1, workers: best.workers - 1 };
+    const nextOut = output(next);
+    if (nextOut.foodProduced <= out.foodProduced) break;
+    best = next;
+    out = nextOut;
   }
+  colony.farmers = best.farmers;
+  colony.workers = best.workers;
+  colony.scientists = best.scientists;
 }
 
 /**
