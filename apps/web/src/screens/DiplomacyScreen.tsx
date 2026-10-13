@@ -9,7 +9,7 @@ import { pct, playerName, signed, words } from "../ui/format";
 import { Envoy } from "../ui/panels";
 import { describeProposal } from "../diplomacy/terms";
 import { mood, type AudienceRequest } from "./Audience";
-import { CouncilBallot, CouncilResult, councilSession } from "./CouncilPopup";
+import { CouncilResult, castBallot, councilSession, mayCastCouncilVote } from "./CouncilPopup";
 import { activeEffects, incomingEffect, TIRED_TEXT, temperamentText } from "../diplomacy/effects";
 
 /** Your relation with them, where it drifts, and what holds it up or down. */
@@ -56,7 +56,7 @@ function AttitudeBreakdown({ them }: { them: number }) {
 }
 
 
-export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceRequest) => void }) {
+export function DiplomacyScreen({ onAudience, onCouncil }: { onAudience: (r: AudienceRequest) => void; onCouncil: () => void }) {
   const { session, view, me, readOnly } = useGame();
   const known = view.players.filter((p) => p.kind === "empire" && p.id !== me.id && me.contacts.includes(p.id));
   const unknown = view.players.filter((p) => p.kind === "empire" && p.id !== me.id && !me.contacts.includes(p.id)).length;
@@ -170,7 +170,7 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
           <h3>Galactic council</h3>
           <div className="muted">
             The council first convenes once {pct(COUNCIL.settledShare)} of the galaxy's systems are owned (not before turn {COUNCIL.earliestTurn}),
-            then every {COUNCIL_INTERVAL} turns; each session is announced a turn ahead and asks for your votes. The two empires with the most votes (one per {COUNCIL.popPerVote} population, rounded up) stand; {pct(COUNCIL_MAJORITY)} of all votes elects one.
+            then every {COUNCIL_INTERVAL} turns; each session plays out as a turn starts, with every empire declaring its vote in turn. The two empires with the most votes (one per {COUNCIL.popPerVote} population, rounded up) stand; {pct(COUNCIL_MAJORITY)} of all votes elects one.
             Computer empires back a candidate on a d{COUNCIL_VOTE.die} against relation + trust + 2 × reputation, +{COUNCIL_VOTE.sameAsLastTime} for the one it backed last time, +{COUNCIL_VOTE.nonAggression} for a non-aggression pact,
             +{COUNCIL_VOTE.trade} each for trade and research treaties, +{COUNCIL_VOTE.charismatic} for a charismatic candidate, +{COUNCIL_VOTE.holdsOrion} for one holding Orion,
             +{COUNCIL_VOTE.xenoPsychology} for Xeno Psychology, +{COUNCIL_VOTE.atWarWithRival} if at war with the other candidate, {COUNCIL_VOTE.repulsive} for a repulsive one,
@@ -180,8 +180,14 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
           </div>
           {councilSession(view) ? (
             <div className="panel col incoming">
-              <b>The council meets at the end of this turn</b>
-              <CouncilBallot />
+              <b>The council is in session this turn</b>
+              <div>
+                {view.players[councilSession(view)!.candidates[0]!]!.name} and {view.players[councilSession(view)!.candidates[1]!]!.name} stand.{" "}
+                {mayCastCouncilVote(view, me.id)
+                  ? (() => { const b = castBallot(session); return b === undefined ? "You have not declared your votes yet." : `You declared: ${b === null ? "abstain" : playerName(view, b)}.`; })()
+                  : ""}
+              </div>
+              <div className="row"><button className="small primary" onClick={onCouncil}>Enter the council chamber</button></div>
             </div>
           ) : (() => {
             const [a, b] = councilCandidates(view);

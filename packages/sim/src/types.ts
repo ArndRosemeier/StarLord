@@ -646,11 +646,13 @@ export interface CouncilState {
     weights?: Record<string, number>; ballots?: Record<string, PlayerId | null>;
   } | null;
   /**
-   * A session called for a coming turn, so every ruler can cast their votes:
-   * the candidates are fixed when it is called, and ballots are the votes
-   * people cast during that turn (null: abstain).
+   * The session held during `turn`, as the original stages it: every empire
+   * declares in seat order. It is called at the end of the turn before, which
+   * fixes the candidates, each empire's votes and the computer empires'
+   * ballots; people cast theirs during the session's turn (null: abstain),
+   * and the council counts them at its end.
    */
-  called?: { turn: number; candidates: PlayerId[]; ballots: Record<string, PlayerId | null> } | null;
+  called?: { turn: number; candidates: PlayerId[]; ballots: Record<string, PlayerId | null>; votes?: Record<string, number> } | null;
   /** An elected leader awaiting acceptance; any empire may refuse during the next turn. */
   pending?: { winner: PlayerId; turn: number; refused: PlayerId[] } | null;
   /** Whether the council has started meeting (it first meets once most of the galaxy is settled). */

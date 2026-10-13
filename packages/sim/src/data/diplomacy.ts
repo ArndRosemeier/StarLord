@@ -470,8 +470,9 @@ export const COUNCIL = {
   popPerVote: 10,
   minEmpires: 3,
   /**
-   * A session is called this many turns before the vote, so a human ruler
-   * casts their votes during their turn (the original asks mid-turn by menu).
+   * A session is called this many turns before it is counted, so it plays out
+   * during a turn and a human ruler declares their votes in it (the original
+   * holds it mid-turn).
    */
   notice: 1,
 } as const;

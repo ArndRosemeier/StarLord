@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { COUNCIL_INTERVAL, RELATION_EVENTS, councilVotes, voteChance, type PlayerId, type PlayerView } from "@starlord/sim";
 import type { GameSession } from "../game/session";
 import { useGame } from "../ui/hooks";
-import { fmt, pct, playerName } from "../ui/format";
+import { pct, playerName } from "../ui/format";
+import { Envoy } from "../ui/panels";
 
 /** The council session meeting at the end of this turn, if there is one. */
 export function councilSession(view: PlayerView) {
@@ -21,111 +23,129 @@ export function castBallot(session: GameSession): PlayerId | null | undefined {
   return cmd?.type === "castCouncilVote" ? (cmd.vote === "abstain" ? null : cmd.vote) : undefined;
 }
 
-/**
- * Votes each candidate can expect: their own, plus every computer voter's
- * weight times its chance of backing that candidate and not the other (it
- * abstains when both or neither pass its d200).
- */
-function expectedVotes(view: PlayerView, a: PlayerId, b: PlayerId, me: PlayerId) {
-  const out = { [a]: councilVotes(view, a), [b]: councilVotes(view, b) } as Record<number, number>;
-  const voters = view.players.filter((p) => p.kind === "empire" && p.alive && p.id !== a && p.id !== b && p.id !== me && !p.isHuman);
-  const rows = voters.map((p) => {
-    const w = councilVotes(view, p.id);
-    const pa = voteChance(view, p.id, a, b);
-    const pb = voteChance(view, p.id, b, a);
-    out[a]! += w * pa * (1 - pb);
-    out[b]! += w * pb * (1 - pa);
-    return { id: p.id, votes: w, forA: pa * (1 - pb), forB: pb * (1 - pa) };
-  });
-  return { expected: out, rows };
-}
+/** Seconds between two delegations' declarations. */
+const DECLARE_MS = 1100;
 
-/** Candidates, the numbers that decide it, and this ruler's ballot. Used by the popup and the Diplomacy screen. */
-export function CouncilBallot({ onCast }: { onCast?: () => void }) {
+/**
+ * The council in session, as the original stages it: every empire's
+ * delegation declares in seat order, candidates for themselves, and the
+ * player declares when their seat comes up. The running count is shown
+ * against the two thirds that elect a leader. Computer empires decided when
+ * the session was called; the council counts everything at the end of the turn.
+ */
+export function CouncilSession({ onClose, instant = false }: { onClose: () => void; instant?: boolean }) {
   const { session, view, me, readOnly } = useGame();
   const called = councilSession(view);
+  const ballot = castBallot(session);
+  // Declarations play out one by one, except when the player comes back after declaring.
+  const [shown, setShown] = useState(instant || ballot !== undefined ? Infinity : 0);
+  const seats = called ? view.players.filter((p) => p.kind === "empire" && p.alive).map((p) => p.id) : [];
+  const myIndex = seats.indexOf(me.id);
+  const mustChoose = mayCastCouncilVote(view, me.id) && ballot === undefined && !readOnly;
+  // Declarations stop at the player's seat until they have voted.
+  const stop = mustChoose && myIndex >= 0 ? myIndex : seats.length;
+  useEffect(() => {
+    if (shown >= stop) return;
+    const t = setTimeout(() => setShown((n) => n + 1), shown === 0 ? 600 : DECLARE_MS);
+    return () => clearTimeout(t);
+  }, [shown, stop]);
   if (!called) return null;
   const [a, b] = called.candidates as [PlayerId, PlayerId];
-  const alive = view.players.filter((p) => p.kind === "empire" && p.alive);
-  const total = alive.reduce((n, p) => n + councilVotes(view, p.id), 0);
+  const weight = (id: PlayerId) => called.votes?.[id] ?? councilVotes(view, id);
+  const total = seats.reduce((n, id) => n + weight(id), 0);
   const needed = Math.trunc((2 * total + 2) / 3);
-  const mine = councilVotes(view, me.id);
-  const { expected, rows } = expectedVotes(view, a, b, me.id);
-  const ballot = castBallot(session);
-  const standing = me.councilVote === "auto" ? "as a computer empire would (by your relations with the candidates)"
-    : me.councilVote === "abstain" ? "abstain" : `for ${playerName(view, me.councilVote)} if they stand, otherwise as a computer empire would`;
-  const cast = (vote: PlayerId | "abstain") => {
-    session.issue({ type: "castCouncilVote", vote });
-    onCast?.();
-  };
   const name = (id: PlayerId) => (id === me.id ? "You" : playerName(view, id));
-  return (
-    <div className="col" style={{ gap: 8 }}>
-      <div className="council-candidates">
-        {[a, b].map((c) => (
-          <div key={c} className="council-candidate">
-            <span className="dot" style={{ background: view.players[c]!.color }} />
-            <b>{name(c)}</b>
-            <span>{councilVotes(view, c)} vote{councilVotes(view, c) === 1 ? "" : "s"} of their own</span>
-            <small className="muted">expected about {fmt(Math.round(expected[c]!))} without you</small>
-          </div>
-        ))}
-      </div>
-      <div>
-        {total} votes in the council (one per 10 population, rounded up). A leader needs <b>{needed}</b>, two thirds; a candidate
-        elected by the council wins the game.
-      </div>
-      {rows.length > 0 && (
-        <details>
-          <summary>How the computer empires are leaning</summary>
-          <ul className="effect-list">
-            {rows.map((r) => (
-              <li key={r.id}>
-                {playerName(view, r.id)} ({r.votes} votes): {pct(r.forA)} backs {name(a)}, {pct(r.forB)} backs {name(b)}, else abstains
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-      {called.candidates.includes(me.id) ? (
-        <div>You stand, so your {mine} votes go to you.</div>
-      ) : mine === 0 ? (
-        <div>Your empire has no population, so it has no votes in this session.</div>
-      ) : (
-        <>
-          <div>
-            You have <b>{mine}</b> vote{mine === 1 ? "" : "s"}. Backing a candidate moves your relation with them by +{RELATION_EVENTS.councilFor} and with the
-            other by {RELATION_EVENTS.councilAgainst}; abstaining costs {RELATION_EVENTS.councilAbstain} with both (before the usual
-            modifiers).
-          </div>
-          <div className="row" style={{ flexWrap: "wrap" }}>
-            {[a, b].map((c) => (
-              <button key={c} className={ballot === c ? "primary" : ""} disabled={readOnly} onClick={() => cast(c)}>
-                Vote for {playerName(view, c)}
-              </button>
-            ))}
-            <button className={ballot === null ? "primary" : ""} disabled={readOnly} onClick={() => cast("abstain")}>Abstain</button>
-          </div>
-          <small className="muted">
-            {ballot === undefined ? `Not cast yet. If you end the turn without casting them, your votes go ${standing}.`
-              : `Your vote: ${ballot === null ? "abstain" : playerName(view, ballot)}. The council counts it at the end of this turn.`}
-          </small>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** The council meets at the end of this turn: the player casts their votes, as the original asks by menu. */
-export function CouncilVotePopup({ onClose }: { onClose: () => void }) {
+  /** What a seat declares: a candidate, null to abstain, "secret" for another person, undefined while undecided. */
+  const declaration = (id: PlayerId): PlayerId | null | "secret" | undefined => {
+    if (called.candidates.includes(id)) return id;
+    if (weight(id) === 0) return null;
+    if (id === me.id) return ballot === undefined ? (readOnly ? "secret" : undefined) : ballot;
+    if (view.players[id]?.isHuman) return "secret";
+    return called.ballots[id] ?? null;
+  };
+  const revealed = seats.slice(0, Math.min(shown, stop));
+  const tally = (c: PlayerId) => revealed.reduce((n, id) => n + (declaration(id) === c ? weight(id) : 0), 0);
+  const done = revealed.length === seats.length;
+  const secret = seats.some((id) => declaration(id) === "secret");
+  const winner = done && !secret ? [a, b].find((c) => tally(c) >= needed) ?? null : null;
+  const cast = (vote: PlayerId | "abstain") => session.issue({ type: "castCouncilVote", vote });
+  const undecided = seats.slice(myIndex + 1).filter((id) => !called.candidates.includes(id) && !view.players[id]?.isHuman && weight(id) > 0);
+  const atMySeat = mustChoose && shown >= stop;
   return (
     <div className="modal-back">
-      <div className="modal research-warning" role="dialog" aria-label="Galactic council">
-        <h3>The Galactic Council meets</h3>
-        <CouncilBallot onCast={onClose} />
+      <div className="modal council-session" role="dialog" aria-label="Galactic council in session">
+        <h3>The Galactic Council is in session</h3>
+        <div className="muted">
+          {total} votes (one per 10 population, rounded up). {needed} votes, two thirds, elect a leader of the galaxy, and that
+          empire wins the game.
+        </div>
+        <div className="council-tally">
+          {[a, b].map((c) => (
+            <div key={c} className="council-bar">
+              <div className="row"><span className="dot" style={{ background: view.players[c]!.color }} /> <b>{name(c)}</b><span className="spacer" />{tally(c)} / {needed}</div>
+              <div className="council-track">
+                <div className="council-fill" style={{ width: `${(100 * tally(c)) / Math.max(1, total)}%`, background: view.players[c]!.color }} />
+                <div className="council-mark" style={{ left: `${(100 * needed) / Math.max(1, total)}%` }} title={`${needed} votes elect`} />
+              </div>
+            </div>
+          ))}
+        </div>
+        <ol className="council-seats">
+          {seats.map((id, i) => {
+            const p = view.players[id]!;
+            const d = i < revealed.length ? declaration(id) : undefined;
+            const speaking = i === revealed.length - 1 && !done;
+            return (
+              <li key={id} className={`${i < revealed.length ? "declared" : i === stop && atMySeat ? "choosing" : "waiting"}${id === me.id ? " me" : ""}`}>
+                <Envoy raceId={p.raceId} color={p.color} className="council-envoy" autoPlay={speaking} once />
+                <span className="col" style={{ gap: 0 }}>
+                  <b>{name(id)}</b>
+                  <small className="muted">{weight(id)} vote{weight(id) === 1 ? "" : "s"}{called.candidates.includes(id) ? ", candidate" : ""}</small>
+                </span>
+                <span className="spacer" />
+                <span className="council-declares">
+                  {i >= revealed.length ? (i === stop && atMySeat ? "your turn to declare" : "")
+                    : d === "secret" ? "votes in secret"
+                      : weight(id) === 0 ? "has no votes"
+                        : d === null ? "abstains"
+                          : d === id ? (id === me.id ? "vote for yourselves" : "votes for itself")
+                            : `${id === me.id ? "vote" : "votes"} for ${name(d!)}`}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+        {atMySeat && (
+          <div className="panel col council-my-vote">
+            <div>
+              <b>Declare your {weight(me.id)} vote{weight(me.id) === 1 ? "" : "s"}.</b> Backing a candidate moves your relation with them by
+              +{RELATION_EVENTS.councilFor} and with the other by {RELATION_EVENTS.councilAgainst}; abstaining costs{" "}
+              {RELATION_EVENTS.councilAbstain} with both (before the usual modifiers).
+            </div>
+            {undecided.length > 0 && (
+              <small className="muted">
+                Still to declare: {undecided.map((id) => `${playerName(view, id)} (${weight(id)}) ${pct(voteChance(view, id, a, b) * (1 - voteChance(view, id, b, a)))} for ${name(a)}, ${pct(voteChance(view, id, b, a) * (1 - voteChance(view, id, a, b)))} for ${name(b)}`).join(" · ")}
+              </small>
+            )}
+            <div className="row" style={{ flexWrap: "wrap" }}>
+              {[a, b].map((c) => <button key={c} className="primary" onClick={() => cast(c)}>Vote for {playerName(view, c)}</button>)}
+              <button onClick={() => cast("abstain")}>Abstain</button>
+            </div>
+          </div>
+        )}
+        {done && (
+          <div className="council-verdict">
+            {secret ? "Some votes were cast in secret; the council announces its decision at the end of the turn."
+              : winner !== null ? <b>{name(winner)} {winner === me.id ? "are" : "is"} elected leader of the galaxy with {tally(winner)} of {total} votes.</b>
+                : <><b>No leader is elected.</b> {name(tally(a) >= tally(b) ? a : b)} came closest with {Math.max(tally(a), tally(b))}, {needed - Math.max(tally(a), tally(b))} short of {needed}. The council meets again on turn {called.turn + COUNCIL_INTERVAL}.</>}
+            {!secret && <small className="muted"> The decision takes effect when this turn ends.</small>}
+          </div>
+        )}
         <div className="row" style={{ marginTop: 12 }}>
+          {!done && !atMySeat && <button onClick={() => setShown(stop)}>Skip to {stop < seats.length ? "your seat" : "the count"}</button>}
           <span className="spacer" />
-          <button onClick={onClose}>Decide later</button>
+          {done ? <button className="primary" onClick={onClose}>Leave the chamber</button>
+            : <button onClick={onClose} title="Your votes then go by your standing choice on the Diplomacy screen, unless you return before ending the turn.">Decide later</button>}
         </div>
       </div>
     </div>

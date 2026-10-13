@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { newGame, processTurn, type GameState } from "@starlord/sim";
 import { GameSession } from "../src/game/session";
 import { SessionContext } from "../src/ui/hooks";
-import { CouncilBallot, CouncilResult, castBallot, mayCastCouncilVote } from "../src/screens/CouncilPopup";
+import { CouncilResult, CouncilSession, castBallot, mayCastCouncilVote } from "../src/screens/CouncilPopup";
 
 /** Turn 25, every system settled by empire 0, the human in seat 2: the council is called this turn. */
 function called(): GameState {
@@ -28,12 +28,18 @@ describe("galactic council windows", () => {
   it("asks the human for their votes and counts the ballot", () => {
     const session = new GameSession(called(), 2);
     expect(mayCastCouncilVote(session.view, 2)).toBe(true);
-    const html = render(session, <CouncilBallot />);
+    const html = render(session, <CouncilSession instant onClose={() => {}} />);
+    // Both candidates declare for themselves before the player's seat (seat 2), where the session waits for their vote.
+    expect(html.match(/votes for itself/g)).toHaveLength(2);
+    expect(html).toContain("your turn to declare");
     expect(html).toContain("Vote for");
     expect(html).toContain("Abstain");
-    expect(html).toMatch(/needs <b>\d+<\/b>, two thirds/);
+    expect(html).toMatch(/\d+ votes, two thirds, elect/);
     session.issue({ type: "castCouncilVote", vote: 1 });
     expect(castBallot(session)).toBe(1);
+    const declared = render(session, <CouncilSession onClose={() => {}} />);
+    expect(declared).toContain("vote for Felhari");
+    expect(declared).toMatch(/elected leader of the galaxy|No leader is elected/);
     const after = new GameSession(processTurn(session.state, { 2: session.pending }), 2);
     const r = after.state.council.lastResult!;
     expect(r.ballots![2]).toBe(1);
@@ -45,6 +51,8 @@ describe("galactic council windows", () => {
   it("tells a candidate their votes go to themselves", () => {
     const session = new GameSession(called(), 0);
     expect(mayCastCouncilVote(session.view, 0)).toBe(false);
-    expect(render(session, <CouncilBallot />)).toContain("You stand");
+    const html = render(session, <CouncilSession instant onClose={() => {}} />);
+    expect(html).toContain("vote for yourselves");
+    expect(html).not.toContain("your turn to declare");
   });
 });

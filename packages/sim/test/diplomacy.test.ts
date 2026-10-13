@@ -365,8 +365,8 @@ describe("strikes: a computer ruler's grievances against a human", () => {
 
 describe("galactic council", () => {
   /** Three empires, player 2 human, with every system settled by empire 0 on turn 25. */
-  function settled(seed: string): GameState {
-    const s = met(seed, ["terran", "felhari", "kordex"], { council: true, humanPlayers: [2] });
+  function settled(seed: string, races = ["terran", "felhari", "kordex"], humans = [2]): GameState {
+    const s = met(seed, races, { council: true, humanPlayers: humans });
     s.turn = 25;
     // Settle every star system for empire 0 on paper: one colony per system is what counts.
     for (const star of s.galaxy.stars) {
@@ -388,8 +388,11 @@ describe("galactic council", () => {
     // The session is called a turn ahead, with its candidates, and nobody has voted yet.
     expect(s.council.convened).toBe(true);
     expect(s.council.called).toMatchObject({ turn: 26, candidates: [0, 1] });
+    // Computer empires' ballots and everyone's votes are fixed when the session is called, so it can show each declaration.
+    expect(Object.keys(s.council.called!.votes!)).toHaveLength(3);
+    expect(Object.keys(s.council.called!.ballots)).toEqual([]);
     expect(s.council.lastResult).toBeNull();
-    expect(s.events.some((e) => e.kind === "council" && e.playerId === 2 && /meets next turn.*Cast your \d+ votes?/.test(e.what))).toBe(true);
+    expect(s.events.some((e) => e.kind === "council" && e.playerId === 2 && /in session.*you cast your \d+ votes?/.test(e.what))).toBe(true);
     s = processTurn(s, {});
     expect(s.council.called).toBeNull();
     expect(s.council.nextTurn).toBe(26 + 25);
@@ -401,6 +404,19 @@ describe("galactic council", () => {
     expect(Object.keys(s.council.lastVotes ?? {})).toHaveLength(3);
     expect(Object.values(s.council.lastVotes ?? {})).toContain(0);
     expect(s.events.some((e) => e.kind === "council" && /elected leader of the galaxy \(.*votes needed\)/.test(e.what))).toBe(true);
+  });
+
+  it("computer empires declare when the session is called, and the count holds them to it", () => {
+    let s = settled("declare", ["terran", "felhari", "kordex", "zhrikk"], [3]);
+    s = processTurn(s, {});
+    const called = s.council.called!;
+    expect(called.candidates).toEqual([0, 1]);
+    expect(Object.keys(called.ballots)).toEqual(["2"]);
+    const declared = called.ballots[2];
+    s = processTurn(s, { 3: [{ type: "castCouncilVote", vote: "abstain" }] });
+    expect(s.council.lastResult!.ballots![2]).toBe(declared);
+    expect(s.council.lastResult!.ballots![3]).toBeNull();
+    expect(s.council.lastResult!.weights).toEqual(called.votes);
   });
 
   it("asks a human for their votes: the ballot cast during the session's turn counts", () => {
