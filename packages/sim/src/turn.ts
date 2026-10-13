@@ -51,6 +51,16 @@ export type TurnOrders = Partial<Record<PlayerId, Command[]>>;
  * Advances the game by one turn. Pure with respect to its input: the given
  * state is cloned, so callers can keep history for replays and undo.
  */
+/**
+ * The order in which players' orders are carried out this turn. It rotates
+ * each turn so no seat always wins same-turn contests (two colony ships at one
+ * planet); everyone can work it out from the turn number.
+ */
+export function seatOrder(state: Pick<GameState, "players" | "turn">): PlayerId[] {
+  const n = state.players.length;
+  return Array.from({ length: n }, (_, i) => state.players[(state.turn + i) % n]!.id);
+}
+
 export function processTurn(prev: GameState, orders: TurnOrders, pauseAt?: TurnContext["pauseAt"]): GameState {
   registerRaces(prev.settings.customRaces);
   const state = structuredClone(prev);
@@ -60,11 +70,9 @@ export function processTurn(prev: GameState, orders: TurnOrders, pauseAt?: TurnC
   const rng = new Rng(state.rng);
   const ctx: TurnContext = { state, rng, emit: (e) => state.events.push({ turn: state.turn, ...e }), pauseAt };
 
-  // Rotate who acts first each turn so no seat always wins same-turn contests.
   // Answers to proposals come after everything else, so an empire can answer
   // in the same turn a proposal put to it in an audience.
-  const n = state.players.length;
-  const seats = Array.from({ length: n }, (_, i) => state.players[(state.turn + i) % n]!.id);
+  const seats = seatOrder(state);
   for (const id of seats) for (const cmd of orders[id] ?? []) if (cmd.type !== "respond") applyCommand(ctx, id, cmd);
   for (const id of seats) for (const cmd of orders[id] ?? []) if (cmd.type === "respond") applyCommand(ctx, id, cmd);
 

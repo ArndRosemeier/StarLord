@@ -1,5 +1,5 @@
 import {
-  BUILDINGS_BY_ID, availableBuildings, availableDesigns, availableProjects, buyCost, colonyOutput, commandPointsAvailable,
+  BUILDINGS_BY_ID, STATION_DOCK_HULLS, availableBuildings, distanceToNearestColony, fleetRange, availableDesigns, availableProjects, buyCost, colonyOutput, commandPointsAvailable,
   commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasMarineBarracks, hasStarDock, queuedAnywhere, relation, suggestedBaseTarget,
   type BuildItem, type Colony, type Command, type PlayerView,
 } from "@starlord/sim";
@@ -40,6 +40,10 @@ const COLONY_SHIP_MIN_INDUSTRY_EXPANSION = 5;
 const SETTLERS = { colony: 3, outpost: 2 };
 const SETTLERS_EXPANSION = { colony: 5, outpost: 4 };
 const MAX_SCOUTS = 2;
+/** Industry a colony needs before it builds a star dock for the big warships. */
+const STAR_DOCK_MIN_INDUSTRY = 15;
+/** Share of the command points a peacetime fleet should use before shipyards turn back to buildings. */
+const FLEET_FLOOR = 0.5;
 
 interface Wants {
   strategy: string;
@@ -57,6 +61,12 @@ interface Wants {
   barracks: boolean;
   /** Best planet worth a colony base in each system, by star id. */
   colonyBases: Map<string, string>;
+  /** The warship design needs a star dock: in peacetime only dock colonies build warships. */
+  bigHulls: boolean;
+  /** Our most productive colony, when it has no star dock yet: it builds one. */
+  dockColony: string | null;
+  /** Warships use less than FLEET_FLOOR of the command points: shipyards build them before buildings. */
+  fleetShort: boolean;
 }
 
 export function atWar(view: PlayerView): boolean {
@@ -97,6 +107,9 @@ export function productionOrders(view: PlayerView): Command[] {
       ? Math.ceil(freighterShort / FREIGHTERS.perFleet) - queued((q) => q.kind === "project" && q.id === "freighterFleet")
       : 0,
     capitol: player.capitol === "lost",
+    bigHulls: false,
+    dockColony: null,
+    fleetShort: false,
     barracks: government(player).ungarrisonedPenalty > 0 && !government(player).noMorale,
     colonyShips: Math.min(settlers.colony, targets.length) - owned("colony") - shipQueued("colonyShip"),
     outposts: designs.has("outpostShip") ? Math.min(settlers.outpost, outpostTargets(view).length) - owned("outpost") - shipQueued("outpostShip") : 0,
@@ -137,6 +150,9 @@ export function productionOrders(view: PlayerView): Command[] {
   const peaceFleet = Math.ceil(colonies.length / 2) + Math.floor(totals.industry / 40) * perShip;
   const peaceTarget = strategy === "military" ? peaceCap : Math.min(peaceCap, strategy === "industry" ? Math.ceil(peaceFleet / 2) : peaceFleet);
   wants.warships = Math.max(0, Math.floor(((war ? cpFree + overBudget : peaceTarget) - queuedCp) / perShip));
+  // A fleet using under half the command points comes before new buildings: a neighbour that outguns us declares war.
+  const warshipCp = fleets.reduce((n, f) => n + f.ships.reduce((m, sh) => m + hullCp(sh.designId) * sh.count, 0), 0);
+  wants.fleetShort = warshipCp + queuedCp < commandPointsAvailable(view, view.viewer) * FLEET_FLOOR;
   const transportsOwned = fleets.reduce((n, f) => n + f.ships.filter((s) => s.designId === "transport").reduce((m, s) => m + s.count, 0), 0);
   wants.transports = war ? Math.max(0, 4 - transportsOwned - shipQueued("transport")) : 0;
 
@@ -144,6 +160,12 @@ export function productionOrders(view: PlayerView): Command[] {
   // Scouts with nothing left to explore only cost command points.
   if (!unexploredInReach(view)) {
     for (const f of fleets.filter((x) => isOnly(view, x, "scout"))) {
+      for (const sh of f.ships) out.push({ type: "scrapShips", fleetId: f.id, designId: sh.designId, count: sh.count });
+    }
+  }
+  // Troop ships wait for a war; in peacetime they only tie up command points the fleet needs.
+  if (!war) {
+    for (const f of fleets.filter((x) => isOnly(view, x, "transport") && !x.destStarId)) {
       for (const sh of f.ships) out.push({ type: "scrapShips", fleetId: f.id, designId: sh.designId, count: sh.count });
     }
   }
@@ -178,6 +200,10 @@ export function productionOrders(view: PlayerView): Command[] {
   const ranked = colonies
     .map((c) => ({ c, out: colonyOutput(view, c) }))
     .sort((a, b) => b.out.industry - a.out.industry);
+  const docked = colonies.some(hasStarDock);
+  wants.bigHulls = docked && !!design && STATION_DOCK_HULLS.includes(design.hull);
+  const best = ranked[0]?.c;
+  if (best && !hasStarDock(best) && !best.queue.some((q) => q.kind === "building" && q.id === "starBase")) wants.dockColony = best.id;
 
   for (const [rank, { c, out: o }] of ranked.entries()) {
     const head = c.queue[0];
@@ -196,9 +222,12 @@ export function productionOrders(view: PlayerView): Command[] {
   return out;
 }
 
+/** Whether an unexplored star lies within fuel range of our colonies (scouts can't go anywhere else). */
 function unexploredInReach(view: PlayerView): boolean {
   const player = me(view);
-  return view.galaxy.stars.some((s) => !player.explored.includes(s.id) && s.special !== "raiderHome");
+  const range = fleetRange(player);
+  return view.galaxy.stars.some((s) => !player.explored.includes(s.id) && s.special !== "raiderHome" &&
+    distanceToNearestColony(view, view.viewer, s) <= range);
 }
 
 function chooseItem(
@@ -258,7 +287,13 @@ function chooseItem(
   if (c.farmers > 0 && buildable.has("hydroponicFarm")) return { kind: "building", id: "hydroponicFarm" };
   if (wants.barracks && pop >= 4 && buildable.has("marineBarracks")) return { kind: "building", id: "marineBarracks" };
   const warship = currentWarship(view, c);
-  if ((war || military) && warship && wants.warships > 0 && rank < 3 && industry >= 10) {
+  // Ships bigger than a destroyer come only from star docks; in peacetime the fleet is built there.
+  const shipyard = hasStarDock(c) || !wants.bigHulls;
+  if (c.id === wants.dockColony && buildable.has("starBase") && industry >= STAR_DOCK_MIN_INDUSTRY) {
+    wants.dockColony = null;
+    return { kind: "building", id: "starBase" };
+  }
+  if ((war || military || (wants.fleetShort && shipyard)) && warship && wants.warships > 0 && rank < 3 && industry >= 10) {
     wants.warships--;
     return ship(warship);
   }
@@ -291,7 +326,7 @@ function chooseItem(
     wants.spies--;
     return { kind: "project", id: "spy" };
   }
-  if (warship && wants.warships > 0 && industry >= 10) {
+  if (warship && shipyard && wants.warships > 0 && industry >= 10) {
     wants.warships--;
     return ship(warship);
   }
@@ -307,6 +342,6 @@ function chooseItem(
   if (defense && industry >= (military ? 10 : 25)) return { kind: "building", id: defense };
   if (pop < 6) return { kind: "project", id: "housing" };
   // A rich empire with nothing left to build keeps its fleet growing rather than hoarding BC.
-  if (warship && rich && industry >= 10) return ship(warship);
+  if (warship && shipyard && rich && industry >= 10) return ship(warship);
   return { kind: "tradeGoods" };
 }

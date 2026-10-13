@@ -21,10 +21,14 @@ const MOD_SETS: WeaponModId[][] = [
   ["mirv"], ["fast"], ["eccm"], ["overloaded"], ["enveloping"],
 ];
 
-/** Turns of a colony's industry a warship may cost, by design strategy. */
-const BUILD_TURNS: Record<string, number> = { balanced: 12, heavy: 25, light: 6 };
+/**
+ * Turns of a colony's industry a warship's hull may cost, by design strategy.
+ * Command points, not industry, cap a fleet, so a balanced empire takes about
+ * twenty turns over a hull: two cruisers outfight four destroyers on the same points.
+ */
+const BUILD_TURNS: Record<string, number> = { balanced: 20, heavy: 40, light: 8 };
 
-/** Largest hull whose cost a colony with this industry can turn out in about twelve turns (more or less by strategy). */
+/** Largest hull whose cost a colony with this industry can turn out in about twenty turns (more or less by strategy). */
 function pickHull(view: PlayerView, industry: number, maxHull: HullSize = "titan"): HullSize {
   const player = me(view);
   const limit = HULLS.findIndex((h) => h.id === maxHull);

@@ -293,7 +293,8 @@ export const NO_WAR_MULT = { trade: 1, research: 1, nonAggression: 1.5, alliance
  * + 50 per war either fights with a human + both temperaments; 200 or more
  * turns a pact into an alliance, 100 or more signs a pact. A second roll signs
  * research (over 110) or trade (over 80); a third may make the weaker, poorer
- * one pay tribute. Allies join each other's wars.
+ * one pay tribute. On a turn it considers a partner it is allied to, an
+ * empire also joins that ally's wars, and each consideration costs `patienceCost`.
  */
 export const AI_TREATIES = {
   die: 250,
@@ -314,6 +315,15 @@ export const AI_TREATIES = {
   tributeWarmth: { roll: 3, base: 2 },
   patienceCost: 30,
 } as const;
+
+/**
+ * How a war between two computer empires ends, after the original
+ * (FUN_00026705): once it has lasted more than `baseTurns` - `perDifficulty` x
+ * difficulty - `perHumanWar` x the human empires the first side also fights,
+ * they make peace. (The original may instead have a collapsing empire join a
+ * stronger one; StarLord leaves that out.)
+ */
+export const AI_AI_PEACE = { baseTurns: 90, perDifficulty: 15, perHumanWar: 20 } as const;
 
 /**
  * When a computer empire goes to war with another computer empire, after the
@@ -444,8 +454,10 @@ export const COUNCIL = {
  * backs one it is at war with and always backs an ally; it votes only when it
  * would back exactly one of the two candidates, and abstains otherwise. On
  * Hard and Impossible a human candidate's score is scaled by 6 / (6 + level).
- * The original also subtracts 20 x a per-pair negotiation mood that StarLord
- * does not keep; that term is left out.
+ * A computer voter also weighs its mood toward a human candidate: minus
+ * `mood` x its temperament's vsHumans (the original's per-pair mood starts
+ * there; StarLord does not follow how audiences move it later). Between
+ * computer empires the mood is 0.
  */
 export const COUNCIL_VOTE = {
   die: 200,
@@ -462,6 +474,8 @@ export const COUNCIL_VOTE = {
   nonAggression: 50,
   trade: 25,
   research: 25,
+  /** Points per step of the voter's mood toward a human candidate, subtracted. */
+  mood: 20,
   /** Difficulty index (Tutor 0 .. Impossible 4) above which a human candidate's score shrinks. */
   humanScaleAbove: 2,
   humanScaleBase: 6,

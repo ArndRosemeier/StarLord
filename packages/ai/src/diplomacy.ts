@@ -174,7 +174,7 @@ function offer(view: PlayerView, other: PlayerId): Command | null {
   return { type: "propose", to: other, kind: pick, ...terms };
 }
 
-/** Peace by the original's formula (AI_PEACE); between two computer empires StarLord uses the same (the original's rule there is not decoded). */
+/** Peace with a human by the original's formula (AI_PEACE); two computer empires make peace in the turn itself (AI_AI_PEACE). */
 function peaceOffer(view: PlayerView, other: PlayerId, peaceful: boolean): Command | null {
   if (!canOffer(view, other, "peace")) return null;
   const w = peaceWish(view, view.viewer, other);
@@ -211,12 +211,13 @@ export function diplomacyOrders(view: PlayerView): Command[] {
     const them = view.players[other]!;
     if (!them.alive) continue;
     const r = relation(view, view.viewer, other);
+    // Computer empires deal with each other in the turn itself, peace included.
+    if (!player.isHuman && !them.isHuman) continue;
     if (r.status === "war") {
       const cmd = peaceOffer(view, other, peaceful);
       if (cmd) out.push(cmd);
       continue;
     }
-    if (!player.isHuman && !them.isHuman) continue; // computer empires deal with each other in the turn itself
     if (!player.isHuman && r.status === "alliance") {
       const roll = die(view, `ally${other}`);
       // The original's ally duties, 1 in 10 turns each: ask the human ally to join a war, and join the ally's wars.

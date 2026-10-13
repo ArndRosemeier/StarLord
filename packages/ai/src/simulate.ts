@@ -47,7 +47,14 @@ export interface SimResult {
   /** Diplomatic changes between empires: wars declared, peace treaties, pacts, alliances, trade and research treaties signed. */
   diplomacy: Record<string, number>;
   empires: EmpireResult[];
+  /** Every Galactic Council session: the candidates' and winner's races. */
+  councils: { turn: number; candidates: string[]; seats: PlayerId[]; winner: string | null }[];
+  /** Armed warships by hull size per living empire, taken at turn HULL_SNAPSHOT_TURN. */
+  hulls: { race: string; colonies: number; population: number; hulls: Record<string, number> }[];
 }
+
+/** Turn at which the simulator records every empire's warships by hull. */
+export const HULL_SNAPSHOT_TURN = 250;
 
 export interface SimOptions extends NewGameOptions {
   /** A clock for timing turns (e.g. performance.now); the game itself never reads it. */
@@ -83,6 +90,8 @@ export class Simulation {
       events: {},
       diplomacy: {},
       empires: [],
+      councils: [],
+      hulls: [],
     };
     this.problems(0, checkInvariants(this.state), "invariant");
     this.refresh();
@@ -117,6 +126,8 @@ export class Simulation {
     if (ms > r.slowestTurnMs) r.slowestTurnMs = ms;
     if (ms > (this.opts.slowTurnMs ?? 2000)) this.problems(r.turns, [`turn took ${Math.round(ms)} ms`], "slowTurn");
     for (const e of this.state.events) this.count(e);
+    this.recordCouncil();
+    if (r.turns === HULL_SNAPSHOT_TURN) this.recordHulls();
     if (this.state.over || r.turns % (this.opts.checkEvery ?? 1) === 0) {
       this.problems(r.turns, checkInvariants(this.state), "invariant");
     }
@@ -140,6 +151,31 @@ export class Simulation {
       const key = e.reason.replace(/\d+(\.\d+)?/g, "#");
       r.rejected[key] = (r.rejected[key] ?? 0) + 1;
     }
+  }
+
+  private recordCouncil(): void {
+    const last = this.state.council.lastResult;
+    const r = this.result;
+    if (!last || r.councils.some((c) => c.turn === last.turn)) return;
+    const race = (id: PlayerId) => RACES_BY_ID[this.state.players[id]!.raceId]?.name ?? this.state.players[id]!.raceId;
+    r.councils.push({ turn: last.turn, candidates: last.candidates.map(race), seats: [...last.candidates], winner: last.winner === null ? null : race(last.winner) });
+  }
+
+  private recordHulls(): void {
+    const s = this.state;
+    this.result.hulls = s.players.filter((p) => p.kind === "empire" && p.alive).map((p) => {
+      const hulls: Record<string, number> = {};
+      for (const f of Object.values(s.fleets)) {
+        if (f.ownerId !== p.id) continue;
+        for (const st of f.ships) {
+          const d = p.designs.find((x) => x.id === st.designId);
+          if (!d || d.module || d.weapons.length === 0) continue;
+          hulls[d.hull] = (hulls[d.hull] ?? 0) + st.count;
+        }
+      }
+      const t = empireTotals(s, p.id);
+      return { race: RACES_BY_ID[p.raceId]?.name ?? p.raceId, colonies: t.colonies, population: t.population, hulls };
+    });
   }
 
   private countDiplomacy(before: GameState["relations"], after: GameState["relations"]): void {

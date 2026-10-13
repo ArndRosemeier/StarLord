@@ -10,6 +10,8 @@ import type { GalaxySize } from "@starlord/sim";
  * counts) to the end, in parallel, and reports how each ended plus any
  * crashes, broken invariants, slow turns and rejected AI commands.
  *   pnpm soak --seeds 3 --galaxies small,medium,large --players 2,4,6
+ * With --vary each galaxy size and player count gets its own seeds, so the
+ * races differ between games (otherwise a seed picks the same races everywhere).
  * Exits non-zero when any game crashed or broke an invariant.
  */
 
@@ -23,6 +25,8 @@ const { values } = parseArgs({
     jobs: { type: "string", default: "4" },
     out: { type: "string" },
     one: { type: "string" },
+    /** Give every galaxy size and player count its own seeds, so the races (picked by the seed) vary between games. */
+    vary: { type: "boolean", default: false },
   },
 });
 
@@ -43,7 +47,8 @@ async function main(): Promise<void> {
   for (const galaxySize of values.galaxies!.split(",") as GalaxySize[]) {
     for (const playerCount of values.players!.split(",").map(Number)) {
       for (let i = 0; i < Number(values.seeds); i++) {
-        specs.push({ seed: `soak-${Number(values.seed) + i}`, galaxySize, playerCount, maxTurns: Number(values.turns) });
+        const n = Number(values.seed) + i;
+        specs.push({ seed: values.vary ? `soak-${n}-${galaxySize}-${playerCount}` : `soak-${n}`, galaxySize, playerCount, maxTurns: Number(values.turns) });
       }
     }
   }
@@ -86,6 +91,48 @@ async function main(): Promise<void> {
   if (top.length) {
     console.log("\nMost rejected AI commands (all games):");
     for (const [k, n] of top) console.log(`  ${String(n).padStart(6)}  ${k}`);
+  }
+
+  // Galactic Council: who stands and who wins, by race, against how often each race plays.
+  const playing: Record<string, number> = {};
+  const standing: Record<string, number> = {};
+  const elected: Record<string, number> = {};
+  let sessions = 0;
+  for (const r of done) {
+    for (const e of r.empires) playing[e.race] = (playing[e.race] ?? 0) + 1;
+    for (const c of r.councils ?? []) {
+      sessions++;
+      for (const x of c.candidates) standing[x] = (standing[x] ?? 0) + 1;
+      if (c.winner) elected[c.winner] = (elected[c.winner] ?? 0) + 1;
+    }
+  }
+  if (sessions) {
+    const won = Object.values(elected).reduce((a, b) => a + b, 0);
+    console.log(`\nCouncil: ${sessions} sessions, ${won} elected a leader`);
+    for (const race of Object.keys(playing).sort((a, b) => (standing[b] ?? 0) - (standing[a] ?? 0))) {
+      console.log(`  ${race.padEnd(10)} plays ${String(playing[race]).padStart(3)}  candidate ${String(standing[race] ?? 0).padStart(3)}  elected ${String(elected[race] ?? 0).padStart(3)}`);
+    }
+  }
+
+  const seats: Record<string, number> = {};
+  for (const r of done) for (const c of r.councils ?? []) for (const id of c.seats ?? []) seats[id] = (seats[id] ?? 0) + 1;
+  if (sessions) console.log("Council candidates by seat:", seats);
+  const topSeat: Record<string, number> = {};
+  for (const r of done) {
+    const best = [...r.empires].sort((a, b) => b.score - a.score)[0];
+    if (best) topSeat[best.id] = (topSeat[best.id] ?? 0) + 1;
+  }
+  console.log("Top score by seat:", topSeat);
+
+  // Warship hulls at the snapshot turn, for the smaller and the larger half of the empires.
+  const snaps = done.flatMap((r) => r.hulls ?? []);
+  if (snaps.length) {
+    const median = [...snaps].sort((a, b) => a.population - b.population)[Math.floor(snaps.length / 2)]!.population;
+    for (const [label, group] of [["small", snaps.filter((x) => x.population < median)], ["large", snaps.filter((x) => x.population >= median)]] as const) {
+      const mix: Record<string, number> = {};
+      for (const x of group) for (const [h, n] of Object.entries(x.hulls)) mix[h] = (mix[h] ?? 0) + n;
+      console.log(`Warship hulls of ${group.length} ${label} empires (pop ${label === "small" ? "<" : ">="} ${median}):`, mix);
+    }
   }
 
   const bad = results.filter((x) => !x.result || x.result.crashed || x.result.problems.some((p) => p.kind !== "slowTurn"));

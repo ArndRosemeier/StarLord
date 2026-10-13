@@ -1,6 +1,6 @@
 import {
-  CLIMATES, canFarm, canReach, distance, distanceToNearestColony, fleetRange, getRace, gravityMultiplier, guarded,
-  hasTrait, knows, maxPopulation, type Command, type Planet, type PlayerView,
+  CLIMATES, canFarm, canReach, distance, distanceToNearestColony, findDesign, fleetRange, getRace, gravityMultiplier, guarded,
+  hasTrait, knows, maxPopulation, seatOrder, type Command, type Planet, type PlayerView,
 } from "@starlord/sim";
 import { strategyOf } from "./strategies.js";
 import { isOnly, me, myFleets, starById } from "./util.js";
@@ -59,13 +59,37 @@ export function outpostTargets(view: PlayerView): Target[] {
   return targets.sort((a, b) => b.value - a.value);
 }
 
-function settle(view: PlayerView, role: "colony" | "outpost", targets: Target[]): Command[] {
+/**
+ * Free planets at a star that settlers of empires acting before us this turn
+ * may take first: as many as their colony and outpost ships there. Trying to
+ * settle one of those only gets the order turned down.
+ */
+function rivalSettlers(view: PlayerView, starId: string): number {
+  const order = seatOrder(view);
+  const mine = order.indexOf(view.viewer);
+  let n = 0;
+  for (const f of Object.values(view.fleets)) {
+    if (f.ownerId === view.viewer || f.starId !== starId || order.indexOf(f.ownerId) > mine) continue;
+    const owner = view.players[f.ownerId]!;
+    if (owner.kind !== "empire") continue;
+    for (const s of f.ships) {
+      const m = findDesign(owner, s.designId)?.module;
+      if (m === "colony" || m === "outpost") n += s.count;
+    }
+  }
+  return n;
+}
+
+function settle(view: PlayerView, role: "colony" | "outpost", targets: Target[], claimed: Set<string>): Command[] {
   const out: Command[] = [];
   const ships = myFleets(view).filter((f) => isOnly(view, f, role));
   const claimedStars = new Set(ships.map((f) => f.destStarId).filter(Boolean));
-  const claimed = new Set<string>();
   for (const f of ships) {
     if (f.destStarId || !f.starId) continue;
+    // Another empire's settlers here act first this turn: wait while they could take every free world.
+    const rivals = rivalSettlers(view, f.starId);
+    const free = Object.values(view.planets).filter((p) => p.starId === f.starId && !p.colonyId && CLIMATES[p.type].habitable).length;
+    if (rivals > 0 && rivals >= free) continue;
     const here = targets.find((t) => t.planet.starId === f.starId && !claimed.has(t.planet.id));
     const best = targets.find((t) => !claimed.has(t.planet.id) && !claimedStars.has(t.planet.starId) && canReach(view, view.viewer, f, t.planet.starId));
     if (here && (!best || here.value >= best.value * 0.8)) {
@@ -84,5 +108,7 @@ function settle(view: PlayerView, role: "colony" | "outpost", targets: Target[])
 }
 
 export function colonizationOrders(view: PlayerView): Command[] {
-  return [...settle(view, "colony", colonizationTargets(view)), ...settle(view, "outpost", outpostTargets(view))];
+  // One claim list for both kinds of ship: a world a colony ship settles is no outpost target.
+  const claimed = new Set<string>();
+  return [...settle(view, "colony", colonizationTargets(view), claimed), ...settle(view, "outpost", outpostTargets(view), claimed)];
 }
