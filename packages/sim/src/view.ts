@@ -124,8 +124,9 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
     }
     // The raiders' home is only shown once a portal leads there, and the portal tells you its name.
     if (explored.has(s.id) || s.special === "raiderHome") return base;
+    // Orion looks like any other star of its colour until someone explores it, as in the original.
     const { feature, ...rest } = base;
-    return { ...rest, name: UNKNOWN_STAR_NAME, ...(feature === "wormhole" ? { feature } : {}) };
+    return { ...rest, name: UNKNOWN_STAR_NAME, special: null, ...(feature === "wormhole" ? { feature } : {}) };
   });
   const knownPopulation: Record<PlayerId, number> = {};
   const knownTreatyPop: Record<PlayerId, { trade: number; research: number }> = {};
