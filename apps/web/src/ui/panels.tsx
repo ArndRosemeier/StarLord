@@ -2,7 +2,7 @@ import { STANCE_TIPS, climateTip, crewTip, gravityTip, mineralsTip, sizeTip, spe
 import { Tip } from "./Tip";
 import { useState, type ReactNode } from "react";
 import {
-  CLIMATES, canReach, crewLevel, crewName, designStats, findDesign, getRace, isHostile, maxPopulation, movementHalted, population, relation, travelTurns,
+  CLIMATES, canReach, crewLevel, crewName, designStats, findDesign, getRace, isHostile, maxPopulation, movementHalted, population, relation, travelGroup, travelSpeed, travelTurns,
   type Fleet, type Planet, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "./hooks";
@@ -146,6 +146,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
   const dest = fleet.destStarId ? view.galaxy.stars.find((s) => s.id === fleet.destStarId) : undefined;
   const raiderHome = view.galaxy.stars.find((s) => s.special === "raiderHome");
   const eta = dest ? travelTurns(view, fleet, dest.id) : 0;
+  const convoy = dest ? travelGroup(view, fleet).length - 1 : 0;
   const others = Object.values(view.fleets).filter((f) => f.id !== fleet.id && f.ownerId === fleet.ownerId && f.starId && f.starId === fleet.starId);
   const captain = Object.values(view.leaders).find((l) => l.status === "hired" && l.assignedTo === fleet.id);
   const status = owner.id === me.id ? null : owner.kind !== "empire" ? "hostile" : relation(view, me.id, owner.id).status;
@@ -173,6 +174,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
         {fleet.starId ? <>At {view.galaxy.stars.find((s) => s.id === fleet.starId)?.name}</> : "In deep space"}
         {owner.kind === "monsters" && <> · {monsterBehavior(leadMonster(fleet))}</>}
         {dest && <> · heading to {dest.name}, {movementHalted(view, fleet) ? "held by hyperspace flux" : <>{eta} turn{eta === 1 ? "" : "s"}</>}</>}
+        {dest && convoy > 0 && <> · <span className="explained" title="Fleets sent to the same star from the same place travel together and arrive together. A Navigator captain in any of them speeds up and steers the whole group.">with {convoy} other fleet{convoy === 1 ? "" : "s"} at {fmt(travelSpeed(view, fleet, dest.id))} pc/turn</span></>}
         {captain && <> · Captain {captain.name}</>}
       </div>
       <table>
