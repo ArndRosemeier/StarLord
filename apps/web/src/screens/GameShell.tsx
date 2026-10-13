@@ -25,6 +25,7 @@ import { EndTurnPrompt } from "./EndTurnPrompt";
 import { BasePrompt, coloniesWithReadyBases } from "./BasePrompt";
 import { BattlePopup } from "./BattlePopup";
 import { NewsPopup } from "./NewsPopup";
+import { BreakthroughPopup, breakthroughNews, type BreakthroughNews } from "./BreakthroughPopup";
 import { CouncilResultPopup, CouncilSession, castBallot, councilSession, mayCastCouncilVote } from "./CouncilPopup";
 import { CommandBattle } from "./CommandBattle";
 import { OrbitalStrike } from "./OrbitalStrike";
@@ -93,6 +94,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [battles, setBattles] = useState<CombatReport[]>([]);
   /** Last turn's Galactic News (random events), shown after the battles. */
   const [news, setNews] = useState<Extract<GameEvent, { kind: "random" }>[]>([]);
+  /** Last turn's research breakthroughs, celebrated after the news; closing them opens the research screen. */
+  const [celebration, setCelebration] = useState<BreakthroughNews | null>(null);
   /** The council window: casting this turn's votes, or how last turn's session went. */
   const [councilPopup, setCouncilPopup] = useState<"vote" | "result" | null>(null);
   /** Audiences waiting to be held, the current one first. */
@@ -154,6 +157,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     // Battles the player commanded were watched as they were fought.
     setBattles(battlesOfLastTurn(session.history, me.id, view.turn).filter((b) => !session.commandedBattles.has(b.id)));
     setNews(session.lastTurnEvents(me.id).flatMap((e) => (e.kind === "random" ? [e] : [])));
+    setCelebration(breakthroughNews(session.lastTurnEvents(me.id), me.id));
     // The result window follows a session whose verdict the player may refuse.
     const verdict = view.council.pending && view.council.pending.winner !== me.id;
     const missed = view.council.lastResult?.turn === view.turn - 1 && verdict;
@@ -235,6 +239,12 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const openColony = (colonyId: string) => {
     setColonyFocus(colonyId);
     setTab("colonies");
+  };
+  // After a breakthrough the next field is chosen on the research screen, unless automation chooses it.
+  const pickNextResearch = !readOnly && !me.research.tierId && !me.automation.includes("research") && availableTiers(view, me.id).length > 0;
+  const closeBreakthrough = () => {
+    setCelebration(null);
+    if (pickNextResearch) go("research");
   };
   const showStar = (starId: string) => {
     setFocusStar(starId);
@@ -335,11 +345,14 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
       {news.length > 0 && !battles.length && !(view.over && !overSeen) && (
         <NewsPopup news={news} onClose={() => setNews([])} onShowStar={showStar} />
       )}
-      {councilPopup && !battles.length && !news.length && !(view.over && !overSeen) && (
+      {celebration && !battles.length && !news.length && !(view.over && !overSeen) && (
+        <BreakthroughPopup news={celebration} onClose={closeBreakthrough} nextLabel={pickNextResearch ? "Choose the next research" : "Continue"} />
+      )}
+      {councilPopup && !battles.length && !news.length && !celebration && !(view.over && !overSeen) && (
         councilPopup === "vote" ? <CouncilSession onClose={() => setCouncilPopup(null)} /> : <CouncilResultPopup onClose={() => setCouncilPopup(null)} />
       )}
-      {basePrompt && !endCheck && !audiences[0] && !battles.length && !councilPopup && <BasePrompt onClose={() => setBasePrompt(false)} />}
-      {audiences[0] && !battles.length && !news.length && !councilPopup && !(view.over && !overSeen) && (
+      {basePrompt && !endCheck && !audiences[0] && !battles.length && !celebration && !councilPopup && <BasePrompt onClose={() => setBasePrompt(false)} />}
+      {audiences[0] && !battles.length && !news.length && !celebration && !councilPopup && !(view.over && !overSeen) && (
         <Audience key={`${view.turn}:${audiences.length}:${audiences[0].themId}:${audiences[0].opening.kind}`} request={audiences[0]}
           onClose={() => setAudiences((q) => q.slice(1))} />
       )}

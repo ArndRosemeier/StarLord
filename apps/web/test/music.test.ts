@@ -122,3 +122,52 @@ describe("background music", () => {
     expect(director.getMood()).toBe("combat");
   });
 });
+
+describe("music stings", () => {
+  /** Fades finish at once: every frame is far past the fade time. */
+  function instant() {
+    const tracks: FakeTrack[] = [];
+    let t = 0;
+    const env: AudioEnv = {
+      createTrack: (src) => {
+        const track = new FakeTrack(src, () => true);
+        tracks.push(track);
+        return track;
+      },
+      events: null,
+      isVisible: () => true,
+      setTimeout: () => {},
+      now: () => (t += 10000),
+      nextFrame: (fn) => fn(),
+    };
+    return { director: new AudioDirector(env), tracks };
+  }
+
+  it("plays once over the music, ducking it, and brings the music back when done", () => {
+    const { director, tracks } = instant();
+    director.update({ music: 0.5, muted: false });
+    director.setMood("galaxy");
+    const music = tracks[0]!;
+    expect(music.volume).toBe(0.5);
+    director.sting("audio/breakthrough-1.mp3");
+    const sting = tracks[1]!;
+    expect(sting.src).toBe("audio/breakthrough-1.mp3");
+    expect(sting.loop).toBe(false);
+    expect(sting.plays).toBe(1);
+    expect(sting.volume).toBe(0.5);
+    expect(music.volume).toBeCloseTo(0.1);
+    sting.emit("ended");
+    expect(music.volume).toBe(0.5);
+  });
+
+  it("stays silent when music is muted and follows a later mute", () => {
+    const { director, tracks } = instant();
+    director.update({ music: 0.5, muted: true });
+    director.sting("audio/breakthrough-2.mp3");
+    expect(tracks).toHaveLength(0);
+    director.update({ muted: false });
+    director.sting("audio/breakthrough-2.mp3");
+    director.update({ muted: true });
+    expect(tracks[0]!.volume).toBe(0);
+  });
+});

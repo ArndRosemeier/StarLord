@@ -1,5 +1,5 @@
 import { Tip } from "../ui/Tip";
-import { techTip } from "../ui/explain";
+import { hyperAdvanceText, techTip } from "../ui/explain";
 import { techSummary } from "../help/articles";
 import { useState } from "react";
 import {
@@ -12,18 +12,7 @@ import { fmt } from "../ui/format";
 import { researchPerTurn } from "./GameShell";
 import { useHelp } from "../help/HelpDialog";
 import { ProgressRing } from "../ui/panels";
-
-/** Colour and glyph per field of science. */
-const FIELD_LOOK: Record<string, { color: string; glyph: string }> = {
-  construction: { color: "#ff9f43", glyph: "\u2692\uFE0E" },
-  power: { color: "#ffd32a", glyph: "\u26A1\uFE0E" },
-  chemistry: { color: "#7ed957", glyph: "\u2697\uFE0E" },
-  sociology: { color: "#ff7ab6", glyph: "\u2696\uFE0E" },
-  computers: { color: "#3ee8ff", glyph: "\u232C\uFE0E" },
-  biology: { color: "#4fd18b", glyph: "\u2766\uFE0E" },
-  physics: { color: "#a78bfa", glyph: "\u269B\uFE0E" },
-  forceFields: { color: "#5b9dff", glyph: "\u26E8\uFE0E" },
-};
+import { FIELD_LOOK } from "../ui/fieldLook";
 
 export function ResearchScreen() {
   const { session, view, me, readOnly } = useGame();
@@ -103,8 +92,7 @@ export function ResearchScreen() {
                       <div className="row" style={{ gap: 4 }}>
                         <Tip card={t.hyper
                           ? { title: `${t.name} ${hyper + 1}`, kind: "Hyper-advanced", text: [
-                              `Counts as one more refinement for every ${FIELD_NAMES[t.field]} component: each shrinks and gets cheaper by the next miniaturization step, and enough refinement unlocks weapon modifications.`,
-                              `Each level costs ${fmt(RESEARCH.hyperCostStep)} RP more than the last. The category's first level adds ${RESEARCH.hyperScore} score.`] }
+                              ...hyperAdvanceText(t.field)] }
                           : { title: t.name, kind: "Every application is learned", text: options.map((id) => `${TECHS[id]!.name}: ${techSummary(id)}`) }}>
                           <button className={`small tech${researching ? " active" : ""}`} disabled={readOnly}
                             onClick={() => session.issue({ type: "setResearch", tierId: t.id })}>

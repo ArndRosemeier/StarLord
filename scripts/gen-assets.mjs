@@ -87,7 +87,11 @@ function publish(asset, raw, kind) {
   const out = join(root, "public", asset.out);
   mkdirSync(dirname(out), { recursive: true });
   if (kind === "image") ffmpeg(["-i", raw, "-vf", `scale=${asset.width}:-2:flags=lanczos`, "-quality", "82", out]);
-  else ffmpeg(["-i", raw, "-af", "loudnorm=I=-18:TP=-1.5", "-ar", "44100", "-b:a", "128k", out]);
+  else if (asset.trim) {
+    // Stings: the model always makes ~30 s, so keep the opening and fade its tail out.
+    const fade = 1.5;
+    ffmpeg(["-i", raw, "-t", String(asset.trim), "-af", `afade=t=out:st=${asset.trim - fade}:d=${fade},loudnorm=I=-16:TP=-1.5`, "-ar", "44100", "-b:a", "128k", out]);
+  } else ffmpeg(["-i", raw, "-af", "loudnorm=I=-18:TP=-1.5", "-ar", "44100", "-b:a", "128k", out]);
 }
 
 const jobs = [
