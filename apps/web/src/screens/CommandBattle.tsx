@@ -227,6 +227,11 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
                   </select>
                   {targetInfo && <span className={targetInfo.inRange ? "good" : "muted"}>{targetInfo.inRange ? "in range" : "out of range: move closer"}</span>}
                 </div>
+                {snap(target)?.kind === "planet" && options.weapons.some((w) => w.id === "stellarConverter") && (
+                  <div className="row muted">
+                    In battle the Stellar Converter only wears down the planet's defenses. Win the orbit and the turn asks whether to destroy the planet.
+                  </div>
+                )}
                 <div className="row wrap muted command-weapons">
                   {options.weapons.length === 0 ? "No weapons" : options.weapons.map((w, i) => (
                     <span key={i} className={w.ready ? "" : "faded"} title={`${ARCS[w.arc as FiringArc]?.name ?? w.arc} arc`}>

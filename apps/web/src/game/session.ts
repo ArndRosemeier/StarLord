@@ -1,8 +1,8 @@
 import { audienceAnswer, automationOrders } from "@starlord/ai";
 import { saveAutomationPrefs } from "./automationPrefs";
 import {
-  newGame, newRecord, pendingBattle, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
-  type CombatReport, type PendingBattle, type TacticalOrder, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type TurnOrders,
+  newGame, newRecord, pendingBattle, pendingOrbital, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
+  type CombatReport, type OrbitalChoice, type OrbitalPrompt, type PendingBattle, type TacticalOrder, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type TurnOrders,
 } from "@starlord/sim";
 
 /**
@@ -34,6 +34,11 @@ export class GameSession {
    * turn's orders so far; the turn goes on with `finishBattle`.
    */
   battle: { pending: PendingBattle; orders: TurnOrders } | null = null;
+  /**
+   * An enemy colony whose orbit the player's fleets hold after the battles, waiting on what to do to it
+   * (bomb, biological weapons, destroy, hold fire), with the turn's orders so far; the turn goes on with `finishOrbital`.
+   */
+  orbital: { prompt: OrbitalPrompt; orders: TurnOrders } | null = null;
   /** Battles of the last turn the player commanded (by report id); they were watched live, so they do not pop up again. */
   commandedBattles = new Set<string>();
   /** Bumped on every change so React can re-render cheaply. */
@@ -226,7 +231,7 @@ export class GameSession {
    * resolves by itself.
    */
   endTurn(opts: { commandBattles?: boolean } = {}): void {
-    if (this.state.over || this.battle) return;
+    if (this.state.over || this.battle || this.orbital) return;
     this.commandedBattles = new Set();
     this.resumeTurn(this.ordersForTurn(), opts.commandBattles ?? true);
   }
@@ -239,6 +244,16 @@ export class GameSession {
     if (orders !== "auto") this.commandedBattles.add(b.pending.reportId);
     const turn: TurnOrders = { ...b.orders, [me]: [...(b.orders[me] ?? []), { type: "battleOrders", battle: b.pending.key, orders }] };
     this.battle = null;
+    this.resumeTurn(turn, true);
+  }
+
+  /** Hands in what the player's fleets do to the colony the turn waits on, and goes on with the turn. */
+  finishOrbital(choice: OrbitalChoice): void {
+    const o = this.orbital;
+    if (!o || this.me === null) return;
+    const me = this.me;
+    const turn: TurnOrders = { ...o.orders, [me]: [...(o.orders[me] ?? []), { type: "orbitalStrike", colonyId: o.prompt.colonyId, choice }] };
+    this.orbital = null;
     this.resumeTurn(turn, true);
   }
 
@@ -259,11 +274,27 @@ export class GameSession {
     return set?.type === "setAutoBattles" ? !set.on : !this.state.players[this.me]?.autoBattles;
   }
 
+  /** Whether any of the player's fleets is set to attack (only those strike from orbit without an order), to skip the check otherwise. */
+  private mayStrikeFromOrbit(orders: TurnOrders): boolean {
+    if (this.me === null) return false;
+    return Object.values(this.state.fleets).some((f) => f.ownerId === this.me && f.stance === "attack")
+      || (orders[this.me] ?? []).some((c) => c.type === "setStance" && c.stance === "attack");
+  }
+
   private resumeTurn(orders: TurnOrders, commandBattles: boolean): void {
     if (commandBattles && this.me !== null && this.commandsBattles(orders)) {
       const pending = pendingBattle(this.state, orders, this.me);
       if (pending) {
         this.battle = { pending, orders };
+        this.refresh();
+        return;
+      }
+    }
+    // After the battles, as in the original, the player decides what their fleets do to each enemy colony whose orbit they hold.
+    if (commandBattles && this.me !== null && this.mayStrikeFromOrbit(orders)) {
+      const prompt = pendingOrbital(this.state, orders, this.me);
+      if (prompt) {
+        this.orbital = { prompt, orders };
         this.refresh();
         return;
       }

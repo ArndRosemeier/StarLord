@@ -24,6 +24,7 @@ import { EndTurnPrompt } from "./EndTurnPrompt";
 import { BasePrompt, coloniesWithReadyBases } from "./BasePrompt";
 import { BattlePopup } from "./BattlePopup";
 import { CommandBattle } from "./CommandBattle";
+import { OrbitalStrike } from "./OrbitalStrike";
 import { battlesOfLastTurn } from "../game/battles";
 import { audio } from "../audio/sound";
 import { MuteButton } from "../ui/AudioControls";
@@ -318,6 +319,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
           onClose={() => setAudiences((q) => q.slice(1))} />
       )}
       {session.battle && <CommandBattle key={session.battle.pending.key} pending={session.battle.pending} />}
+      {session.orbital && <OrbitalStrike key={session.orbital.prompt.colonyId} prompt={session.orbital.prompt} />}
       {debug && debugOpen && <DebugMenu onClose={() => setDebugOpen(false)} />}
       <TurnBanner turn={view.turn} quiet={autoplay} />
     </div>

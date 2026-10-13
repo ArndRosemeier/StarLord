@@ -17,7 +17,7 @@ const SECTION_OF: Record<GameEvent["kind"], ReportSection> = {
   built: "production", starvation: "production", baseReady: "production", baseScrapped: "production",
   techLearned: "research", hyperAdvance: "research",
   colonyFounded: "colonies", colonyCaptured: "colonies", colonyLost: "colonies", invasionFailed: "colonies", bombarded: "colonies",
-  combat: "military", raid: "military", raidersDefeated: "military",
+  combat: "military", orbitalStrike: "military", raid: "military", raidersDefeated: "military",
   diplomacy: "diplomacy", spy: "diplomacy", leader: "diplomacy", council: "diplomacy",
   explored: "exploration",
   random: "other", eliminated: "other", victory: "other", commandRejected: "other",

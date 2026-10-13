@@ -269,6 +269,14 @@ export type TacticalOrder =
   /** Let the computer play this and every later turn of the side, following the combat doctrine. */
   | { kind: "auto" };
 
+/**
+ * What a fleet that holds orbit over an enemy colony does to it, as the
+ * original's Orbital Combat Selection window asks: bombard with every weapon
+ * but biological ones, bombard and also release biological weapons, destroy
+ * the planet with a Stellar Converter, or hold fire.
+ */
+export type OrbitalChoice = "bomb" | "bio" | "destroy" | "none";
+
 export interface CombatDoctrine {
   /** Retreat when the fleet's strength falls below this fraction of the enemy's. */
   retreatBelow: number;
@@ -575,6 +583,14 @@ export type GameEvent =
   | { turn: number; kind: "colonyCaptured"; playerId: PlayerId; colonyId: Id; from: PlayerId }
   | { turn: number; kind: "invasionFailed"; playerId: PlayerId; colonyId: Id }
   | { turn: number; kind: "bombarded"; playerId: PlayerId; colonyId: Id; popLost: number }
+  /**
+   * An orbital strike `by` an empire on a colony of `victim` (see `OrbitalChoice`): told to the attacker, and to the
+   * victim when the planet was destroyed. `colonyGone`: nobody is left; `planetDestroyed`: it is an asteroid belt now.
+   */
+  | {
+    turn: number; kind: "orbitalStrike"; playerId: PlayerId; by: PlayerId; victim: PlayerId; starId: Id; colonyName: string;
+    choice: Exclude<OrbitalChoice, "none">; popKilled: number; buildingsLost: number; colonyGone: boolean; planetDestroyed: boolean;
+  }
   | { turn: number; kind: "diplomacy"; playerId: PlayerId; other: PlayerId; what: string }
   | { turn: number; kind: "spy"; playerId: PlayerId; other: PlayerId; what: string }
   | { turn: number; kind: "leader"; playerId: PlayerId; leaderId: Id; what: string }

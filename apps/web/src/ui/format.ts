@@ -80,6 +80,16 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
       return { text: `Our invasion of ${colonyName(view, e.colonyId)} was repelled.`, starId: colonyStar(e.colonyId), tone: "bad" };
     case "bombarded":
       return { text: `${colonyName(view, e.colonyId)} was bombarded; ${fmt(e.popLost)} population lost.`, starId: colonyStar(e.colonyId), tone: "bad" };
+    case "orbitalStrike": {
+      if (e.planetDestroyed) {
+        const who = e.by === view.viewer ? "Our Stellar Converter destroyed" : `The ${playerName(view, e.by)} destroyed`;
+        return { text: `${who} the planet of ${e.colonyName} at ${starName(view, e.starId)}; it is an asteroid belt now and ${fmt(e.popKilled)} population died.`, starId: e.starId, tone: e.by === view.viewer ? "info" : "bad" };
+      }
+      const how = e.choice === "bio" ? "Our bombs and biological weapons struck" : "Our fleet bombarded";
+      const losses = [`${fmt(e.popKilled)} population`, `${fmt(e.buildingsLost)} building${e.buildingsLost === 1 ? "" : "s"}`].join(" and ");
+      const end = e.colonyGone ? "; nobody is left there" : "";
+      return { text: `${how} ${e.colonyName} (${playerName(view, e.victim)}): ${losses} destroyed${end}.`, starId: e.starId, tone: "info" };
+    }
     case "diplomacy":
       return { text: `${playerName(view, e.other)}: ${e.what}.`, tone: "info" };
     case "spy":

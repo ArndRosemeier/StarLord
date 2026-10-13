@@ -4,7 +4,7 @@ import { DIFFICULTY_ORDER } from "./data/galaxy.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import {
   BASE_EQUIPMENT, BATTLEOID_HITS, BOMB_DAMAGE_PER_HIT, SPECIAL_UNIT_RATING, CAPTURE_TECH,
-  POWERED_ARMOR_HITS, RATING_PER_LEVEL, SPORE_DEFENSE, SPORE_KILL_CHANCE_PER_POINT, TROOPS, type TroopKind,
+  ASTEROID_BELT_SIZE, POWERED_ARMOR_HITS, RATING_PER_LEVEL, SPORE_DEFENSE, SPORE_KILL_CHANCE_PER_POINT, TROOPS, type TroopKind,
 } from "./data/ground.js";
 import { hullIndex } from "./data/components.js";
 import { TRAIT_EFFECTS } from "./data/racePicks.js";
@@ -13,16 +13,19 @@ import { commandoBonusAt } from "./leaders.js";
 import { raceGroundBonus, troopHits } from "./raceEffects.js";
 import { TIER_OF_TECH } from "./data/techs.js";
 import { bombardment, planetDefense } from "./combat.js";
+
+import { RELATION_EVENTS } from "./data/diplomacy.js";
+import { gravityOf } from "./data/planets.js";
 import type { TurnContext } from "./context.js";
-import { designStats, findDesign } from "./designs.js";
+import { ALL_WEAPONS, designStats, findDesign } from "./designs.js";
 import { isHostile } from "./diplomacy.js";
-import { destructionOutrage, rngRoll } from "./relations.js";
+import { destructionOutrage, rngRoll, scaleRelationEvent } from "./relations.js";
 import { blocksInvasion } from "./commands.js";
 import { destructibleBuildings, population } from "./economy.js";
 import { empireBonus, grantTech, knows } from "./empire.js";
 import { removeShips } from "./fleetOps.js";
 import { removePopulation } from "./jobs.js";
-import type { Colony, Fleet, GameState, Id, PlayerId } from "./types.js";
+import type { Colony, Fleet, GameState, Id, OrbitalChoice, PlayerId, ShipDesign } from "./types.js";
 
 export interface GroundForces {
   militia: number;
@@ -175,18 +178,50 @@ export function canMindControl(state: GameState, fleet: Fleet, colony: Colony): 
   });
 }
 
-/** Bombing, invasion and mind control after orbital combat. */
+/** Every orbital choice, in the order the prompt offers them. */
+export const ORBITAL_CHOICES: readonly OrbitalChoice[] = ["bomb", "bio", "destroy", "none"];
+
+/** Whether a ship of the design carries a Stellar Converter. */
+function hasConverter(d: ShipDesign | undefined): boolean {
+  return !!d && !d.fixed && d.weapons.some((m) => ALL_WEAPONS[m.weaponId]?.effect === "stellarConverter");
+}
+
+/** Whether any of a player's ships at a star carries a Stellar Converter (the original checks every ship in orbit). */
+export function converterInOrbit(state: GameState, playerId: PlayerId, starId: Id): boolean {
+  const owner = state.players[playerId];
+  if (!owner) return false;
+  return Object.values(state.fleets).some((f) => f.ownerId === playerId && f.starId === starId
+    && f.ships.some((s) => s.count > 0 && hasConverter(findDesign(owner, s.designId))));
+}
+
+/** The colonies a fleet could strike from orbit now: enemy colonies at its star whose defenses are down, with no armed enemy left there. */
+function orbitTargets(state: GameState, f: Fleet, silenced: Silenced): Colony[] {
+  if (!f.starId || hostileArmedAt(state, f.starId, f.ownerId)) return [];
+  return Object.values(state.colonies).filter(
+    (c) => state.planets[c.planetId]!.starId === f.starId && isHostile(state, f.ownerId, c.ownerId) && silenced.has(c.id),
+  );
+}
+
+/** What a fleet does to a colony when its owner gave no orbital order: attack-stance fleets and raiders bombard, without biological weapons. */
+export function defaultOrbitalChoice(state: GameState, f: Fleet): OrbitalChoice {
+  return f.stance === "attack" || state.players[f.ownerId]!.kind === "raiders" ? "bomb" : "none";
+}
+
+/** Thrown inside `processTurn` when a player has to decide what to do to a colony whose orbit they hold (see `pendingOrbital`). */
+export class OrbitalPause {
+  constructor(readonly prompt: OrbitalPrompt) {}
+}
+
+/** Bombing, invasion, mind control and planet destruction after orbital combat. */
 export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
   const { state, rng } = ctx;
-  const sporeUsers = new Set<PlayerId>();
+  const outraged = new Set<PlayerId>();
   for (const f of Object.values(state.fleets)) {
     if (!f.starId || !state.fleets[f.id]) continue;
     const owner = state.players[f.ownerId]!;
     if (owner.kind === "monsters") continue;
-    const targets = Object.values(state.colonies).filter(
-      (c) => state.planets[c.planetId]!.starId === f.starId && isHostile(state, f.ownerId, c.ownerId) && silenced.has(c.id),
-    );
-    if (targets.length === 0 || hostileArmedAt(state, f.starId, f.ownerId)) continue;
+    const targets = orbitTargets(state, f, silenced);
+    if (targets.length === 0) continue;
 
     // A Planetary Barrier Shield keeps every troop out.
     if (f.invadeTarget && targets.some((c) => c.id === f.invadeTarget) && !blocksInvasion(state.colonies[f.invadeTarget]!)) {
@@ -200,24 +235,195 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
       } else invade(ctx, f, target);
       continue;
     }
-    if (f.stance !== "attack" && owner.kind !== "raiders") continue;
-    // Raiders who hold the field always bombard with whatever bombs their ships carry; they never invade.
     for (const c of targets) {
+      if (!state.colonies[c.id] || !state.fleets[f.id]) continue;
+      const choice = orbitalChoiceFor(ctx, f, c);
+      if (choice === "none") continue;
+      if (choice === "destroy" && converterInOrbit(state, f.ownerId, f.starId)) {
+        destroyPlanet(ctx, f.ownerId, c);
+        outraged.add(f.ownerId);
+        continue;
+      }
+      // Raiders who hold the field always bombard with whatever their ships carry; they never invade.
       const { bombs, spores } = bombardment(state, f, planetDefense(c).shield);
-      if (bombs <= 0 && spores <= 0) continue;
+      // Biological weapons are released only when ordered, and can't get through a barrier shield.
+      const bio = choice === "bio" && spores > 0 && !blocksInvasion(c);
+      if (bombs <= 0 && !bio) continue;
+      const buildingsBefore = c.buildings.length;
+      const popBefore = population(c);
       let kills = 0;
       if (bombs > 0) kills += bombHits(ctx, c, Math.floor(bombs / BOMB_DAMAGE_PER_HIT + rng.next()));
-      // Biological weapons can't get through a barrier shield.
-      if (spores > 0 && !blocksInvasion(c)) {
-        sporeUsers.add(f.ownerId);
-        const defender = state.players[c.ownerId]!;
-        const mult = Math.min(1, ...SPORE_DEFENSE.filter((d) => knows(defender, d.tech)).map((d) => d.mult));
+      if (bio) {
+        outraged.add(f.ownerId);
+        const mult = bioDefense(state, c);
         for (let i = 0; i < spores; i++) if (rng.chance(SPORE_KILL_CHANCE_PER_POINT * mult)) kills++;
       }
+      const victim = c.ownerId;
+      const name = c.name;
       raze(ctx, c, kills);
+      if (owner.kind === "empire") {
+        ctx.emit({
+          kind: "orbitalStrike", playerId: f.ownerId, by: f.ownerId, victim, starId: f.starId, colonyName: name,
+          choice: bio ? "bio" : "bomb", popKilled: Math.min(popBefore, kills), buildingsLost: buildingsBefore - c.buildings.length,
+          colonyGone: !state.colonies[c.id], planetDestroyed: false,
+        });
+      }
     }
   }
-  for (const user of sporeUsers) destructionOutrage(state, user, rngRoll(rng));
+  for (const user of outraged) destructionOutrage(state, user, rngRoll(rng));
+}
+
+/** How much of the biological weapons' kill chance gets through a colony owner's medicine (Microbiotics, Universal Antidote). */
+function bioDefense(state: GameState, c: Colony): number {
+  const defender = state.players[c.ownerId]!;
+  return Math.min(1, ...SPORE_DEFENSE.filter((d) => knows(defender, d.tech)).map((d) => d.mult));
+}
+
+/** The orbital choice a fleet follows for a colony: its owner's order, else (asking a human first when the turn can stop) the default. */
+function orbitalChoiceFor(ctx: TurnContext, f: Fleet, c: Colony): OrbitalChoice {
+  const ordered = ctx.orbitalOrders?.get(c.id)?.get(f.ownerId);
+  if (ordered) return ordered;
+  const choice = defaultOrbitalChoice(ctx.state, f);
+  if (choice !== "none" && ctx.pauseAtOrbit?.(f.ownerId, c.id)) throw new OrbitalPause(orbitalPrompt(ctx.state, f.ownerId, c.id));
+  return choice;
+}
+
+/**
+ * A Stellar Converter fired from orbit: the planet becomes an asteroid belt,
+ * and the colony with everyone and everything on it is gone. Its special
+ * (and any natives) go with it, as in the original.
+ */
+export function destroyPlanet(ctx: TurnContext, by: PlayerId, c: Colony): void {
+  const { state } = ctx;
+  const planet = state.planets[c.planetId]!;
+  const pop = population(c);
+  const buildings = c.buildings.length;
+  const victim = c.ownerId;
+  if (pop > 0) ctx.emit({ kind: "bombarded", playerId: victim, colonyId: c.id, popLost: pop });
+  ctx.emit({ kind: "colonyLost", playerId: victim, colonyId: c.id, to: null, how: "destroyed" });
+  for (const p of new Set([by, victim])) {
+    if (state.players[p]?.kind !== "empire") continue;
+    ctx.emit({
+      kind: "orbitalStrike", playerId: p, by, victim, starId: planet.starId, colonyName: c.name, choice: "destroy",
+      popKilled: pop, buildingsLost: buildings, colonyGone: true, planetDestroyed: true,
+    });
+  }
+  destroyColony(state, c);
+  for (const l of Object.values(state.leaders)) {
+    const stillThere = Object.values(state.colonies).some((o) => o.ownerId === victim && state.planets[o.planetId]!.starId === planet.starId);
+    if (l.ownerId === victim && l.assignedTo === planet.starId && !stillThere) l.assignedTo = null;
+  }
+  planet.type = "asteroids";
+  planet.size = ASTEROID_BELT_SIZE;
+  planet.gravity = gravityOf(ASTEROID_BELT_SIZE, planet.minerals);
+  planet.special = "none";
+  delete planet.natives;
+}
+
+/** One orbital option for the prompt, with what it is expected to do. */
+export interface OrbitalOption {
+  choice: OrbitalChoice;
+  available: boolean;
+  /** Why it cannot be chosen, when it cannot. */
+  why?: string;
+  /** Expected bombing hits (each lands on a building, a trained unit or a colonist). */
+  hits: number;
+  /** Expected colonists killed, out of `OrbitalPrompt.population`. */
+  popKilled: number;
+  /** Expected buildings wrecked. */
+  buildingsLost: number;
+  /** Every other computer empire in contact takes a relation hit (see `OrbitalPrompt.outrage`). */
+  outrage: boolean;
+}
+
+/** What a player's fleets in orbit over an enemy colony can do to it now, for the orbital prompt and the AI. */
+export interface OrbitalPrompt {
+  playerId: PlayerId;
+  colonyId: Id;
+  colonyName: string;
+  ownerId: PlayerId;
+  starId: Id;
+  /** Colonists living there now. */
+  population: number;
+  /** Buildings bombs can hit (defenses and the capitol can't be hit). */
+  buildings: number;
+  troops: GroundForces;
+  /** Damage the planetary shield takes off every bomb. */
+  shield: number;
+  barrier: boolean;
+  /** Fleets that would strike. */
+  fleetIds: Id[];
+  /**
+   * Biological weapons and planet destruction appal every computer empire in contact that is not at war with the
+   * player: each relation changes by -1 to -`roll` before scaling, here `from`..`to` after it.
+   */
+  outrage: { roll: number; empires: { playerId: PlayerId; from: number; to: number }[] };
+  options: OrbitalOption[];
+}
+
+/** Bomb-hit targets a colony offers: wreckable buildings, trained marines and tanks, colonists. */
+function bombTargets(colony: Colony): { buildings: number; units: number; pop: number } {
+  const buildings = destructibleBuildings(colony).filter((b) => {
+    const d = BUILDINGS_BY_ID[b]?.effects.defense;
+    return !d?.station && !d?.installation && !d?.fighters;
+  }).length;
+  return { buildings, units: (colony.marinesTrained ?? 0) + (colony.tanksTrained ?? 0), pop: population(colony) };
+}
+
+/**
+ * What each orbital choice would do to a colony with the player's fleets at
+ * its star (expected values; the strike rolls them), and which are open:
+ * biological weapons need a ship that carries them and no barrier shield,
+ * destruction a Stellar Converter in orbit.
+ */
+export function orbitalPrompt(state: GameState, playerId: PlayerId, colonyId: Id): OrbitalPrompt {
+  const c = state.colonies[colonyId]!;
+  const starId = state.planets[c.planetId]!.starId;
+  const shield = planetDefense(c).shield;
+  const fleets = Object.values(state.fleets).filter((f) => f.ownerId === playerId && f.starId === starId && !f.invadeTarget);
+  let bombs = 0;
+  let spores = 0;
+  for (const f of fleets) {
+    const b = bombardment(state, f, shield);
+    bombs += b.bombs;
+    spores += b.spores;
+  }
+  const t = bombTargets(c);
+  const barrier = blocksInvasion(c);
+  const hits = bombs / BOMB_DAMAGE_PER_HIT;
+  const pool = t.buildings + t.units + t.pop;
+  const share = (n: number) => (pool > 0 ? Math.min(n, (hits * n) / pool) : 0);
+  const bombKills = share(t.pop);
+  const bioKills = barrier ? 0 : Math.max(0, Math.min(t.pop - bombKills, spores * SPORE_KILL_CHANCE_PER_POINT * bioDefense(state, c)));
+  const converter = converterInOrbit(state, playerId, starId);
+  const options: OrbitalOption[] = [
+    {
+      choice: "bomb", available: bombs > 0, why: bombs > 0 ? undefined : "no weapon in orbit gets through the planetary shield",
+      hits, popKilled: bombKills, buildingsLost: share(t.buildings), outrage: false,
+    },
+    {
+      choice: "bio", available: spores > 0 && !barrier,
+      why: spores <= 0 ? "no ship in orbit carries biological weapons" : barrier ? "a Planetary Barrier Shield keeps biological weapons out" : undefined,
+      hits, popKilled: bombKills + bioKills, buildingsLost: share(t.buildings), outrage: true,
+    },
+    {
+      choice: "destroy", available: converter, why: converter ? undefined : "needs a ship with a Stellar Converter in orbit",
+      hits: 0, popKilled: t.pop, buildingsLost: c.buildings.length, outrage: true,
+    },
+    { choice: "none", available: true, hits: 0, popKilled: 0, buildingsLost: 0, outrage: false },
+  ];
+  // Computer empires in contact and not at war take it (scaled by their feelings and temperament).
+  const appalled = state.players.flatMap((p) => {
+    const worst = scaleRelationEvent(state, -RELATION_EVENTS.destruction, playerId, p.id);
+    const least = scaleRelationEvent(state, -1, playerId, p.id);
+    return worst === null || least === null ? [] : [{ playerId: p.id, from: least, to: worst }];
+  });
+  return {
+    playerId, colonyId, colonyName: c.name, ownerId: c.ownerId, starId, population: t.pop, buildings: t.buildings,
+    troops: garrisonOf(state, c), shield, barrier, fleetIds: fleets.map((f) => f.id),
+    outrage: { roll: RELATION_EVENTS.destruction, empires: appalled },
+    options,
+  };
 }
 
 /** Kills colonists; a colony with nobody left is gone and the planet is free again. */
