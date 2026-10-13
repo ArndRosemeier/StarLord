@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { FREIGHTERS, newGame, processTurn, type Colony, type GameState } from "@starlord/sim";
+import {
+  BUILDINGS, FREIGHTERS, colonyDefenseStrength, defendingTroops, newGame, planetDefense, processTurn, type Colony, type GameState,
+} from "@starlord/sim";
 
 const quiet = { monsters: false, raiders: false, council: false };
 
@@ -60,5 +62,45 @@ describe("finished projects take effect", () => {
     expect(built(s, "dimensionalPortal")).toBe(true);
     expect(s.colonies[home.id]!.portal).toBe(true);
     expect(s.players[0]!.hasPortal).toBe(true);
+  });
+});
+
+describe("finished buildings take effect", () => {
+  /** Builds `id` at a home colony that doesn't have it yet (nor anything it replaces), with its tech known. */
+  function buildBuilding(id: string): { before: GameState; after: GameState; home: Colony } {
+    const { s, home } = setup();
+    const def = BUILDINGS.find((b) => b.id === id)!;
+    if (def.requires) s.players[0]!.techs.push(def.requires);
+    home.buildings = home.buildings.filter((b) => b !== id && !def.replaces?.includes(b));
+    const before = structuredClone(s);
+    const after = processTurn(s, {
+      0: [{ type: "setQueue", colonyId: home.id, queue: [{ kind: "building", id }] }, { type: "buy", colonyId: home.id }],
+    });
+    return { before, after, home };
+  }
+
+  // The Capitol can only be rebuilt after it is lost.
+  it.each(BUILDINGS.filter((b) => b.id !== "capitol").map((b) => b.id))("%s stands on the colony once finished", (id) => {
+    const { after, home } = buildBuilding(id);
+    expect(after.colonies[home.id]!.buildings).toContain(id);
+  });
+
+  it.each(["marineBarracks", "armorBarracks"])("%s adds ground troops", (id) => {
+    const { before, after, home } = buildBuilding(id);
+    expect(defendingTroops(after, after.colonies[home.id]!)).toBeGreaterThan(defendingTroops(before, before.colonies[home.id]!));
+  });
+
+  it.each(["starBase", "battlestation", "starFortress", "missileBase", "groundBatteries", "planetaryStellarConverter"])("%s makes the colony stronger in battle", (id) => {
+    const { before, after, home } = buildBuilding(id);
+    expect(colonyDefenseStrength(after, after.colonies[home.id]!)).toBeGreaterThan(colonyDefenseStrength(before, before.colonies[home.id]!));
+  });
+
+  it("a Fighter Garrison launches fighters and planetary shields cut every hit", () => {
+    const garrison = buildBuilding("fighterGarrison");
+    expect(planetDefense(garrison.after.colonies[garrison.home.id]!).installations).toContain("fighterGarrison");
+    for (const id of ["radiationShield", "fluxShield", "barrierShield"]) {
+      const { after, home } = buildBuilding(id);
+      expect(planetDefense(after.colonies[home.id]!).shield).toBeGreaterThan(0);
+    }
   });
 });
