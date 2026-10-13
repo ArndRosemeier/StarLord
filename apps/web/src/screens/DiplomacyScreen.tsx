@@ -1,5 +1,5 @@
 import {
-  COUNCIL_VOTE, councilCandidates, councilVotes, voteChance,
+  COUNCIL_VOTE, TEMPERAMENTS, councilCandidates, councilVotes, voteChance,
   COUNCIL, COUNCIL_INTERVAL, COUNCIL_MAJORITY, RELATION, TREATY_WARMTH, attitude, audienceTired, baselineOf, canSign, getRace, government, nextCouncilTurn,
   noWarTurns, relation, strikesOf,
   settledShare,
@@ -172,7 +172,8 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
             then every {COUNCIL_INTERVAL} turns. The two empires with the most votes (one per {COUNCIL.popPerVote} population, rounded up) stand; {pct(COUNCIL_MAJORITY)} of all votes elects one.
             Computer empires back a candidate on a d{COUNCIL_VOTE.die} against relation + trust + 2 × reputation, +{COUNCIL_VOTE.sameAsLastTime} for the one it backed last time, +{COUNCIL_VOTE.nonAggression} for a non-aggression pact,
             +{COUNCIL_VOTE.trade} each for trade and research treaties, +{COUNCIL_VOTE.charismatic} for a charismatic candidate, +{COUNCIL_VOTE.holdsOrion} for one holding Orion,
-            +{COUNCIL_VOTE.xenoPsychology} for Xeno Psychology, +{COUNCIL_VOTE.atWarWithRival} if at war with the other candidate, {COUNCIL_VOTE.repulsive} for a repulsive one;
+            +{COUNCIL_VOTE.xenoPsychology} for Xeno Psychology, +{COUNCIL_VOTE.atWarWithRival} if at war with the other candidate, {COUNCIL_VOTE.repulsive} for a repulsive one,
+            and toward a human candidate −{COUNCIL_VOTE.mood} × the ruler's mood toward humans (from {signed(TEMPERAMENTS.xenophobic.vsHumans)} for a xenophobe to {signed(TEMPERAMENTS.pacifistic.vsHumans)} for a pacifist);
             always for an ally, never for an enemy, and they abstain unless exactly one candidate passes.{" "}
             {nextSession !== null ? `Next session: turn ${nextSession}.` : `Owned so far: ${pct(settledShare(view))}.`}
           </div>

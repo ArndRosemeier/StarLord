@@ -1,7 +1,7 @@
-import { COUNCIL, COUNCIL_VOTE, RELATION_EVENTS } from "./data/diplomacy.js";
+import { COUNCIL, COUNCIL_VOTE, RELATION_EVENTS, TEMPERAMENTS } from "./data/diplomacy.js";
 import { DIFFICULTIES } from "./data/galaxy.js";
 import { getRace, hasTrait } from "./data/races.js";
-import { attitude, declareWar, fixedRoll, relation, reputationOf, setStatus, surrenderEmpire, trustIn, votingPopulation } from "./diplomacy.js";
+import { attitude, declareWar, fixedRoll, relation, reputationOf, setStatus, surrenderEmpire, temperament, trustIn, votingPopulation } from "./diplomacy.js";
 import { empires, grantTech } from "./empire.js";
 import { REASON, relationEvent, setRelation } from "./relations.js";
 import type { GameState, PlayerId } from "./types.js";
@@ -61,7 +61,8 @@ export function councilCandidates(state: GameState): PlayerId[] {
 /**
  * How much a voter is inclined to back a candidate over the other one, out
  * of COUNCIL_VOTE.die, by the original's rule: always (die) for an ally,
- * never (-1) when at war, otherwise relations plus treaties and traits.
+ * never (-1) when at war, otherwise relations plus treaties and traits, and
+ * for a human candidate the computer voter's mood toward humans.
  */
 export function voteScore(state: GameState, voter: PlayerId, candidate: PlayerId, rival: PlayerId): number {
   const r = relation(state, voter, candidate);
@@ -70,6 +71,9 @@ export function voteScore(state: GameState, voter: PlayerId, candidate: PlayerId
   const c = state.players[candidate]!;
   const race = getRace(c.raceId);
   let s = attitude(state, voter, candidate) + trustIn(state, voter, candidate) + 2 * reputationOf(state, voter, candidate);
+  // A computer voter's mood toward a human candidate (the original's per-pair mood; 0 between computer empires).
+  const t = temperament(state, voter);
+  if (t && c.isHuman) s -= COUNCIL_VOTE.mood * TEMPERAMENTS[t].vsHumans;
   if (relation(state, voter, rival).status === "war") s += COUNCIL_VOTE.atWarWithRival;
   if (orionHolder(state) === candidate) s += COUNCIL_VOTE.holdsOrion;
   if (state.council.lastVotes?.[voter] === candidate) s += COUNCIL_VOTE.sameAsLastTime;

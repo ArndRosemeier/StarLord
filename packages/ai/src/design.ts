@@ -1,5 +1,5 @@
 import {
-  HULLS, SPECIALS, WEAPONS, WEAPON_MODS_BY_ID, bestArmor, bestComputer, bestShield, colonyOutput, designStats, empireTotals, hasStarDock,
+  HULLS, SPECIALS, STATION_DOCK_HULLS, WEAPONS, WEAPON_MODS_BY_ID, bestArmor, bestComputer, bestShield, colonyOutput, designStats, empireTotals, hasStarDock,
   knows, mountFirepower, refinement, validateDesign, weaponUnitCost,
   type Colony, type Command, type HullSize, type PlayerView, type ShipDesign, type WeaponDef, type WeaponModId,
   type WeaponMount,
@@ -24,10 +24,14 @@ const MOD_SETS: WeaponModId[][] = [
 /** Most of a hull's space a Stellar Converter may take on an AI warship (a Doom Star fits one unminiaturized). */
 const CONVERTER_SHARE = 0.45;
 
-/** Turns of a colony's industry a warship may cost, by design strategy. */
-const BUILD_TURNS: Record<string, number> = { balanced: 12, heavy: 25, light: 6 };
+/**
+ * Turns of a colony's industry a warship's hull may cost, by design strategy.
+ * Command points, not industry, cap a fleet, so a balanced empire takes about
+ * twenty turns over a hull: two cruisers outfight four destroyers on the same points.
+ */
+const BUILD_TURNS: Record<string, number> = { balanced: 20, heavy: 40, light: 8 };
 
-/** Largest hull whose cost a colony with this industry can turn out in about twelve turns (more or less by strategy). */
+/** Largest hull whose cost a colony with this industry can turn out in about twenty turns (more or less by strategy). */
 function pickHull(view: PlayerView, industry: number, maxHull: HullSize = "titan"): HullSize {
   const player = me(view);
   const limit = HULLS.findIndex((h) => h.id === maxHull);
@@ -156,20 +160,31 @@ export function designOrders(view: PlayerView): Command[] {
   const docked = Math.max(0, ...mine.filter(hasStarDock).map(output));
   const average = empireTotals(view, view.viewer).industry / Math.max(1, mine.length);
   const out: Command[] = [];
-  for (const tag of ["W", "S"] as const) {
-    const hull = tag === "W" ? pickHull(view, Math.max(10, docked), "titan") : pickHull(view, Math.max(10, average * 2), "destroyer");
-    const current = player.designs.filter((d) => !d.obsolete && !d.module && d.id.startsWith(`ai${tag}`));
-    // Missile boats when missiles out-hit beams; otherwise beam ships.
-    // The beam and missile strategies fix the weapon; missile boats use beams where missiles don't fit (frigates).
-    const strategy = strategyOf(view, "design");
-    const beam = bestWarship(view, hull, "beam", `ai${tag}${view.turn}`);
-    const missile = hull === "frigate" || strategy === "beams" ? null : bestWarship(view, hull, "missile", `ai${tag}${view.turn}`);
+  const strategy = strategyOf(view, "design");
+  // Missile boats when missiles out-hit beams; otherwise beam ships.
+  // The beam and missile strategies fix the weapon; missile boats use beams where missiles don't fit (frigates).
+  const designFor = (hull: HullSize, id: string): ShipDesign | null => {
+    const beam = bestWarship(view, hull, "beam", id);
+    const missile = hull === "frigate" || strategy === "beams" ? null : bestWarship(view, hull, "missile", id);
     const strength = (d: ShipDesign | null) => (d ? designStats(player, d).strength / Math.max(1, designStats(player, d).cost) : 0);
-    const candidate = strategy === "missiles" ? missile ?? beam : strength(missile) > strength(beam) * 1.1 ? missile : beam;
+    return strategy === "missiles" ? missile ?? beam : strength(missile) > strength(beam) * 1.1 ? missile : beam;
+  };
+  // The fitted ship costs more than its hull: step down until the best dock builds it in BUILD_TURNS x 1.5 turns.
+  const budget = Math.max(10, docked) * (BUILD_TURNS[strategy] ?? BUILD_TURNS.balanced!) * 1.5;
+  for (const tag of ["W", "S"] as const) {
+    let hull = tag === "W" ? pickHull(view, Math.max(10, docked), "titan") : pickHull(view, Math.max(10, average * 2), "destroyer");
+    const current = player.designs.filter((d) => !d.obsolete && !d.module && d.id.startsWith(`ai${tag}`));
+    let candidate = designFor(hull, `ai${tag}${view.turn}`);
+    while (tag === "W" && candidate && STATION_DOCK_HULLS.includes(hull) && designStats(player, candidate).cost > budget) {
+      hull = HULLS[HULLS.findIndex((h) => h.id === hull) - 1]!.id;
+      candidate = designFor(hull, `ai${tag}${view.turn}`);
+    }
     if (!candidate) continue;
     const value = designStats(player, candidate).strength;
     const best = Math.max(0, ...current.map((d) => designStats(player, d).strength));
-    if (current.length > 0 && value < best * 1.15) continue;
+    // A big design the docks can no longer build in time (they lost industry) is replaced even by a weaker one.
+    const tooDear = tag === "W" && current.some((d) => designStats(player, d).cost > budget * 1.25) && designStats(player, candidate).cost <= budget;
+    if (current.length > 0 && value < best * 1.15 && !tooDear) continue;
     const mk = player.designs.filter((d) => d.id.startsWith(`ai${tag}`)).length + 1;
     candidate.name = `${HULL_NAMES[hull]} Mk ${mk}`;
     out.push({ type: "saveDesign", design: candidate });
@@ -185,12 +200,26 @@ export function designOrders(view: PlayerView): Command[] {
   return out;
 }
 
-/** The warship a colony should build: the big design at a star dock, the small one elsewhere. */
+/**
+ * The warship a colony should build: the big design at a star dock whose
+ * industry turns it out in reasonable time (BUILD_TURNS x 1.5), the small one
+ * elsewhere. Without a colony, the empire's main design.
+ */
 export function currentWarship(view: PlayerView, colony?: Colony): string | null {
   const player = me(view);
-  const live = (tag: string) => player.designs.filter((x) => !x.obsolete && x.id.startsWith(`ai${tag}`)).at(-1)?.id ?? null;
+  const live = (tag: string) => player.designs.filter((x) => !x.obsolete && x.id.startsWith(`ai${tag}`)).at(-1) ?? null;
   const big = live("W");
-  const small = live("S") ?? player.designs.find((x) => x.id === "frigate" && !x.obsolete)?.id ?? null;
-  if (colony && !hasStarDock(colony)) return small;
-  return big ?? small;
+  const small = live("S")?.id ?? player.designs.find((x) => x.id === "frigate" && !x.obsolete)?.id ?? null;
+  if (!colony) return big?.id ?? small;
+  if (!hasStarDock(colony) || !big) return small;
+  return canBuildInTime(view, colony, big.id) ? big.id : small;
+}
+
+/** Whether a colony's industry turns out this design within BUILD_TURNS x 1.5 turns. */
+export function canBuildInTime(view: PlayerView, colony: Colony, designId: string): boolean {
+  const player = me(view);
+  const d = player.designs.find((x) => x.id === designId);
+  if (!d) return false;
+  const turns = (BUILD_TURNS[strategyOf(view, "design")] ?? BUILD_TURNS.balanced!) * 1.5;
+  return designStats(player, d).cost <= colonyOutput(view, colony).industry * turns;
 }

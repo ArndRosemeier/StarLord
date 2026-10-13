@@ -1,7 +1,7 @@
-import { AI_TREATIES, AI_WAR } from "./data/diplomacy.js";
+import { AI_AI_PEACE, AI_TREATIES, AI_WAR } from "./data/diplomacy.js";
 import { getRace, hasTrait } from "./data/races.js";
 import type { Emit } from "./context.js";
-import { attitude, breakTreaty, declareWar, patience, relation, signPact, signTreaty, temperament, trustIn } from "./diplomacy.js";
+import { attitude, breakTreaty, declareWar, makePeace, patience, relation, signPact, signTreaty, temperament, trustIn } from "./diplomacy.js";
 import { empireTotals } from "./economy.js";
 import { empires } from "./empire.js";
 import {
@@ -15,9 +15,10 @@ import type { GameState, PlayerId } from "./types.js";
  * the turn itself, as the original's does: pacts, trade and research treaties
  * and tribute among computer empires are signed here by the rules' dice
  * (AI_TREATIES), allies join each other's wars, an empire allied to two
- * enemies drops both, and computer empires pick wars with each other
- * (AI_WAR). What computer empires do toward humans (offers, peace, answers) is
- * up to their controllers, which only send commands.
+ * enemies drops both, computer empires pick wars with each other (AI_WAR)
+ * and make peace once a war has run long enough (AI_AI_PEACE). What computer
+ * empires do toward humans (offers, peace, answers) is up to their
+ * controllers, which only send commands.
  */
 export function aiDiplomacyTick(state: GameState, rng: Rng, emit?: Emit): void {
   const ais = empires(state).filter((p) => p.alive && !p.isHuman);
@@ -26,8 +27,8 @@ export function aiDiplomacyTick(state: GameState, rng: Rng, emit?: Emit): void {
   const powers = new Map(empires(state).filter((p) => p.alive).map((p) => [p.id, fleetPower(state, p.id)]));
   aiTreaties(state, ais.map((p) => p.id), roll, powers, emit);
   allyConflicts(state, ais.map((p) => p.id), emit);
-  allianceDuty(state, ais.map((p) => p.id), emit);
   aiWars(state, ais.map((p) => p.id), roll, powers, emit);
+  aiPeace(state, ais.map((p) => p.id), emit);
 }
 
 const repulsive = (state: GameState, id: PlayerId) => hasTrait(getRace(state.players[id]!.raceId), "repulsive");
@@ -46,60 +47,73 @@ function humanWarCount(state: GameState, a: PlayerId): number {
   return empires(state).filter((p) => p.id !== a && p.alive && p.isHuman && atWar(state, a, p.id)).length;
 }
 
-/** The original's FUN_00025528: treaties between two computer empires, considered 1 in (250 - 40 x difficulty) turns. */
+/**
+ * The original's FUN_00025528: treaties between two computer empires,
+ * considered 1 in (250 - 40 x difficulty) turns. On such a turn the empire
+ * also joins its ally's wars and its patience with the partner drops, whether
+ * or not a treaty was possible.
+ */
 function aiTreaties(state: GameState, ais: PlayerId[], roll: Roll, powers: Map<PlayerId, number>, emit?: Emit): void {
   const T = AI_TREATIES;
   const d = difficultyLevel(state);
   const all = empires(state).filter((p) => p.alive);
   for (const a of ais) {
     for (const b of ais) {
-      if (a === b || roll(T.die - T.perDifficulty * d) !== 1) continue;
+      if (a === b || repulsive(state, a) || repulsive(state, b) || roll(T.die - T.perDifficulty * d) !== 1) continue;
       if (!state.players[a]!.alive || !state.players[b]!.alive) continue;
       if (!state.players[a]!.contacts.includes(b) || !state.players[b]!.contacts.includes(a)) continue;
-      if (repulsive(state, a) || repulsive(state, b) || atWar(state, a, b) || patience(state, a, b) < T.minPatience) continue;
-      const r = relation(state, a, b);
-      let base = attitude(state, a, b) + trustIn(state, a, b);
-      if (r.status === "nonAggression") base += T.pact.nonAggression;
-      if (r.status === "alliance") base += T.pact.alliance;
-      // The original counts the trade treaty twice and the research treaty not at all.
-      if (r.trade) base += 2 * T.pact.trade;
-      for (const k of all) {
-        if (k.id === a || k.id === b) continue;
-        if (atWar(state, a, k.id)) base += T.theirWar;
-        if (atWar(state, b, k.id)) base += T.partnerWar;
-        if (strikesOf(state, b, k.id) > 0) base += T.partnerStrikes;
-      }
-      const pa = persOf(state, a, b);
-      const pb = persOf(state, b, a);
-      const bank = patience(state, a, b);
-      const s1 = bank + roll(100) + base + T.humanWar * (humanWarCount(state, a) + humanWarCount(state, b)) + pa + pb;
-      if (s1 >= T.alliance && r.status === "nonAggression" && aiWarCount(state, a) === 0 && aiWarCount(state, b) === 0) {
-        signPact(state, a, b, "alliance");
-        tell(emit, a, b, "signed an alliance with you");
-      } else if (s1 >= T.nonAggression && r.status !== "nonAggression" && r.status !== "alliance") {
-        signPact(state, a, b, "nonAggression");
-        tell(emit, a, b, "signed a non-aggression pact with you");
-      }
-      const s2 = roll(100) + base + bank + pb;
-      const now = relation(state, a, b);
-      if (s2 > T.research && !now.research) {
-        signTreaty(state, a, b, "research");
-        tell(emit, a, b, "signed a research treaty with you");
-      } else if (s2 > T.trade && !now.trade) {
-        signTreaty(state, a, b, "trade");
-        tell(emit, a, b, "signed a trade treaty with you");
-      }
-      const s3 = bank + roll(100) + base + pa + pb;
-      const paying = (state.tributes ?? []).some((t) => t.from === a && t.to === b);
-      if (s3 > T.tribute && !paying && strengthRatio(state, a, b, powers) < 100 &&
-        empireTotals(state, a).bcIncome < empireTotals(state, b).bcIncome && roll(20) <= d + 1) {
-        state.tributes = [...(state.tributes ?? []).filter((t) => !(t.from === a && t.to === b)), { from: a, to: b, percent: T.tributePercent }];
-        relationEvent(state, roll(T.tributeWarmth.roll) + T.tributeWarmth.base, a, b, REASON.tribute);
-        emit?.({ kind: "diplomacy", playerId: b, other: a, what: `pays you a ${T.tributePercent}% tribute` });
-      }
+      if (!atWar(state, a, b) && patience(state, a, b) >= T.minPatience) considerTreaties(state, a, b, all, roll, powers, emit);
+      allianceDuty(state, a, b, emit);
       const pat = ((state.patience ??= {})[a] ??= {});
       pat[b] = (pat[b] ?? 0) - T.patienceCost;
     }
+  }
+}
+
+function considerTreaties(
+  state: GameState, a: PlayerId, b: PlayerId, all: { id: PlayerId }[], roll: Roll, powers: Map<PlayerId, number>, emit?: Emit,
+): void {
+  const T = AI_TREATIES;
+  const d = difficultyLevel(state);
+  const r = relation(state, a, b);
+  let base = attitude(state, a, b) + trustIn(state, a, b);
+  if (r.status === "nonAggression") base += T.pact.nonAggression;
+  if (r.status === "alliance") base += T.pact.alliance;
+  // The original counts the trade treaty twice and the research treaty not at all.
+  if (r.trade) base += 2 * T.pact.trade;
+  for (const k of all) {
+    if (k.id === a || k.id === b) continue;
+    if (atWar(state, a, k.id)) base += T.theirWar;
+    if (atWar(state, b, k.id)) base += T.partnerWar;
+    if (strikesOf(state, b, k.id) > 0) base += T.partnerStrikes;
+  }
+  const pa = persOf(state, a, b);
+  const pb = persOf(state, b, a);
+  const bank = patience(state, a, b);
+  const s1 = bank + roll(100) + base + T.humanWar * (humanWarCount(state, a) + humanWarCount(state, b)) + pa + pb;
+  if (s1 >= T.alliance && r.status === "nonAggression" && aiWarCount(state, a) === 0 && aiWarCount(state, b) === 0) {
+    signPact(state, a, b, "alliance");
+    tell(emit, a, b, "signed an alliance with you");
+  } else if (s1 >= T.nonAggression && r.status !== "nonAggression" && r.status !== "alliance") {
+    signPact(state, a, b, "nonAggression");
+    tell(emit, a, b, "signed a non-aggression pact with you");
+  }
+  const s2 = roll(100) + base + bank + pb;
+  const now = relation(state, a, b);
+  if (s2 > T.research && !now.research) {
+    signTreaty(state, a, b, "research");
+    tell(emit, a, b, "signed a research treaty with you");
+  } else if (s2 > T.trade && !now.trade) {
+    signTreaty(state, a, b, "trade");
+    tell(emit, a, b, "signed a trade treaty with you");
+  }
+  const s3 = bank + roll(100) + base + pa + pb;
+  const paying = (state.tributes ?? []).some((t) => t.from === a && t.to === b);
+  if (s3 > T.tribute && !paying && strengthRatio(state, a, b, powers) < 100 &&
+    empireTotals(state, a).bcIncome < empireTotals(state, b).bcIncome && roll(20) <= d + 1) {
+    state.tributes = [...(state.tributes ?? []).filter((t) => !(t.from === a && t.to === b)), { from: a, to: b, percent: T.tributePercent }];
+    relationEvent(state, roll(T.tributeWarmth.roll) + T.tributeWarmth.base, a, b, REASON.tribute);
+    emit?.({ kind: "diplomacy", playerId: b, other: a, what: `pays you a ${T.tributePercent}% tribute` });
   }
 }
 
@@ -120,18 +134,34 @@ function allyConflicts(state: GameState, ais: PlayerId[], emit?: Emit): void {
   }
 }
 
-/** The original's FUN_00025acd: a computer empire joins every war its computer ally fights against an empire it knows. */
-function allianceDuty(state: GameState, ais: PlayerId[], emit?: Emit): void {
-  const all = empires(state).filter((p) => p.alive).map((p) => p.id);
+/** The original's FUN_00025acd: a computer empire joins every war its computer ally b fights against an empire it knows. */
+function allianceDuty(state: GameState, a: PlayerId, b: PlayerId, emit?: Emit): void {
+  if (relation(state, a, b).status !== "alliance") return;
+  for (const kp of empires(state)) {
+    const k = kp.id;
+    if (!kp.alive || k === a || k === b || !atWar(state, b, k) || atWar(state, a, k) || !state.players[a]!.contacts.includes(k)) continue;
+    declareWar(state, a, k);
+    emit?.({ kind: "diplomacy", playerId: k, other: a, what: `declared war on you to stand by its ally, the ${state.players[b]!.name}` });
+    emit?.({ kind: "diplomacy", playerId: b, other: a, what: "joined your war as your ally" });
+  }
+}
+
+/**
+ * The original's FUN_00026705: two computer empires make peace once their war
+ * has lasted more than 90 - 15 x difficulty turns, 20 fewer for each human
+ * empire the first one is also at war with (see AI_AI_PEACE).
+ */
+function aiPeace(state: GameState, ais: PlayerId[], emit?: Emit): void {
+  const P = AI_AI_PEACE;
+  const d = difficultyLevel(state);
   for (const a of ais) {
     for (const b of ais) {
-      if (a === b || relation(state, a, b).status !== "alliance") continue;
-      for (const k of all) {
-        if (k === a || k === b || !atWar(state, b, k) || atWar(state, a, k) || !state.players[a]!.contacts.includes(k)) continue;
-        declareWar(state, a, k);
-        emit?.({ kind: "diplomacy", playerId: k, other: a, what: `declared war on you to stand by its ally, the ${state.players[b]!.name}` });
-        emit?.({ kind: "diplomacy", playerId: b, other: a, what: "joined your war as your ally" });
-      }
+      if (a === b || !state.players[a]!.alive || !state.players[b]!.alive || !atWar(state, a, b)) continue;
+      if (!state.players[a]!.contacts.includes(b)) continue;
+      const limit = P.baseTurns - P.perDifficulty * d - P.perHumanWar * humanWarCount(state, a);
+      if (state.turn - relation(state, a, b).since <= limit) continue;
+      makePeace(state, b, a);
+      tell(emit, a, b, "made peace with you");
     }
   }
 }

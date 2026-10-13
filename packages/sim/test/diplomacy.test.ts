@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  COUNCIL_VOTE, COUNTER_PRICE, PATIENCE, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS, Rng, TEMPERAMENTS, TREATY_ANSWER, TIER_OF_TECH,
+  AI_AI_PEACE, AI_TREATIES, COUNCIL_VOTE, COUNTER_PRICE, PATIENCE, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS, Rng, TEMPERAMENTS, TREATY_ANSWER, TIER_OF_TECH,
   attitude, audienceTired, baselineOf, canSign, councilVotes, counterPrice, declareWar, demandAnswer, destructibleBuildings, driftStep,
-  empireExpenses, empireIncome, giftWorth, makePeace, newGame, patience, peaceLossTerm, playerView, previewOrders, processTurn, rampStep,
+  diplomacyTick, empireExpenses, empireIncome, giftWorth, makePeace, newGame, patience, peaceLossTerm, playerView, previewOrders, processTurn, rampStep,
   relKey, relation, relationEvent, relationsTick, reputationOf, scaleRelationEvent, setRelation, spyEdge, strikesOf, temperament, treatyAcceptChance,
   treatyBase, treatyPriceChance, treatyScore, treatyTarget, treatyYield, trustIn, validateCommand, votesToWin, voteScore, votingPopulation,
   type GameState, type Proposal, type Temperament,
@@ -415,6 +415,15 @@ describe("galactic council", () => {
     s.relations["0-2"] = { ...relation(s, 0, 2), status: "alliance" };
     expect(voteScore(s, 0, 2, 1)).toBe(COUNCIL_VOTE.die);
   });
+
+  it("a computer voter weighs its mood toward a human candidate, and only a human one", () => {
+    const s = withTemper("pacifistic", ["felhari", "kordex", "terran"]);
+    s.attitude[1] = { 0: 20, 2: 20 };
+    const mood = TEMPERAMENTS.pacifistic.vsHumans;
+    // Player 0 is human, player 2 (charismatic Terrans) a computer empire.
+    expect(voteScore(s, 1, 0, 2)).toBe(20 - COUNCIL_VOTE.mood * mood);
+    expect(voteScore(s, 1, 2, 0)).toBe(20 + COUNCIL_VOTE.charismatic);
+  });
 });
 
 describe("how computer rulers answer treaties", () => {
@@ -599,5 +608,35 @@ describe("demands", () => {
     expect(demandAnswer(s, p, -pact0 - 30).outcome).toBe("strike");
     expect(demandAnswer(s, p, -pact0 - 60).outcome).toBe("breakTreaties");
     expect(demandAnswer(s, p, -pact0 - 101).outcome).toBe("war");
+  });
+});
+
+describe("computer empires among themselves", () => {
+  const ais = (seed: string) => met(seed, ["felhari", "kordex", "zhrikk"]);
+
+  it("make peace once a war has run its course, as the original does", () => {
+    const s = ais("aipeace");
+    const limit = AI_AI_PEACE.baseTurns - 2 * AI_AI_PEACE.perDifficulty; // average difficulty
+    s.turn = 200;
+    s.relations["0-1"] = { ...relation(s, 0, 1), status: "war", since: s.turn - limit };
+    diplomacyTick(s, new Rng({ s: 7 }));
+    expect(relation(s, 0, 1).status).toBe("war");
+    s.turn++;
+    diplomacyTick(s, new Rng({ s: 7 }));
+    expect(relation(s, 0, 1).status).toBe("peace");
+  });
+
+  it("join an ally's war only on a turn they consider each other, not at once", () => {
+    let joinedAtOnce = 0;
+    for (let i = 0; i < 10; i++) {
+      const s = ais(`allyduty${i}`);
+      s.relations["0-1"] = { ...relation(s, 0, 1), status: "alliance" };
+      declareWar(s, 1, 2);
+      diplomacyTick(s, new Rng({ s: i + 1 }));
+      if (relation(s, 0, 2).status === "war") joinedAtOnce++;
+    }
+    // A pair is considered 1 turn in (die - perDifficulty x difficulty); ten tries rarely hit one.
+    expect(AI_TREATIES.die).toBeGreaterThan(100);
+    expect(joinedAtOnce).toBeLessThan(3);
   });
 });
