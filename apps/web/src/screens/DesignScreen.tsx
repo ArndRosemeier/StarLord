@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import {
   ARCS, ARMORS, COMPUTERS, HULLS, HULLS_BY_ID, MISSILE_RACKS, SHIELDS, SPECIALS, WEAPONS, WEAPON_MODS,
-  DEFAULT_MISSILE_SHOTS, SHIP_STYLES, designStats, designStyle, raceShipStyle, knows, refinement, validateDesign, weaponUnitCost,
-  type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponModId, type WeaponMount,
+  DEFAULT_MISSILE_SHOTS, SHIP_STYLES, designStats, designStyle, raceShipStyle, knows, refinement, swapMountWeapon, validateDesign, weaponUnitCost,
+  type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponDef, type WeaponModId, type WeaponMount,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, pct, words } from "../ui/format";
@@ -46,6 +46,8 @@ export function DesignScreen() {
     update({ weapons: list.filter((w) => w.count > 0) });
   };
   const addMount = (weaponId: string) => update({ weapons: [...draft.weapons, { weaponId, count: 1 }] });
+  const swapMount = (i: number, weaponId: string) => editMount(i, swapMountWeapon(me, draft, i, weaponId));
+  const removeMount = (i: number) => update({ weapons: draft.weapons.filter((_, j) => j !== i) });
 
   const save = () => {
     let n = 1;
@@ -121,7 +123,8 @@ export function DesignScreen() {
 
         <h4>Weapons</h4>
         {draft.weapons.map((w, i) => (
-          <MountRow key={i} player={me} draft={draft} mount={w} onChange={(patch) => editMount(i, patch)} />
+          <MountRow key={i} player={me} draft={draft} index={i} mount={w} weapons={weapons}
+            onChange={(patch) => editMount(i, patch)} onSwap={(id) => swapMount(i, id)} onRemove={() => removeMount(i)} />
         ))}
         <div className="row">
           <Tip card={() => addWeapon ? weaponTip(me, draft, addWeapon) : { title: "Add a weapon", text: ["Pick a weapon you know to add a new mount. Each mount can have its own modifications, arc or missile rack."] }}>
@@ -210,7 +213,10 @@ export function DesignScreen() {
   );
 }
 
-function MountRow({ player, draft, mount, onChange }: { player: Player; draft: ShipDesign; mount: WeaponMount; onChange: (patch: Partial<WeaponMount>) => void }) {
+function MountRow({ player, draft, index, mount, weapons, onChange, onSwap, onRemove }: {
+  player: Player; draft: ShipDesign; index: number; mount: WeaponMount; weapons: WeaponDef[];
+  onChange: (patch: Partial<WeaponMount>) => void; onSwap: (weaponId: string) => void; onRemove: () => void;
+}) {
   const def = WEAPONS.find((x) => x.id === mount.weaponId);
   if (!def) return null;
   const level = refinement(player, def.requires);
@@ -226,17 +232,29 @@ function MountRow({ player, draft, mount, onChange }: { player: Player; draft: S
     <div className="col" style={{ gap: 2, borderBottom: "1px solid var(--line)", paddingBottom: 4 }}>
       <div className="row">
         <Tip card={() => weaponTip(player, draft, mount.weaponId, mount)}>
-          <span style={{ flex: 1 }}>
-            {def.name} <small className="muted">{def.damageMin}-{def.damageMax} dmg, {words(def.kind)} · {fmt(unit.space)} space, {fmt(unit.cost)} BC each</small>
-          </span>
+          <select value={mount.weaponId} aria-label="Weapon" style={{ flex: "1 1 0", minWidth: 120 }} onChange={(e) => onSwap(e.target.value)}>
+            {(weapons.some((w) => w.id === def.id) ? weapons : [def, ...weapons]).map((w) => {
+              // What this row would cost re-armed with `w`: same count, arc and mods where they carry over.
+              const swapped = w.id === def.id ? mount : swapMountWeapon(player, draft, index, w.id);
+              const u = weaponUnitCost(player, swapped);
+              return (
+                <option key={w.id} value={w.id} title={tipText(weaponTip(player, draft, w.id, swapped))}>
+                  {w.name}{w.damageMax > 0 ? ` · ${w.damageMin === w.damageMax ? w.damageMin : `${w.damageMin}-${w.damageMax}`} dmg` : ""} · {fmt(u.space)} space · {fmt(u.cost)} BC each
+                  {w.id !== def.id && swapped.count !== mount.count ? ` (only ${swapped.count} fit${swapped.count === 1 ? "s" : ""})` : ""}
+                </option>
+              );
+            })}
+          </select>
         </Tip>
-        <span className="spacer" />
         <Tip card={{ title: "Remove one", text: [mount.count === 1 ? "Removes this mount." : "One fewer weapon on this mount."] }}>
           <button className="small" onClick={() => onChange({ count: mount.count - 1 })}>−</button>
         </Tip>
         <b style={{ width: 24, textAlign: "center" }}>{mount.count}</b>
         <Tip card={{ title: "Add one", text: [`One more ${def.name}: ${fmt(unit.space)} space and ${fmt(unit.cost)} BC.`] }}>
           <button className="small" onClick={() => onChange({ count: mount.count + 1 })}>+</button>
+        </Tip>
+        <Tip card={{ title: "Remove row", text: [`Removes all ${mount.count} ${def.name} on this row, freeing ${fmt(unit.space * mount.count)} space and ${fmt(unit.cost * mount.count)} BC.`] }}>
+          <button className="small" aria-label="Remove weapon row" onClick={onRemove}>✕</button>
         </Tip>
       </div>
       <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>

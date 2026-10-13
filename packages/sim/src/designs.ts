@@ -433,6 +433,28 @@ export function refinedMods(player: Player, w: WeaponDef, wanted: readonly Weapo
   });
 }
 
+/**
+ * The mount at `index` re-armed with another weapon: modifications, arc and missile rack carry over where the new
+ * weapon takes them, and the count is kept but trimmed to what still fits in the hull (at least one).
+ */
+export function swapMountWeapon(player: Player, design: ShipDesign, index: number, weaponId: string): WeaponMount {
+  const old = design.weapons[index]!;
+  const w = ALL_WEAPONS[weaponId]!;
+  const mods: WeaponModId[] = [];
+  for (const id of refinedMods(player, w, old.mods ?? [])) {
+    if (!WEAPON_MODS_BY_ID[id].excludes?.some((x) => mods.includes(x))) mods.push(id);
+  }
+  const next: WeaponMount = { weaponId, count: old.count };
+  if (mods.length) next.mods = mods;
+  if (w.kind === "beam" && old.arc) next.arc = old.arc;
+  if (w.kind === "missile" && old.ammo !== undefined) next.ammo = old.ammo;
+  const rest = designStats(player, { ...design, weapons: design.weapons.filter((_, j) => j !== index) });
+  const unit = weaponUnitCost(player, next).space;
+  const fits = unit > 0 ? Math.floor((rest.spaceTotal - rest.spaceUsed + 1e-9) / unit) : old.count;
+  next.count = Math.max(1, Math.min(old.count, fits));
+  return next;
+}
+
 /** The player's best beam that can be fitted as point defense, if any. */
 export function bestPointDefenseBeam(player: Player): WeaponDef | null {
   const beams = WEAPONS.filter((w) => w.kind === "beam" && w.mods.includes("pointDefense") && knows(player, w.requires));
