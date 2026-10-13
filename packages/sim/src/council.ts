@@ -105,10 +105,10 @@ export function voteChance(state: GameState, voter: PlayerId, candidate: PlayerI
 
 /**
  * Who a player's votes go to. Candidates vote for themselves; a ballot cast
- * during the session's turn counts next; otherwise the player's standing
- * choice, where "auto" (every computer empire) rolls a d200 against each
- * candidate's vote score and backs the one that passes, abstaining when both
- * or neither do.
+ * in the session counts next. A person is always asked and nothing votes for
+ * them, so one who cast none abstains. A computer empire rolls a d200 against
+ * each candidate's vote score and backs the one that passes, abstaining when
+ * both or neither do.
  */
 export function resolveVote(state: GameState, voter: PlayerId, candidates: PlayerId[]): PlayerId | null {
   if (candidates.includes(voter)) return voter;
@@ -117,9 +117,7 @@ export function resolveVote(state: GameState, voter: PlayerId, candidates: Playe
     const b = ballots[voter]!;
     return b === null || candidates.includes(b) ? b : null;
   }
-  const choice = state.players[voter]!.councilVote;
-  if (choice === "abstain") return null;
-  if (typeof choice === "number" && candidates.includes(choice)) return choice;
+  if (state.players[voter]!.isHuman) return null;
   const [a, b] = candidates;
   if (a === undefined || b === undefined) return null;
   const backs = (c: PlayerId, rival: PlayerId) => fixedRoll(state, `council${state.turn}|${voter}|${c}`, COUNCIL_VOTE.die) <= voteScore(state, voter, c, rival);

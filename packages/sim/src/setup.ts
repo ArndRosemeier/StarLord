@@ -161,7 +161,6 @@ export function newGame(opts: NewGameOptions): GameState {
       designs: startingDesigns(),
       spies: { home: 0, abroad: {} },
       leaderOffers: [],
-      councilVote: "auto",
       doctrine: { retreatBelow: 0.5, focus: "nearest" },
       automation: [],
       hasPortal: false,
