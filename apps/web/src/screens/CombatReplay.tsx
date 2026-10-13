@@ -4,8 +4,9 @@ import { useGame } from "../ui/hooks";
 import { audio } from "../audio/sound";
 import { useReducedMotion } from "../ui/fx";
 import { webglAvailable } from "../three/webgl";
+import { REPLAY_SPEEDS, updatePrefs, usePrefs } from "../game/prefs";
 import { Combat2D } from "./combat/Combat2D";
-import { STEP_MS, describe, framesAt, replaySteps, unitAlive, unitInfo } from "./combat/replayModel";
+import { stepMs, describe, framesAt, replaySteps, unitAlive, unitInfo } from "./combat/replayModel";
 
 const Combat3D = lazy(() => import("./combat/Combat3D"));
 
@@ -30,6 +31,7 @@ export function CombatReplay({ report }: { report: CombatReport }) {
   const [playing, setPlaying] = useState(true);
   const [resetKey, setResetKey] = useState(0);
   const reduced = useReducedMotion();
+  const { replaySpeed } = usePrefs();
   const [mode, setMode] = useState<"3d" | "2d">(() => (webglAvailable() ? savedView() : "2d"));
   const [failed, setFailed] = useState(false);
   const use3d = mode === "3d" && !failed;
@@ -47,7 +49,7 @@ export function CombatReplay({ report }: { report: CombatReport }) {
 
   useEffect(() => {
     if (!playing || step >= steps.length) return;
-    const t = setTimeout(() => setStep(step + 1), STEP_MS);
+    const t = setTimeout(() => setStep(step + 1), stepMs());
     return () => clearTimeout(t);
   }, [playing, step, steps.length]);
 
@@ -102,6 +104,10 @@ export function CombatReplay({ report }: { report: CombatReport }) {
         <button className="small" onClick={() => setPlaying(!playing)}>{playing ? "Pause" : "Play"}</button>
         <button className="small" onClick={() => { setStep(0); setPlaying(true); setResetKey((k) => k + 1); }}>Restart</button>
         <button className="small" onClick={() => { setPlaying(false); setStep(steps.length); }}>Skip to end</button>
+        <button className="small" title="Replay speed (also in Game › Settings). Click for the next speed."
+          onClick={() => updatePrefs({ replaySpeed: REPLAY_SPEEDS[(REPLAY_SPEEDS.indexOf(replaySpeed as never) + 1) % REPLAY_SPEEDS.length]! })}>
+          {replaySpeed}×
+        </button>
         {webglAvailable() && !failed && (
           <button className="small" title="Switch between the 3D and the flat battle view" onClick={() => switchView(use3d ? "2d" : "3d")}>
             {use3d ? "2D view" : "3D view"}

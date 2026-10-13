@@ -214,9 +214,9 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
               <h4>Saved games</h4>
               <table>
                 <tbody>
-                  {saves.map((s) => (
+                  {[...saves].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).map((s) => (
                     <tr key={s.name}>
-                      <td>{s.name}</td>
+                      <td>{s.auto && <span className="chip" title="Saved automatically at the start of a turn; only the newest few are kept">Auto</span>} {s.name}</td>
                       <td className="muted">{s.empire}, turn {s.turn}</td>
                       <td className="muted">{new Date(s.savedAt).toLocaleString()}</td>
                       <td style={{ textAlign: "right" }}>
