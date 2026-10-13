@@ -7,7 +7,7 @@ import { getRace, hasTrait, registerRaces } from "./data/races.js";
 import { TRAIT_EFFECTS } from "./data/racePicks.js";
 import { RESEARCH, TECHS, TIERS_BY_ID, emptyHyperLevels, researchCost } from "./data/techs.js";
 import { battleKey, colonyDefenseStrength, createBattle, hasArmedDefenses, type Battle, type CombatSide } from "./combat.js";
-import { buyCost, termsOf, validateCommand, type Command } from "./commands.js";
+import { buildingScrapRefund, buyCost, settlerModule, termsOf, validateCommand, type Command } from "./commands.js";
 import { newId, type TurnContext } from "./context.js";
 import { councilTick } from "./council.js";
 import { designStats, findDesign } from "./designs.js";
@@ -176,6 +176,15 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       placeBase(ctx, c, cmd.projectId, state.planets[cmd.planetId]!);
       break;
     }
+    case "scrapBuilding": {
+      const c = state.colonies[cmd.colonyId]!;
+      c.buildings = c.buildings.filter((b) => b !== cmd.buildingId);
+      c.scrappedTurn = state.turn;
+      const refund = buildingScrapRefund(cmd.buildingId);
+      player.bc += refund;
+      ctx.emit({ kind: "random", playerId, what: `${BUILDINGS_BY_ID[cmd.buildingId]?.name ?? cmd.buildingId} at ${c.name} was scrapped for ${refund} BC.` });
+      break;
+    }
     case "buy": {
       const c = state.colonies[cmd.colonyId]!;
       player.bc -= buyCost(state, c);
@@ -214,12 +223,10 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "colonize": {
       const f = state.fleets[cmd.fleetId]!;
       const planet = state.planets[cmd.planetId]!;
-      const pickModule = (m: "colony" | "outpost") =>
-        f.ships.find((s) => findDesign(player, s.designId)?.module === m && s.count > 0);
-      const stack = pickModule("colony") ?? pickModule("outpost")!;
-      const outpost = findDesign(player, stack.designId)!.module === "outpost";
+      const module = settlerModule(state, playerId, f, planet.id, cmd.module)!;
+      const stack = f.ships.find((s) => findDesign(player, s.designId)?.module === module && s.count > 0)!;
       removeShips(state, f, stack.designId, 1);
-      foundColony(ctx, playerId, cmd.planetId, outpost ? 0 : 1, player.raceId);
+      foundColony(ctx, playerId, cmd.planetId, module === "outpost" ? 0 : 1, player.raceId);
       break;
     }
     case "invade":
