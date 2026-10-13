@@ -283,10 +283,10 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
                   <select value={target ?? ""} onChange={(e) => setTarget(e.target.value || null)}>
                     <option value="">None</option>
                     {options.targets.map((t) => (
-                      <option key={t.key} value={t.key}>{snap(t.key)?.name ?? t.key}{t.inRange ? "" : " (out of range from here)"}</option>
+                      <option key={t.key} value={t.key}>{snap(t.key)?.name ?? t.key}{t.inRange ? "" : " (no ready weapon reaches it)"}</option>
                     ))}
                   </select>
-                  {targetInfo && <span className={targetInfo.inRange ? "good" : "muted"}>{targetInfo.inRange ? "in range" : "out of range: move closer"}</span>}
+                  {targetInfo && <span className={targetInfo.inRange ? "good" : "muted"}>{targetInfo.inRange ? "in reach" : "no ready weapon reaches it: move or turn"}</span>}
                   {target && options.reach > 0 && options.weapons.some((w) => w.ready && w.vs[target]?.why === "out of arc") && (
                     <button className="small" onClick={() => send({ kind: "face", target })} title="Turn toward the target; turning costs movement">Turn to face it</button>
                   )}

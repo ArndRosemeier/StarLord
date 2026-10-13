@@ -3,9 +3,11 @@ import { createRoot } from "react-dom/client";
 import { HULLS, type CombatReport, type PlayerId } from "@starlord/sim";
 import { LAB_PRESETS, runCombatLab, setupCombatLab } from "@starlord/ai";
 import { GameSession } from "../game/session";
+import { commandLabBattle } from "../game/labBattle";
 import { SessionContext } from "../ui/hooks";
 import { CombatReplay } from "../screens/CombatReplay";
 import { CommandBattle } from "../screens/CommandBattle";
+import { CombatLab } from "../screens/CombatLab";
 import { useGame } from "../ui/hooks";
 import type { CombatEvent, UnitSnapshot } from "../screens/combat/replayModel";
 import "../styles.css";
@@ -18,7 +20,7 @@ import "../theme.css";
  * older reports carry (isPlanet and ships only); `monster` pits a creature
  * against a squadron; `lab-<preset>` runs a real combat lab preset (e.g.
  * `lab-planet`) through the sim; `command-<preset>` lets you command the
- * defender of a lab preset as the turn stops at its battle.
+ * defender of a lab preset as the turn stops at its battle; `lab` is the combat lab.
  */
 
 const session = GameSession.create({ seed: "battle-demo", playerCount: 2, monsters: true }, 0);
@@ -118,15 +120,7 @@ function labBattle(kind: string): { session: GameSession; report: CombatReport }
 function commandSession(kind: string): GameSession | null {
   const preset = LAB_PRESETS.find((p) => `command-${p.id}` === kind);
   if (!preset) return null;
-  const setup = setupCombatLab({ seed: "battle-demo", ...preset.spec });
-  setup.state.players[setup.defenderId]!.isHuman = true;
-  // Automation would fly the fleet off before the battle.
-  setup.state.players[setup.defenderId]!.automation = [];
-  const s = new GameSession(setup.state, setup.defenderId);
-  // As in the lab, nobody gives orders, so the computer side does not fly off either.
-  s.ordersForTurn = () => ({});
-  s.endTurn();
-  return s;
+  return commandLabBattle(setupCombatLab({ seed: "battle-demo", ...preset.spec }), "defender");
 }
 
 function Commanding() {
@@ -141,6 +135,7 @@ function Commanding() {
 function Demo() {
   const [cmdSession] = useState(() => commandSession(new URLSearchParams(location.search).get("demo") ?? ""));
   if (cmdSession) return <SessionContext.Provider value={cmdSession}><Commanding /></SessionContext.Provider>;
+  if (new URLSearchParams(location.search).get("demo") === "lab") return <div className="modal debug-menu sim-modal"><CombatLab /></div>;
   return <Showcase />;
 }
 
