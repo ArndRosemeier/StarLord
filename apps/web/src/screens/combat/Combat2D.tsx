@@ -232,9 +232,60 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
         }
       }
 
+      // Missiles, torpedoes and squadrons on their way: a dashed line to the target, a fading trail and a bright head.
+      for (const fl of frames.flights.values()) {
+        const before = frames.prevFlights.get(fl.id) ?? fl;
+        const e = ease(k);
+        const x = (before.x + (fl.x - before.x) * e + 0.5) * CELL;
+        const y = (before.y + (fl.y - before.y) * e + 0.5) * CELL;
+        const owner = view.players[report.ships.find((u) => u.key === fl.owner)?.ownerId ?? -1]?.color ?? "#ffffff";
+        const glow = fl.craft ? owner : WEAPONS_BY_ID[fl.weapon]?.kind === "torpedo" ? "#7ad7ff" : "#ffd32a";
+        if (frames.now.has(fl.target)) {
+          const tp = at(fl.target);
+          ctx.save();
+          ctx.globalAlpha = 0.45;
+          ctx.setLineDash([5, 5]);
+          ctx.strokeStyle = owner;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(tp.x, tp.y);
+          ctx.stroke();
+          ctx.restore();
+        }
+        // The trail reaches back along its path, at most three squares.
+        const back = Math.min(3 * CELL, Math.hypot((fl.x - before.x) * CELL, (fl.y - before.y) * CELL) * e);
+        const len = Math.hypot((fl.x - before.x) * CELL, (fl.y - before.y) * CELL) || 1;
+        const bx = x - ((fl.x - before.x) * CELL * back) / len;
+        const by = y - ((fl.y - before.y) * CELL * back) / len;
+        if (Math.hypot(x - bx, y - by) > 1) {
+          const tail = ctx.createLinearGradient(x, y, bx, by);
+          tail.addColorStop(0, glow);
+          tail.addColorStop(1, "rgba(255,255,255,0)");
+          ctx.strokeStyle = tail;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(bx, by);
+          ctx.stroke();
+        }
+        const r = (fl.craft ? 3.5 : 3) + Math.min(3, Math.log2(Math.max(1, fl.count)));
+        dot(ctx, x, y, r + 3, "rgba(255,255,255,0.15)");
+        dot(ctx, x, y, r, glow);
+        if (fl.count > 1) {
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "10px Inter, system-ui, sans-serif";
+          ctx.fillText(`×${fl.count}`, x + r + 3, y - r);
+        }
+      }
+
       // The shot of the current step.
       if (event?.kind === "fire" && event.target && frames.now.has(event.ship) && frames.now.has(event.target)) {
-        const a = at(event.ship);
+        // A volley already in flight strikes from where it was drawn.
+        const inFlight = isProjectile(event.weapon)
+          ? [...frames.prevFlights.values()].find((fl) => fl.owner === event.ship && fl.target === event.target && fl.weapon === event.weapon)
+          : undefined;
+        const a = inFlight ? { x: (inFlight.x + 0.5) * CELL, y: (inFlight.y + 0.5) * CELL } : at(event.ship);
         const b = at(event.target);
         const kind = event.weapon ? WEAPONS_BY_ID[event.weapon]?.kind : undefined;
         if (isProjectile(event.weapon)) {

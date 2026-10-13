@@ -50,7 +50,25 @@ export interface CombatEvent {
   armorDamage?: number;
   structureDamage?: number;
   systemHit?: string | boolean;
+  /** "launch": the missile, torpedo or squadron sent off. */
+  projectile?: string;
+  /** "flights": everything in flight after a side's missiles and craft moved. */
+  flights?: Flight[];
 }
+
+/** A missile, torpedo or squadron on its way. */
+export interface Flight {
+  id: string;
+  owner: string;
+  target: string;
+  weapon: string;
+  x: number;
+  y: number;
+  count: number;
+  craft?: string;
+}
+
+export type Flights = Map<string, Flight>;
 
 export interface UnitInfo {
   snap: UnitSnapshot;
@@ -239,16 +257,37 @@ export interface Frames {
   now: UnitStates;
   /** One event earlier, so moves can glide between them. */
   prev: UnitStates;
+  /** Missiles, torpedoes and squadrons in flight after `step` events, and one event earlier. */
+  flights: Flights;
+  prevFlights: Flights;
 }
 
 export function framesAt(report: CombatReport, steps: ReplayStep[], step: number): Frames {
   const units = initialStates(report);
   let prev = cloneStates(units);
+  let flights: Flights = new Map();
+  let prevFlights: Flights = flights;
   for (let i = 0; i < step && i < steps.length; i++) {
-    if (i === step - 1) prev = cloneStates(units);
-    applyEvent(units, steps[i]!.e);
+    if (i === step - 1) {
+      prev = cloneStates(units);
+      prevFlights = flights;
+    }
+    const e = steps[i]!.e;
+    flights = applyFlights(flights, e);
+    applyEvent(units, e);
   }
-  return { now: units, prev };
+  return { now: units, prev, flights, prevFlights };
+}
+
+/** What is in flight after an event: launches add a volley, and each "flights" record says where everything is. */
+export function applyFlights(flights: Flights, e: CombatEvent): Flights {
+  if (e.kind === "flights" && e.flights) return new Map(e.flights.map((f) => [f.id, f]));
+  if (e.kind === "launch" && e.projectile && e.target && e.x !== undefined && e.y !== undefined) {
+    const next = new Map(flights);
+    next.set(e.projectile, { id: e.projectile, owner: e.ship, target: e.target, weapon: e.weapon ?? "", x: e.x, y: e.y, count: 1 });
+    return next;
+  }
+  return flights;
 }
 
 export function applyEvent(units: UnitStates, e: CombatEvent): void {
@@ -321,6 +360,10 @@ export function describe(report: CombatReport, e: CombatEvent | undefined): stri
     case "board": return `${n(e.ship)} boards ${n(e.target)}${e.hit === false ? ", and is beaten back" : ""}`;
     case "captured": return `${n(e.ship)} is captured by ${n(e.target)}'s marines${e.hit ? " and turns on its old side" : ""}`;
     case "repair": return `${n(e.ship)} repairs${e.damage ? ` ${e.damage}` : ""}`;
+    case "flights": {
+      const volleys = e.flights?.length ?? 0;
+      return volleys === 0 ? "" : `${volleys} volley${volleys === 1 ? "" : "s"} of missiles or craft in flight`;
+    }
     default: return "";
   }
 }

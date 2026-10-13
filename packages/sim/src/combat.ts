@@ -263,6 +263,8 @@ interface Unit {
 }
 
 interface Projectile {
+  /** Its name in the battle log ("p1", "p2", ...), so viewers can follow it in flight. */
+  id: string;
   owner: Unit;
   mount: number;
   weapon: WeaponDef;
@@ -844,6 +846,8 @@ export class Battle {
   manual: [boolean, boolean] = [false, false];
   /** Orders handed in for commanded sides, used up in turn order by `run`. */
   private queued: [TacticalOrder[], TacticalOrder[]] = [[], []];
+  /** Missiles, torpedoes and squadrons launched so far, for their names in the log. */
+  private flightNo = 0;
   /** Units as they started, and every combat turn's events so far. */
   snapshots: CombatShipSnapshot[] = [];
   rounds: CombatRoundEvent[][] = [];
@@ -2087,10 +2091,10 @@ export class Battle {
     // Point defense rolls against 5 x speed plus the missile type's bonus; armor does not toughen missiles.
     const hp = (w.kind === "torpedo" ? TORPEDO_HP : MISSILE_HP[w.id] ?? TORPEDO_HP) * (m.mods.has("armored") ? MOD_EFFECTS.armoredHpMult : 1);
     const p: Projectile = {
-      owner: u, mount: mi, weapon: w, mods: m.mods, target, x: u.x, y: u.y, speed, count: m.count, hp,
+      id: `p${++this.flightNo}`, owner: u, mount: mi, weapon: w, mods: m.mods, target, x: u.x, y: u.y, speed, count: m.count, hp,
       defense: base * MISSILE_DEFENSE_PER_SPEED + (MISSILE_DEFENSE_BONUS[w.id] ?? 0), frontDamage: 0, damage, travelled: 0, craft: null,
     };
-    this.log.push({ kind: "launch", ship: u.key, target: target.key, weapon: w.id });
+    this.log.push({ kind: "launch", ship: u.key, target: target.key, weapon: w.id, ...(Number.isFinite(speed) ? { projectile: p.id, x: u.x, y: u.y } : {}) });
     if (!Number.isFinite(speed)) {
       // Proton torpedoes strike the moment they are fired, within their reach.
       if (this.edge(u, target) > (w.range ?? 24)) return true;
@@ -2109,12 +2113,13 @@ export class Battle {
     m.out = true;
     const speed = craftSpeed(u.player, m.def);
     const hp = Math.floor((CRAFT[craft].hp * (100 + CRAFT_ARMOR_STEP * armorClass(u.player))) / 100);
+    const id = `p${++this.flightNo}`;
     this.projectiles.push({
-      owner: u, mount: mi, weapon: m.def, mods: new Set(), target, x: u.x, y: u.y, speed,
+      id, owner: u, mount: mi, weapon: m.def, mods: new Set(), target, x: u.x, y: u.y, speed,
       defense: speed * MISSILE_DEFENSE_PER_SPEED + u.craftDefenseBonus + this.officers[u.side]!.fighters,
       count: m.garrison ?? SQUADRON_SIZE * m.count, hp, frontDamage: 0, damage: 0, travelled: 0, craft, passes: CRAFT[craft].shots,
     });
-    this.log.push({ kind: "launch", ship: u.key, target: target.key, weapon: m.def.id });
+    this.log.push({ kind: "launch", ship: u.key, target: target.key, weapon: m.def.id, projectile: id, x: u.x, y: u.y });
     return true;
   }
 
@@ -2156,7 +2161,19 @@ export class Battle {
         p.travelled += p.speed;
       }
     }
+    if (flying.length > 0) this.logFlights();
     return any;
+  }
+
+  /** Records where every missile, torpedo and squadron in flight now is, for viewers to draw them on their way. */
+  logFlights(): void {
+    this.log.push({
+      kind: "flights", ship: "",
+      flights: this.projectiles.map((p) => ({
+        id: p.id, owner: p.owner.key, target: p.target.key, weapon: p.weapon.id, x: round1(p.x), y: round1(p.y), count: p.count,
+        ...(p.craft ? { craft: p.craft } : {}),
+      })),
+    });
   }
 
   removeProjectile(p: Projectile): void {

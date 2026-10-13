@@ -5,6 +5,7 @@ import { createBackdropPlane, createNebulaSky, createStarfield } from "../../thr
 import { EffectsLayer } from "../../three/effects";
 import { HealthBar, healthColor } from "../../three/billboards";
 import { Overlay } from "../../three/overlay";
+import { FlightLayer, type FlightDraw } from "../../three/flights";
 import { ModelKit, disposeModel, type UnitModel } from "../../three/models/kit";
 import { buildShip } from "../../three/models/ships";
 import { buildStation, STATION_RADIUS } from "../../three/models/stations";
@@ -24,6 +25,8 @@ import {
 
 const PLANET_RADIUS = 3.2;
 const SHIP_Y = 0.45;
+/** Height missiles and craft fly at, a little above the ships' decks. */
+const FLIGHT_Y = SHIP_Y + 0.35;
 /** Closest and farthest the camera may sit from the field centre; the opening view is never nearer than HOME_DISTANCE. */
 const HOME_DISTANCE = 28;
 const MAX_DISTANCE = 120;
@@ -66,6 +69,7 @@ export class BattleScene {
   private kit: ModelKit;
   private fx: EffectsLayer;
   private overlay: Overlay;
+  private flights: FlightLayer;
   private units = new Map<string, UnitView>();
   private frames: Frames | null = null;
   private event: CombatEvent | undefined;
@@ -95,6 +99,8 @@ export class BattleScene {
     this.kit = this.stage.own(new ModelKit(textures));
     this.fx = this.stage.own(new EffectsLayer(this.kit.glow, { particleCapacity: input.reduced ? 400 : 1600 }));
     scene.add(this.fx.group);
+    this.flights = this.stage.own(new FlightLayer(this.kit.glow));
+    scene.add(this.flights.group);
     this.overlay = this.stage.own(new Overlay(this.stage));
 
     // Space: nebula sky, a star shell and the painted battle backdrop far below the field.
@@ -378,7 +384,10 @@ export class BattleScene {
         }
         let delay = 0;
         if (look === "missile" || look === "torpedo") {
-          delay = step * 1.4;
+          // A volley already in flight strikes from where it was drawn; one fired point-blank flies from the ship.
+          const inFlight = [...(this.frames?.prevFlights.values() ?? [])].find((f) => f.owner === e.ship && f.target === e.target && f.weapon === e.weapon);
+          if (inFlight) from.copy(gridToWorld(inFlight.x, inFlight.y)).setY(FLIGHT_Y);
+          delay = inFlight ? step * 0.6 : step * 1.4;
           this.fx.projectile(from, to, look === "torpedo" ? 0x7ad7ff : 0xffd32a, look === "torpedo" ? 0.7 : 0.45, delay);
         } else {
           const color = BEAM_COLORS[e.weapon ?? ""] ?? (look === "spores" ? 0x7dff7a : 0xff4a5a);
@@ -522,9 +531,34 @@ export class BattleScene {
       }
     }
 
+    this.updateFlights(k, t);
     this.updatePointer();
     this.fx.update(dt);
     this.overlay.update(dt);
+  }
+
+  /** Missiles, torpedoes and squadrons in flight glide from their last position to the current one. */
+  private updateFlights(k: number, t: number): void {
+    const frames = this.frames;
+    const draws: FlightDraw[] = [];
+    if (frames) {
+      for (const f of frames.flights.values()) {
+        const before = frames.prevFlights.get(f.id) ?? f;
+        const look = weaponLook(f.weapon);
+        const owner = this.units.get(f.owner)?.color ?? "#ffffff";
+        draws.push({
+          id: f.id,
+          from: gridToWorld(before.x, before.y).setY(FLIGHT_Y),
+          to: gridToWorld(f.x, f.y).setY(FLIGHT_Y),
+          target: this.anchor(f.target, k),
+          color: f.craft ? owner : look === "torpedo" ? 0x7ad7ff : 0xffd32a,
+          owner,
+          count: f.count,
+          craft: !!f.craft,
+        });
+      }
+    }
+    this.flights.update(draws, ease(k), t, this.reduced);
   }
 
   private setOpacity(u: UnitView, opacity: number, wreck: boolean): void {
