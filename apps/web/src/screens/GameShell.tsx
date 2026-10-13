@@ -16,6 +16,7 @@ import { Audience, type AudienceRequest } from "./Audience";
 import { EspionageScreen } from "./EspionageScreen";
 import { LeadersScreen } from "./LeadersScreen";
 import { EmpireScreen } from "./EmpireScreen";
+import { InfoScreen } from "./InfoScreen";
 import { EventsScreen } from "./EventsScreen";
 import { GameMenu } from "./GameMenu";
 import { DebugMenu } from "./DebugMenu";
@@ -38,12 +39,12 @@ import type { MapCycle } from "./MapScreen";
 const ALERT_EVENTS = new Set(["combat", "colonyLost", "invasionFailed", "bombarded", "eliminated", "raid", "starvation"]);
 
 export type Tab =
-  | "map" | "colonies" | "planets" | "research" | "designs" | "fleets" | "diplomacy" | "espionage" | "leaders" | "empire" | "events" | "game";
+  | "map" | "colonies" | "planets" | "research" | "designs" | "fleets" | "diplomacy" | "espionage" | "leaders" | "empire" | "info" | "events" | "game";
 
 /** The painted backdrop behind each screen; the galaxy map draws its own sky. */
 const BACKDROPS: Record<Exclude<Tab, "map">, BackdropArt> = {
   colonies: "colonies", planets: "galaxy", research: "research", designs: "shipyard", fleets: "fleets", diplomacy: "diplomacy",
-  espionage: "espionage", leaders: "leaders", empire: "empire", events: "reports", game: "galaxy",
+  espionage: "espionage", leaders: "leaders", empire: "empire", info: "empire", events: "reports", game: "galaxy",
 };
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -57,6 +58,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "espionage", label: "Espionage", icon: "◐" },
   { id: "leaders", label: "Leaders", icon: "♛" },
   { id: "empire", label: "Empire & automation", icon: "⚙" },
+  { id: "info", label: "Info: standings and history", icon: "▤" },
   { id: "events", label: "Turn report", icon: "☰" },
   { id: "game", label: "Game", icon: "⛁" },
 ];
@@ -298,6 +300,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
               {tab === "espionage" && <EspionageScreen />}
               {tab === "leaders" && <LeadersScreen />}
               {tab === "empire" && <EmpireScreen />}
+              {tab === "info" && <InfoScreen />}
               {tab === "events" && <EventsScreen onShowStar={showStar} />}
               {tab === "game" && <GameMenu onQuit={onQuit} />}
             </div>

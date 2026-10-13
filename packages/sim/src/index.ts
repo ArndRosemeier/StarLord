@@ -32,6 +32,7 @@ export * from "./data/components.js";
 export * from "./data/monsters.js";
 export * from "./data/raiders.js";
 export * from "./data/techs.js";
+export * from "./data/score.js";
 export * from "./data/governments.js";
 export * from "./data/economy.js";
 export * from "./data/leaders.js";

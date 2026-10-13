@@ -1,7 +1,7 @@
 import { governmentTip, pickText } from "../ui/explain";
 import { useState } from "react";
 import {
-  CUSTOM_RACE_POINTS, EXCLUSIVE_TRAITS, GOVERNMENT_COSTS, MAX_NEGATIVE_POINTS, PICK_OPTIONS, RACE_LOOKS, RACE_SHIP_STYLE,
+  CUSTOM_RACE_POINTS, SCORE, EXCLUSIVE_TRAITS, GOVERNMENT_COSTS, MAX_NEGATIVE_POINTS, PICK_OPTIONS, RACE_LOOKS, RACE_SHIP_STYLE,
   SHIP_STYLES, TRAIT_COSTS, raceCost, validateCustomRace,
   type CustomRaceSpec, type Government, type NumericPick, type RaceTrait,
 } from "@starlord/sim";
@@ -50,6 +50,9 @@ export function RaceBuilder({ initial, isNew = true, onSave, onCancel, onDelete 
         <h2 style={{ margin: 0 }}>{isNew ? "Design a race" : `Edit the ${initial.plural || initial.name}`}</h2>
         <span className="spacer" />
         <span className={`chip ${left < 0 ? "bad" : "good"}`}>{left} of {CUSTOM_RACE_POINTS} picks left</span>
+        <span className="chip" title={`Your final score is multiplied by 100% plus ${SCORE.perUnspentPick}% for each race pick left unspent.`}>
+          Score ×{(100 + Math.max(0, left) * SCORE.perUnspentPick) / 100}
+        </span>
         <span className={`chip ${negative > MAX_NEGATIVE_POINTS ? "bad" : ""}`}>Drawbacks {negative}/{MAX_NEGATIVE_POINTS}</span>
       </div>
 

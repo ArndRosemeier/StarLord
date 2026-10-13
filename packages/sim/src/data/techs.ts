@@ -1,3 +1,4 @@
+import { SCORE } from "./score.js";
 /**
  * The MoO2 tech tree. Eight categories, each a single chain of fields; every
  * field has a fixed research cost and offers one to four applications.
@@ -40,8 +41,8 @@ export const RESEARCH = {
   /** Cost of the first hyper-advanced field level, and what each later level adds. */
   hyperCost: 15000,
   hyperCostStep: 10000,
-  /** Score for each hyper-advanced level. */
-  hyperScore: 5,
+  /** Score for a category with at least one hyper-advanced level (the original counts categories, not levels). */
+  hyperScore: SCORE.perHyperCategory,
   /** Race pick points granted by Evolutionary Mutation. */
   mutationPicks: 4,
 } as const;

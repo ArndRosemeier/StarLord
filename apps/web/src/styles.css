@@ -374,3 +374,20 @@ select.strategy-select { flex: 0 0 150px; width: 150px; margin-left: auto; align
 .simulator .sim-events { font-size: 13px; }
 .base-choices { display: flex; flex-wrap: wrap; gap: 8px; }
 .base-choice { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 6px 10px; flex: 1 1 240px; text-align: left; }
+
+/* Final score, Hall of Fame and the info screen */
+.game-over .card.game-over-card { max-height: 92vh; overflow-y: auto; max-width: 720px; width: 100%; }
+.game-over .panel { width: 100%; text-align: left; box-sizing: border-box; }
+.score-table { width: 100%; }
+.score-table td.num, .score-table th.num, td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.mine td { font-weight: 600; }
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.modal.hall-of-fame { max-width: 860px; }
+.hall-table { width: 100%; }
+.hall-table tr.hall-new td { color: var(--accent); font-weight: 600; }
+.history-graph svg { width: 100%; height: auto; display: block; touch-action: none; }
+.graph-grid { stroke: var(--line); stroke-width: 1; }
+.graph-cursor { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.graph-label { fill: var(--muted); font-size: 11px; }
+.graph-dot { stroke: var(--panel, #000); stroke-width: 2; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: 13px; }

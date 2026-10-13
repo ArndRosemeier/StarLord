@@ -260,7 +260,7 @@ function FieldPage({ field }: { field: TechTier["field"] }) {
             <span className="muted">{t.hyper ? `${fmt(t.cost)} RP per level, repeatable` : tierCost(t)}{t.general ? " · general" : ""}</span>
           </div>
           {t.hyper
-            ? <span>Each level makes this category's components smaller and cheaper and adds {RESEARCH.hyperScore} to your score.</span>
+            ? <span>Each level makes this category's components smaller and cheaper; the first adds {RESEARCH.hyperScore} to your score.</span>
             : <List items={t.techs.map((id) => <><HelpLink to={`tech:${id}`} />: <span className={techHasEffect(id) ? "" : "muted"}>{techSummary(id)}</span></>)} />}
         </div>
       ))}
@@ -285,8 +285,8 @@ function TierPage({ tier }: { tier: TechTier }) {
       {tier.hyper ? (
         <p>
           A hyper-advanced field. It opens once every other field of the category is researched and can be researched
-          again and again. Each level makes this category's ship components smaller and cheaper and adds{" "}
-          {RESEARCH.hyperScore} to your score.
+          again and again. Each level makes this category's ship components smaller and cheaper; the first level adds{" "}
+          {RESEARCH.hyperScore} to your score (further levels add no more score).
         </p>
       ) : (
         <>

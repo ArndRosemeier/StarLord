@@ -5,7 +5,7 @@
 
 /** Screens a letter opens; the names match GameShell's tabs. */
 export type ShortcutTab =
-  | "map" | "colonies" | "planets" | "research" | "designs" | "fleets" | "diplomacy" | "espionage" | "leaders" | "empire" | "events" | "game";
+  | "map" | "colonies" | "planets" | "research" | "designs" | "fleets" | "diplomacy" | "espionage" | "leaders" | "empire" | "info" | "events" | "game";
 
 export type ShortcutAction =
   | { kind: "tab"; tab: ShortcutTab }
@@ -34,6 +34,7 @@ export const SHORTCUTS: Shortcut[] = [
   tab("r", "diplomacy", "Diplomacy (races)"),
   tab("s", "espionage", "Espionage (spies)"),
   tab("i", "empire", "Empire & automation (info)"),
+  tab("h", "info", "Info: standings and history"),
   tab("e", "events", "Turn report (events)"),
   tab("g", "game", "Game menu, saves and settings"),
   { key: "n", label: "N", what: "Next idle fleet on the map", action: { kind: "nextIdleFleet" } },
