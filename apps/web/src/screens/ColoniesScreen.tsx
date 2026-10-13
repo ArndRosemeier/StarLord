@@ -293,6 +293,9 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
   );
 }
 
+/** Sentinel id that sorts Trade Goods in among the projects. */
+const TRADE_GOODS = "\u0000tradeGoods";
+
 function AddToQueue({ onAdd, buildings, designs, projects, colony, industry }: {
   onAdd: (item: BuildItem) => void;
   colony: Colony;
@@ -302,44 +305,49 @@ function AddToQueue({ onAdd, buildings, designs, projects, colony, industry }: {
   projects: string[];
 }) {
   const { view, me } = useGame();
+  const byName = <T,>(items: T[], name: (t: T) => string) => [...items].sort((a, b) => name(a).localeCompare(name(b)));
+  const sortedBuildings = byName(buildings, (b) => BUILDINGS_BY_ID[b]!.name);
+  const sortedDesigns = byName(designs, (d) => findDesign(me, d)!.name);
+  const sortedProjects = byName([...projects, TRADE_GOODS], (p) => (p === TRADE_GOODS ? "Trade Goods" : PROJECTS_BY_ID[p]?.name ?? p));
   return (
     <div className="col" style={{ gap: 6 }}>
       <h4>Add to queue</h4>
-      <div className="row" style={{ gap: 4 }}>
-        {buildings.map((b) => {
+      {sortedBuildings.length > 0 && <div className="build-chips">
+        {sortedBuildings.map((b) => {
           const def = BUILDINGS_BY_ID[b]!;
           return (
-            <Tip key={b} card={() => buildingTip(b)}>
+            <Tip key={b} block card={() => buildingTip(b)}>
               <button className="small" onClick={() => onAdd({ kind: "building", id: b })}>
-                {def.name} <span className="muted">{def.cost}</span>
+                <span className="name">{def.name}</span> <span className="muted">{def.cost}</span>
               </button>
             </Tip>
           );
         })}
-      </div>
-      <div className="row" style={{ gap: 4 }}>
-        {designs.map((d) => {
+      </div>}
+      {sortedDesigns.length > 0 && <div className="build-chips">
+        {sortedDesigns.map((d) => {
           const design = findDesign(me, d)!;
           return (
-            <Tip key={d} card={() => designTip(me, design)}>
+            <Tip key={d} block card={() => designTip(me, design)}>
               <button className="small" onClick={() => onAdd({ kind: "ship", designId: d })}>
-                ⛭ {design.name} <span className="muted">{fmt(itemCost(view, me.id, { kind: "ship", designId: d }))}</span>
+                <span className="name">⛭ {design.name}</span> <span className="muted">{fmt(itemCost(view, me.id, { kind: "ship", designId: d }))}</span>
               </button>
             </Tip>
           );
         })}
-      </div>
-      <div className="row" style={{ gap: 4 }}>
-        {projects.map((p) => (
-          <Tip key={p} card={() => projectTip(p, colony, view.planets[colony.planetId]!, industry, PLACED_PROJECTS[p] ? baseTargets(view, colony, p) : undefined)}>
+      </div>}
+      <div className="build-chips">
+        {sortedProjects.map((p) => p === TRADE_GOODS ? (
+          <Tip key={p} block card={() => tradeGoodsTip(colony.raceId, industry)}>
+            <button className="small" onClick={() => onAdd({ kind: "tradeGoods" })}><span className="name">Trade Goods</span></button>
+          </Tip>
+        ) : (
+          <Tip key={p} block card={() => projectTip(p, colony, view.planets[colony.planetId]!, industry, PLACED_PROJECTS[p] ? baseTargets(view, colony, p) : undefined)}>
             <button className="small" onClick={() => onAdd({ kind: "project", id: p })}>
-              {PROJECTS_BY_ID[p]?.name}
+              <span className="name">{PROJECTS_BY_ID[p]?.name}</span>
             </button>
           </Tip>
         ))}
-        <Tip card={() => tradeGoodsTip(colony.raceId, industry)}>
-          <button className="small" onClick={() => onAdd({ kind: "tradeGoods" })}>Trade Goods</button>
-        </Tip>
       </div>
     </div>
   );
