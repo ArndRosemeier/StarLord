@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   availableTiers, commandPointsAvailable, commandPointsUsed, empireIncome, empireTotals, empires, treatyIncome,
-  TIERS_BY_ID, extraResearch, isTradeGoodsOnly, nextBreakthroughChance, researchCost, type PlayerView,
+  TIERS_BY_ID, extraResearch, isTradeGoodsOnly, nextBreakthroughChance, researchCost, type CombatReport, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, signed } from "../ui/format";
@@ -21,6 +21,8 @@ import { DebugMenu } from "./DebugMenu";
 import { GameOver } from "./GameOver";
 import { EndTurnPrompt } from "./EndTurnPrompt";
 import { BasePrompt, coloniesWithReadyBases } from "./BasePrompt";
+import { BattlePopup } from "./BattlePopup";
+import { battlesOfLastTurn } from "../game/battles";
 import { audio } from "../audio/sound";
 import { MuteButton } from "../ui/AudioControls";
 import { useHelp } from "../help/HelpDialog";
@@ -70,6 +72,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [endCheck, setEndCheck] = useState<{ points: number | null; idle: string[] } | null>(null);
   const [basePrompt, setBasePrompt] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
+  /** Last turn's battles, opened by themselves as the new turn starts. */
+  const [battles, setBattles] = useState<CombatReport[]>([]);
   /** Audiences waiting to be held, the current one first. */
   const [audiences, setAudiences] = useState<AudienceRequest[]>([]);
   const debug = !!view.settings.debug && !readOnly;
@@ -113,6 +117,12 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     if (autoplay) return;
     audio.play("turn");
     if (session.lastTurnEvents(me.id).some((e) => ALERT_EVENTS.has(e.kind))) setTimeout(() => audio.play("alert"), 700);
+  }, [view.turn]);
+
+  // Every battle we fought opens as the turn starts, so no loss goes unseen.
+  useEffect(() => {
+    if (readOnly || autoplay) return;
+    setBattles(battlesOfLastTurn(session.history, me.id, view.turn));
   }, [view.turn]);
 
   // A finished base with several possible planets waits for the player to pick one, as in MoO2.
@@ -256,8 +266,9 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
           onOpenResearch={() => { setEndCheck(null); go("research"); }}
           onOpenColony={(id) => { setEndCheck(null); openColony(id); }} />
       )}
-      {basePrompt && !endCheck && !audiences[0] && <BasePrompt onClose={() => setBasePrompt(false)} />}
-      {audiences[0] && !(view.over && !overSeen) && (
+      {battles.length > 0 && !(view.over && !overSeen) && <BattlePopup battles={battles} onClose={() => setBattles([])} />}
+      {basePrompt && !endCheck && !audiences[0] && !battles.length && <BasePrompt onClose={() => setBasePrompt(false)} />}
+      {audiences[0] && !battles.length && !(view.over && !overSeen) && (
         <Audience key={`${view.turn}:${audiences.length}:${audiences[0].themId}:${audiences[0].opening.kind}`} request={audiences[0]}
           onClose={() => setAudiences((q) => q.slice(1))} />
       )}
