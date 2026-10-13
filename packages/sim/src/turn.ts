@@ -6,7 +6,7 @@ import { SIZE_POP_BASE, type PlanetType } from "./data/planets.js";
 import { getRace, hasTrait, registerRaces } from "./data/races.js";
 import { TRAIT_EFFECTS } from "./data/racePicks.js";
 import { RESEARCH, TECHS, TIERS_BY_ID, emptyHyperLevels, researchCost } from "./data/techs.js";
-import { colonyDefenseStrength, hasArmedDefenses, resolveCombat, type CombatSide } from "./combat.js";
+import { battleKey, colonyDefenseStrength, createBattle, hasArmedDefenses, type Battle, type CombatSide } from "./combat.js";
 import { buyCost, termsOf, validateCommand, type Command } from "./commands.js";
 import { newId, type TurnContext } from "./context.js";
 import { councilTick } from "./council.js";
@@ -51,14 +51,14 @@ export type TurnOrders = Partial<Record<PlayerId, Command[]>>;
  * Advances the game by one turn. Pure with respect to its input: the given
  * state is cloned, so callers can keep history for replays and undo.
  */
-export function processTurn(prev: GameState, orders: TurnOrders): GameState {
+export function processTurn(prev: GameState, orders: TurnOrders, pauseAt?: TurnContext["pauseAt"]): GameState {
   registerRaces(prev.settings.customRaces);
   const state = structuredClone(prev);
   if (state.over) return state;
   state.events = [];
   state.combats = [];
   const rng = new Rng(state.rng);
-  const ctx: TurnContext = { state, rng, emit: (e) => state.events.push({ turn: state.turn, ...e }) };
+  const ctx: TurnContext = { state, rng, emit: (e) => state.events.push({ turn: state.turn, ...e }), pauseAt };
 
   // Rotate who acts first each turn so no seat always wins same-turn contests.
   // Answers to proposals come after everything else, so an empire can answer
@@ -352,6 +352,17 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       else delete player.automationStrategies;
       break;
     }
+    case "setAutoBattles":
+      if (cmd.on) player.autoBattles = true;
+      else delete player.autoBattles;
+      break;
+    case "battleOrders": {
+      const map = ctx.battleOrders ??= new Map();
+      const forBattle = map.get(cmd.battle) ?? new Map();
+      forBattle.set(playerId, cmd.orders);
+      map.set(cmd.battle, forBattle);
+      break;
+    }
     case "setIdleAlert":
       if (cmd.on) delete player.idleAlertOff;
       else player.idleAlertOff = true;
@@ -407,6 +418,47 @@ function isArmed(state: GameState, f: Fleet): boolean {
 }
 
 
+/** A battle the turn stopped at, set up and ready to be fought step by step (see `pendingBattle`). */
+export interface PendingBattle {
+  battle: Battle;
+  /** Key for the `battleOrders` command. */
+  key: string;
+  starId: Id;
+  reportId: string;
+  /** The player who commands it. */
+  playerId: PlayerId;
+}
+
+class BattlePause {
+  constructor(readonly battle: Battle, readonly key: string, readonly starId: Id, readonly reportId: string) {}
+}
+
+/**
+ * The first battle of this turn that `playerId` takes part in, wants to
+ * command and has handed in no orders for, set up exactly as the turn will
+ * fight it. The player fights it step by step (`battle.fight`) and hands the
+ * orders in with a `battleOrders` command; the turn then fights it the same
+ * way. Null when no such battle is left.
+ */
+export function pendingBattle(prev: GameState, orders: TurnOrders, playerId: PlayerId): PendingBattle | null {
+  if (!prev.players[playerId]?.isHuman) return null;
+  const has = new Set((orders[playerId] ?? []).flatMap((c) => (c.type === "battleOrders" ? [c.battle] : [])));
+  try {
+    processTurn(prev, orders, (battle, key) => {
+      const side = battle.sides.findIndex((s) => s.ownerId === playerId);
+      if (side < 0 || has.has(key)) return false;
+      const mine = battle.units.some((u) => u.side === side && u.alive);
+      if (!mine) return false;
+      battle.manual[side as 0 | 1] = true;
+      return true;
+    });
+  } catch (e) {
+    if (e instanceof BattlePause) return { battle: e.battle, key: e.key, starId: e.starId, reportId: e.reportId, playerId };
+    throw e;
+  }
+  return null;
+}
+
 function combatPhase(ctx: TurnContext): Silenced {
   const { state, rng } = ctx;
   const silenced: Silenced = new Set();
@@ -423,7 +475,16 @@ function combatPhase(ctx: TurnContext): Silenced {
       if (!pair) break;
       const [a, b] = pair;
       fought.add(`${a.ownerId}:${b.ownerId}`);
-      const outcome = resolveCombat(state, rng, starId, a, b, newId(state, "cb"));
+      const reportId = newId(state, "cb");
+      const battle = createBattle(state, rng, starId, a, b);
+      const key = battleKey(state.turn, starId, a.ownerId, b.ownerId);
+      const handedIn = ctx.battleOrders?.get(key);
+      for (const side of [0, 1] as const) {
+        const o = handedIn?.get(battle.sides[side].ownerId);
+        if (o && state.players[battle.sides[side].ownerId]?.isHuman) battle.setOrders(side, o);
+      }
+      if (ctx.pauseAt?.(battle, key)) throw new BattlePause(battle, key, starId, reportId);
+      const outcome = battle.run(starId, reportId);
       state.combats.push(outcome.report);
       applyCombat(ctx, starId, [a, b], outcome);
       for (const [owner, down] of outcome.planetSilenced) {
@@ -509,7 +570,7 @@ function applyCombat(
   ctx: TurnContext,
   starId: Id,
   sides: [CombatSide, CombatSide],
-  outcome: ReturnType<typeof resolveCombat>,
+  outcome: ReturnType<Battle["run"]>,
 ): void {
   const { state } = ctx;
   // Bombs and fire that fell on a planet whose installations were already gone hit the colony itself.

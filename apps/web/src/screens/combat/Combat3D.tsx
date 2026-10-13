@@ -9,7 +9,7 @@ import type { CombatViewProps } from "./Combat2D";
  * the replay can fall back to the 2D canvas.
  */
 export default function Combat3D(props: CombatViewProps & { onFail: (error: unknown) => void }) {
-  const { report, view, units, frames, event, step, reduced, resetKey, onFail } = props;
+  const { report, view, units, frames, event, step, reduced, resetKey, onFail, command } = props;
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<BattleScene | null>(null);
   const lastStep = useRef(-1);
@@ -47,9 +47,15 @@ export default function Combat3D(props: CombatViewProps & { onFail: (error: unkn
     scene.current?.show(frames, event, performance.now(), fresh);
   }, [frames, event, step, report, units]);
 
+  useEffect(() => {
+    scene.current?.setCommand(command ?? null);
+  }, [command]);
+
   return (
     <div ref={host} className="combat-3d">
-      <div className="combat-3d-hint muted">{isTouchDevice()
+      <div className="combat-3d-hint muted">{command ? (isTouchDevice()
+        ? "Tap the field to move · tap an enemy to target · drag to orbit"
+        : "Click the field to move · click an enemy to target · drag to orbit · wheel to zoom") : isTouchDevice()
         ? "Drag to orbit · pinch to zoom · double-tap to reset · tap a unit to pin its label"
         : "Drag to orbit · wheel to zoom · double-click to reset · click a unit to pin its label"}</div>
     </div>

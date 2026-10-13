@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FIELD_HEIGHT, FIELD_WIDTH, WEAPONS_BY_ID, type CombatReport, type PlayerView } from "@starlord/sim";
-import { STEP_MS, isProjectile, leftOwner, type CombatEvent, type Frames, type UnitInfo } from "./replayModel";
+import { STEP_MS, isProjectile, leftOwner, type CombatEvent, type CommandOverlay, type Frames, type UnitInfo } from "./replayModel";
 import { MONSTER_COLORS, monsterSpecies } from "../../game/monsters";
 
 /**
@@ -45,15 +45,18 @@ export interface CombatViewProps {
   reduced: boolean;
   /** Changes on restart, so effects in flight are dropped. */
   resetKey: number;
+  /** The player's turn in a commanded battle; null while the battle plays on or in a replay. */
+  command?: CommandOverlay | null;
 }
 
-export function Combat2D({ report, view, units, frames, event, step, reduced, resetKey }: CombatViewProps) {
+export function Combat2D({ report, view, units, frames, event, step, reduced, resetKey, command }: CombatViewProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const win = useMemo(() => fieldWindow(report), [report]);
   const W = win.w * CELL;
   const H = win.h * CELL;
   // Everything the animation loop reads lives in a ref so the loop itself never restarts.
-  const live = useRef({ frames, event, stepAt: 0, reduced, view, report, units });
+  const live = useRef({ frames, event, stepAt: 0, reduced, view, report, units, command });
+  live.current.command = command;
   const fx = useRef({ particles: [] as Particle[], floaters: [] as Floater[], shocks: [] as Shock[], shake: 0 });
   const [, setBackdropReady] = useState(backdrop?.complete ?? true);
 
@@ -67,7 +70,7 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
 
   // Each new step spawns its effects: sparks and a number on a hit, a fireball when a ship dies.
   useEffect(() => {
-    live.current = { frames, event, stepAt: performance.now(), reduced, view, report, units };
+    live.current = { frames, event, stepAt: performance.now(), reduced, view, report, units, command: live.current.command };
     if (!event || reduced) return;
     const f = fx.current;
     const pos = (key?: string) => {
@@ -191,6 +194,44 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
         }
       }
 
+      // The player's turn: reach, targets and where the unit is headed.
+      const cmd = live.current.command;
+      const me = cmd ? frames.now.get(cmd.active) : undefined;
+      if (cmd && me) {
+        const c = { x: (me.x + 0.5) * CELL, y: (me.y + 0.5) * CELL };
+        const ring = (x: number, y: number, r: number, color: string, width: number) => {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.stroke();
+        };
+        if (cmd.reach > 0) {
+          ctx.fillStyle = "rgba(122,215,255,0.06)";
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, cmd.reach * CELL, 0, Math.PI * 2);
+          ctx.fill();
+          ring(c.x, c.y, cmd.reach * CELL, "rgba(122,215,255,0.55)", 1.5);
+        }
+        ring(c.x, c.y, CELL * 0.75, "#ffffff", 2);
+        for (const t of cmd.targets) {
+          const st = frames.now.get(t.key);
+          if (!st) continue;
+          const chosen = t.key === cmd.target;
+          ring((st.x + 0.5) * CELL, (st.y + 0.5) * CELL, CELL * 0.8, chosen ? "#ff3b3b" : t.inRange ? "rgba(255,160,64,0.7)" : "rgba(138,143,156,0.5)", chosen ? 3 : 1.5);
+        }
+        if (cmd.moveTo) {
+          const d = { x: (cmd.moveTo.x + 0.5) * CELL, y: (cmd.moveTo.y + 0.5) * CELL };
+          ctx.strokeStyle = "rgba(125,255,176,0.8)";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(c.x, c.y);
+          ctx.lineTo(d.x, d.y);
+          ctx.stroke();
+          ring(d.x, d.y, CELL * 0.3, "#7dffb0", 2);
+        }
+      }
+
       // The shot of the current step.
       if (event?.kind === "fire" && event.target && frames.now.has(event.ship) && frames.now.has(event.target)) {
         const a = at(event.ship);
@@ -298,7 +339,24 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
     return () => cancelAnimationFrame(raf);
   }, [W, H, win.x0, win.y0]);
 
-  return <canvas ref={canvas} style={{ width: "100%", aspectRatio: `${W} / ${H}`, display: "block" }} />;
+  // On the player's turn a click picks a unit (the nearest within a square) or a square to move to.
+  const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!command) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * W / CELL + win.x0 - 0.5;
+    const y = ((e.clientY - rect.top) / rect.height) * H / CELL + win.y0 - 0.5;
+    let best: string | null = null;
+    let bestD = 1;
+    for (const [key, st] of frames.now) {
+      if (st.gone) continue;
+      const d = Math.hypot(st.x - x, st.y - y);
+      if (d < bestD) { bestD = d; best = key; }
+    }
+    if (best) command.onUnit(best);
+    else command.onField(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
+  };
+
+  return <canvas ref={canvas} onClick={onClick} style={{ width: "100%", aspectRatio: `${W} / ${H}`, display: "block", cursor: command ? "crosshair" : undefined }} />;
 }
 
 const ease = (k: number) => 1 - Math.pow(1 - k, 3);

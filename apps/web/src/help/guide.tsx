@@ -347,10 +347,20 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
   combat: () => (
     <>
       <P>
-        Battles happen when hostile armed fleets meet, or when an armed colony sees enemy ships. They are fought
-        automatically on a {FIELD_WIDTH}×{FIELD_HEIGHT} battlefield for up to {MAX_ROUNDS} rounds and can be replayed from
-        the turn report. A battle ends when one side has nothing left; if both still stand when time runs out, the
+        Battles happen when hostile armed fleets meet, or when an armed colony sees enemy ships. They are fought on a
+        {" "}{FIELD_WIDTH}×{FIELD_HEIGHT} battlefield for up to {MAX_ROUNDS} rounds and can be replayed from the turn report. A battle ends when one side has nothing left; if both still stand when time runs out, the
         defender holds the field (when neither side has anything left to shoot with, time runs out at once).
+      </P>
+      <h3>Commanding a battle</h3>
+      <P>
+        When you end the turn, it stops at each battle you take part in. Choose <b>Command the battle</b> to give
+        orders yourself, or <b>Auto-resolve</b> to let your combat doctrine fight it (you watch the replay after the
+        turn). While you command, each of your ships, stations and armed planets waits for you on its turn: click the
+        field inside the blue ring to move there (turning uses some of the movement), pick an enemy to fire at (orange
+        rings: in reach of a weapon; grey: out of reach), then press <b>Fire</b> or <b>End turn</b>. A ship can also
+        <b> Retreat</b>, let the computer play its turn, or you can <b>Auto-resolve the rest</b> at any time. Turn the
+        question off with <b>Let me command my battles</b> under Game (or on the Fleets screen), and every battle then
+        resolves by itself.
       </P>
       <h3>Moving and firing</h3>
       <Ul>

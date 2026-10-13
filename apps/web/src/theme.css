@@ -654,3 +654,14 @@ html, body { overscroll-behavior: none; }
 .job-drag-card { min-width: 190px; }
 .job-drag-card .tip-title .pips { flex-wrap: nowrap; }
 body:has(.job-drag-card) { cursor: grabbing; }
+
+/* A battle the player commands. */
+.modal.command-battle { max-width: 1180px; display: flex; flex-direction: column; gap: 8px; }
+.command-ask {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 32px));
+  background: rgba(8, 10, 20, 0.88); border: 1px solid var(--line); border-radius: 10px; padding: 16px; backdrop-filter: blur(4px);
+}
+.command-ask h3 { margin: 0 0 6px; }
+.command-panel { display: flex; flex-direction: column; gap: 6px; }
+.command-weapons { gap: 4px 14px; font-size: 13px; }
+.command-weapons .faded { opacity: 0.5; }

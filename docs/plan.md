@@ -50,8 +50,8 @@
 ## Known simplifications
 
 - Food is pooled empire-wide (stands in for MoO2 freighters).
-- Battles resolve automatically using each empire's combat doctrine; there is no manual
-  round-by-round control yet, but every battle can be replayed.
+- Humans command their battles unit by unit (or let them resolve by their combat doctrine); the turn stops at
+  each battle and the player's orders go in with the turn's commands, so a recorded game replays it exactly.
 - One race per colony; ships repair fully between turns.
 - Numbers have had one tuning pass (see balance.md); more will follow.
 

@@ -1,8 +1,8 @@
 import { audienceAnswer, automationOrders } from "@starlord/ai";
 import { saveAutomationPrefs } from "./automationPrefs";
 import {
-  newGame, newRecord, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
-  type CombatReport, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type TurnOrders,
+  newGame, newRecord, pendingBattle, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
+  type CombatReport, type PendingBattle, type TacticalOrder, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type TurnOrders,
 } from "@starlord/sim";
 
 /**
@@ -29,6 +29,13 @@ export class GameSession {
   view!: PlayerView;
   /** Reports of recent turns, newest first; filtered per viewer by the UI. */
   history: { turn: number; events: GameEvent[]; combats: CombatReport[] }[] = [];
+  /**
+   * A battle the ending turn waits on the player to command, with the
+   * turn's orders so far; the turn goes on with `finishBattle`.
+   */
+  battle: { pending: PendingBattle; orders: TurnOrders } | null = null;
+  /** Battles of the last turn the player commanded (by report id); they were watched live, so they do not pop up again. */
+  commandedBattles = new Set<string>();
   /** Bumped on every change so React can re-render cheaply. */
   version = 0;
   private listeners = new Set<() => void>();
@@ -213,9 +220,54 @@ export class GameSession {
     return orders;
   }
 
-  endTurn(): void {
-    if (this.state.over) return;
-    const orders = this.ordersForTurn();
+  /**
+   * Ends the turn. With `commandBattles`, a battle the player wants to
+   * command stops the turn first (see `battle`); otherwise every battle
+   * resolves by itself.
+   */
+  endTurn(opts: { commandBattles?: boolean } = {}): void {
+    if (this.state.over || this.battle) return;
+    this.commandedBattles = new Set();
+    this.resumeTurn(this.ordersForTurn(), opts.commandBattles ?? true);
+  }
+
+  /** Hands in the player's orders for the battle the turn waits on ("auto": let it resolve by itself) and goes on with the turn. */
+  finishBattle(orders: TacticalOrder[] | "auto"): void {
+    const b = this.battle;
+    if (!b || this.me === null) return;
+    const me = this.me;
+    if (orders !== "auto") this.commandedBattles.add(b.pending.reportId);
+    const turn: TurnOrders = { ...b.orders, [me]: [...(b.orders[me] ?? []), { type: "battleOrders", battle: b.pending.key, orders }] };
+    this.battle = null;
+    this.resumeTurn(turn, true);
+  }
+
+  /** Turns commanding battles off (or back on); asked in the middle of a turn, it also counts for the turn's remaining battles. */
+  setAutoBattles(on: boolean): void {
+    const cmd: Command = { type: "setAutoBattles", on };
+    if (this.battle && this.me !== null) {
+      const mine = (this.battle.orders[this.me] ?? []).filter((c) => c.type !== "setAutoBattles");
+      this.battle.orders = { ...this.battle.orders, [this.me]: [...mine, cmd] };
+    }
+    this.issue(cmd);
+  }
+
+  /** Whether the player commands their battles: the setting as this turn's orders leave it. */
+  private commandsBattles(orders: TurnOrders): boolean {
+    if (this.me === null) return false;
+    const set = [...(orders[this.me] ?? [])].reverse().find((c) => c.type === "setAutoBattles");
+    return set?.type === "setAutoBattles" ? !set.on : !this.state.players[this.me]?.autoBattles;
+  }
+
+  private resumeTurn(orders: TurnOrders, commandBattles: boolean): void {
+    if (commandBattles && this.me !== null && this.commandsBattles(orders)) {
+      const pending = pendingBattle(this.state, orders, this.me);
+      if (pending) {
+        this.battle = { pending, orders };
+        this.refresh();
+        return;
+      }
+    }
     const turn = this.state.turn;
     this.state = processTurn(this.state, orders);
     if (this.record) recordTurn(this.record, orders, this.state);
@@ -268,6 +320,7 @@ function commandKey(cmd: Command): string | null {
     case "councilResponse":
     case "setAutomation":
     case "setIdleAlert":
+    case "setAutoBattles":
       return cmd.type;
     case "moveFleet":
     case "setStance":

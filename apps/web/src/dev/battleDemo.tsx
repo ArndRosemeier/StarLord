@@ -5,6 +5,8 @@ import { LAB_PRESETS, runCombatLab, setupCombatLab } from "@starlord/ai";
 import { GameSession } from "../game/session";
 import { SessionContext } from "../ui/hooks";
 import { CombatReplay } from "../screens/CombatReplay";
+import { CommandBattle } from "../screens/CommandBattle";
+import { useGame } from "../ui/hooks";
 import type { CombatEvent, UnitSnapshot } from "../screens/combat/replayModel";
 import "../styles.css";
 import "../theme.css";
@@ -15,7 +17,8 @@ import "../theme.css";
  * stations and the planet with the newer report fields; `legacy` is what
  * older reports carry (isPlanet and ships only); `monster` pits a creature
  * against a squadron; `lab-<preset>` runs a real combat lab preset (e.g.
- * `lab-planet`) through the sim.
+ * `lab-planet`) through the sim; `command-<preset>` lets you command the
+ * defender of a lab preset as the turn stops at its battle.
  */
 
 const session = GameSession.create({ seed: "battle-demo", playerCount: 2, monsters: true }, 0);
@@ -112,7 +115,36 @@ function labBattle(kind: string): { session: GameSession; report: CombatReport }
   return { session: new GameSession(setup.state, null), report: runCombatLab(setup, 0).reports[0]! };
 }
 
+function commandSession(kind: string): GameSession | null {
+  const preset = LAB_PRESETS.find((p) => `command-${p.id}` === kind);
+  if (!preset) return null;
+  const setup = setupCombatLab({ seed: "battle-demo", ...preset.spec });
+  setup.state.players[setup.defenderId]!.isHuman = true;
+  // Automation would fly the fleet off before the battle.
+  setup.state.players[setup.defenderId]!.automation = [];
+  const s = new GameSession(setup.state, setup.defenderId);
+  // As in the lab, nobody gives orders, so the computer side does not fly off either.
+  s.ordersForTurn = () => ({});
+  s.endTurn();
+  return s;
+}
+
+function Commanding() {
+  const { session } = useGame();
+  if (!session.battle) {
+    const last = session.state.combats[0];
+    return <div className="modal">Turn {session.state.turn}: the battle is over.{last && <CombatReplay report={last} />}</div>;
+  }
+  return <CommandBattle key={session.battle.pending.key} pending={session.battle.pending} />;
+}
+
 function Demo() {
+  const [cmdSession] = useState(() => commandSession(new URLSearchParams(location.search).get("demo") ?? ""));
+  if (cmdSession) return <SessionContext.Provider value={cmdSession}><Commanding /></SessionContext.Provider>;
+  return <Showcase />;
+}
+
+function Showcase() {
   const [kind] = useState(() => new URLSearchParams(location.search).get("demo") ?? "full");
   const [lab] = useState(() => labBattle(kind));
   const [rep] = useState(() => lab?.report ?? report(kind));
