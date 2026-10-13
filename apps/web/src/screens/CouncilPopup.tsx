@@ -120,8 +120,8 @@ export function CouncilSession({ onClose, instant = false }: { onClose: () => vo
             <div>
               <b>Declare your {weight(me.id)} vote{weight(me.id) === 1 ? "" : "s"}.</b>{" "}
               {called.candidates.includes(me.id)
-                ? <>You stand as a candidate. Backing your rival moves their relation with you by +{RELATION_EVENTS.councilFor} (before the usual
-                  modifiers); voting for yourselves or abstaining moves nothing.</>
+                ? <>You stand as a candidate. Backing your rival moves their relation with you by +{RELATION_EVENTS.councilFor}, voting for
+                  yourselves by {RELATION_EVENTS.councilAgainst}, abstaining by {RELATION_EVENTS.councilAbstain} (before the usual modifiers).</>
                 : <>Backing a candidate moves your relation with them by +{RELATION_EVENTS.councilFor} and with the other by{" "}
                   {RELATION_EVENTS.councilAgainst}; abstaining costs {RELATION_EVENTS.councilAbstain} with both (before the usual modifiers).</>}
             </div>

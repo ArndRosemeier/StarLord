@@ -229,12 +229,10 @@ export function councilTick(state: GameState, emit: Emit): { winner: PlayerId } 
   const lastVotes: Record<string, PlayerId | null> = {};
   for (const [voter, v] of choices) {
     lastVotes[voter] = v;
-    if (candidates.includes(voter)) {
-      // A candidate backing its rival is a gesture the rival remembers; voting for itself or abstaining moves nothing.
-      if (v !== null && v !== voter) relationEvent(state, RELATION_EVENTS.councilFor, voter, v, REASON.councilFor);
-      continue;
-    }
+    // As in the original (FUN_000161e4), candidates' votes count too: a candidate voting for itself costs it
+    // standing with its rival, backing the rival wins goodwill, and abstaining cools it a little.
     for (const c of candidates) {
+      if (c === voter) continue;
       if (v === null) relationEvent(state, RELATION_EVENTS.councilAbstain, voter, c);
       else if (v === c) relationEvent(state, RELATION_EVENTS.councilFor, voter, c, REASON.councilFor);
       else relationEvent(state, RELATION_EVENTS.councilAgainst, voter, c, REASON.councilAgainst);
