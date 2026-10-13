@@ -82,6 +82,8 @@ export interface RaiderMount {
   count: number;
   mods?: WeaponModId[];
   arc?: FiringArc;
+  /** Shots per battle when not the weapon's own (the original fits the frigate's bomb with none). */
+  ammo?: number;
 }
 
 export interface RaiderDesignSpec {
@@ -109,8 +111,8 @@ const PD: WeaponModId[] = ["pointDefense"];
  * on the difficulty. Designs are filled directly and ignore hull space.
  */
 export const RAIDER_DESIGNS: Record<RaiderHull, RaiderDesignSpec> = {
-  // The original also lists a neutronium bomb with no ammunition on the frigate; it is left out.
-  frigate: { weapons: [fwd("particleBeam", 2)], specials: [], jammer: { hard: "ecmJammer", impossible: "ecmJammer" } },
+  // The original fits the frigate with a neutronium bomb but no ammunition for it, so it never drops a bomb.
+  frigate: { weapons: [fwd("particleBeam", 2), { ...all("neutroniumBomb", 1), ammo: 0 }], specials: [], jammer: { hard: "ecmJammer", impossible: "ecmJammer" } },
   destroyer: {
     weapons: [fwd("particleBeam", 3), fwd("particleBeam", 1, HV), all("neutroniumBomb", 1)],
     specials: [], jammer: { hard: "ecmJammer", impossible: "multiWaveEcm" },

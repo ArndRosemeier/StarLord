@@ -549,7 +549,6 @@ export function captureColony(ctx: TurnContext, colony: Colony, newOwner: Player
   colony.ownerId = newOwner;
   colony.queue = [];
   colony.progress = 0;
-  colony.unrestUntil = 0;
   colony.assimilation = 0;
   colony.marinesTrained = 0;
   colony.tanksTrained = 0;

@@ -70,7 +70,7 @@ export function onExplore(ctx: TurnContext, playerId: PlayerId, starId: Id): voi
     const colony: Colony = {
       id: newId(state, "c"), planetId: pid, ownerId: playerId, raceId: player.raceId, name: `${star.name} Splinter`, outpost: false,
       farmers: 0, workers: pop, scientists: 0, growthK: 0, buildings: [], queue: [], progress: 0, founded: state.turn,
-      terraformed: 0, unrestUntil: 0,
+      terraformed: 0,
     };
     planet.colonyId = colony.id;
     state.colonies[colony.id] = colony;

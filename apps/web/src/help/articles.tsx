@@ -1063,7 +1063,7 @@ function MonstersPage() {
             return (
               <tr key={h}>
                 <td>{RAIDER_SHIP_NAMES[h]}</td>
-                <td>{spec.weapons.map((w) => mountLabel(w) + (w.arc === "full" ? ", all round" : "")).join("; ")}</td>
+                <td>{spec.weapons.map((w) => mountLabel(w) + (w.arc === "full" ? ", all round" : "") + (w.ammo === 0 ? " (carried empty: no shots)" : "")).join("; ")}</td>
                 <td>{spec.specials.map((id, j) => <span key={id}>{j > 0 && ", "}<HelpLink to={`special:${id}`} /></span>)}{spec.specials.length === 0 && "–"}</td>
                 <td>{LEVELS.map((d) => (spec.jammer[d] ? SPECIALS_BY_ID[spec.jammer[d]!]?.name : "none")).join(", ")}</td>
               </tr>

@@ -1,13 +1,18 @@
-import { priceText } from "./effects";
-import { TECHS, TIER_OF_TECH, type Player, type PlayerView, type Proposal } from "@starlord/sim";
+import { paymentText, priceText } from "./effects";
+import { TECHS, isCovetDemand, tradableTechs as usableTechs, type Player, type PlayerView, type Proposal } from "@starlord/sim";
 import { playerName, starName, words } from "../ui/format";
 
 export const techName = (t: string | undefined) => (t ? TECHS[t]?.name ?? words(t) : "?");
 
 /** One line describing a proposal and its terms. */
 export function describeProposal(view: PlayerView, p: Proposal): string {
+  if (p.payment && p.kind === "demandWar") {
+    const third = p.third !== undefined ? playerName(view, p.third) : "";
+    return `offers you ${paymentText(view, p.from, p.payment)} to declare war on the ${third}`;
+  }
   const base = describeTerms(view, p);
-  return p.price ? `${base}, at a price: ${priceText(view, p.to, p.price)}` : base;
+  const paid = p.payment ? `${base} and offers you ${paymentText(view, p.from, p.payment)} for it` : base;
+  return p.price ? `${paid}, at a price: ${priceText(view, p.to, p.price)}` : paid;
 }
 
 function describeTerms(view: PlayerView, p: Proposal): string {
@@ -31,7 +36,7 @@ function describeTerms(view: PlayerView, p: Proposal): string {
     case "demandTech":
       return `demands ${techName(p.wantTechId)}`;
     case "demandSystem":
-      return `demands the ${starName(view, p.starId ?? "")} system`;
+      return `demands the ${starName(view, p.starId ?? "")} system${isCovetDemand(view, p) ? ", or it means war" : ""}`;
     case "demandWar":
       return `demands that you declare war on the ${third}`;
     case "demandPeace":
@@ -47,6 +52,7 @@ function describeTerms(view: PlayerView, p: Proposal): string {
   }
 }
 
+/** Technologies `from` can hand to `to`: ones `to` lacks and can use (an advanced government only for the government it advances). */
 export function tradableTechs(from: Player, to: Player): string[] {
-  return from.techs.filter((t) => !to.techs.includes(t) && TIER_OF_TECH[t]).sort((a, b) => techName(a).localeCompare(techName(b)));
+  return usableTechs(from, to).sort((a, b) => techName(a).localeCompare(techName(b)));
 }

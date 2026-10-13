@@ -25,7 +25,7 @@ function barrenColony(s: GameState, owner = 0, workers = 2): Colony {
   planet.gravity = "normal";
   const c: Colony = {
     id: `cx${s.nextId++}`, planetId: planet.id, ownerId: owner, raceId: s.players[owner]!.raceId, name: "Rock", outpost: false,
-    farmers: 0, workers, scientists: 0, growthK: 0, buildings: [], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
+    farmers: 0, workers, scientists: 0, growthK: 0, buildings: [], queue: [], progress: 0, founded: 1, terraformed: 0,
   };
   planet.colonyId = c.id;
   s.colonies[c.id] = c;

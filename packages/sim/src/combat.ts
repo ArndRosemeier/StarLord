@@ -331,6 +331,14 @@ function captainSkills(state: GameState, fleetId: string): LeaderSkills {
   return {};
 }
 
+/** Initiative from the owner's administrator with Tactics posted in the system (0 without one). */
+export function tacticsAt(state: GameState, starId: string, ownerId: PlayerId): number {
+  for (const l of Object.values(state.leaders)) {
+    if (l.kind === "administrator" && l.ownerId === ownerId && l.assignedTo === starId) return l.skills.initiative ?? 0;
+  }
+  return 0;
+}
+
 /**
  * Advanced Damage Control, a cybernetic race or an Engineer captain repair
  * every ship completely after a battle (an Automated Repair Unit does it for
@@ -711,6 +719,7 @@ export function createBattle(state: GameState, rng: Rng, starId: string, a: Comb
   const battle = new Battle(state, rng, a, b);
   // Ionized nebula gas stops deflector shields unless they are hard shields.
   battle.nebula = !!state.galaxy.stars.find((s) => s.id === starId)?.nebula;
+  for (const side of [0, 1] as const) battle.tactics[side] = tacticsAt(state, starId, battle.sides[side].ownerId);
   return battle;
 }
 
@@ -778,6 +787,11 @@ export class Battle {
   fleetEvasion = [0, 0];
   /** The battle is inside a nebula: only hard shields work. */
   nebula = false;
+  /**
+   * Initiative each side gets from a Tactics administrator of its owner in the
+   * battle's system; it only matters with the ship initiative option.
+   */
+  tactics: [number, number] = [0, 0];
   /** Computer empires that may pull out of this battle at all, and those that decided to this combat turn. */
   mayRetreat: [boolean, boolean] = [false, false];
   pullOut: [boolean, boolean] = [false, false];
@@ -979,7 +993,7 @@ export class Battle {
       if (state.settings.shipInitiative) {
         // Ship initiative: everyone in one list, fastest and best-aimed first (combat speed + beam attack / 10).
         for (const side of order) this.decideRetreat(side);
-        const initiative = (u: Unit) => this.currentSpeed(u) + this.attackOf(u, u) / 10;
+        const initiative = (u: Unit) => this.currentSpeed(u) + this.attackOf(u, u) / 10 + this.tactics[u.side]!;
         const all = units.filter((u) => active(u)).sort((a, b) => initiative(b) - initiative(a));
         for (const u of all) if (active(u)) yield* this.unitTurn(u);
         for (const side of order) this.moveProjectiles(side);
@@ -2704,7 +2718,7 @@ export function bombardment(state: GameState, fleet: Fleet, shield = 0): { bombs
       } else if (w.kind === "torpedo") {
         bombs += Math.max(0, w.damageMax * PLANET_TORPEDO_DAMAGE - shield) * n * Math.ceil(rounds / (w.reload ?? 1));
       } else if (w.kind === "bomb") {
-        bombs += Math.max(0, (w.damageMin + w.damageMax) / 2 - shield) * n * Math.min(rounds, w.ammo ?? rounds);
+        bombs += Math.max(0, (w.damageMin + w.damageMax) / 2 - shield) * n * Math.min(rounds, rackShots(w, m));
       } else if (w.kind === "spores") {
         // Each launch of the ten bombardment rounds is a separate chance (shields don't stop them).
         spores += w.damageMax * n * Math.min(rounds, w.ammo ?? rounds);

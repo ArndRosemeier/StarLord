@@ -506,6 +506,7 @@ export function termsOf(x: ProposalTerms): ProposalTerms {
   if (x.third !== undefined) out.third = x.third;
   if (x.percent !== undefined) out.percent = x.percent;
   if (x.price !== undefined) out.price = x.price;
+  if (x.payment !== undefined) out.payment = x.payment;
   return out;
 }
 

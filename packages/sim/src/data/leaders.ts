@@ -58,7 +58,9 @@ export const HERO_SKILLS: Record<HeroSkill, HeroSkillDef> = {
   medicine: { name: "Medicine", group: "colony", mult: [100, 150], weight: [2, 4], text: "+{v}% population growth in the system." },
   scienceLeader: { name: "Science Leader", group: "colony", mult: [100, 150], weight: [3, 6], text: "+{v}% research in the system." },
   spiritualLeader: { name: "Spiritual Leader", group: "colony", mult: [50, 75], weight: [4, 8], text: "+{v}% morale in the system." },
-  tactics: { name: "Tactics", group: "colony", mult: [20, 30], weight: [2, 4], text: "+{v} initiative for your ships in the system (not used in battle yet: the original's use of it is not decoded)." },
+  // The original's skill text promises initiative for the ships at the leader's location, but its battle code never reads the skill;
+  // StarLord adds it to the initiative order that the ship initiative option uses.
+  tactics: { name: "Tactics", group: "colony", mult: [20, 30], weight: [2, 4], text: "+{v} initiative in battles in the system for your ships, stations and planets (counts in games with the Ship initiative option, where every unit acts in order of initiative)." },
 };
 
 /** Commando's hiring weight depends on the leader: ship officers pay full, colony leaders a third. */
@@ -71,6 +73,13 @@ export const COMMANDO_ADMIN_WEIGHT: [number, number] = [1, 2];
 export const LEVEL_XP = [0, 60, 150, 300, 500, 1000];
 export const MAX_LEVEL = 5;
 export const WARLORD_MAX_LEVEL = 6;
+
+/**
+ * The improved Spiritual Leader, as the original works it out: morale in 5%
+ * steps, floor((3 x level + 1) / 2) of them (10, 15, 25, 30, 40, 45% for
+ * levels 1-6); the normal skill gives one step a level.
+ */
+export const SPIRITUAL_IMPROVED = { stepPct: 5, perLevel: 3, plus: 1, divisor: 2 } as const;
 
 /** Megawealth pays this flat amount each turn, normal and improved, whatever the leader's level. */
 export const MEGAWEALTH_INCOME: [number, number] = [10, 15];
