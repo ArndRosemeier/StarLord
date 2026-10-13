@@ -13,6 +13,13 @@ import { EventStrip } from "../ui/EventStrip";
 import { Tip } from "../ui/Tip";
 import { fuelRangeTip, scanRangeTip } from "../ui/explain";
 import { fleetRange } from "@starlord/sim";
+import { turnFlashes } from "../map/flashes";
+import { usePrefs } from "../game/prefs";
+import { useReducedMotion } from "../ui/fx";
+import type { GameSession } from "../game/session";
+
+/** The turn each game last flashed its events for, so leaving the map and coming back does not replay them. */
+const flashedTurn = new WeakMap<GameSession, number>();
 
 const OVERLAYS_KEY = "starlord.map.overlays";
 function loadOverlays(): MapOverlays {
@@ -30,7 +37,7 @@ export interface MapCycle {
   n: number;
 }
 
-export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, onOpenReports, cycle, onCycled }: {
+export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, onOpenReports, cycle, onCycled, flashReady = true }: {
   focusStar: string | null;
   onFocused: () => void;
   onOpenColony: (colonyId: string) => void;
@@ -38,6 +45,8 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
   onOpenReports: () => void;
   cycle?: MapCycle | null;
   onCycled?: () => void;
+  /** False while a window covers the map at the start of a turn; the turn's flashes wait for it to close. */
+  flashReady?: boolean;
 }) {
   const { session, view, me, readOnly } = useGame();
   const host = useRef<HTMLDivElement>(null);
@@ -155,6 +164,21 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
   useEffect(() => {
     renderer.current?.render(scene);
   }, [scene]);
+
+  // As a turn starts, every star where something happened to us lights up.
+  const { mapFlashes } = usePrefs();
+  const reducedMotion = useReducedMotion();
+  useEffect(() => {
+    if (!flashReady || view.turn <= 1 || flashedTurn.get(session) === view.turn) return;
+    // The turn's windows open in the shell's effects, after this one: wait a moment so they can claim the screen first.
+    const t = setTimeout(() => {
+      flashedTurn.set(session, view.turn);
+      if (mapFlashes === "off") return;
+      const flashes = turnFlashes(view, session.lastTurnEvents(view.viewer));
+      if (flashes.length > 0) renderer.current?.flash(flashes, mapFlashes === "calm" || reducedMotion);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [flashReady, view.turn, session]);
 
   useEffect(() => {
     if (!focusStar) return;

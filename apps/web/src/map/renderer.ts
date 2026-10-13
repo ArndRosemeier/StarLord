@@ -1,3 +1,4 @@
+import type { MapFlash } from "./flashes";
 import type { MapScene } from "./scene";
 
 export interface MapInput {
@@ -17,5 +18,7 @@ export interface MapRenderer {
   render(scene: MapScene): void;
   /** Centre the camera on galaxy coordinates. */
   focus(x: number, y: number): void;
+  /** Light up where things happened; `calm` fades in place instead of bursting outward (reduced motion). */
+  flash(flashes: MapFlash[], calm: boolean): void;
   destroy(): void;
 }

@@ -1,4 +1,5 @@
 import { Application, Assets, Circle, Container, Graphics, Sprite, Text, Texture, type Ticker } from "pixi.js";
+import type { MapFlash } from "./flashes";
 import type { MapInput, MapRenderer } from "./renderer";
 import type { FleetLook, MapScene } from "./scene";
 import { rangeLayer } from "./rangeOverlay";
@@ -147,6 +148,14 @@ function shipIcon(look: FleetLook, color: number): { g: Graphics; tail: number; 
 /** Things the ticker keeps moving between renders. */
 interface Pulse { obj: Container; base: number; amp: number; speed: number; phase: number; prop: "scale" | "alpha" }
 interface Spin { obj: Container; speed: number }
+/** A flash in progress; `t` counts seconds since it started (negative while it waits its turn). */
+interface LiveFlash {
+  f: MapFlash; calm: boolean; t: number; node: Container;
+  core: Sprite; spark: Sprite; rays: Sprite; rings: Graphics; text: Text;
+}
+/** How long a flash bursts, and how long its label stays, in seconds. */
+const FLASH_BURST = 1.4;
+const FLASH_LABEL = 3.2;
 interface Trail { x1: number; y1: number; x2: number; y2: number; color: number; selected: boolean }
 const NEBULA_URL = "art/galaxy.webp";
 /** How far the nebula moves relative to the map when panning, for a sense of depth. */
@@ -181,6 +190,10 @@ export class PixiMapRenderer implements MapRenderer {
   /** Soft empire-coloured glow around owned systems, under everything else. */
   private territory = new Container();
   private trails = new Graphics();
+  /** Turn-start flashes, drawn above everything at a constant size on screen. */
+  private fx = new Container();
+  private flashes: LiveFlash[] = [];
+  private pendingFlashes: { flashes: MapFlash[]; calm: boolean } | null = null;
   private pulses: Pulse[] = [];
   private spins: Spin[] = [];
   private trailList: Trail[] = [];
@@ -212,8 +225,10 @@ export class PixiMapRenderer implements MapRenderer {
     window.addEventListener("pointerup", this.onTouchUp);
     window.addEventListener("pointercancel", this.onTouchUp);
     this.app.stage.addChild(this.camera);
-    this.camera.addChild(this.backdrop, this.territory, this.trails, this.world, this.hover);
+    this.camera.addChild(this.backdrop, this.territory, this.trails, this.world, this.hover, this.fx);
+    this.fx.eventMode = "none";
     this.app.ticker.add(this.animate);
+    this.app.ticker.add(this.animateFlashes);
     void Assets.load<Texture>(NEBULA_URL).then((texture) => {
       if (this.destroyed) return;
       this.nebula = new Sprite(texture);
@@ -250,6 +265,38 @@ export class PixiMapRenderer implements MapRenderer {
     if (this.pending) this.render(this.pending);
     if (this.pendingFocus) this.focus(this.pendingFocus.x, this.pendingFocus.y);
     this.pendingFocus = null;
+    if (this.pendingFlashes) this.flash(this.pendingFlashes.flashes, this.pendingFlashes.calm);
+    this.pendingFlashes = null;
+  }
+
+  flash(flashes: MapFlash[], calm: boolean): void {
+    if (!this.mounted) {
+      this.pendingFlashes = { flashes, calm };
+      return;
+    }
+    for (const f of flashes) {
+      const node = new Container();
+      node.position.set(f.x * UNIT, f.y * UNIT);
+      node.visible = false;
+      const rays = new Sprite(flare());
+      rays.anchor.set(0.5);
+      rays.tint = f.color;
+      rays.blendMode = "add";
+      const core = glowSprite(f.color, 10, 0);
+      const spark = glowSprite(0xffffff, 10, 0);
+      const rings = new Graphics();
+      rings.blendMode = "add";
+      const text = new Text({
+        text: f.label,
+        style: { fontFamily: "Inter, system-ui, sans-serif", fontSize: 13, fill: f.color, fontWeight: "700", stroke: { color: 0x000000, width: 3 } },
+      });
+      text.anchor.set(0.5, 1);
+      text.resolution = 2;
+      text.alpha = 0;
+      node.addChild(core, rays, rings, spark, text);
+      this.fx.addChild(node);
+      this.flashes.push({ f, calm, t: -f.delay, node, core, spark, rays, rings, text });
+    }
   }
 
   /** Keep the nebula covering the screen, drifting slightly with the camera. */
@@ -407,6 +454,53 @@ export class PixiMapRenderer implements MapRenderer {
     for (const s of this.spins) s.obj.rotation += s.speed * ticker.deltaMS / 1000;
     for (const l of this.twinkle) l.g.alpha = 0.65 + 0.35 * Math.sin(t * 0.9 + l.phase);
     this.drawTrails(t * 22);
+  };
+
+  /**
+   * Turn-start flashes: a white-hot spark, a coloured glow and two shock rings
+   * bursting outward, then a label that lingers. In calm mode only the glow
+   * swells and fades in place. Runs even when the rest of the map holds still.
+   */
+  private animateFlashes = (ticker: Ticker) => {
+    if (this.flashes.length === 0) return;
+    const dt = ticker.deltaMS / 1000;
+    const inv = 1 / this.camera.scale.x;
+    const out = (p: number) => 1 - (1 - p) ** 3;
+    this.flashes = this.flashes.filter((l) => {
+      l.t += dt;
+      if (l.t < 0) return true;
+      if (l.t > FLASH_LABEL) {
+        l.node.destroy({ children: true });
+        return false;
+      }
+      const { node, core, spark, rays, rings, text, f } = l;
+      node.visible = true;
+      node.scale.set(inv);
+      const s = f.strength;
+      const p = Math.min(1, l.t / FLASH_BURST);
+      if (l.calm) {
+        core.width = core.height = 90 * s;
+        core.alpha = Math.sin(Math.PI * p) * 0.9;
+        spark.alpha = rays.alpha = 0;
+      } else {
+        core.width = core.height = (30 + 130 * out(p)) * s;
+        core.alpha = (1 - p) ** 1.4;
+        spark.width = spark.height = (24 + 40 * out(p)) * s;
+        spark.alpha = Math.max(0, 1 - l.t / 0.35);
+        rays.width = rays.height = (60 + 140 * out(p)) * s;
+        rays.rotation = p * 0.6;
+        rays.alpha = (1 - p) ** 2;
+        rings.clear();
+        for (const [lag, reach, width] of [[0, 90, 3.5], [0.22, 60, 2]] as const) {
+          const q = Math.min(1, Math.max(0, (l.t - lag) / FLASH_BURST));
+          if (q <= 0 || q >= 1) continue;
+          rings.circle(0, 0, 6 + reach * s * out(q)).stroke({ width: width * (1 - q) + 0.5, color: f.color, alpha: (1 - q) * 0.95 });
+        }
+      }
+      text.y = -18 - 10 * s;
+      text.alpha = Math.min(1, l.t / 0.25, (FLASH_LABEL - l.t) / 0.8);
+      return true;
+    });
   };
 
   /** Fleet routes as dashes flowing toward the destination. */
@@ -699,6 +793,7 @@ export class PixiMapRenderer implements MapRenderer {
     this.cancelHold();
     this.app.ticker.remove(this.placeNebula);
     this.app.ticker.remove(this.animate);
+    this.app.ticker.remove(this.animateFlashes);
     this.app.destroy(true, { children: true });
     this.mounted = false;
   }

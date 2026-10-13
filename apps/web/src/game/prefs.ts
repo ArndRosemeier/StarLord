@@ -1,16 +1,21 @@
 import { useSyncExternalStore } from "react";
 
-/** Player settings kept in this browser: autosave and battle replay speed. Sound lives in audio/sound.ts. */
+/** Player settings kept in this browser: autosave, battle replay speed and map flashes. Sound lives in audio/sound.ts. */
 
 export interface Prefs {
   /** Save automatically at the start of every turn and when the page is hidden. */
   autosave: boolean;
   /** Battle replay speed as a multiple of the normal pace. */
   replaySpeed: number;
+  /** Flashes on the galaxy map where things happened last turn: bursting, a gentle glow in place, or none. */
+  mapFlashes: MapFlashMode;
 }
 
+export type MapFlashMode = "burst" | "calm" | "off";
+export const MAP_FLASH_MODES: readonly MapFlashMode[] = ["burst", "calm", "off"];
+
 const KEY = "starlord.prefs";
-const DEFAULTS: Prefs = { autosave: true, replaySpeed: 1 };
+const DEFAULTS: Prefs = { autosave: true, replaySpeed: 1, mapFlashes: "burst" };
 /** The replay speeds offered in the settings. */
 export const REPLAY_SPEEDS = [0.5, 1, 2, 4] as const;
 
@@ -21,6 +26,7 @@ function load(): Prefs {
     return {
       autosave: typeof raw.autosave === "boolean" ? raw.autosave : DEFAULTS.autosave,
       replaySpeed: (REPLAY_SPEEDS as readonly number[]).includes(raw.replaySpeed as number) ? raw.replaySpeed! : DEFAULTS.replaySpeed,
+      mapFlashes: MAP_FLASH_MODES.includes(raw.mapFlashes as MapFlashMode) ? raw.mapFlashes! : DEFAULTS.mapFlashes,
     };
   } catch {
     return DEFAULTS;

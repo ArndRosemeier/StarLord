@@ -1,14 +1,17 @@
 import { AudioControls } from "../ui/AudioControls";
-import { REPLAY_SPEEDS, updatePrefs, usePrefs } from "../game/prefs";
+import { REPLAY_SPEEDS, updatePrefs, usePrefs, type MapFlashMode } from "../game/prefs";
+import { useReducedMotion } from "../ui/fx";
+import { FLASH_COLORS, FLASH_LEGEND } from "../map/flashes";
 import { useLastAutosave } from "../game/autosave";
 import { AUTOSAVES_KEPT } from "../game/saves";
 import { OTHER_KEYS, SHORTCUTS } from "../ui/shortcuts";
 import { STEP_MS } from "./combat/replayModel";
 
-/** Settings kept in this browser for every game: sound, battle replay speed, autosave, plus the keyboard shortcuts. */
+/** Settings kept in this browser for every game: sound, battle replay speed, map flashes, autosave, plus the keyboard shortcuts. */
 export function SettingsPanel({ shortcuts = true }: { shortcuts?: boolean }) {
   const prefs = usePrefs();
   const last = useLastAutosave();
+  const reduced = useReducedMotion();
   return (
     <div className="col settings-panel" style={{ gap: 12 }}>
       <section className="col" style={{ gap: 6 }}>
@@ -26,6 +29,25 @@ export function SettingsPanel({ shortcuts = true }: { shortcuts?: boolean }) {
             ))}
           </select>
         </label>
+      </section>
+      <section className="col" style={{ gap: 6 }}>
+        <h4 style={{ margin: 0 }}>Galaxy map</h4>
+        <label className="row" style={{ justifyContent: "space-between" }}
+          title="When a turn starts, every star where something happened to you lights up in the colour of the event, with a short label.">
+          Turn flashes
+          <select value={prefs.mapFlashes} onChange={(e) => updatePrefs({ mapFlashes: e.target.value as MapFlashMode })}>
+            <option value="burst">Bursts</option>
+            <option value="calm">Gentle glow</option>
+            <option value="off">Off</option>
+          </select>
+        </label>
+        <small className="muted">
+          As a turn starts, stars light up where something happened:{" "}
+          {FLASH_LEGEND.map((l, i) => (
+            <span key={l.kind}>{i > 0 && ", "}<span style={{ color: `#${FLASH_COLORS[l.kind].toString(16).padStart(6, "0")}` }}>{l.text}</span></span>
+          ))}.
+          {reduced && prefs.mapFlashes === "burst" && " Your system asks for reduced motion, so bursts play as a gentle glow."}
+        </small>
       </section>
       <section className="col" style={{ gap: 6 }}>
         <h4 style={{ margin: 0 }}>Autosave</h4>
