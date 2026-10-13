@@ -1,6 +1,7 @@
 import { Component, lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { CombatReport } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
+import { aftermathLines } from "../ui/format";
 import { audio } from "../audio/sound";
 import { useReducedMotion } from "../ui/fx";
 import { webglAvailable } from "../three/webgl";
@@ -120,6 +121,7 @@ export function CombatReplay({ report }: { report: CombatReport }) {
             : describe(report, event)}
         </span>
       </div>
+      {done && aftermathLines(view, report).map((line) => <p key={line} className="muted" style={{ margin: "4px 0 0" }}>{line}</p>)}
     </div>
   );
 }

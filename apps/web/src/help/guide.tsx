@@ -417,7 +417,15 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         enemy's) and whom they target first: the nearest, weakest or strongest enemy. A retreat is an order each ship
         takes on its turn; it escapes at the start of its next turn, and until then it can still be shot or boarded. Only
         ships with a working drive that can still move get away, and none can while an enemy Warp Dissipator works.
-        Ships that escape head to your nearest colony; the rest of their fleet stays to fight.
+        Ships that escape head to your nearest colony; the rest of their fleet stays to fight. If your side wins, the
+        ships that escaped rejoin it.
+      </P>
+      <P>
+        Colony ships, outpost ships and transports never fight: they wait out the battle. If your side wins they stay;
+        if it loses, every ship you have left there withdraws to your nearest colony (they stay if you own another
+        colony in that system). They are lost when no warship came with them, when you have no colony to withdraw to,
+        or when a hyperspace flux traps them (Trans-dimensional races get away). So a warship escort always lets a
+        colony ship get away from a monster.
       </P>
       <P>
         Computer empires pull out of a battle with another empire, if they hold a colony elsewhere, once one enemy volley

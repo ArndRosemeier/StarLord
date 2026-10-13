@@ -32,7 +32,7 @@ import {
   assignLeader, captainLost, captainOf, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
 } from "./leaders.js";
 import { moveFleet } from "./movement.js";
-import { tradeGoodsMult } from "./raceEffects.js";
+import { ignoresSpaceHazards, tradeGoodsMult } from "./raceEffects.js";
 import { PASSIVE_MONSTERS } from "./data/monsters.js";
 import { guardianSlain, refreshMonsterDesigns } from "./npc.js";
 import { raidersReturn, raidTick, returnThroughPortal, salvageTech, syncPortals } from "./raiders.js";
@@ -44,7 +44,7 @@ import { applyMutation } from "./mutation.js";
 import { cancelRefit, completeRefit, startRefit } from "./refit.js";
 import { applyDebug } from "./debug.js";
 import { creditElimination, noteAttack, recordHistory, score } from "./score.js";
-import type { BuildItem, Colony, Fleet, GameState, Id, Planet, Player, PlayerId } from "./types.js";
+import type { BuildItem, Colony, CombatAftermath, Fleet, GameState, Id, Planet, Player, PlayerId } from "./types.js";
 
 export type TurnOrders = Partial<Record<PlayerId, Command[]>>;
 
@@ -482,7 +482,9 @@ export function pendingBattle(prev: GameState, orders: TurnOrders, playerId: Pla
       const side = battle.sides.findIndex((s) => s.ownerId === playerId);
       if (side < 0 || has.has(key)) return false;
       const mine = battle.units.some((u) => u.side === side && u.alive);
-      if (!mine) return false;
+      // Nothing to command against: the other side brought no warships and has no armed colony.
+      const theirs = battle.units.some((u) => u.side !== side && u.alive);
+      if (!mine || !theirs) return false;
       battle.manual[side as 0 | 1] = true;
       return true;
     });
@@ -632,6 +634,7 @@ function applyCombat(
   outcome: ReturnType<Battle["run"]>,
 ): void {
   const { state } = ctx;
+  const hadWarships = sides.map((side) => side.fleets.some((f) => isWarFleet(state, f)));
   // Bombs and fire that fell on a planet whose installations were already gone hit the colony itself.
   for (const [colonyId, hits] of outcome.colonyHits) {
     const c = state.colonies[colonyId];
@@ -728,39 +731,73 @@ function applyCombat(
       captain.travel = null;
     }
   }
-  // Ships that retreated head for the nearest colony: whole fleets, or the ships that left a fleet whose others stayed.
-  for (const [fleetId, stacks] of outcome.retreatedShips) {
-    const f = state.fleets[fleetId];
-    if (!f || f.starId !== starId) continue;
-    const home = nearestOwnStar(state, f.ownerId, starId);
-    if (!home || home === starId) continue;
-    const nf: Fleet = { ...f, id: splitFleetId(state, f.id), ships: [], name: `${f.name} II`, destStarId: home, starId: null };
-    delete nf.invadeTarget;
-    for (const st of stacks) {
-      const from = f.ships.find((x) => x.designId === st.designId);
-      if (!from) continue;
-      const n = Math.min(st.count, from.count);
-      const damage = takeShips(from, n);
-      addShips(nf, st.designId, n, from.xp ?? 0, damage);
-    }
-    f.ships = f.ships.filter((x) => x.count > 0);
-    if (nf.ships.length > 0) state.fleets[nf.id] = nf;
-    if (f.ships.length === 0) deleteFleet(state, f.id);
+  // Ships that pulled out of a won battle rejoin their fleet (they never left the star). Every empire that did not
+  // win gives up the system with all its ships still here.
+  const aftermath: CombatAftermath[] = [];
+  for (const [i, side] of sides.entries()) {
+    if (side.ownerId === outcome.report.winner || state.players[side.ownerId]!.kind !== "empire") continue;
+    const a = afterDefeat(ctx, starId, side, hadWarships[i]!);
+    if (a) aftermath.push(a);
   }
-  for (const f of Object.values(state.fleets)) {
-    if (f.starId !== starId || !outcome.fled.has(f.id)) continue;
-    const home = nearestOwnStar(state, f.ownerId, starId);
-    if (home && home !== starId) {
-      f.destStarId = home;
-      f.starId = null;
-    }
-  }
+  if (aftermath.length > 0) outcome.report.aftermath = aftermath;
   for (const s of sides) {
     if (state.players[s.ownerId]!.kind !== "empire") continue;
     ctx.emit({
       kind: "combat", playerId: s.ownerId, reportId: outcome.report.id, starId, won: outcome.report.winner === s.ownerId,
     });
   }
+}
+
+/** Whether a fleet has a ship that fights (anything but colony ships, outpost ships and transports). */
+function isWarFleet(state: GameState, f: Fleet): boolean {
+  const owner = state.players[f.ownerId]!;
+  return f.ships.some((s) => s.count > 0 && !findDesign(owner, s.designId)?.module);
+}
+
+/**
+ * What the original does with a beaten empire's ships still at the star
+ * (FUN_000e9370 / FUN_000e6c8e / FUN_000e6e36): with no warship among them
+ * and no colony fought for, they are lost; with another colony of its own in
+ * the system they stay; in a hyperspace flux they are lost unless the race is
+ * Trans-dimensional; otherwise they withdraw to its nearest colony, and are
+ * lost when it has none.
+ */
+function afterDefeat(ctx: TurnContext, starId: Id, side: CombatSide, hadWarships: boolean): CombatAftermath | null {
+  const { state } = ctx;
+  const owner = state.players[side.ownerId]!;
+  const fleets = Object.values(state.fleets).filter((f) => f.ownerId === side.ownerId && f.starId === starId && f.ships.some((s) => s.count > 0));
+  if (fleets.length === 0) return null;
+  const ships: CombatAftermath["ships"] = [];
+  for (const f of fleets) {
+    for (const st of f.ships) {
+      if (st.count <= 0) continue;
+      const x = ships.find((y) => y.designId === st.designId);
+      if (x) x.count += st.count;
+      else ships.push({ designId: st.designId, count: st.count });
+    }
+  }
+  const lose = (why: NonNullable<CombatAftermath["why"]>): CombatAftermath => {
+    for (const f of fleets) {
+      captainLost(state, f.id, false, ctx.emit);
+      deleteFleet(state, f.id);
+    }
+    return { ownerId: side.ownerId, fate: "lost", why, ships };
+  };
+  if (!hadWarships && !side.colony) return lose("unescorted");
+  const otherColonyHere = Object.values(state.colonies).some(
+    (c) => c.ownerId === side.ownerId && c.id !== side.colony?.id && state.planets[c.planetId]!.starId === starId,
+  );
+  if (otherColonyHere) return { ownerId: side.ownerId, fate: "stayed", ships };
+  const flux = (state.activeEvents ?? []).some((e) => e.kind === "hyperspaceFlux");
+  if (flux && !ignoresSpaceHazards(getRace(owner.raceId))) return lose("flux");
+  const home = nearestOwnStar(state, side.ownerId, starId);
+  if (!home) return lose("noColony");
+  for (const f of fleets) {
+    f.destStarId = home;
+    f.starId = null;
+    delete f.invadeTarget;
+  }
+  return { ownerId: side.ownerId, fate: "withdrew", toStarId: home, ships };
 }
 
 /**

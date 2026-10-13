@@ -1,6 +1,6 @@
 import {
   BUILDINGS_BY_ID, FIELD_NAMES, PROJECTS_BY_ID, TECHS, findDesign,
-  type BuildItem, type GameEvent, type PlayerView,
+  type BuildItem, type CombatReport, type GameEvent, type PlayerView,
 } from "@starlord/sim";
 
 export const fmt = (n: number, digits = 0) =>
@@ -15,6 +15,29 @@ export const words = (id: string) => {
   const s = id.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
+
+/** What became of each beaten empire's ships left at the star after a battle, one sentence each. */
+export function aftermathLines(view: PlayerView, report: CombatReport): string[] {
+  return (report.aftermath ?? []).map((a) => {
+    const mine = a.ownerId === view.viewer;
+    const owner = view.players[a.ownerId];
+    const total = a.ships.reduce((n, s) => n + s.count, 0);
+    const ships = mine
+      ? a.ships.map((s) => `${s.count} ${findDesign(owner!, s.designId)?.name ?? words(s.designId)}`).join(", ")
+      : `${total} ship${total === 1 ? "" : "s"}`;
+    const whose = mine ? "Your" : `${playerName(view, a.ownerId)}'s`;
+    const verb = total === 1 ? "was" : "were";
+    switch (a.fate) {
+      case "withdrew":
+        return `${whose} remaining ships (${ships}) withdrew to ${starName(view, a.toStarId!)}.`;
+      case "stayed":
+        return `${whose} remaining ships (${ships}) stay in orbit by their colony here.`;
+      case "lost":
+        return `${whose} remaining ships (${ships}) ${verb} lost: ${a.why === "unescorted" ? "no warship protected them"
+          : a.why === "flux" ? "the hyperspace flux kept them from getting away" : "there was no colony to withdraw to"}.`;
+    }
+  });
+}
 
 export function itemName(view: PlayerView, item: BuildItem): string {
   switch (item.kind) {
