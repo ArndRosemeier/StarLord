@@ -89,4 +89,119 @@ describe("commanded battles", () => {
     expect(moved).toBeLessThanOrEqual(reach + 0.1);
     expect(pb.battle.rounds.flat().some((e) => e.kind === "fire" && e.ship === unit.key)).toBe(false);
   });
+
+  it("fire each weapon group at its own target, as the original allows, and the turn replays it", () => {
+    const lab = setup("fleets");
+    const pb = pendingBattle(lab.state, {}, lab.defenderId)!;
+    const orders: TacticalOrder[] = [];
+    const fight = pb.battle.fight(pb.starId, pb.reportId);
+    const send = (o: TacticalOrder) => {
+      orders.push(o);
+      return fight.next(o);
+    };
+    let step = fight.next();
+    if (step.done) throw new Error("no decision");
+    const unit = step.value.unit;
+    const opts = pb.battle.options(unit)!;
+    expect(opts.weapons.length).toBeGreaterThanOrEqual(2);
+    // Close in first, keeping the rest of the turn.
+    const me = pb.battle.units.find((x) => x.key === unit)!;
+    const near = pb.battle.units.find((x) => x.key === opts.targets[0]!.key)!;
+    step = send({ kind: "move", to: { x: near.x, y: near.y } });
+    if (step.done) throw new Error("battle over");
+    expect(step.value.unit).toBe(unit);
+    expect(step.value.step).toBe(1);
+    const now = pb.battle.options(unit)!;
+    const [a, b] = now.weapons;
+    const reachable = (w: typeof a) => now.targets.filter((t) => w!.vs[t.key]?.ok).map((t) => t.key);
+    const ta = reachable(a)[0]!;
+    const tb = reachable(b).find((k) => k !== ta)!;
+    expect(ta && tb).toBeTruthy();
+    step = send({ kind: "fire", target: ta, mounts: [a!.mount] });
+    if (step.done) throw new Error("battle over");
+    expect(step.value.unit).toBe(unit);
+    // The first group has fired; the second is still ready for another target.
+    const mid = pb.battle.options(unit)!;
+    expect(mid.weapons.find((w) => w.mount === a!.mount)!.ready).toBe(false);
+    expect(mid.weapons.find((w) => w.mount === b!.mount)!.ready).toBe(true);
+    step = send({ kind: "fire", target: tb, mounts: [b!.mount] });
+    if (step.done) throw new Error("battle over");
+    step = send({ kind: "done" });
+    const shotAt = new Set(pb.battle.rounds[0]!.filter((e) => e.kind === "fire" && e.ship === me.key).map((e) => e.target));
+    expect(shotAt).toEqual(new Set([ta, tb]));
+    while (!step.done) step = send({ kind: "auto" });
+    const after = processTurn(lab.state, { [lab.defenderId]: [{ type: "battleOrders", battle: pb.key, orders }] });
+    expect(after.combats[0]!.rounds).toEqual(step.value.report.rounds);
+  });
+
+  it("let a ship split its movement around firing, never past its speed", () => {
+    const lab = setup("fleets");
+    const pb = pendingBattle(lab.state, {}, lab.defenderId)!;
+    const fight = pb.battle.fight(pb.starId, pb.reportId);
+    const step = fight.next();
+    if (step.done) throw new Error("no decision");
+    const unit = pb.battle.units.find((x) => x.key === step.value.unit)!;
+    const reach = pb.battle.options(unit.key)!.reach;
+    const from = { x: unit.x, y: unit.y };
+    const dir = { x: Math.cos(unit.heading), y: Math.sin(unit.heading) };
+    fight.next({ kind: "move", to: { x: from.x + dir.x * 2, y: from.y + dir.y * 2 } });
+    const left = pb.battle.options(unit.key)!.reach;
+    expect(left).toBeCloseTo(reach - 2, 5);
+    fight.next({ kind: "move", to: { x: from.x + dir.x * 60, y: from.y + dir.y * 60 } });
+    expect(pb.battle.options(unit.key)!.reach).toBe(0);
+    expect(Math.hypot(unit.x - from.x, unit.y - from.y)).toBeLessThanOrEqual(reach + 0.15);
+  });
+
+  it("send a ship told to wait to the back of its side's line", () => {
+    const lab = setup("fleets");
+    const pb = pendingBattle(lab.state, {}, lab.defenderId)!;
+    const fight = pb.battle.fight(pb.starId, pb.reportId);
+    let step = fight.next();
+    if (step.done) throw new Error("no decision");
+    const first = step.value.unit;
+    expect(step.value.canWait).toBe(true);
+    const seen: string[] = [];
+    step = fight.next({ kind: "wait" });
+    while (!step.done && step.value.unit !== first) {
+      seen.push(step.value.unit);
+      step = fight.next({ kind: "done" });
+    }
+    expect(seen.length).toBeGreaterThan(0);
+    if (step.done) throw new Error("battle over");
+    // Back again in the same combat turn, and the last of its side now: it may not wait again.
+    expect(step.value.unit).toBe(first);
+    expect(step.value.canWait).toBe(false);
+    expect(pb.battle.round).toBe(0);
+  });
+
+  it("replay any mix of step orders exactly, in every lab preset", () => {
+    for (const preset of LAB_PRESETS) {
+      const lab = setup(preset.id);
+      const pb = pendingBattle(lab.state, {}, lab.defenderId);
+      if (!pb) continue;
+      let seed = 12345;
+      const rand = (n: number) => {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        return seed % n;
+      };
+      const { orders, outcome } = command(pb, (unit, n) => {
+        if (n > 400) return { kind: "auto" };
+        const o = pb.battle.options(unit)!;
+        const t = o.targets[rand(Math.max(1, o.targets.length))];
+        const w = o.weapons[rand(Math.max(1, o.weapons.length))];
+        switch (rand(8)) {
+          case 0: return { kind: "move", to: { x: rand(50), y: rand(40) } };
+          case 1: return t ? { kind: "face", target: t.key } : { kind: "done" };
+          case 2: case 3: return t ? { kind: "fire", target: t.key, ...(w ? { mounts: [w.mount] } : {}) } : { kind: "done" };
+          case 4: return o.board[0] ? { kind: "board", target: o.board[0].key } : { kind: "wait" };
+          case 5: return { kind: "wait" };
+          case 6: return { kind: "done" };
+          default: return { kind: "ai" };
+        }
+      });
+      const after = processTurn(lab.state, { [lab.defenderId]: [{ type: "battleOrders", battle: pb.key, orders }] });
+      const report = after.combats.find((c) => c.starId === lab.starId)!;
+      expect(report.rounds, preset.id).toEqual(outcome.report.rounds);
+    }
+  });
 });

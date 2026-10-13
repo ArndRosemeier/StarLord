@@ -141,6 +141,8 @@ interface Mount {
   maxCount: number;
   /** Hyper-X Capacitors or Fast Missile Racks: the next volley is a double one. */
   double: boolean;
+  /** A commanded double-volley mount fired its first volley this turn and may fire once more. */
+  halfFired: boolean;
 }
 
 interface System {
@@ -250,6 +252,10 @@ interface Unit {
   popHits: number;
   web: { by: Unit; damage: number } | null;
   moved: boolean;
+  /** Movement points spent this combat turn. */
+  mpUsed: number;
+  /** A boarding party went across this combat turn. */
+  boarded: boolean;
   strength: number;
   craftBeam: WeaponDef;
   craftBomb: WeaponDef | null;
@@ -399,6 +405,7 @@ function makeMounts(player: Player, weapons: WeaponMount[], unlimited: boolean, 
       firedThisRound: false,
       maxCount: m.count,
       double: true,
+      halfFired: false,
     });
   }
   return out;
@@ -414,7 +421,7 @@ function baseUnit(player: Player, side: 0 | 1): Omit<Unit, "key" | "designId" | 
     marines: 0, immobile: false, noArmorPierce: false, alive: true, retreated: false, retreatOrdered: false, captured: null,
     origSide: side, origOwner: player.id, blastDriveHP: 0, flagship: false,
     firedThisRound: false, firedLastRound: true, phasingLeft: 0, tractor: 0,
-    held: null, blackHole: null, web: null, moved: false, craftBeam: craft.beam, craftBomb: craft.bomb,
+    held: null, blackHole: null, web: null, moved: false, mpUsed: 0, boarded: false, craftBeam: craft.beam, craftBomb: craft.bomb,
     scannerEccm: scannerEccm(player), absorbed: 0, ...craftRatings(player), popShield: 0, popPool: 0, popHits: 0,
   };
 }
@@ -744,6 +751,29 @@ export function resolveCombat(
 export interface BattleDecision {
   unit: string;
   side: 0 | 1;
+  /** Orders the unit has already carried out this turn (0 when its turn begins). */
+  step: number;
+  /** Other units of the side still have to act, so this one may wait for them. */
+  canWait: boolean;
+}
+
+/** What one weapon mount would do against one target, for the battle screen. */
+export interface WeaponPreview {
+  mount: number;
+  /** It can fire at the target now; otherwise `why` says what stops it. */
+  ok: boolean;
+  why?: string;
+  /** Shots (beams), missiles or craft in the volley. */
+  shots?: number;
+  /** Chance each beam shot hits, in percent. */
+  hitPct?: number;
+  /** Damage of one hit (beams, after range) or of one missile. */
+  min?: number;
+  max?: number;
+  /** Beams: damage expected to get through the target's shields from this volley. */
+  expected?: number;
+  /** Missiles and torpedoes: combat turns until they reach the target (0: at once). */
+  arrives?: number;
 }
 
 /** What a commanded unit may do on its turn, for the battle screen. */
@@ -755,8 +785,20 @@ export interface UnitOptions {
   canRetreat: boolean;
   /** The target the computer would pick. */
   suggested: string | null;
-  /** Its weapons: how many work, shots left (null: unlimited) and whether each is ready to fire this turn. */
-  weapons: { id: string; name: string; count: number; shots: number | null; ready: boolean; arc: string }[];
+  /**
+   * Its weapon mounts (`mount` is the index fire orders use): how many work, shots left (null: unlimited),
+   * whether each is ready to fire this turn and, for every target, what a volley would do.
+   */
+  weapons: {
+    mount: number; id: string; name: string; count: number; shots: number | null; ready: boolean; arc: string;
+    /** Its weapon modifications (heavy mount, point defense, ...). */
+    mods: string[];
+    /** Hyper-X Capacitors or Fast Missile Racks give this mount a second volley this turn. */
+    second: boolean;
+    vs: Record<string, WeaponPreview>;
+  }[];
+  /** Enemy ships its marines can board now: 2 capture likely, 1 hit-and-run raid; the party size is the marines sent. */
+  board: { key: string; mode: 1 | 2; party: number }[];
 }
 
 /**
@@ -996,14 +1038,13 @@ export class Battle {
         for (const side of order) this.decideRetreat(side);
         const initiative = (u: Unit) => this.currentSpeed(u) + this.attackOf(u, u) / 10 + this.tactics[u.side]!;
         const all = units.filter((u) => active(u)).sort((a, b) => initiative(b) - initiative(a));
-        for (const u of all) if (active(u)) yield* this.unitTurn(u);
+        yield* this.turns(all);
         for (const side of order) this.moveProjectiles(side);
       } else {
         for (const side of order) {
           // Each side weighs retreat as its phase begins; then its units act in their fixed order.
           this.decideRetreat(side);
-          const mine = units.filter((u) => u.side === side && active(u));
-          for (const u of mine) yield* this.unitTurn(u);
+          yield* this.turns(units.filter((u) => u.side === side && active(u)));
           this.moveProjectiles(side);
         }
       }
@@ -1133,6 +1174,22 @@ export class Battle {
     };
   }
 
+  /**
+   * Units take their turns in line. A commanded unit told to wait goes to the
+   * back of the line, as the original's Wait button does, while another unit
+   * of its side still has to act.
+   */
+  *turns(line: Unit[]): Generator<BattleDecision, void, TacticalOrder> {
+    const queue = [...line];
+    while (queue.length > 0) {
+      const u = queue.shift()!;
+      if (!active(u)) continue;
+      const canWait = this.manual[u.side] && queue.some((x) => x.side === u.side && active(x));
+      const r = yield* this.unitTurn(u, canWait);
+      if (r === "wait") queue.push(u);
+    }
+  }
+
   // ------------------------------------------------------------ round upkeep
 
   startRound(): void {
@@ -1145,10 +1202,13 @@ export class Battle {
       u.firedThisRound = false;
       u.tractor = 0;
       u.moved = false;
+      u.mpUsed = 0;
+      u.boarded = false;
       for (const m of u.mounts) {
         // A turn without firing charges Hyper-X Capacitors and Fast Missile Racks for another double volley.
-        if (!m.firedThisRound) m.double = true;
+        if (!m.firedThisRound && !m.halfFired) m.double = true;
         m.firedThisRound = false;
+        m.halfFired = false;
         if (m.cooldown > 0) m.cooldown--;
         if (!m.out && m.rearm > 0) m.rearm--;
       }
@@ -1435,14 +1495,14 @@ export class Battle {
     const turn = this.unitTurn(u);
     let step = turn.next();
     while (!step.done) step = turn.next({ kind: "ai" });
-    return step.value;
+    return step.value === true;
   }
 
   /**
    * Turns, moves and fires; a commanded side's unit first waits for its
    * order. Returns whether the unit did anything.
    */
-  *unitTurn(u: Unit): Generator<BattleDecision, boolean, TacticalOrder> {
+  *unitTurn(u: Unit, canWait = false): Generator<BattleDecision, boolean | "wait", TacticalOrder> {
     if (!active(u) || u.held) return false;
 
     // A retreat ordered on an earlier turn takes effect as the ship's next turn begins.
@@ -1454,16 +1514,185 @@ export class Battle {
       return true;
     }
     if (this.manual[u.side]) {
-      const order: TacticalOrder = yield { unit: u.key, side: u.side };
-      if (order.kind === "auto") this.manual[u.side] = false;
-      else if (order.kind === "retreat") {
-        if (!this.canRetreat(u)) return false;
-        u.retreatOrdered = true;
-        return true;
-      } else if (order.kind === "act") return this.actAsOrdered(u, order);
-      // "ai" and "auto": the computer plays this turn.
+      // The player may give the unit several orders on its turn, as in the original: move a bit, fire some
+      // weapons at one target, move on, fire others at another, board, then end its turn (or put it back in
+      // line with Wait).
+      let did = false;
+      for (let step = 0; ; step++) {
+        const order: TacticalOrder = yield { unit: u.key, side: u.side, step, canWait };
+        if (!active(u)) return did;
+        switch (order.kind) {
+          case "auto":
+            this.manual[u.side] = false;
+            return this.autoAct(u) || did;
+          case "ai":
+            return this.autoAct(u) || did;
+          case "retreat":
+            if (!this.canRetreat(u)) continue;
+            u.retreatOrdered = true;
+            return true;
+          case "act":
+            return this.actAsOrdered(u, order) || did;
+          case "wait":
+            if (canWait) return "wait";
+            return did;
+          case "done":
+            this.stationStep(u);
+            return did;
+          case "move":
+            if (this.moveOrdered(u, order.to)) did = true;
+            continue;
+          case "face": {
+            const t = this.units.find((x) => x.key === order.target);
+            this.stationStep(u);
+            if (t && !u.immobile) this.steer(u, Math.atan2(t.y - u.y, t.x - u.x), 0);
+            continue;
+          }
+          case "fire": {
+            const t = this.targets(u).find((x) => x.key === order.target);
+            this.stationStep(u);
+            if (t && this.fireOrdered(u, t, order.mounts)) did = true;
+            continue;
+          }
+          case "board": {
+            const t = this.units.find((x) => x.key === order.target);
+            if (t && !u.boarded && this.boardTarget(u, t)) {
+              u.boarded = true;
+              did = true;
+            }
+            continue;
+          }
+          default:
+            return did;
+        }
+      }
     }
     return this.autoAct(u);
+  }
+
+  /** A station turns its shields once, on the first order of its turn. */
+  stationStep(u: Unit): void {
+    if (u.kind !== "station" || u.moved) return;
+    this.stationTurn(u);
+    u.moved = true;
+  }
+
+  /** A commanded ship flies toward a square with the movement it has left. */
+  moveOrdered(u: Unit, to: { x: number; y: number } | undefined): boolean {
+    if (u.immobile || u.moved || !to || !Number.isFinite(to.x) || !Number.isFinite(to.y)) return false;
+    const x = Math.min(FIELD_WIDTH - 0.5, Math.max(0.5, to.x));
+    const y = Math.min(FIELD_HEIGHT - 0.5, Math.max(0.5, to.y));
+    return this.steer(u, Math.atan2(y - u.y, x - u.x), this.dist(u, { x, y }));
+  }
+
+  /** Why a mount cannot fire at a target right now, or null when it can. */
+  mountBlocked(u: Unit, m: Mount, t: Unit): string | null {
+    if (m.count <= 0) return "destroyed";
+    if (m.shots <= 0) return "out of ammunition";
+    if (m.cooldown > 0) return "reloading";
+    if (m.firedThisRound) return "already fired";
+    const kind = m.def.kind;
+    if (m.def.effect === "antiMissile") return "fires only at missiles";
+    if (!active(t) || this.untouchable(t)) return "cannot be targeted";
+    if (!this.canAim(m, t)) return "cannot hit this target";
+    if (kind === "beam") {
+      if (!this.inArc(u, m, t)) return "out of arc";
+      if (!this.beamBands(u, m, t)) return "out of range";
+      return null;
+    }
+    if (kind === "missile" || kind === "torpedo") {
+      if (!Number.isFinite(missileSpeed(u.player, m.def)) && this.edge(u, t) > (m.def.range ?? 24)) return "out of range";
+      return null;
+    }
+    if (kind === "bomb") {
+      if (t.kind !== "planet") return "bombs hit planets only";
+      if (!this.sides[u.side]!.attacksPlanet) return "not attacking this planet";
+      const reach = u.fx.transporters > 0 && this.specialWorks(u, "transporters") ? COMBAT_BOMB_RANGE.transporters : COMBAT_BOMB_RANGE.normal;
+      return this.edge(u, t) <= reach ? null : "out of range";
+    }
+    if (kind === "bay") {
+      if (m.out) return "squadron out";
+      if (m.rearm > 0) return "rearming";
+      if (m.def.effect === "shuttles" && (t.kind !== "ship" || u.marines <= 0)) return "no target for shuttles";
+      if (m.def.effect === "bombers" && !u.craftBomb) return "no bombs";
+      return null;
+    }
+    if (kind === "special") {
+      const reach = m.def.range ?? Infinity;
+      if (this.edge(u, t) > reach) return "out of range";
+      return null;
+    }
+    return "cannot fire";
+  }
+
+  /**
+   * A commanded unit fires the chosen weapon mounts (all of them when none are
+   * named) at one target. Mounts that cannot reach it keep their shot for
+   * another target. Double-volley mounts (Hyper-X Capacitors, Fast Missile
+   * Racks) may fire their second volley on a later order of the same turn.
+   */
+  fireOrdered(u: Unit, t: Unit, mounts?: number[]): boolean {
+    const picked = mounts ? [...new Set(mounts)].filter((i) => Number.isInteger(i) && i >= 0 && i < u.mounts.length).sort((a, b) => a - b) : u.mounts.map((_, i) => i);
+    const hyper = u.fx.hyperX && this.specialWorks(u, "hyperXCapacitors");
+    const fast = u.fx.fastRacks && this.specialWorks(u, "fastMissileRacks");
+    let did = this.discharge(u, t);
+    for (const mi of picked) {
+      const m = u.mounts[mi]!;
+      if (!active(t) || this.mountBlocked(u, m, t)) continue;
+      const kind = m.def.kind;
+      let fired = false;
+      if (kind === "beam") fired = this.fireBeamsAt(u, m, t);
+      else if (kind === "missile" || kind === "torpedo") fired = this.launch(u, mi, m, t);
+      else if (kind === "bomb") fired = this.dropBombs(u, m);
+      else if (kind === "bay") fired = this.launchCraft(u, mi, m, t);
+      else if (kind === "special") fired = this.fireSpecial(u, m, t);
+      if (!fired) continue;
+      did = true;
+      const twice = (kind === "beam" && hyper) || (kind === "missile" && fast);
+      if (twice && m.double && !m.halfFired && m.shots > 0) m.halfFired = true;
+      else {
+        m.firedThisRound = true;
+        m.double = false;
+      }
+    }
+    if (did) u.firedThisRound = true;
+    return did;
+  }
+
+  /** One volley of a beam mount at one target only; shots stop when the target is gone. */
+  fireBeamsAt(u: Unit, m: Mount, t: Unit): boolean {
+    const shots = m.count * (m.mods.has("autoFire") ? MOD_EFFECTS.autoFireShots : 1);
+    const ev: CombatRoundEvent = { kind: "fire", ship: u.key, target: t.key, weapon: m.def.id, damage: 0, hit: false, absorbed: 0, armorDamage: 0, structureDamage: 0 };
+    let fired = false;
+    for (let s = 0; s < shots && active(t) && !this.untouchable(t); s++) {
+      fired = true;
+      this.beamShot(u, m, t, ev);
+    }
+    if (fired) this.log.push(ev);
+    return fired;
+  }
+
+  /** Orders a boarding of one enemy ship, if the unit's marines can reach it and stand a chance. */
+  boardTarget(u: Unit, t: Unit): boolean {
+    if (u.marines <= 0 || u.kind === "planet") return false;
+    const reach = this.boardingReach(u, t);
+    if (!reach) return false;
+    const mode = this.boardingMode(u, t);
+    if (mode === 0) return false;
+    const party = this.boardingParty(u, t, reach.transporters);
+    if (party <= 0) return false;
+    this.board(u, t, party, reach.transporters ? "transporters" : "marines", mode);
+    return true;
+  }
+
+  /** Marines sent across: a share of those aboard, two thirds lost when beaming into a Damper Field from afar. */
+  boardingParty(u: Unit, t: Unit, transporters: boolean): number {
+    let party = Math.max(1, Math.floor(u.marines * BOARDING.partyShare));
+    if (transporters && !(this.band(u, t) <= BOARDING.adjacentBand && this.currentSpeed(t) <= 0)
+      && t.fx.damageTaken < 1 && this.specialWorks(t, "damperField")) {
+      party = Math.floor(party / BOARDING.damperDivisor);
+    }
+    return party;
   }
 
   /** What a unit may do on its turn, for a player commanding it. */
@@ -1474,13 +1703,22 @@ export class Battle {
       && (m.def.kind === "beam" ? this.band(u, t) < MAX_BAND : m.def.kind !== "bomb" || t.kind === "planet"));
     return {
       targets: this.targets(u).map((t) => ({ key: t.key, inRange: reaches(t) })),
-      reach: u.immobile || u.moved ? 0 : Math.max(0, this.currentSpeed(u)),
+      reach: u.immobile || u.moved ? 0 : Math.max(0, this.currentSpeed(u) - u.mpUsed),
       canRetreat: this.canRetreat(u),
       suggested: this.chooseTarget(u)?.key ?? null,
-      weapons: u.mounts.filter((m) => m.count > 0).map((m) => ({
-        id: m.def.id, name: m.def.name, count: m.count, shots: Number.isFinite(m.shots) ? m.shots : null,
+      weapons: u.mounts.flatMap((m, mi) => m.count <= 0 ? [] : [{
+        mount: mi, id: m.def.id, name: m.def.name, count: m.count, shots: Number.isFinite(m.shots) ? m.shots : null,
         ready: m.shots > 0 && m.cooldown <= 0 && !m.firedThisRound && !(m.def.kind === "bay" && (m.out || m.rearm > 0)), arc: m.arc,
-      })),
+        second: m.halfFired, mods: [...m.mods],
+        vs: Object.fromEntries(this.targets(u).map((t) => [t.key, this.preview(u, mi, t)])),
+      }]),
+      board: u.boarded || u.marines <= 0 || u.kind === "planet" ? [] : this.units.flatMap((t) => {
+        const reach = this.boardingReach(u, t);
+        if (!reach) return [];
+        const mode = this.boardingMode(u, t);
+        const party = this.boardingParty(u, t, reach.transporters);
+        return mode === 0 || party <= 0 ? [] : [{ key: t.key, mode, party }];
+      }),
     };
   }
 
@@ -1558,24 +1796,32 @@ export class Battle {
 
   /** Turns toward `goal` (radians) and flies up to `gap` squares that way, as far as its movement allows. */
   steer(u: Unit, goal: number, gap: number): boolean {
-    let mp = this.currentSpeed(u);
+    const full = this.currentSpeed(u);
+    let mp = full - u.mpUsed;
     if (mp <= 0) return false;
+    const spend = (n: number) => {
+      u.mpUsed = Math.min(full, u.mpUsed + n);
+    };
     // Turning costs movement: two points per 22.5 degrees, less with inertial systems.
     const turnCost = TURN_COST_PER_STEP * u.fx.turnCost;
     const steps = Math.ceil(Math.abs(normAngle(goal - u.heading)) / STEP - 1e-9);
     if (turnCost === 0 || mp >= steps * turnCost) {
       u.heading = goal;
       mp -= steps * turnCost;
+      spend(steps * turnCost);
     } else {
       const can = Math.floor(mp / turnCost);
       u.heading = normAngle(u.heading + Math.sign(normAngle(goal - u.heading)) * can * STEP);
       mp -= can * turnCost;
+      spend(can * turnCost);
     }
     if (gap <= 0.05) return false;
     let step = Math.min(mp, gap);
-    // Teleporters jump instead of flying when the gap is wide.
+    spend(step);
+    // Teleporters jump instead of flying when the gap is wide; the jump takes all the movement left.
     if (u.fx.teleport > 0 && gap > mp && this.specialWorks(u, u.fx.teleport === 20 ? "subspaceTeleporter" : "phaseShifter")) {
       step = Math.min(gap, u.fx.teleport);
+      spend(full);
     }
     if (step <= 0) return false;
     u.x = round1(Math.min(FIELD_WIDTH - 0.5, Math.max(0.5, u.x + Math.cos(u.heading) * step)));
@@ -1602,7 +1848,7 @@ export class Battle {
       if (kind === "beam") {
         // Point-defense mounts hold their fire for incoming missiles and fighters.
         if (m.mods.has("pointDefense") && incoming) return;
-        const volleys = hyper && m.double ? 2 : 1;
+        const volleys = hyper && m.double && !m.halfFired ? 2 : 1;
         let fired = false;
         for (let v = 0; v < volleys; v++) if (this.fireBeams(u, m, primary)) did = fired = true;
         if (fired) {
@@ -1611,7 +1857,7 @@ export class Battle {
         }
       } else if (kind === "missile" || kind === "torpedo") {
         if (!active(primary)) return;
-        const volleys = kind === "missile" && fast && m.double ? 2 : 1;
+        const volleys = kind === "missile" && fast && m.double && !m.halfFired ? 2 : 1;
         for (let v = 0; v < volleys && m.shots > 0; v++) {
           if (this.launch(u, mi, m, primary)) did = true;
         }
@@ -1713,28 +1959,13 @@ export class Battle {
 
   /** One beam shot: roll against defense, scale damage by the margin, then apply it. */
   beamShot(u: Unit, m: Mount, t: Unit, ev: CombatRoundEvent): void {
-    const bands = this.beamBands(u, m, t)!;
     const traits = m.traits;
-    let penalty = RANGE_BANDS.toHit[bands.hit]!;
-    if (traits.has("doubleRangePenalty")) penalty *= 2;
-    const threshold = Math.min(BEAM_HIT.maxThreshold, BEAM_HIT.threshold - penalty);
-    let diff = this.attackOf(u, t) - this.defenseOf(t);
-    if (traits.has("continuous") || m.mods.has("continuous")) diff += MOD_EFFECTS.continuousToHit;
-    if (m.mods.has("pointDefense")) diff += MOD_EFFECTS.pointDefenseToHit;
-    if (m.mods.has("autoFire")) diff += MOD_EFFECTS.autoFireToHit;
+    const { threshold, diff, lo, hi } = this.beamOdds(u, m, t);
     let r = this.rng.int(1, DIE);
     if (traits.has("alwaysHits")) r = DIE;
     else if (r <= BEAM_HIT.unmodifiedAbove) r = Math.min(100, r + diff);
     if (t.fx.displacement > 0 && this.specialWorks(t, "displacementDevice") && this.rng.int(1, DIE) <= t.fx.displacement * DIE) return;
     if (r < threshold) return;
-    let pct = 100;
-    if (!traits.has("noRangeDissipation") && !m.mods.has("noRangeDissipation")) pct += RANGE_BANDS.damagePct[bands.damage]!;
-    if (m.mods.has("heavyMount")) pct += MOD_EFFECTS.heavyMountDamagePct;
-    if (m.mods.has("pointDefense")) pct += MOD_EFFECTS.pointDefenseDamagePct;
-    if (u.fx.beamDamagePct && this.specialWorks(u, "highEnergyFocus")) pct += u.fx.beamDamagePct;
-    pct += this.officers[u.side]!.damagePct;
-    const lo = Math.max(1, Math.round((m.def.damageMin * pct) / 100));
-    const hi = Math.max(1, Math.round((m.def.damageMax * pct) / 100));
     let dmg = Math.min(hi, lo + Math.floor(((hi - lo + 1) * (r - threshold)) / Math.max(1, DIE - threshold)));
     // Reflection fields bounce some beams back at the shooter.
     if (t.fx.reflection > 0 && this.specialWorks(t, "reflectionField") && this.rng.chance(t.fx.reflection / (dmg + t.fx.reflection))) {
@@ -1758,6 +1989,78 @@ export class Battle {
       const h = this.hit(u, t, dmg, { ...opts, facing: f });
       this.tally(ev, h);
     }
+  }
+
+  /** The roll a beam shot needs, the attack it adds to the roll, and its damage range at this distance. */
+  beamOdds(u: Unit, m: Mount, t: Unit): { threshold: number; diff: number; lo: number; hi: number } {
+    const bands = this.beamBands(u, m, t)!;
+    const traits = m.traits;
+    let penalty = RANGE_BANDS.toHit[bands.hit]!;
+    if (traits.has("doubleRangePenalty")) penalty *= 2;
+    const threshold = Math.min(BEAM_HIT.maxThreshold, BEAM_HIT.threshold - penalty);
+    let diff = this.attackOf(u, t) - this.defenseOf(t);
+    if (traits.has("continuous") || m.mods.has("continuous")) diff += MOD_EFFECTS.continuousToHit;
+    if (m.mods.has("pointDefense")) diff += MOD_EFFECTS.pointDefenseToHit;
+    if (m.mods.has("autoFire")) diff += MOD_EFFECTS.autoFireToHit;
+    let pct = 100;
+    if (!traits.has("noRangeDissipation") && !m.mods.has("noRangeDissipation")) pct += RANGE_BANDS.damagePct[bands.damage]!;
+    if (m.mods.has("heavyMount")) pct += MOD_EFFECTS.heavyMountDamagePct;
+    if (m.mods.has("pointDefense")) pct += MOD_EFFECTS.pointDefenseDamagePct;
+    if (u.fx.beamDamagePct && this.specialWorks(u, "highEnergyFocus")) pct += u.fx.beamDamagePct;
+    pct += this.officers[u.side]!.damagePct;
+    const lo = Math.max(1, Math.round((m.def.damageMin * pct) / 100));
+    const hi = Math.max(1, Math.round((m.def.damageMax * pct) / 100));
+    return { threshold, diff, lo, hi };
+  }
+
+  /**
+   * What a mount's volley at a target would likely do, worked out from the
+   * same rules the shots use: the chance each shot hits, the damage range of
+   * a hit, and the damage expected to get through the target's shields (an
+   * estimate: absorbers, reflection and the like are left out).
+   */
+  preview(u: Unit, mi: number, t: Unit): WeaponPreview {
+    const m = u.mounts[mi]!;
+    const blocked = this.mountBlocked(u, m, t);
+    if (blocked) return { mount: mi, ok: false, why: blocked };
+    const kind = m.def.kind;
+    const planet = t.kind === "planet";
+    const flatShield = planet ? (t.installations.some((i) => i.alive) ? t.planetShield : t.popShield) : this.shieldWorks(t) ? t.shieldClass : 0;
+    const damper = !planet && t.fx.damageTaken < 1 && this.specialWorks(t, "damperField") ? t.fx.damageTaken : 1;
+    if (kind === "beam") {
+      const { threshold, diff, lo, hi } = this.beamOdds(u, m, t);
+      const pierce = !planet && (m.traits.has("shieldPiercing") || m.mods.has("shieldPiercing")) && !t.hardShields;
+      const flat = pierce ? 0 : flatShield;
+      const dodge = t.fx.displacement > 0 && this.specialWorks(t, "displacementDevice") ? 1 - t.fx.displacement : 1;
+      const facings = m.traits.has("enveloping") || m.mods.has("enveloping") ? 4 : 1;
+      let hits = 0;
+      let through = 0;
+      for (let roll = 1; roll <= DIE; roll++) {
+        let r = roll;
+        if (m.traits.has("alwaysHits")) r = DIE;
+        else if (r <= BEAM_HIT.unmodifiedAbove) r = Math.min(100, r + diff);
+        if (r < threshold) continue;
+        let dmg = Math.min(hi, lo + Math.floor(((hi - lo + 1) * (r - threshold)) / Math.max(1, DIE - threshold)));
+        if (planet && u.kind !== "planet") dmg = Math.max(1, Math.floor(dmg * PLANET_BEAM_DAMAGE));
+        hits++;
+        through += Math.max(0, Math.floor(dmg * damper) - flat) * facings;
+      }
+      const shots = m.count * (m.mods.has("autoFire") ? MOD_EFFECTS.autoFireShots : 1);
+      const hitPct = Math.round((hits / DIE) * dodge * 100);
+      let expected = (through / DIE) * dodge * shots;
+      // The facing's shield pool soaks what gets past the flat reduction until it is drained.
+      if (!pierce && !planet && this.shieldWorks(t)) expected = Math.max(0, expected - (facings === 4 ? t.shields.reduce((a, b) => a + b, 0) : t.shields[this.facingToward(t, u)]!));
+      return { mount: mi, ok: true, shots, hitPct, min: lo, max: hi, expected: Math.round(expected) };
+    }
+    if (kind === "missile" || kind === "torpedo") {
+      let damage = m.def.damageMax;
+      if (m.mods.has("overloaded")) damage = Math.round(damage * (1 + MOD_EFFECTS.overloadedDamagePct / 100));
+      damage = Math.round((damage * (100 + this.officers[u.side]!.damagePct)) / 100);
+      const speed = missileSpeed(u.player, m.def) + (m.mods.has("fast") ? MOD_EFFECTS.fastSpeed : 0);
+      const turns = Number.isFinite(speed) ? Math.max(1, Math.ceil(this.edge(u, t) / Math.max(1, speed))) : 0;
+      return { mount: mi, ok: true, shots: m.count, min: damage, max: damage, arrives: turns };
+    }
+    return { mount: mi, ok: true, shots: m.count };
   }
 
   tally(ev: CombatRoundEvent, h: Hit): void {
@@ -2150,13 +2453,9 @@ export class Battle {
       if (!reach) continue;
       const mode = this.boardingMode(u, t);
       if (mode === 0) continue;
-      let party = Math.max(1, Math.floor(u.marines * BOARDING.partyShare));
       // Beaming into a Damper Field from a distance loses two thirds of the party.
-      if (reach.transporters && !(this.band(u, t) <= BOARDING.adjacentBand && this.currentSpeed(t) <= 0)
-        && t.fx.damageTaken < 1 && this.specialWorks(t, "damperField")) {
-        party = Math.floor(party / BOARDING.damperDivisor);
-        if (party <= 0) continue;
-      }
+      const party = this.boardingParty(u, t, reach.transporters);
+      if (party <= 0) continue;
       this.board(u, t, party, reach.transporters ? "transporters" : "marines", mode);
       return true;
     }

@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ARCS, type BattleDecision, type CombatOutcome, type CombatReport, type FiringArc, type PendingBattle, type TacticalOrder,
+  ARCS, WEAPON_MODS_BY_ID, type BattleDecision, type CombatOutcome, type CombatReport, type FiringArc, type PendingBattle, type TacticalOrder,
+  type UnitOptions, type WeaponPreview,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { starName } from "../ui/format";
@@ -48,6 +49,30 @@ function engineFor(pb: PendingBattle): Engine {
   return e;
 }
 
+/**
+ * A weapon group's switch, as on the original's weapons display: on fires with
+ * the ship, standby sits out the next volley and then turns back on, off stays
+ * off until switched on again.
+ */
+type WeaponMode = "on" | "standby" | "off";
+const NEXT_MODE: Record<WeaponMode, WeaponMode> = { on: "standby", standby: "off", off: "on" };
+const MODE_LABEL: Record<WeaponMode, string> = { on: "Fire", standby: "Standby", off: "Off" };
+
+/** What a weapon group would do against the chosen target, in words with the sim's numbers. */
+function previewText(p: WeaponPreview | undefined, kind: "beam" | "other"): string {
+  if (!p) return "";
+  if (!p.ok) return p.why ?? "cannot fire";
+  if (p.hitPct !== undefined) {
+    const dmg = p.min === p.max ? `${p.min}` : `${p.min}-${p.max}`;
+    return `${p.shots} shot${p.shots === 1 ? "" : "s"}, ${p.hitPct}% to hit, ${dmg} per hit, about ${p.expected} through shields`;
+  }
+  if (p.arrives !== undefined) {
+    const when = p.arrives === 0 ? "strikes at once" : `reaches it in ${p.arrives} turn${p.arrives === 1 ? "" : "s"}`;
+    return `${p.shots} × ${p.min} damage, ${when}`;
+  }
+  return kind === "beam" ? "can fire" : "in reach";
+}
+
 const stepsOf = (pb: PendingBattle): ReplayStep[] => pb.battle.rounds.flatMap((r, round) => r.map((e) => ({ round, e })));
 
 /**
@@ -67,6 +92,9 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
   const [shown, setShown] = useState(() => steps.length);
   const [moveTo, setMoveTo] = useState<{ x: number; y: number } | null>(null);
   const [target, setTarget] = useState<string | null>(null);
+  // Weapon switches per unit, kept for the whole battle as in the original.
+  const modes = useRef(new Map<string, Map<number, WeaponMode>>());
+  const [, setModeVersion] = useState(0);
   const [use3d, setUse3d] = useState(() => webglAvailable());
   const { base, decision, outcome } = engine;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -82,9 +110,14 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
     };
   }, []);
 
-  // A new turn of one of ours: the computer's pick is the starting target, and no move yet.
+  // A new turn of one of ours: the computer's pick is the starting target, and no move yet. Later orders in
+  // the same unit's turn keep the target while it is still there.
+  const lastUnit = useRef<string | null>(null);
   useEffect(() => {
     setMoveTo(null);
+    const same = decision?.unit === lastUnit.current;
+    lastUnit.current = decision?.unit ?? null;
+    if (same && target && options?.targets.some((t) => t.key === target)) return;
     setTarget(options?.suggested ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decision]);
@@ -111,7 +144,30 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
     setVersion((v) => v + 1);
   };
 
-  const act = () => send({ kind: "act", ...(moveTo ? { moveTo } : {}), ...(target ? { target } : {}) });
+  const modeOf = (unit: string, mount: number): WeaponMode => modes.current.get(unit)?.get(mount) ?? "on";
+  const setMode = (unit: string, mount: number, mode: WeaponMode) => {
+    const m = modes.current.get(unit) ?? new Map<number, WeaponMode>();
+    m.set(mount, mode);
+    modes.current.set(unit, m);
+    setModeVersion((v) => v + 1);
+  };
+  /** Weapon groups switched on that can fire at the target now. */
+  const firing = (opts: UnitOptions | null, unit: string | undefined, t: string | null) =>
+    !opts || !unit || !t ? [] : opts.weapons.filter((w) => w.ready && modeOf(unit, w.mount) === "on" && w.vs[t]?.ok);
+  const fire = () => {
+    if (!decision || !options || !target) return;
+    const groups = firing(options, decision.unit, target);
+    if (groups.length === 0) return;
+    // Standby groups sit this volley out and then switch back on.
+    for (const w of options.weapons) if (w.ready && modeOf(decision.unit, w.mount) === "standby") setMode(decision.unit, w.mount, "on");
+    send({ kind: "fire", target, mounts: groups.map((w) => w.mount) });
+  };
+  const move = () => {
+    if (!moveTo) return;
+    send({ kind: "move", to: moveTo });
+  };
+  const done = () => send({ kind: "done" });
+  const act = () => (firing(options, decision?.unit, target).length > 0 ? fire() : moveTo ? move() : done());
 
   useEffect(() => {
     if (!yourTurn) return;
@@ -183,7 +239,8 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
             <div className="command-ask">
               <h3>{name(enemy)} at {starName(view, pending.starId)}</h3>
               <p className="muted">
-                Command the battle yourself: on each of your units' turns, click where it moves and which enemy it fires at.
+                Command the battle yourself: on each of your units' turns, move it, pick a target and fire the weapon groups you
+                choose, then pick another target for the rest, as often as its movement and weapons allow.
                 Or let it resolve by itself; your combat doctrine (Fleets screen) then decides targets and retreat, and you can watch the replay after the turn.
               </p>
               <div className="row">
@@ -205,44 +262,85 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
         </div>
         {!asking && (
           <div className="command-panel">
-            {yourTurn && active && options ? (
+            {yourTurn && active && options && decision ? (
               <>
                 <div className="row wrap">
                   <b style={{ color: view.players[active.ownerId]?.color }}>{active.name}</b>
                   <span className="muted">
-                    {options.reach > 0 ? `moves up to ${Math.floor(options.reach)} squares (turning uses some)` : "cannot move this turn"}
+                    {options.reach > 0 ? `${Math.floor(options.reach)} squares of movement left (turning uses some)` : "no movement left"}
                   </span>
                   <span className="spacer" />
-                  <span className="muted">
-                    {moveTo ? `Moving to ${Math.round(moveTo.x)}, ${Math.round(moveTo.y)}` : options.reach > 0 ? "Staying put: click the field to move" : ""}
-                  </span>
+                  {moveTo ? (
+                    <>
+                      <span className="muted">To {Math.round(moveTo.x)}, {Math.round(moveTo.y)}</span>
+                      <button onClick={move} title="Fly there now; the ship can still fire and move on afterwards">Move here</button>
+                      <button className="small" onClick={() => setMoveTo(null)}>Cancel</button>
+                    </>
+                  ) : options.reach > 0 ? <span className="muted">Click the field to plan a move</span> : null}
                 </div>
                 <div className="row wrap">
                   <span>Target:</span>
                   <select value={target ?? ""} onChange={(e) => setTarget(e.target.value || null)}>
-                    <option value="">Hold fire</option>
+                    <option value="">None</option>
                     {options.targets.map((t) => (
                       <option key={t.key} value={t.key}>{snap(t.key)?.name ?? t.key}{t.inRange ? "" : " (out of range from here)"}</option>
                     ))}
                   </select>
                   {targetInfo && <span className={targetInfo.inRange ? "good" : "muted"}>{targetInfo.inRange ? "in range" : "out of range: move closer"}</span>}
+                  {target && options.reach > 0 && options.weapons.some((w) => w.ready && w.vs[target]?.why === "out of arc") && (
+                    <button className="small" onClick={() => send({ kind: "face", target })} title="Turn toward the target; turning costs movement">Turn to face it</button>
+                  )}
                 </div>
                 {snap(target)?.kind === "planet" && options.weapons.some((w) => w.id === "stellarConverter") && (
                   <div className="row muted">
                     In battle the Stellar Converter only wears down the planet's defenses. Win the orbit and the turn asks whether to destroy the planet.
                   </div>
                 )}
-                <div className="row wrap muted command-weapons">
-                  {options.weapons.length === 0 ? "No weapons" : options.weapons.map((w, i) => (
-                    <span key={i} className={w.ready ? "" : "faded"} title={`${ARCS[w.arc as FiringArc]?.name ?? w.arc} arc`}>
-                      {w.count}× {w.name}{w.shots !== null ? ` (${w.shots} shots)` : ""}{w.ready ? "" : " · not ready"}
-                    </span>
-                  ))}
+                <div className="command-weapons">
+                  {options.weapons.length === 0 ? <span className="muted">No weapons</span> : options.weapons.map((w) => {
+                    const mode = modeOf(decision.unit, w.mount);
+                    const p = target ? w.vs[target] : undefined;
+                    const live = w.ready && mode === "on" && !!p?.ok;
+                    return (
+                      <div key={w.mount} className={`weapon-row${live ? "" : " faded"}`}>
+                        <button className={`small weapon-mode ${mode}`} disabled={!w.ready}
+                          onClick={() => setMode(decision.unit, w.mount, NEXT_MODE[mode])}
+                          title="Fire: fires with the ship. Standby: sits out the next volley, then turns back on. Off: stays off until switched on.">
+                          {MODE_LABEL[mode]}
+                        </button>
+                        <span title={[`${ARCS[w.arc as FiringArc]?.name ?? w.arc} arc`, ...w.mods.map((m) => WEAPON_MODS_BY_ID[m as keyof typeof WEAPON_MODS_BY_ID]?.name ?? m)].join(", ")}>
+                          {w.count}× {w.name}
+                          {w.mods.length > 0 && ` ${w.mods.map((m) => WEAPON_MODS_BY_ID[m as keyof typeof WEAPON_MODS_BY_ID]?.abbr ?? m).join(" ")}`}
+                          {` · ${ARCS[w.arc as FiringArc]?.name ?? w.arc}`}
+                          {w.shots !== null ? ` (${w.shots} shots)` : ""}
+                        </span>
+                        <span className="muted">
+                          {!w.ready ? (p?.why ?? "not ready this turn") : w.second ? "second volley ready · " : ""}
+                          {w.ready && target ? previewText(p, w.vs[target]?.hitPct !== undefined ? "beam" : "other") : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="row wrap">
-                  <button className="primary" onClick={act} title="Enter">{target ? (moveTo ? "Move and fire" : "Fire") : moveTo ? "Move, hold fire" : "End turn"}</button>
+                  {(() => {
+                    const n = firing(options, decision.unit, target).length;
+                    return (
+                      <button className="primary" onClick={fire} disabled={n === 0} title="Enter. Groups that cannot reach this target keep their shot for another.">
+                        {n === 0 ? "Nothing to fire" : `Fire ${n} group${n === 1 ? "" : "s"} at ${snap(target)?.name ?? "target"}`}
+                      </button>
+                    );
+                  })()}
+                  {options.board.map((b) => (
+                    <button key={b.key} onClick={() => send({ kind: "board", target: b.key })}
+                      title={b.mode === 2 ? "Its marines are likely strong enough to take the ship" : "Its marines can raid the ship and wreck systems, but are unlikely to take it"}>
+                      Board {snap(b.key)?.name ?? b.key} ({b.party} marines, {b.mode === 2 ? "capture" : "hit-and-run"})
+                    </button>
+                  ))}
+                  {decision.canWait && <button onClick={() => send({ kind: "wait" })} title="Act with your other ships first; this one keeps what it has left">Wait</button>}
+                  <button onClick={done} title={firing(options, decision.unit, target).length === 0 ? "Enter" : undefined}>Done</button>
                   {options.canRetreat && <button onClick={() => send({ kind: "retreat" })} title="The ship leaves the battle as its next turn begins">Retreat</button>}
-                  <button onClick={() => send({ kind: "ai" })} title="The computer plays this ship's turn as your doctrine says">Computer plays this turn</button>
+                  <button onClick={() => send({ kind: "ai" })} title="The computer plays the rest of this ship's turn as your doctrine says">Computer plays this turn</button>
                   <span className="spacer" />
                   <button onClick={() => send({ kind: "auto" })} title="The computer fights the rest of the battle for you, following your combat doctrine">Auto-resolve the rest</button>
                 </div>
