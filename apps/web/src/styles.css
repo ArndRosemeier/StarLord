@@ -120,6 +120,11 @@ img.planet-img { display: block; justify-self: center; object-fit: contain; flex
 .race-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .race-detail { display: grid; grid-template-columns: minmax(260px, 420px) 1fr; gap: 18px; align-items: start; }
 .race-detail video, .race-detail img { width: 100%; border-radius: var(--radius); background: #000; display: block; }
+/* Fixed media box: race art comes square or 3:2, so letterbox it instead of letting the height follow the file. */
+.race-detail > video { aspect-ratio: 1; object-fit: contain; }
+.race-info-stack { display: grid; }
+.race-info-stack > .race-info { grid-area: 1 / 1; }
+.race-info-stack > .race-info.hidden { visibility: hidden; }
 
 /* ---- title screen */
 .title-hero { position: relative; height: 100%; overflow: hidden; background: #000; }
@@ -290,6 +295,7 @@ img.planet-img { display: block; justify-self: center; object-fit: contain; flex
   .map-layout { grid-template-columns: 1fr; grid-template-rows: 1fr 40%; }
   .side { border-left: none; border-top: 1px solid var(--line); }
   .race-detail { grid-template-columns: 1fr; }
+  .race-detail > video { aspect-ratio: 3 / 2; }
 }
 
 /* ---- encyclopedia */

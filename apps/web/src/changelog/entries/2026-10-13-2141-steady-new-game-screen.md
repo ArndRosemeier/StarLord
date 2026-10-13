@@ -1,0 +1,1 @@
+- The New Game screen no longer jumps when you pick a different race. The race picture keeps one size, and the game options stay in place whatever the race's description or traits.
