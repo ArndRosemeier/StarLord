@@ -24,6 +24,9 @@ import {
 
 const PLANET_RADIUS = 3.2;
 const SHIP_Y = 0.45;
+/** Closest and farthest the camera may sit from the field centre; the opening view is never nearer than HOME_DISTANCE. */
+const HOME_DISTANCE = 28;
+const MAX_DISTANCE = 120;
 
 /** Beam colours by weapon, so tech levels and monsters read differently. */
 const BEAM_COLORS: Record<string, number> = {
@@ -75,11 +78,12 @@ export class BattleScene {
   private pointerInside = false;
   private raycaster = new THREE.Raycaster();
   private starfield: THREE.Points;
+  private cameraTouched = false;
 
   constructor(container: HTMLElement, private input: BattleSceneInput) {
     this.reduced = input.reduced;
     this.stage = new Stage(container, {
-      fov: 40, far: 3000, minDistance: 12, maxDistance: 70,
+      fov: 40, far: 3000, minDistance: 12, maxDistance: MAX_DISTANCE,
       minPolarAngle: 0.2, maxPolarAngle: 1.25, azimuthRange: 1.1,
     });
     const { scene, textures } = this.stage;
@@ -116,10 +120,10 @@ export class BattleScene {
     this.backgroundPlanet();
 
     this.stage.useStudioEnvironment(0.5);
-    // Lean the view toward the side with a planet, so it is in frame.
-    const planetSide = this.input.units.find((u) => u.kind === "planet")?.side;
-    const lean = planetSide === undefined ? 0 : planetSide === 1 ? 2 : -2;
-    this.stage.setHome(new THREE.Vector3(lean, 20, 19), new THREE.Vector3(lean, -1.5, 1.2));
+    this.frameHome();
+    // Until the player moves the camera, keep the opening view fitted to the viewport.
+    this.stage.controls.addEventListener("start", () => { this.cameraTouched = true; });
+    this.stage.onResize(() => { if (!this.cameraTouched) this.frameHome(); });
     this.stage.onFrame((dt, t) => this.frame(dt, t));
     const el = this.stage.renderer.domElement;
     el.addEventListener("pointermove", this.onPointerMove);
@@ -128,6 +132,34 @@ export class BattleScene {
     this.stage.start();
     // Handy for poking at the scene from the console or a browser test.
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__battle = this;
+  }
+
+  /**
+   * Opening view: looks at the middle of every unit's starting square (the
+   * planet's whole globe included) from far enough away that all of them fit
+   * the viewport, whatever its shape.
+   */
+  private frameHome(): void {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const u of this.units.values()) {
+      const c = u.planetCenter ?? gridToWorld(u.info.snap.x, u.info.snap.y);
+      const r = u.planetCenter ? PLANET_RADIUS : Math.max(1, u.model.radius);
+      minX = Math.min(minX, c.x - r); maxX = Math.max(maxX, c.x + r);
+      minZ = Math.min(minZ, c.z - r); maxZ = Math.max(maxZ, c.z + r);
+    }
+    if (!Number.isFinite(minX)) { minX = -10; maxX = 10; minZ = -5; maxZ = 5; }
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    const dir = new THREE.Vector3(0, 21.5, 17.8).normalize();
+    const elevation = Math.asin(dir.y);
+    const halfV = Math.tan(THREE.MathUtils.degToRad(this.stage.camera.fov / 2));
+    const halfH = halfV * this.stage.camera.aspect;
+    const margin = 1.25;
+    const needW = ((maxX - minX) / 2) * margin / halfH;
+    const needD = ((maxZ - minZ) / 2) * Math.sin(elevation) * margin / halfV;
+    const dist = THREE.MathUtils.clamp(Math.max(HOME_DISTANCE, needW, needD), HOME_DISTANCE, MAX_DISTANCE);
+    const target = new THREE.Vector3(cx, -1.5, cz);
+    this.stage.setHome(target.clone().addScaledVector(dir, dist), target);
   }
 
   private grid(): THREE.Group {
