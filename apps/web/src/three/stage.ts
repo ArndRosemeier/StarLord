@@ -40,6 +40,7 @@ export class Stage {
   /** Extra things to dispose that are not in the scene graph. */
   private owned: { dispose(): void }[] = [];
   private callbacks = new Set<FrameCallback>();
+  private resizeCallbacks = new Set<() => void>();
   private resizeObserver: ResizeObserver;
   private raf = 0;
   private last = 0;
@@ -189,6 +190,13 @@ export class Stage {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.viewportHeight = h * this.renderer.getPixelRatio();
+    for (const cb of this.resizeCallbacks) cb();
+  }
+
+  /** Called after the viewport changes size (the camera's aspect is already updated). */
+  onResize(cb: () => void): () => void {
+    this.resizeCallbacks.add(cb);
+    return () => this.resizeCallbacks.delete(cb);
   }
 
   /** World position to CSS pixels inside the container; null when behind the camera. */

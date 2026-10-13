@@ -1,6 +1,7 @@
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HULLS, type CombatReport, type PlayerId } from "@starlord/sim";
+import { LAB_PRESETS, runCombatLab, setupCombatLab } from "@starlord/ai";
 import { GameSession } from "../game/session";
 import { SessionContext } from "../ui/hooks";
 import { CombatReplay } from "../screens/CombatReplay";
@@ -13,7 +14,8 @@ import "../theme.css";
  * Mounts CombatReplay on synthetic battles: `?demo=full` has every hull class,
  * stations and the planet with the newer report fields; `legacy` is what
  * older reports carry (isPlanet and ships only); `monster` pits a creature
- * against a squadron.
+ * against a squadron; `lab-<preset>` runs a real combat lab preset (e.g.
+ * `lab-planet`) through the sim.
  */
 
 const session = GameSession.create({ seed: "battle-demo", playerCount: 2, monsters: true }, 0);
@@ -103,11 +105,19 @@ function report(kind: string): CombatReport {
   };
 }
 
+function labBattle(kind: string): { session: GameSession; report: CombatReport } | null {
+  const preset = LAB_PRESETS.find((p) => `lab-${p.id}` === kind);
+  if (!preset) return null;
+  const setup = setupCombatLab({ seed: "battle-demo", ...preset.spec });
+  return { session: new GameSession(setup.state, null), report: runCombatLab(setup, 0).reports[0]! };
+}
+
 function Demo() {
   const [kind] = useState(() => new URLSearchParams(location.search).get("demo") ?? "full");
-  const [rep] = useState(() => report(kind));
+  const [lab] = useState(() => labBattle(kind));
+  const [rep] = useState(() => lab?.report ?? report(kind));
   return (
-    <SessionContext.Provider value={session}>
+    <SessionContext.Provider value={lab?.session ?? session}>
       <div style={{ maxWidth: 1100, margin: "20px auto", padding: 16 }} className="modal">
         <h3 style={{ margin: "0 0 8px" }}>Battle at {home.name} (demo: {kind})</h3>
         <CombatReplay report={rep} />
