@@ -146,7 +146,9 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         finishes at most one item per turn; extra production carries into the next. With an empty queue, or with
         Trade Goods first, the turn's production becomes BC at {pct(TRADE_GOODS_RATE)}; production already stored stays
         for the next item. Housing turns production into population
-        growth instead. <b>Buy</b> completes the first item for BC: each missing point costs {BUY_PRICE_PER_POINT[0]} BC in the
+        growth instead. The <b>⟳</b> button on a ship or project turns on repeat build: it is built again every time
+        it finishes and stays first in the queue until you remove it or the rules allow no more of it (a portal is
+        built once, terraforming stops at the best climate). <b>Buy</b> completes the first item for BC: each missing point costs {BUY_PRICE_PER_POINT[0]} BC in the
         item's last half, {BUY_PRICE_PER_POINT[1]} BC from 10% to half done and {BUY_PRICE_PER_POINT[2]} BC below 10%,
         so buying from scratch costs about four times the item. Upgrading a station or planetary shield costs only the
         difference to the one it replaces.

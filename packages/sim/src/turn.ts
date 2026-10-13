@@ -39,7 +39,7 @@ import { raidersReturn, raidTick, returnThroughPortal, salvageTech, syncPortals 
 import { absorbResearch, payBribe, randomEventTick } from "./randomEvents.js";
 import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
-import { PLACED_PROJECTS, baseTargets, colonyRoom, freePlanetsInSystem, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
+import { PLACED_PROJECTS, availableDesigns, availableProjects, baseTargets, canBuildShips, colonyRoom, freePlanetsInSystem, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
 import { applyMutation } from "./mutation.js";
 import { applyDebug } from "./debug.js";
 import { score } from "./score.js";
@@ -930,7 +930,18 @@ function produce(ctx: TurnContext, colony: Colony, industry: number, tradeMult: 
   colony.progress -= cost;
   colony.queue.shift();
   completeItem(ctx, colony, head);
+  // A repeat item stays at the head until it is removed or the rules allow no more of it.
+  if ("repeat" in head && head.repeat && canBuildAgain(state, colony, head)) colony.queue.unshift(head);
   return 0;
+}
+
+/** Whether a colony could queue this ship or project again right now. */
+function canBuildAgain(state: GameState, colony: Colony, item: BuildItem): boolean {
+  if (item.kind === "ship") {
+    return availableDesigns(state, colony.ownerId).includes(item.designId) &&
+      canBuildShips(colony, findDesign(state.players[colony.ownerId]!, item.designId));
+  }
+  return item.kind === "project" && availableProjects(state, colony.ownerId, colony).includes(item.id);
 }
 
 /** BC from production sold as Trade Goods: half, rounded up, or all of it for fantastic traders. No other bonus applies. */

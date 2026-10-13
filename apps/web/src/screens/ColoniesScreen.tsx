@@ -207,6 +207,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
                 <span style={{ width: 18 }} className="muted">{i + 1}.</span>
                 <span style={{ flex: 1 }}>
                   {itemName(view, item)}
+                  {(item.kind === "ship" || item.kind === "project") && item.repeat && <small className="muted"> · repeat</small>}
                   {i === 0 && Number.isFinite(cost) && (
                     <div className="bar" style={{ marginTop: 3 }}><div style={{ width: `${Math.min(100, (colony.progress / cost) * 100)}%` }} /></div>
                   )}
@@ -214,6 +215,13 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
                 <small className="muted">
                   {Number.isFinite(cost) ? `${fmt(i === 0 ? colony.progress : 0)}/${fmt(cost)}` : "ongoing"}
                 </small>
+                {(item.kind === "ship" || (item.kind === "project" && Number.isFinite(cost))) && (
+                  <button className={item.repeat ? "small active" : "small"} disabled={readOnly} aria-pressed={!!item.repeat}
+                    title={item.repeat
+                      ? "Repeat build is on: this is built again every time it finishes, until you remove it or the rules allow no more of it. Items below wait. Click to build it only once."
+                      : "Repeat build: build this again every time it finishes, until you remove it or the rules allow no more of it. Items below wait while it repeats."}
+                    onClick={() => setQueue(colony.queue.map((q, j) => (j === i && (q.kind === "ship" || q.kind === "project") ? { ...q, repeat: !q.repeat } : q)))}>⟳</button>
+                )}
                 <button className="small" disabled={readOnly || i === 0} onClick={() => {
                   const q = [...colony.queue];
                   [q[i - 1], q[i]] = [q[i]!, q[i - 1]!];
