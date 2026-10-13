@@ -57,7 +57,7 @@ const EFFECT_TEXT: Record<WeaponEffect, string> = {
 
 const MOD_TEXT: Record<WeaponModId, string> = {
   heavyMount: `Bigger gun: ${signed(MOD_EFFECTS.heavyMountDamagePct)}% damage and longer range bands. Doubles the base size and cost.`,
-  pointDefense: `Small rapid mount that can also shoot down missiles and craft: +${MOD_EFFECTS.pointDefenseToHit} to hit, ${MOD_EFFECTS.pointDefenseDamagePct}% damage, shorter range. Halves the base size and cost.`,
+  pointDefense: `Small rapid mount that can also shoot down missiles and craft: +${MOD_EFFECTS.pointDefenseToHit} to hit, ${MOD_EFFECTS.pointDefenseDamagePct}% damage, shorter range. Halves the base size and cost. It only shoots down missiles and craft coming in inside its firing arc; pick All round to cover every side.`,
   armorPiercing: "Damage goes straight past the armor into structure.",
   continuous: `Steady beam: +${MOD_EFFECTS.continuousToHit} to hit.`,
   noRangeDissipation: "Full damage at any range.",
@@ -200,7 +200,7 @@ export function arcTip(arc: FiringArc): TipCard {
   return {
     title: `${a.name} arc`, kind: "Firing arc",
     rows: [["Covers", `${a.half * 2}°`], ["Space and cost", a.pct ? `${signed(a.pct)}%` : "base"]],
-    text: ["The directions this beam can shoot. Wider arcs let the ship fire while turning or retreating, for more space."],
+    text: ["The directions this beam can shoot. Wider arcs let the ship fire while turning or retreating, for more space. A point-defense mount also only fires at missiles and craft coming in from these directions."],
   };
 }
 

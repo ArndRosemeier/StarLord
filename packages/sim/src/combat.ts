@@ -272,6 +272,9 @@ interface Projectile {
   target: Unit;
   x: number;
   y: number;
+  /** Where it was just before it reached its target, so point defense can tell which side it came in from. */
+  fromX?: number;
+  fromY?: number;
   speed: number;
   /** Beam defense of each missile or craft against point defense. */
   defense: number;
@@ -1510,7 +1513,7 @@ export class Battle {
     return ((q % 4) + 4) % 4;
   }
 
-  inArc(u: Unit, m: Mount, target: Unit): boolean {
+  inArc(u: Unit, m: Mount, target: { x: number; y: number }): boolean {
     const arc = ARCS[m.arc];
     if (arc.half >= 180) return true;
     const rel = normAngle(Math.atan2(target.y - u.y, target.x - u.x) - u.heading - (arc.back ? Math.PI : 0));
@@ -2219,6 +2222,10 @@ export class Battle {
       any = true;
       if (d <= p.speed) {
         p.travelled += d;
+        if (p.x !== p.target.x || p.y !== p.target.y) {
+          p.fromX = p.x;
+          p.fromY = p.y;
+        }
         p.x = p.target.x;
         p.y = p.target.y;
         if (p.craft && p.craft !== "shuttles") {
@@ -2269,10 +2276,12 @@ export class Battle {
    * Point defense, anti-missile rockets and lightning fields thin out incoming
    * missiles and craft. Point defense and rockets only bother with missiles
    * and craft whose damage would get through the target's shield class;
-   * torpedoes cannot be shot down.
+   * torpedoes cannot be shot down. Like in the original, a point-defense
+   * mount only fires at missiles and craft coming in inside its firing arc.
    */
   interceptions(p: Projectile): void {
     const t = p.target;
+    const from = this.approach(p);
     const torpedo = p.weapon.kind === "torpedo";
     const shield = this.shieldWorks(t) ? t.shieldClass : 0;
     const threat = p.craft ? Math.max(p.owner.craftBeam.damageMax, p.owner.craftBomb?.damageMax ?? 0) : p.damage;
@@ -2281,7 +2290,7 @@ export class Battle {
       for (const m of t.mounts) {
         if (p.count <= 0) break;
         if (m.count <= 0) continue;
-        if (m.def.kind === "beam" && m.mods.has("pointDefense") && !m.firedThisRound) {
+        if (m.def.kind === "beam" && m.mods.has("pointDefense") && !m.firedThisRound && this.inArc(t, m, from)) {
           m.firedThisRound = true;
           const ev: CombatRoundEvent = { kind: "fire", ship: t.key, target: p.owner.key, weapon: m.def.id, hit: false, damage: 0 };
           for (let i = 0; i < m.count && p.count > 0; i++) {
@@ -2316,6 +2325,14 @@ export class Battle {
       for (let i = 0; i < p.count; i++) if (!this.rng.chance(t.fx.lightning)) kept++;
       p.count = kept;
     }
+  }
+
+  /** The point a missile or craft came in from: where it was before reaching its target, else its launcher. */
+  approach(p: Projectile): { x: number; y: number } {
+    const t = p.target;
+    const x = p.fromX ?? p.x;
+    const y = p.fromY ?? p.y;
+    return x !== t.x || y !== t.y ? { x, y } : { x: p.owner.x, y: p.owner.y };
   }
 
   impact(p: Projectile): void {
