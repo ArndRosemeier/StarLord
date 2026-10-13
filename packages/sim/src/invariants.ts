@@ -51,7 +51,7 @@ export function checkInvariants(state: GameState): string[] {
     }
     if (owner) {
       for (const item of c.queue) {
-        if (item.kind === "ship" && !findDesign(owner, item.designId)) bad(`colony ${c.name} builds unknown design ${item.designId}`);
+        if ((item.kind === "ship" || item.kind === "refit") && !findDesign(owner, item.designId)) bad(`colony ${c.name} builds unknown design ${item.designId}`);
       }
     }
   }

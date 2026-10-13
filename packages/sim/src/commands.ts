@@ -20,6 +20,7 @@ import {
   researchOptions,
 } from "./rules.js";
 import { validateMutation } from "./mutation.js";
+import { refitProblem } from "./refit.js";
 import { debugProblem, type DebugAction } from "./debug.js";
 import type { RacePicks } from "./data/races.js";
 import type {
@@ -61,6 +62,13 @@ export type Command =
   | { type: "setStance"; fleetId: Id; stance: FleetStance }
   | { type: "renameFleet"; fleetId: Id; name: string }
   | { type: "scrapShips"; fleetId: Id; designId: string; count: number }
+  /**
+   * Takes `count` ships of a design out of a fleet and queues a refit to
+   * another design of the same hull at a colony in the system they orbit.
+   */
+  | { type: "refitShips"; fleetId: Id; designId: string; toDesignId: string; colonyId: Id; count: number }
+  /** Removes a refit job from a colony's queue; the ship in dock is scrapped. */
+  | { type: "cancelRefit"; colonyId: Id; refitId: Id }
   | { type: "saveDesign"; design: ShipDesign }
   | { type: "obsoleteDesign"; designId: string; obsolete: boolean }
   | { type: "setDoctrine"; doctrine: CombatDoctrine }
@@ -148,7 +156,14 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const projects = new Set(availableProjects(state, playerId, c));
       const designs = new Set(availableDesigns(state, playerId));
       const seen = new Set<string>();
+      // Refit jobs hold a ship: they may be moved, but only cancelRefit removes one.
+      const refits = new Set(c.queue.flatMap((q) => (q.kind === "refit" ? [q.refitId] : [])));
+      const kept = new Set<string>();
       for (const item of cmd.queue) {
+        if (item.kind === "refit") {
+          if (!refits.has(item.refitId) || kept.has(item.refitId)) return fail("no such refit job here");
+          kept.add(item.refitId);
+        }
         if (item.kind === "building") {
           if (!BUILDINGS_BY_ID[item.id]) return fail(`unknown building ${item.id}`);
           if (!buildable.has(item.id)) return fail(`${item.id} not available`);
@@ -163,6 +178,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
         const alreadyHere = item.kind === "project" && c.queue.some((q) => q.kind === "project" && q.id === item.id);
         if (item.kind === "project" && !projects.has(item.id) && !alreadyHere) return fail(`project ${item.id} not available`);
       }
+      if (kept.size < refits.size) return fail("removing a refit job scraps its ship; cancel it instead");
       // Every Colony Base or Artificial Planet needs a planet of its own.
       for (const id of new Set(cmd.queue.flatMap((q) => (q.kind === "project" && PLACED_PROJECTS[q.id] ? [q.id] : [])))) {
         const claims = baseClaims(state, c, id, cmd.queue);
@@ -280,6 +296,17 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const f = ownFleet(state, playerId, cmd.fleetId);
       const have = f?.ships.find((s) => s.designId === cmd.designId)?.count ?? 0;
       return f && Number.isInteger(cmd.count) && cmd.count > 0 && cmd.count <= have ? OK : fail("nothing to scrap");
+    }
+    case "refitShips": {
+      const why = refitProblem(state, playerId, cmd);
+      if (why) return fail(why);
+      const c = state.colonies[cmd.colonyId]!;
+      return c.queue.length + cmd.count <= MAX_QUEUE ? OK : fail(`queue holds at most ${MAX_QUEUE} items`);
+    }
+    case "cancelRefit": {
+      const c = ownColony(state, playerId, cmd.colonyId);
+      if (!c) return fail("not your colony");
+      return c.queue.some((q) => q.kind === "refit" && q.refitId === cmd.refitId) ? OK : fail("no such refit job here");
     }
     case "saveDesign": {
       if (player.designs.filter((d) => !d.obsolete).length >= 30 && !findDesign(player, cmd.design.id)) {
@@ -455,7 +482,7 @@ export function blocksInvasion(colony: Colony): boolean {
 
 export function shipsBuilt(state: GameState, playerId: PlayerId, designId: string): boolean {
   return Object.values(state.fleets).some((f) => f.ownerId === playerId && f.ships.some((s) => s.designId === designId)) ||
-    Object.values(state.colonies).some((c) => c.ownerId === playerId && c.queue.some((q) => q.kind === "ship" && q.designId === designId));
+    Object.values(state.colonies).some((c) => c.ownerId === playerId && c.queue.some((q) => (q.kind === "ship" || q.kind === "refit") && q.designId === designId));
 }
 
 /** Hostile armed ships at a star stop colonization. */
