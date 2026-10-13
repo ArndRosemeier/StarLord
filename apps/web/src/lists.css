@@ -168,3 +168,27 @@ th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
   .bt-rays, .bt-ring, .bt-spark, .bt-headline, .bt-card, .bt-look-3 .bt-fx::before { animation: none; }
   .bt-ring, .bt-spark { display: none; }
 }
+
+/* ---- a leader introduces themself when offering their services */
+.leader-offer { max-width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; border-color: rgba(255, 200, 87, 0.5); box-shadow: 0 0 36px rgba(255, 200, 87, 0.2); }
+.lo-head { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: start; }
+.lo-portrait { border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 1px rgba(255, 200, 87, 0.5), 0 0 24px rgba(255, 200, 87, 0.25); animation: lo-arrive 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.lo-kicker { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #ffc857; font-weight: 700; }
+.lo-name { font-family: Orbitron, Inter, sans-serif; font-size: 24px; font-weight: 700; line-height: 1.15; }
+.lo-quote { margin: 6px 0 0; padding: 6px 10px; border-left: 3px solid #ffc857; font-style: italic; color: #dbe3f7; animation: fade-in 0.8s 0.3s both; }
+.lo-section { margin: 14px 0 4px; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #ffc857; font-weight: 700; }
+.lo-skill { font-size: 13px; padding: 5px 0; border-top: 1px solid var(--line); }
+.lo-tech { display: block; margin-top: 2px; }
+.lo-now { color: #b9f3cf; }
+.lo-terms { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.lo-terms > div { display: flex; flex-direction: column; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+.lo-terms b { font-size: 17px; }
+.lo-queue { margin-top: 10px; font-size: 12px; }
+.lo-why { margin-top: 6px; font-size: 12px; color: #ffc857; }
+.lo-buttons { margin-top: 12px; gap: 8px; flex-wrap: wrap; }
+@keyframes lo-arrive { from { opacity: 0; transform: translateX(-24px) scale(0.92); filter: blur(4px); } }
+@media (max-width: 560px) {
+  .lo-head { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .lo-terms { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { .lo-portrait, .lo-quote { animation: none; } }

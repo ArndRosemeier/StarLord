@@ -246,17 +246,45 @@ export function farmerFood(state: GameState, colony: Colony): number {
   return Math.max(0, colonyOutput(state, trial).foodProduced - colonyOutput(state, colony).foodProduced);
 }
 
-export function colonyOutput(state: GameState, colony: Colony): ColonyOutput {
+/** A colony's output; `leader` stands in for the system's administrator (null: as if none governed it). */
+export function colonyOutput(state: GameState, colony: Colony, leader?: LeaderSkills | null): ColonyOutput {
   const planet = state.planets[colony.planetId]!;
   const player = state.players[colony.ownerId]!;
   return computeOutput(planet, player, colony, {
     frozen: systemFrozen(state, planet.starId),
     turn: state.turn,
-    leader: administratorSkills(state, planet.starId, colony.ownerId),
+    leader: leader === undefined ? administratorSkills(state, planet.starId, colony.ownerId) : leader ?? undefined,
     blockaded: isBlockaded(state, colony),
     difficulty: state.settings.difficulty,
     growthPercent: eventGrowthPercent(state, colony.id),
   });
+}
+
+/** What a colony leader would change in one of an empire's systems right now, summed over its colonies there. */
+export interface AdministratorGain {
+  starId: string;
+  food: number;
+  industry: number;
+  research: number;
+  bc: number;
+  /** Morale points, on the colony with the biggest change. */
+  morale: number;
+}
+
+/** The change if `skills` governed the system in place of its current administrator (or nobody). */
+export function administratorGain(state: GameState, ownerId: PlayerId, starId: string, skills: LeaderSkills): AdministratorGain {
+  const gain: AdministratorGain = { starId, food: 0, industry: 0, research: 0, bc: 0, morale: 0 };
+  for (const c of Object.values(state.colonies)) {
+    if (c.ownerId !== ownerId || state.planets[c.planetId]?.starId !== starId) continue;
+    const now = colonyOutput(state, c);
+    const then = colonyOutput(state, c, skills);
+    gain.food += then.foodProduced - now.foodProduced;
+    gain.industry += then.industry - now.industry;
+    gain.research += then.research - now.research;
+    gain.bc += then.bc - now.bc;
+    gain.morale = Math.max(gain.morale, then.morale - now.morale);
+  }
+  return gain;
 }
 
 /** Skills of the administrator governing a star system, if any. */

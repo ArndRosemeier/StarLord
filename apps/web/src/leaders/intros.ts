@@ -1,0 +1,82 @@
+import type { Leader } from "@starlord/sim";
+
+/**
+ * What each hero says when they first offer their services, in their own
+ * voice. Keyed by hero name; the skills and their numbers are listed under it
+ * by the offer window, so these lines carry character, not rules.
+ */
+export const HERO_INTROS: Record<string, string> = {
+  "Tavik Orrun": "Twelve years on the gun decks of a border patrol, and I never once missed a shot that mattered. Give me a ship worth firing from.",
+  "Mela Dunsparrow": "I grew up behind a plough on a world that barely wanted us. Put me in charge of your fields and nobody in my system goes hungry.",
+  "Corso Lint": "Fighter jocks are a rowdy lot, but they fly straight for someone they trust. They trust me.",
+  "Hadd Burrock": "Boarding actions are ugly work, ruler. I have done them for thirty years and I am still standing. That should tell you something.",
+  "Iselle Marr": "My last laboratory was closed for lack of funding. Yours looks better equipped. I would like to make it famous.",
+  "Peregrin Dask": "I have flown through ion storms with half an engine. Your fleets would be in steady hands.",
+  "Bolo Krane": "Factories run on two things: good tools and a foreman who knows every worker's name. You supply the tools.",
+  "Tinker Pell": "I take things apart. Sometimes they work better when I put them back together. Usually, in fact.",
+  "Ossa Venn": "Every credit has somewhere it would rather be. I find out where, and I send it there first.",
+  "Merrow Sal": "The space lanes are like a sea, if you know how to read the currents. I have never met a current I could not read.",
+  "Ilya Fenwright": "A hull is a living thing. Listen to it, mend it, and it will bring your crew home every time.",
+  "Grast Vokk": "My clan sent me out to find a worthy war. Yours looks worthy. My blade and my rifle are yours.",
+  "Aubrin Cale": "My family has more money than it knows what to do with, and I have more time than I know what to do with. Allow me to be useful.",
+  "Quent Varro": "I run cargo, I run guns, and I run circles around anyone who tries to stop me. You will find I pay for myself.",
+  "Master Shoan": "I have taught captains, governors and one very stubborn emperor. Send me your people and they will leave better than they came.",
+  "Skiv Arrowind": "Strap me into anything with wings and I will bring it back without a scratch. Mostly.",
+  "Hesk Amaru": "I have stitched up soldiers under fire. A colony full of healthy families sounds like a holiday.",
+  "Gearwick": "Half of me is machine, and I built that half myself. Imagine what I could do for your ships.",
+  "Corrin Dace": "I have talked warlords out of wars and merchants out of their profits. Let me speak for your empire.",
+  "Jessa Holloway": "I have charted routes nobody else dared, and made friends at the end of every one of them.",
+  "Vesk the Quiet": "You did not hear me arrive. That is rather the point. Your enemies will not hear me either.",
+  "Rhaal Kesh": "I won the champion's circle of my clan nine times. The tenth challenger is still looking for his teeth. Point me at your foes.",
+  "Lysenne": "My songs have calmed rioting cities and made old enemies weep together. Give me a world and I will give it peace.",
+  "Drey Mallick": "Blockades are just walls with gaps, and I have found every gap there is. Your goods will move, and so will your foes' money.",
+  "Urgo Thane": "I run my worlds like a fortress: fed, armed and working. Nobody has ever taken a world of mine.",
+  "Kor Vashti": "I have commanded fleets in three wars and lost none of them. I do not intend to start with yours.",
+  "Ammon Teel": "The mind is the last frontier, ruler. Fund my work and I will chart it for you.",
+  "Nix Calder": "I left my last navy on bad terms. They wanted me to follow orders. I wanted to win. You look like you want to win.",
+  "Sabel Orre": "I own three trading houses and a small moon. Hire me and the profit goes both ways.",
+  "Eon Tharal": "I have travelled longer than your empire has existed, and seen doors between worlds that few remember. I can open one for you.",
+  "Wren Sollis": "They say I am too young to command. Then they see what my guns can do, and they stop saying it.",
+  "Borrag Stonefist": "I have led more assaults than I can count, and every one of my troopers knows my name. So will your enemies.",
+  "Fennick Moss": "Give me a barren rock and a few years, and I will hand you back a garden. I have done it before.",
+  "Cassor Rile": "I am a professional, ruler. I fly, I fight, I guard my ship. You pay, and I never ask why.",
+  "Unit Seven": "Greetings. I am designed to administer. Fields, factories, treasuries, clinics. Efficiency is my only ambition.",
+  "Gobbel Raz": "Old maps, lost routes, buried fortunes. I know where the galaxy keeps its secrets, and I always turn a profit on them.",
+  "Strategos Ilm": "Wars are won long before the first shot. I plan for victory, and I train others to plan for it too.",
+  "Thessaly Fern": "Every world has a heart. Let me tend yours, and it will feed your people and stay green for generations.",
+  "Moggin Sharr": "Weapons, ships, favours: I sell everything to everyone. For you, ruler, I would make an exception and sell only to you.",
+  "Seer Ondine": "I saw you in a dream before I saw you here. The dream ended well. Shall we make it true?",
+  "Kael Dorne": "My own people exiled me for winning a duel I was meant to lose. My sword has been looking for an honest employer since.",
+  "Cipher": "Who I am does not matter. What I can do, you will discover. You will not be disappointed.",
+  "Razik Voss": "Half my body is weapons and the other half is wired into every network I pass. Your rivals will never know what hit them.",
+  "Alder Quill": "My work has filled libraries. I want it to fill your laboratories next, and I bring my best inventions with me.",
+  "Grond Hask": "There is no weapon I have not mastered and no fight I have run from. Arm your ships with me.",
+  "Sable Nightjar": "The Black Hand has many fingers, ruler. For the right price, all of them can work for you.",
+  "Kestra Vane": "Corsair, smuggler, hero of the outer lanes. It depends who is telling the story. Every story ends with me winning.",
+  "Tamsin Rook": "I have stood on the barricades and stirred whole worlds to work harder than they ever thought possible. Give me a people to inspire.",
+  "Halvard Crowe": "I hunt the ones nobody else can find. Spies, traitors, warlords. Tell me who troubles you.",
+  "Lumen": "I think in light and see the thoughts of others like stars in a night sky. Your worlds would shine under my care.",
+  "Serin Vael": "I would rather end a war with words. When words fail, I end it with gunnery. Either way, it ends.",
+  "Mother Kix": "My broods never tire and never complain. Give me a system and I will make it hum like a hive.",
+  "The Stranger": "Names are for those who plan to stay. I might stay. That depends on what you can offer.",
+  "Baron Mordrake": "My worlds pay their taxes, feed their workers and build what they are told. Order is simply good management.",
+  "Aria Swift": "Three hundred kills and counting. My pilots would follow me into a star. Let us not make them, shall we?",
+  "Oberon Lux": "Science, sorcery: from far enough away they look the same. I have walked both roads and grown rich on them.",
+  "Redbeard Kasso": "I have plundered every lane between here and the galactic rim. Now I fancy fighting for a crown instead of against one.",
+  "The Custodian": "Custodial protocols resumed. I have waited a very long time for a worthy steward. My builders left me gifts to share.",
+  "Varro Blackmane": "My bandits are the best pilots outside any navy, and the richest. For you, we will fly under a proper flag.",
+  "Hollis Brand": "I have built shipyards, fortresses and three capitals. Whatever you need built, I will build it better.",
+  "Mother Ysolde": "I have seen the shape of your coming wars. Let me guide your ships through them.",
+  "Teodor Raine": "Every academy teaches my battles. I would like to fight a few more, for an empire that deserves them.",
+  "Brakka Holt": "I have marshalled armies and rebuilt the worlds they fought over. Discipline and hard work win both.",
+  "Malachar": "I see what your people think before they think it. They will work hard, and they will be glad to.",
+  "Solenne": "I have governed worlds richer than any you own, and left each richer than I found it. Let me show you how.",
+  "Aldric the Last": "My people kept watch over the ancient guardian for an age. You have ended that watch. Then I will serve the one who did.",
+  "Xal Tereth": "The raiders were my people once. You beat them, and I have no love left for those who lost. I fight for you now.",
+};
+
+/** The hero's greeting: their own line, or a plain one for a hero without one. */
+export function heroIntro(l: Pick<Leader, "name" | "title" | "kind">): string {
+  return HERO_INTROS[l.name]
+    ?? (l.kind === "captain" ? "Give me a ship to command and I will not let you down." : "Give me a system to govern and I will not let you down.");
+}

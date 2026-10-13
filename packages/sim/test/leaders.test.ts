@@ -92,6 +92,8 @@ describe("leaders", () => {
     for (let i = 0; i < 30 && !s.players[0]!.leaderOffers.length; i++) s = processTurn(s, {});
     const o = s.players[0]!.leaderOffers[0]!;
     expect(o).toBeDefined();
+    // The offer is announced so the player's screen can let the hero introduce themself.
+    expect(s.events.some((e) => e.kind === "leader" && e.offer && e.leaderId === o.id && e.playerId === 0)).toBe(true);
     expect(playerView(s, 1).players[0]!.leaderOffers).toHaveLength(0);
     s.players[0]!.bc = 10000;
     const idle = processTurn(structuredClone(s), {});
