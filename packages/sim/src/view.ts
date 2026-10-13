@@ -19,6 +19,33 @@ export type PlayerView = GameState & {
   knownTreatyPop?: Record<PlayerId, { trade: number; research: number }>;
 };
 
+/** A point a player's scanners see from: one of its fleets or colonies, with that scanner's range in parsecs. */
+export interface ScannerEye { x: number; y: number; range: number; source: "fleet" | "colony"; id: string }
+
+/**
+ * Where a player's scanners reach: every fleet sees the empire's scanner range (plus a Battle
+ * Scanner's bonus) and every colony the same plus its orbital station's bonus. Works on a
+ * PlayerView too, since a view holds all of the viewer's own fleets and colonies.
+ */
+export function scannerEyes(state: GameState, playerId: PlayerId): ScannerEye[] {
+  const me = state.players[playerId]!;
+  const range = scanRange(me);
+  const hasSpecial = (f: Fleet, special: string) =>
+    f.ships.some((s) => findDesign(me, s.designId)?.specials?.includes(special));
+  const starById = new Map(state.galaxy.stars.map((s) => [s.id, s]));
+  const eyes: ScannerEye[] = [];
+  for (const f of Object.values(state.fleets)) {
+    if (f.ownerId !== playerId) continue;
+    eyes.push({ x: f.x, y: f.y, range: range + (hasSpecial(f, "battleScanner") ? BATTLE_SCANNER_RANGE : 0), source: "fleet", id: f.id });
+  }
+  for (const c of Object.values(state.colonies)) {
+    if (c.ownerId !== playerId) continue;
+    const s = starById.get(state.planets[c.planetId]?.starId ?? "");
+    if (s) eyes.push({ x: s.x, y: s.y, range: range + colonyScanBonus(c), source: "colony", id: c.id });
+  }
+  return eyes;
+}
+
 /**
  * The game as one player knows it: every star position, but planets only in
  * explored systems and foreign fleets only within scanner range. AI and
@@ -34,20 +61,7 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
   const colonies = Object.fromEntries(
     Object.entries(state.colonies).filter(([, c]) => c.ownerId === viewer || planets[c.planetId]),
   );
-  const range = scanRange(me);
-  const hasSpecial = (f: Fleet, special: string) =>
-    f.ships.some((s) => findDesign(me, s.designId)?.specials?.includes(special));
-  const eyes: { x: number; y: number; range: number }[] = [
-    ...Object.values(state.fleets)
-      .filter((f) => f.ownerId === viewer)
-      .map((f) => ({ x: f.x, y: f.y, range: range + (hasSpecial(f, "battleScanner") ? BATTLE_SCANNER_RANGE : 0) })),
-    ...Object.values(state.colonies)
-      .filter((c) => c.ownerId === viewer)
-      .map((c) => {
-        const s = starById.get(state.planets[c.planetId]!.starId)!;
-        return { x: s.x, y: s.y, range: range + colonyScanBonus(c) };
-      }),
-  ];
+  const eyes = scannerEyes(state, viewer);
   // Monsters sitting in a system are a surprise: nobody sees them, not even by
   // scanner or omniscience, until the system is explored; from then on the lair is a known landmark.
   const parkedMonster = (f: { ownerId: PlayerId; starId: string | null }) =>

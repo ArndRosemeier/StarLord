@@ -14,6 +14,9 @@ import { PlanetFacts, buildingScrapTip, buildingTip, moraleTip, projectTip, trad
 import { designTip } from "./designTips";
 import { BaseChoices } from "./BasePrompt";
 import { JobRows } from "./JobRows";
+import { SortTh, sortRows, useSort, type SortValue } from "../ui/sort";
+
+type ColonySortKey = "name" | "pop" | "food" | "industry" | "research" | "building";
 
 export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (starId: string) => void; initialColony?: string | null }) {
   const { view, me } = useGame();
@@ -22,6 +25,24 @@ export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (sta
     initialColony && view.colonies[initialColony]?.ownerId === me.id ? initialColony : colonies[0]?.id ?? null,
   );
   const colony = selected ? view.colonies[selected] : undefined;
+  const { sort, toggle } = useSort<ColonySortKey>("name", "asc", (k) => (k === "name" || k === "building" ? "asc" : "desc"));
+  const rows = colonies.map((c) => {
+    const o = colonyOutput(view, c);
+    const head = c.queue[0];
+    const cost = head ? itemCost(view, me.id, head, c) : 0;
+    const turns = head && Number.isFinite(cost) && o.industry > 0 ? Math.ceil((cost - c.progress) / o.industry) : null;
+    return { c, o, head, turns };
+  });
+  const sorted = sortRows(rows, sort, ({ c, o, head }, k): SortValue => {
+    switch (k) {
+      case "name": return c.name;
+      case "pop": return c.outpost ? null : population(c);
+      case "food": return c.outpost ? null : o.foodNet;
+      case "industry": return c.outpost ? null : o.industry;
+      case "research": return c.outpost ? null : o.research;
+      case "building": return head ? itemName(view, head) : c.outpost ? null : "";
+    }
+  });
 
   return (
     <div className="grid2" style={{ gridTemplateColumns: "minmax(420px, 1.1fr) minmax(380px, 1fr)" }}>
@@ -29,30 +50,31 @@ export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (sta
         <h2>Colonies</h2>
         <table>
           <thead>
-            <tr><th>Colony</th><th>Pop</th><th className="food">Food</th><th className="industry">Ind</th><th className="research">Res</th><th>Building</th></tr>
+            <tr>
+              <SortTh k="name" sort={sort} onSort={toggle}>Colony</SortTh>
+              <SortTh k="pop" sort={sort} onSort={toggle}>Pop</SortTh>
+              <SortTh k="food" sort={sort} onSort={toggle} className="food">Food</SortTh>
+              <SortTh k="industry" sort={sort} onSort={toggle} className="industry">Ind</SortTh>
+              <SortTh k="research" sort={sort} onSort={toggle} className="research">Res</SortTh>
+              <SortTh k="building" sort={sort} onSort={toggle}>Building</SortTh>
+            </tr>
           </thead>
           <tbody>
-            {colonies.map((c) => {
-              const o = colonyOutput(view, c);
-              const head = c.queue[0];
-              const cost = head ? itemCost(view, me.id, head, c) : 0;
-              const turns = head && Number.isFinite(cost) && o.industry > 0 ? Math.ceil((cost - c.progress) / o.industry) : null;
-              return (
-                <tr key={c.id} className={`clickable${c.id === selected ? " selected" : ""}`} onClick={() => setSelected(c.id)}>
-                  <td>
-                    <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-                      {view.planets[c.planetId] && <PlanetIcon planet={view.planets[c.planetId]!} size={20} />}
-                      {c.name}{c.outpost && <small className="muted"> outpost</small>}
-                    </span>
-                  </td>
-                  <td>{c.outpost ? "–" : `${population(c)}/${o.maxPopulation}`}</td>
-                  <td className={o.foodNet < 0 ? "bad" : ""}>{c.outpost ? "" : signed(o.foodNet)}</td>
-                  <td>{c.outpost ? "" : fmt(o.industry)}</td>
-                  <td>{c.outpost ? "" : fmt(o.research)}</td>
-                  <td className="muted">{head ? `${itemName(view, head)}${turns !== null && !isContinuous(head) ? ` (${Math.max(1, turns)})` : ""}` : c.outpost ? "" : <span className="warn">Trade Goods</span>}</td>
-                </tr>
-              );
-            })}
+            {sorted.map(({ c, o, head, turns }) => (
+              <tr key={c.id} className={`clickable${c.id === selected ? " selected" : ""}`} onClick={() => setSelected(c.id)}>
+                <td>
+                  <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                    {view.planets[c.planetId] && <PlanetIcon planet={view.planets[c.planetId]!} size={20} />}
+                    {c.name}{c.outpost && <small className="muted"> outpost</small>}
+                  </span>
+                </td>
+                <td>{c.outpost ? "–" : `${population(c)}/${o.maxPopulation}`}</td>
+                <td className={o.foodNet < 0 ? "bad" : ""}>{c.outpost ? "" : signed(o.foodNet)}</td>
+                <td>{c.outpost ? "" : fmt(o.industry)}</td>
+                <td>{c.outpost ? "" : fmt(o.research)}</td>
+                <td className="muted">{head ? `${itemName(view, head)}${turns !== null && !isContinuous(head) ? ` (${Math.max(1, turns)})` : ""}` : c.outpost ? "" : <span className="warn">Trade Goods</span>}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

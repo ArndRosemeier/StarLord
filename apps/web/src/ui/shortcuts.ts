@@ -26,7 +26,7 @@ const tab = (key: string, t: ShortcutTab, what: string): Shortcut => ({ key, lab
 export const SHORTCUTS: Shortcut[] = [
   tab("m", "map", "Galaxy map"),
   tab("c", "colonies", "Colonies"),
-  // P opens the Planets screen once it exists: add `tab("p", "planets", "Planets")` here and a "planets" tab in GameShell.
+  tab("p", "planets", "Planets (colony and outpost targets)"),
   tab("t", "research", "Research (technology)"),
   tab("d", "designs", "Ship design"),
   tab("f", "fleets", "Fleets"),
