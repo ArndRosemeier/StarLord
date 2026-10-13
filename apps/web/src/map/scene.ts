@@ -1,5 +1,5 @@
 import {
-  canReach, distance, distanceToNearestColony, findDesign, fleetFuelRange, travelTurns,
+  canReach, distance, distanceToNearestColony, findDesign, fleetFuelRange, fleetRange, refuelStars, scannerEyes, travelTurns,
   type Fleet, type HullSize, type Player, type PlayerView, type Star,
 } from "@starlord/sim";
 
@@ -26,6 +26,66 @@ export interface MapScene {
   nebulae: { x: number; y: number; r: number }[];
   /** Wormhole pairs, drawn as links between their stars. */
   wormholes: { x1: number; y1: number; x2: number; y2: number }[];
+  /** The viewer's fuel range around every star it refuels at, when that overlay is on. */
+  fuelRange: RangeCircle[];
+  /** The viewer's scanner coverage around its colonies and fleets, when that overlay is on. */
+  scanRange: RangeCircle[];
+}
+
+/** A disc on the map in galaxy units (parsecs). */
+export interface RangeCircle { x: number; y: number; r: number }
+
+/** Which empire-wide range displays the map draws. */
+export interface MapOverlays { fuel: boolean; scan: boolean }
+
+/** Drops circles that repeat another exactly, so overlapping colonies and fleets draw one outline. */
+function uniqueCircles(circles: RangeCircle[]): RangeCircle[] {
+  const seen = new Set<string>();
+  return circles.filter((c) => {
+    const key = `${c.x},${c.y},${c.r}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Arcs (start and end angle, radians) of each circle's rim that lie outside every other circle. */
+export function unionArcs(circles: readonly RangeCircle[], step = 0.05): { circle: RangeCircle; arcs: [number, number][] }[] {
+  return circles.map((c, i) => {
+    const arcs: [number, number][] = [];
+    const n = Math.max(24, Math.ceil((Math.PI * 2) / step));
+    const d = (Math.PI * 2) / n;
+    let start: number | null = null;
+    for (let k = 0; k <= n; k++) {
+      const a = k * d;
+      const mid = a + d / 2;
+      const px = c.x + Math.cos(mid) * c.r;
+      const py = c.y + Math.sin(mid) * c.r;
+      const covered = k < n && circles.some((o, j) => j !== i && Math.hypot(px - o.x, py - o.y) < o.r - 1e-9);
+      const outside = k < n && !covered;
+      if (outside && start === null) start = a;
+      if (!outside && start !== null) {
+        arcs.push([start, a]);
+        start = null;
+      }
+    }
+    // Join an arc that wraps past angle zero.
+    if (arcs.length > 1 && arcs[0]![0] === 0 && Math.abs(arcs[arcs.length - 1]![1] - Math.PI * 2) < 1e-9) {
+      const last = arcs.pop()!;
+      arcs[0] = [last[0] - Math.PI * 2, arcs[0]![1]];
+    }
+    return { circle: c, arcs };
+  });
+}
+
+/** Where the viewer's ships may fly (fuel range from every refuelling star) and what its scanners see. */
+export function rangeOverlays(view: PlayerView, overlays: MapOverlays): Pick<MapScene, "fuelRange" | "scanRange"> {
+  const me = view.players[view.viewer]!;
+  const range = fleetRange(me);
+  return {
+    fuelRange: overlays.fuel ? uniqueCircles(refuelStars(view, view.viewer).map((s) => ({ x: s.x, y: s.y, r: range }))) : [],
+    scanRange: overlays.scan ? uniqueCircles(scannerEyes(view, view.viewer).map((e) => ({ x: e.x, y: e.y, r: e.range }))) : [],
+  };
 }
 
 /** Whether a fleet can be sent to a star, and how long it would take or why not. */
@@ -135,6 +195,7 @@ export function buildScene(
   selectedStarId: string | null,
   selectedFleetIds: string | readonly string[] | null,
   canOrder = false,
+  overlays: MapOverlays = { fuel: false, scan: false },
 ): MapScene {
   const me = view.players[view.viewer]!;
   const explored = new Set(me.explored);
@@ -209,6 +270,7 @@ export function buildScene(
     stars, fleets, selectedStarId, selectedFleetIds: selected, reachable, routes, fleetRoutes,
     nebulae: (view.nebulae ?? []).map((n) => ({ x: n.x, y: n.y, r: n.r })),
     wormholes,
+    ...rangeOverlays(view, overlays),
   };
 }
 
