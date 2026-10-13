@@ -371,7 +371,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         get through the target's shields. Its switch cycles <b>Fire</b>, <b>Standby</b> (sits out the next volley)
         and <b>Off</b> (stays off). <b>Turn to face it</b> swings the ship so a weapon's arc covers the target;
         <b> Board</b> sends marines to a ship they can reach; <b>Wait</b> lets your other units act first; <b>Done</b>
-        ends the unit's turn. A ship can also <b>Retreat</b>, let the computer play its turn, or you can
+        ends the unit's turn. <b>Scan</b> shows a unit's armor, shields per facing, ratings, systems and weapons (while
+        it is on, click any unit to scan it). Missiles flying at the unit are listed with when they hit, and how much
+        sooner if you move where you planned. <b>Self-destruct</b> blows the ship up: its explosion damages every unit
+        nearby, friend or foe. A ship can also <b>Retreat</b>, let the computer play its turn, or you can
         <b> Auto-resolve the rest</b> at any time. Turn the
         question off with <b>Let me command my battles</b> under Game (or on the Fleets screen), and every battle then
         resolves by itself.

@@ -57,3 +57,4 @@ export * from "./debug.js";
 export * from "./data/debug.js";
 export * from "./invariants.js";
 export * from "./ongoingEvents.js";
+export { EXPLOSION } from "./data/combat.js";

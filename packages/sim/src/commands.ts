@@ -329,7 +329,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       if (typeof cmd.battle !== "string") return fail("no such battle");
       if (cmd.orders === "auto") return OK;
       if (!Array.isArray(cmd.orders)) return fail("bad orders");
-      const kinds = ["act", "retreat", "ai", "auto", "move", "face", "fire", "board", "wait", "done"];
+      const kinds = ["act", "retreat", "ai", "auto", "move", "face", "fire", "board", "wait", "done", "selfDestruct"];
       return cmd.orders.every((o) => o && kinds.includes(o.kind)) ? OK : fail("bad orders");
     }
     case "setDoctrine": {

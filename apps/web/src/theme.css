@@ -678,3 +678,6 @@ body:has(.job-drag-card) { cursor: grabbing; }
 .command-weapons .weapon-mode.on { border-color: #3fbf6f; color: #6fe39a; }
 .command-weapons .weapon-mode.standby { border-color: #d99a2b; color: #f2b950; }
 .command-weapons .weapon-mode.off { border-color: #c4473f; color: #ef7a72; }
+.scan-panel { top: 12px; transform: translateX(-50%); max-height: calc(100% - 24px); overflow: auto; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.scan-grid { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
+.command-incoming { gap: 4px 14px; font-size: 13px; }
