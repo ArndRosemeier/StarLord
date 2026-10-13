@@ -320,7 +320,9 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
                 <div className="panel bad" style={{ marginBottom: 12 }}>Some orders are invalid: {session.rejected.join("; ")}</div>
               )}
               {tab === "map" && <MapScreen focusStar={focusStar} onFocused={() => setFocusStar(null)} onOpenColony={openColony}
-                onOpenResearch={() => go("research")} onOpenReports={() => go("events")} cycle={mapCycle} onCycled={() => setMapCycle(null)} />}
+                onOpenResearch={() => go("research")} onOpenReports={() => go("events")} cycle={mapCycle} onCycled={() => setMapCycle(null)}
+                flashReady={!autoplay && !battles.length && !news.length && !celebration && !leaderOffers.length && !councilPopup && !audiences.length
+                  && !basePrompt && !session.battle && !session.orbital && !(view.over && !overSeen)} />}
               {tab === "colonies" && <ColoniesScreen onShowStar={showStar} initialColony={colonyFocus} />}
               {tab === "planets" && <PlanetsScreen onShowStar={showStar} />}
               {tab === "research" && <ResearchScreen />}

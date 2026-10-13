@@ -80,9 +80,9 @@ describe("autosave", () => {
   });
 
   it("ignores bad stored settings", () => {
-    localStorage.setItem("starlord.prefs", JSON.stringify({ autosave: "yes", replaySpeed: 7 }));
+    localStorage.setItem("starlord.prefs", JSON.stringify({ autosave: "yes", replaySpeed: 7, mapFlashes: "sparkle" }));
     resetPrefsCache();
-    expect(getPrefs()).toEqual({ autosave: true, replaySpeed: 1 });
+    expect(getPrefs()).toEqual({ autosave: true, replaySpeed: 1, mapFlashes: "burst" });
   });
 });
 
