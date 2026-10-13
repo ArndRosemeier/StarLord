@@ -225,6 +225,17 @@ export function systemFrozen(state: GameState, starId: string | null | undefined
   return !!starId && (state.activeEvents ?? []).some((e) => e.kind === "timeSpaceAnomaly" && e.starId === starId);
 }
 
+/**
+ * Food one more settler farmer would grow on this colony, taking a worker (or
+ * else a scientist) off their job; 0 where farming grows nothing.
+ */
+export function farmerFood(state: GameState, colony: Colony): number {
+  const trial: Colony = { ...colony, farmers: colony.farmers + 1 };
+  if (colony.workers > 0) trial.workers--;
+  else if (colony.scientists > 0) trial.scientists--;
+  return Math.max(0, colonyOutput(state, trial).foodProduced - colonyOutput(state, colony).foodProduced);
+}
+
 export function colonyOutput(state: GameState, colony: Colony): ColonyOutput {
   const planet = state.planets[colony.planetId]!;
   const player = state.players[colony.ownerId]!;
