@@ -31,7 +31,8 @@ class FakeTrack implements MusicTrack {
   }
 }
 
-function setup() {
+/** Without a random source the shuffle keeps the listed order: galaxy-1, galaxy-2, ... */
+function setup(random: () => number = () => 0.999) {
   const tracks: FakeTrack[] = [];
   const handlers: Record<string, (() => void)[]> = {};
   const timers: (() => void)[] = [];
@@ -47,6 +48,7 @@ function setup() {
     setTimeout: (fn) => timers.push(fn),
     now: () => 0,
     nextFrame: () => {},
+    random,
   };
   const fire = (type: string) => handlers[type]?.forEach((fn) => fn());
   return { director: new AudioDirector(env), tracks, timers, state, fire };
@@ -64,9 +66,29 @@ describe("background music", () => {
     expect(tracks).toHaveLength(1);
     expect(tracks[0]!.src).toBe("audio/galaxy-2.mp3");
     expect(tracks[0]!.paused).toBe(false);
-    tracks[0]!.emit("ended");
-    expect(tracks[0]!.src).toBe("audio/galaxy-1.mp3");
     expect(tracks[0]!.paused).toBe(false);
+  });
+
+  it("shuffles the galaxy tracks, playing every one before any repeats and never one twice in a row", () => {
+    let seed = 7;
+    const { director, tracks } = setup(() => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646);
+    director.setMood("galaxy");
+    const played = [tracks[0]!.src];
+    for (let i = 0; i < 69; i++) {
+      tracks[0]!.emit("ended");
+      played.push(tracks[0]!.src);
+    }
+    for (let round = 0; round < 10; round++) expect(new Set(played.slice(round * 7, round * 7 + 7)).size).toBe(7);
+    for (let i = 1; i < played.length; i++) expect(played[i]).not.toBe(played[i - 1]);
+    expect(played.slice(0, 7)).not.toEqual(played.slice(7, 14));
+  });
+
+  it("picks up with a different galaxy track after a battle", () => {
+    const { director, tracks } = setup();
+    director.setMood("galaxy");
+    director.setMood("combat");
+    director.setMood("galaxy");
+    expect(tracks.map((t) => t.src)).toEqual(["audio/galaxy-1.mp3", "audio/combat.mp3", "audio/galaxy-2.mp3"]);
   });
 
   it("restarts music on any later click or key when the browser refused or paused it", async () => {

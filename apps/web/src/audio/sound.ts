@@ -11,7 +11,7 @@ export type Effect = "click" | "select" | "turn" | "alert" | "fanfare" | "boom" 
 
 const PLAYLISTS: Record<Exclude<Mood, "none">, { tracks: string[]; loop: boolean }> = {
   menu: { tracks: ["audio/menu.mp3"], loop: true },
-  galaxy: { tracks: ["audio/galaxy-1.mp3", "audio/galaxy-2.mp3"], loop: true },
+  galaxy: { tracks: [1, 2, 3, 4, 5, 6, 7].map((n) => `audio/galaxy-${n}.mp3`), loop: true },
   combat: { tracks: ["audio/combat.mp3"], loop: true },
   victory: { tracks: ["audio/victory.mp3"], loop: false },
   defeat: { tracks: ["audio/defeat.mp3"], loop: false },
@@ -58,6 +58,8 @@ export interface AudioEnv {
   setTimeout(fn: () => void, ms: number): unknown;
   now(): number;
   nextFrame(fn: () => void): void;
+  /** A number in [0, 1) for shuffling playlists; Math.random when left out. */
+  random?(): number;
 }
 
 function browserEnv(): AudioEnv {
@@ -69,6 +71,7 @@ function browserEnv(): AudioEnv {
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     now: () => performance.now(),
     nextFrame: (fn) => requestAnimationFrame(fn),
+    random: () => Math.random(),
   };
 }
 
@@ -82,6 +85,8 @@ export class AudioDirector {
   private mood: Mood = "none";
   private current: MusicTrack | null = null;
   private trackIndex = 0;
+  /** Each playlist plays in a shuffled order and is reshuffled once every track has played. */
+  private queues = new Map<Mood, { order: number[]; pos: number }>();
   /** A one-shot playlist (victory, defeat) that has played to its end stays quiet. */
   private finished = false;
   private failures = 0;
@@ -141,7 +146,7 @@ export class AudioDirector {
     const previous = this.mood;
     if (mood === previous) return previous;
     this.mood = mood;
-    this.trackIndex = 0;
+    this.trackIndex = this.nextTrack();
     this.finished = false;
     this.failures = 0;
     this.fadeOut(this.current);
@@ -157,9 +162,30 @@ export class AudioDirector {
     void track.play().catch(() => {});
   }
 
+  /** Index of the next track in the mood's shuffled order; a new order never starts with the track just played. */
+  private nextTrack(): number {
+    if (this.mood === "none") return 0;
+    const n = PLAYLISTS[this.mood].tracks.length;
+    if (n <= 1) return 0;
+    let queue = this.queues.get(this.mood);
+    if (!queue || queue.pos >= n) {
+      const random = this.env.random ?? Math.random;
+      const order = Array.from({ length: n }, (_, i) => i);
+      for (let i = n - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        [order[i], order[j]] = [order[j]!, order[i]!];
+      }
+      const last = queue?.order[n - 1];
+      if (order[0] === last) [order[0], order[n - 1]] = [order[n - 1]!, order[0]!];
+      queue = { order, pos: 0 };
+      this.queues.set(this.mood, queue);
+    }
+    return queue.order[queue.pos++]!;
+  }
+
   private trackSrc(): string {
     const list = PLAYLISTS[this.mood as Exclude<Mood, "none">];
-    return list.tracks[this.trackIndex % list.tracks.length]!;
+    return list.tracks[this.trackIndex]!;
   }
 
   private start(): void {
@@ -176,7 +202,7 @@ export class AudioDirector {
       }
       // Next track on the same element: a browser that unlocked it for a gesture keeps it unlocked,
       // whereas a fresh element started from this event can be refused and leave the game silent.
-      this.trackIndex++;
+      this.trackIndex = this.nextTrack();
       track.src = this.trackSrc();
       void track.play().catch(() => {});
     });
@@ -189,7 +215,7 @@ export class AudioDirector {
       const delay = Math.min(RETRY_MAX_MS, RETRY_MS * 2 ** this.failures++);
       this.env.setTimeout(() => {
         if (track !== this.current) return;
-        this.trackIndex++;
+        this.trackIndex = this.nextTrack();
         track.src = this.trackSrc();
         void track.play().catch(() => {});
       }, delay);
