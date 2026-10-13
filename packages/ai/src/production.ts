@@ -4,7 +4,7 @@ import {
   type BuildItem, type Colony, type Command, type PlayerView,
 } from "@starlord/sim";
 import { colonizationTargets, outpostTargets } from "./colonization.js";
-import { currentWarship } from "./design.js";
+import { canBuildInTime, currentWarship } from "./design.js";
 import { strategyOf } from "./strategies.js";
 import { colonyStar, hostileFleetsNear, isOnly, me, myColonies, myFleets } from "./util.js";
 
@@ -61,8 +61,9 @@ interface Wants {
   barracks: boolean;
   /** Best planet worth a colony base in each system, by star id. */
   colonyBases: Map<string, string>;
-  /** The warship design needs a star dock: in peacetime only dock colonies build warships. */
+  /** The warship design needs a star dock: in peacetime only colonies that can build it build warships. */
   bigHulls: boolean;
+  bigDesign: string | null;
   /** Our most productive colony, when it has no star dock yet: it builds one. */
   dockColony: string | null;
   /** Warships use less than FLEET_FLOOR of the command points: shipyards build them before buildings. */
@@ -108,6 +109,7 @@ export function productionOrders(view: PlayerView): Command[] {
       : 0,
     capitol: player.capitol === "lost",
     bigHulls: false,
+    bigDesign: null,
     dockColony: null,
     fleetShort: false,
     barracks: government(player).ungarrisonedPenalty > 0 && !government(player).noMorale,
@@ -200,8 +202,10 @@ export function productionOrders(view: PlayerView): Command[] {
   const ranked = colonies
     .map((c) => ({ c, out: colonyOutput(view, c) }))
     .sort((a, b) => b.out.industry - a.out.industry);
-  const docked = colonies.some(hasStarDock);
-  wants.bigHulls = docked && !!design && STATION_DOCK_HULLS.includes(design.hull);
+  // Only when some dock can build the big design in time do the other colonies leave warships to it.
+  wants.bigHulls = !!design && STATION_DOCK_HULLS.includes(design.hull) &&
+    colonies.some((c) => hasStarDock(c) && canBuildInTime(view, c, design.id));
+  wants.bigDesign = design?.id ?? null;
   const best = ranked[0]?.c;
   if (best && !hasStarDock(best) && !best.queue.some((q) => q.kind === "building" && q.id === "starBase")) wants.dockColony = best.id;
 
@@ -210,7 +214,9 @@ export function productionOrders(view: PlayerView): Command[] {
     if (head && head.kind !== "tradeGoods" && !(head.kind === "project" && head.id === "housing")) {
       // Rush the current item when the treasury is comfortably ahead.
       const cost = buyCost(view, c);
-      if (Number.isFinite(cost) && cost > 0 && bc > cost * 2 + 100 && income.net > 0) {
+      // A warship for a fleet that is short of one is bought sooner: an empty fleet invites a war.
+      const urgent = wants.fleetShort && head.kind === "ship" && hullCp(head.designId) > 0 && bc > cost + 50;
+      if (Number.isFinite(cost) && cost > 0 && (urgent || (bc > cost * 2 + 100 && income.net > 0))) {
         bc -= cost;
         out.push({ type: "buy", colonyId: c.id });
       }
@@ -287,8 +293,8 @@ function chooseItem(
   if (c.farmers > 0 && buildable.has("hydroponicFarm")) return { kind: "building", id: "hydroponicFarm" };
   if (wants.barracks && pop >= 4 && buildable.has("marineBarracks")) return { kind: "building", id: "marineBarracks" };
   const warship = currentWarship(view, c);
-  // Ships bigger than a destroyer come only from star docks; in peacetime the fleet is built there.
-  const shipyard = hasStarDock(c) || !wants.bigHulls;
+  // Ships bigger than a destroyer come only from star docks with the industry for them; in peacetime the fleet is built there.
+  const shipyard = !wants.bigHulls || (!!warship && warship === wants.bigDesign);
   if (c.id === wants.dockColony && buildable.has("starBase") && industry >= STAR_DOCK_MIN_INDUSTRY) {
     wants.dockColony = null;
     return { kind: "building", id: "starBase" };
