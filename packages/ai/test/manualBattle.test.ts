@@ -215,4 +215,40 @@ describe("commanded battles", () => {
     expect(flying.length).toBeGreaterThan(0);
     for (const f of flying) expect(launched.has(f.id)).toBe(true);
   });
+
+  it("let a ship self-destruct, exploding on the field, and replay it", () => {
+    const lab = setup("fleets");
+    const pb = pendingBattle(lab.state, {}, lab.defenderId)!;
+    const { orders, outcome } = command(pb, (unit, n) => {
+      const kind = pb.battle.units.find((u) => u.key === unit)!.kind;
+      return n === 0 && kind === "ship" ? { kind: "selfDestruct" } : { kind: "auto" };
+    });
+    const first = outcome.report.rounds[0]!;
+    expect(first.find((e) => e.kind === "destroyed")?.ship).toBe(pb.battle.units.find((u) => u.side === pb.battle.sides.findIndex((s) => s.ownerId === lab.defenderId) && u.kind === "ship")!.key);
+    const after = processTurn(lab.state, { [lab.defenderId]: [{ type: "battleOrders", battle: pb.key, orders }] });
+    expect(after.combats[0]!.rounds).toEqual(outcome.report.rounds);
+  });
+
+  it("scan any unit and warn of missiles flying at a commanded ship", () => {
+    const lab = setup("missiles");
+    const pb = pendingBattle(lab.state, {}, lab.defenderId)!;
+    const fight = pb.battle.fight(pb.starId, pb.reportId);
+    let step = fight.next();
+    let warned = false;
+    for (let i = 0; i < 200 && !step.done && !warned; i++) {
+      const o = pb.battle.options(step.value.unit)!;
+      if (o.incoming.length > 0) {
+        warned = true;
+        expect(o.incoming[0]!.turns).toBeGreaterThanOrEqual(1);
+        expect(o.incoming[0]!.count).toBeGreaterThan(0);
+      }
+      step = fight.next({ kind: "done" });
+    }
+    expect(warned).toBe(true);
+    const enemy = pb.battle.units.find((u) => u.ownerId === lab.attackerId)!;
+    const scan = pb.battle.scan(enemy.key)!;
+    expect(scan.name).toBe(enemy.name);
+    expect(scan.weapons.length).toBeGreaterThan(0);
+    expect(scan.maxStructure).toBeGreaterThan(0);
+  });
 });

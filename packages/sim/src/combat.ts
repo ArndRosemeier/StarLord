@@ -801,6 +801,54 @@ export interface UnitOptions {
   }[];
   /** Enemy ships its marines can board now: 2 capture likely, 1 hit-and-run raid; the party size is the marines sent. */
   board: { key: string; mode: 1 | 2; party: number }[];
+  /** Ships can be blown up by their crews. */
+  canSelfDestruct: boolean;
+  /** Enemy missiles, torpedoes and squadrons flying at it. */
+  incoming: IncomingFlight[];
+}
+
+/** A volley flying at a unit, for the battle screen's missile warning. */
+export interface IncomingFlight {
+  id: string;
+  weapon: string;
+  /** Missiles or craft in the volley, and the damage of each missile (0 for craft). */
+  count: number;
+  damage: number;
+  craft: boolean;
+  /** Where it is and how far it flies each combat turn. */
+  x: number;
+  y: number;
+  speed: number;
+  /** The unit's half width: a volley strikes once it is this close to the unit's centre. */
+  radius: number;
+  /** Combat turns until it reaches the unit where it stands now. */
+  turns: number;
+}
+
+/** Everything the original's Scan shows about a unit in battle. */
+export interface ScanInfo {
+  key: string;
+  name: string;
+  kind: string;
+  hullId?: string;
+  crew: string;
+  armor: number;
+  maxArmor: number;
+  structure: number;
+  maxStructure: number;
+  /** Shield class (damage taken off every hit) and each facing's pool: front, right, back, left. */
+  shieldClass: number;
+  shields: number[];
+  shieldMax: number;
+  shieldsWork: boolean;
+  beamAttack: number;
+  beamDefense: number;
+  missileEvasion: number;
+  speed: number;
+  marines: number;
+  /** Internal systems with their hit points (0: knocked out). */
+  systems: { id: string; hp: number; max: number }[];
+  weapons: { name: string; count: number; maxCount: number; mods: string[]; arc: string; shots: number | null }[];
 }
 
 /**
@@ -1543,6 +1591,10 @@ export class Battle {
           case "done":
             this.stationStep(u);
             return did;
+          case "selfDestruct":
+            if (u.kind !== "ship") continue;
+            this.destroy(u, "selfDestruct");
+            return true;
           case "move":
             if (this.moveOrdered(u, order.to)) did = true;
             continue;
@@ -1716,6 +1768,12 @@ export class Battle {
         second: m.halfFired, mods: [...m.mods],
         vs: Object.fromEntries(this.targets(u).map((t) => [t.key, this.preview(u, mi, t)])),
       }]),
+      canSelfDestruct: u.kind === "ship",
+      incoming: this.projectiles.filter((p) => p.target === u && p.owner.side !== u.side).map((p) => ({
+        id: p.id, weapon: p.weapon.id, count: p.count, damage: p.craft ? 0 : p.damage, craft: !!p.craft,
+        x: round1(p.x), y: round1(p.y), speed: Number.isFinite(p.speed) ? p.speed : 0, radius: this.radius(u),
+        turns: Math.max(1, Math.ceil(Math.max(0, this.dist(p, u) - this.radius(u)) / Math.max(1, p.speed))),
+      })),
       board: u.boarded || u.marines <= 0 || u.kind === "planet" ? [] : this.units.flatMap((t) => {
         const reach = this.boardingReach(u, t);
         if (!reach) return [];
@@ -1723,6 +1781,24 @@ export class Battle {
         const party = this.boardingParty(u, t, reach.transporters);
         return mode === 0 || party <= 0 ? [] : [{ key: t.key, mode, party }];
       }),
+    };
+  }
+
+  /** What the original's Scan button shows about a unit: its state, ratings, systems and weapons. */
+  scan(key: string): ScanInfo | null {
+    const u = this.units.find((x) => x.key === key);
+    if (!u) return null;
+    const sys = (x: System | null, id: string) => (x ? [{ id, hp: x.hp, max: x.max }] : []);
+    return {
+      key: u.key, name: u.name, kind: u.kind, ...(u.hullId ? { hullId: u.hullId } : {}),
+      crew: CREW.names[u.crew] ?? "", armor: u.armor, maxArmor: u.maxArmor, structure: u.structure, maxStructure: u.maxStructure,
+      shieldClass: u.shieldClass, shields: [...u.shields], shieldMax: u.shieldMax, shieldsWork: this.shieldWorks(u),
+      beamAttack: u.attackBase + this.sideAttack[u.side]! + this.officers[u.side]!.attack + CREW.attack[u.crew]! + (u.computer === null || u.computer.hp > 0 ? u.computerAttack : 0),
+      beamDefense: this.defenseOf(u), missileEvasion: this.missileEvasionOf(u), speed: this.currentSpeed(u), marines: u.marines,
+      systems: [...sys(u.drive, "drive"), ...sys(u.computer, "computer"), ...sys(u.shieldGen, "shield"), ...u.specials.map((x) => ({ id: x.id, hp: x.hp, max: x.max }))],
+      weapons: u.mounts.map((m) => ({
+        name: m.def.name, count: m.count, maxCount: m.maxCount, mods: [...m.mods], arc: m.arc, shots: Number.isFinite(m.shots) ? m.shots : null,
+      })),
     };
   }
 
@@ -2839,7 +2915,7 @@ export class Battle {
    * Removes a destroyed unit. A ship that loses its drive explodes, and so
    * does anything with a Quantum Detonator, however it died.
    */
-  destroy(t: Unit, cause: "structure" | "drive" | "detonator" = "structure"): void {
+  destroy(t: Unit, cause: "structure" | "drive" | "detonator" | "selfDestruct" = "structure"): void {
     if (!t.alive) return;
     t.alive = false;
     t.retreatOrdered = false;
@@ -2848,7 +2924,9 @@ export class Battle {
     this.log.push({ kind: "destroyed", ship: t.key });
     for (const p of [...this.projectiles]) if (p.owner === t) this.removeProjectile(p);
     const detonator = t.fx.detonator > 0;
-    if ((cause === "drive" && t.drive) || cause === "detonator" || detonator) this.explode(t, detonator);
+    // A ship blown up by its own crew explodes like one whose drive went (likely, as the original's self-destruct
+    // order destroys the ship with its explosion).
+    if ((cause === "drive" && t.drive) || cause === "detonator" || cause === "selfDestruct" || detonator) this.explode(t, detonator);
   }
 
   /**

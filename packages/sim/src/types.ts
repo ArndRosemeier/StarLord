@@ -290,6 +290,8 @@ export type TacticalOrder =
   | { kind: "wait" }
   /** End the unit's turn. */
   | { kind: "done" }
+  /** The crew blows up their ship (ships only); it explodes like a ship whose drive went. */
+  | { kind: "selfDestruct" }
   /** Order the ship out; it leaves as its next turn begins. */
   | { kind: "retreat" }
   /** Let the computer play this one turn. */

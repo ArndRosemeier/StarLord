@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ARCS, WEAPON_MODS_BY_ID, type BattleDecision, type CombatOutcome, type CombatReport, type FiringArc, type PendingBattle, type TacticalOrder,
+  ARCS, EXPLOSION, WEAPON_MODS_BY_ID, WEAPONS_BY_ID, type BattleDecision, type ScanInfo, type CombatOutcome, type CombatReport, type FiringArc, type PendingBattle, type TacticalOrder,
   type UnitOptions, type WeaponPreview,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -92,6 +92,10 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
   const [shown, setShown] = useState(() => steps.length);
   const [moveTo, setMoveTo] = useState<{ x: number; y: number } | null>(null);
   const [target, setTarget] = useState<string | null>(null);
+  // Scan mode (the original's Scan button): a click on any unit shows everything about it.
+  const [scanning, setScanning] = useState(false);
+  const [scanned, setScanned] = useState<string | null>(null);
+  const [confirmBlast, setConfirmBlast] = useState(false);
   // Weapon switches per unit, kept for the whole battle as in the original.
   const modes = useRef(new Map<string, Map<number, WeaponMode>>());
   const [, setModeVersion] = useState(0);
@@ -115,6 +119,7 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
   const lastUnit = useRef<string | null>(null);
   useEffect(() => {
     setMoveTo(null);
+    setConfirmBlast(false);
     const same = decision?.unit === lastUnit.current;
     lastUnit.current = decision?.unit ?? null;
     if (same && target && options?.targets.some((t) => t.key === target)) return;
@@ -204,11 +209,12 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
         setMoveTo({ x: Math.round((at.x + (x - at.x) * k) * 10) / 10, y: Math.round((at.y + (y - at.y) * k) * 10) / 10 });
       },
       onUnit: (key) => {
-        if (key === decision.unit) setMoveTo(null);
+        if (scanning) setScanned(key);
+        else if (key === decision.unit) setMoveTo(null);
         else if (options.targets.some((t) => t.key === key)) setTarget(key);
       },
     };
-  }, [yourTurn, decision, options?.reach, target, moveTo, frames]);
+  }, [yourTurn, decision, options?.reach, target, moveTo, frames, scanning]);
 
   const liveReport = useMemo(() => ({ ...base, rounds: pending.battle.rounds.map((r) => [...r]) }), [base, steps]);
   const props = { report: base, view, units, frames, event, step: shown, reduced, resetKey: 0, command };
@@ -254,6 +260,10 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
               </label>
             </div>
           )}
+          {scanned && (() => {
+            const info = pending.battle.scan(scanned);
+            return info ? <ScanPanel info={info} color={view.players[snap(scanned)?.ownerId ?? -1]?.color} onClose={() => setScanned(null)} /> : null;
+          })()}
           {!asking && outcome && caughtUp && (
             <div className="combat-result">
               {outcome.report.winner === null ? "No winner" : <><span style={{ color: view.players[outcome.report.winner]?.color }}>{name(outcome.report.winner)}</span> victorious</>}
@@ -294,6 +304,24 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
                 {snap(target)?.kind === "planet" && options.weapons.some((w) => w.id === "stellarConverter") && (
                   <div className="row muted">
                     In battle the Stellar Converter only wears down the planet's defenses. Win the orbit and the turn asks whether to destroy the planet.
+                  </div>
+                )}
+                {options.incoming.length > 0 && (
+                  <div className="row wrap command-incoming">
+                    {options.incoming.map((f) => {
+                      const at = frames.now.get(decision.unit);
+                      // Where the planned move ends, the volley may arrive sooner.
+                      const there = moveTo && f.speed > 0 && at
+                        ? Math.max(1, Math.ceil(Math.max(0, Math.hypot(moveTo.x - f.x, moveTo.y - f.y) - f.radius) / f.speed))
+                        : f.turns;
+                      const what = `${f.count}× ${WEAPONS_BY_ID[f.weapon]?.name ?? f.weapon}${f.craft ? "" : ` (${f.damage} damage each)`}`;
+                      return (
+                        <span key={f.id} className={there < f.turns ? "bad" : "warn"}>
+                          Incoming: {what}, hits in {f.turns} turn{f.turns === 1 ? "" : "s"}
+                          {there < f.turns ? `; moving there it hits in ${there}` : ""}
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
                 <div className="command-weapons">
@@ -339,6 +367,17 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
                   ))}
                   {decision.canWait && <button onClick={() => send({ kind: "wait" })} title="Act with your other ships first; this one keeps what it has left">Wait</button>}
                   <button onClick={done} title={firing(options, decision.unit, target).length === 0 ? "Enter" : undefined}>Done</button>
+                  <button className={scanning ? "primary" : ""} onClick={() => { setScanning(!scanning); setScanned(scanning ? null : target); }}
+                    title="Shows the target's armor, shields, systems and weapons; while on, click any ship, station or planet to scan it">Scan</button>
+                  {options.canSelfDestruct && (confirmBlast ? (
+                    <button className="danger" onClick={() => send({ kind: "selfDestruct" })}
+                      title={`The ship is lost and explodes: every unit within ${EXPLOSION.radius} squares takes damage, more the closer it is`}>
+                      Confirm self-destruct
+                    </button>
+                  ) : (
+                    <button onClick={() => setConfirmBlast(true)}
+                      title={`Blow up this ship: it is lost and its explosion damages every unit within ${EXPLOSION.radius} squares, friend or foe`}>Self-destruct…</button>
+                  ))}
                   {options.canRetreat && <button onClick={() => send({ kind: "retreat" })} title="The ship leaves the battle as its next turn begins">Retreat</button>}
                   <button onClick={() => send({ kind: "ai" })} title="The computer plays the rest of this ship's turn as your doctrine says">Computer plays this turn</button>
                   <span className="spacer" />
@@ -366,6 +405,53 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+const FACINGS = ["front", "right", "back", "left"];
+const label = (id: string) => WEAPONS_BY_ID[id]?.name ?? id.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+
+/** The original's ship scan: everything about one unit in the battle, with its current numbers. */
+function ScanPanel({ info, color, onClose }: { info: ScanInfo; color?: string; onClose: () => void }) {
+  return (
+    <div className="command-ask scan-panel">
+      <div className="row">
+        <h3 style={{ color }}>{info.name}</h3>
+        <span className="spacer" />
+        <button className="small" onClick={onClose}>Close</button>
+      </div>
+      <div className="muted">{info.hullId ? label(info.hullId) : info.kind} · {info.crew} crew{info.marines > 0 ? ` · ${info.marines} marines` : ""}</div>
+      <div className="scan-grid">
+        <span>Armor</span><span>{Math.round(info.armor)} / {info.maxArmor}</span>
+        <span>Structure</span><span>{Math.round(info.structure)} / {info.maxStructure}</span>
+        <span>Shields</span>
+        <span>
+          {info.shieldClass > 0
+            ? <>class {info.shieldClass} (takes {info.shieldClass} off every hit){info.shieldsWork ? "" : ", down"}; {info.shields.map((v, i) => `${FACINGS[i]} ${Math.round(v)}`).join(", ")} of {info.shieldMax}</>
+            : "none"}
+        </span>
+        <span>Beam attack</span><span>{info.beamAttack}</span>
+        <span>Beam defense</span><span>{info.beamDefense}</span>
+        <span>Missile evasion</span><span>{info.missileEvasion}</span>
+        <span>Speed</span><span>{info.speed} squares a turn</span>
+      </div>
+      {info.systems.length > 0 && (
+        <div className="row wrap muted">
+          {info.systems.map((x) => <span key={x.id} className={x.hp <= 0 ? "bad" : ""}>{label(x.id)} {x.hp <= 0 ? "knocked out" : `${x.hp}/${x.max}`}</span>)}
+        </div>
+      )}
+      <div className="command-weapons">
+        {info.weapons.map((w, i) => (
+          <div key={i} className={`weapon-row${w.count > 0 ? "" : " faded"}`}>
+            <span>{w.count}{w.count < w.maxCount ? ` of ${w.maxCount}` : ""}× {w.name}</span>
+            <span className="muted">
+              {[...w.mods.map((m) => WEAPON_MODS_BY_ID[m as keyof typeof WEAPON_MODS_BY_ID]?.name ?? m), `${ARCS[w.arc as FiringArc]?.name ?? w.arc} arc`].join(", ")}
+              {w.shots !== null ? `, ${w.shots} shots left` : ""}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
