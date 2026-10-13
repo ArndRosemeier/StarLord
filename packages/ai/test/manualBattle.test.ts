@@ -204,4 +204,15 @@ describe("commanded battles", () => {
       expect(report.rounds, preset.id).toEqual(outcome.report.rounds);
     }
   });
+
+  it("log missiles in flight so viewers can draw them on their way", () => {
+    const lab = setup("missiles");
+    const report = processTurn(lab.state, {}).combats[0]!;
+    const events = report.rounds.flat();
+    const launched = new Set(events.flatMap((e) => (e.kind === "launch" && e.projectile ? [e.projectile] : [])));
+    const flying = events.flatMap((e) => (e.kind === "flights" ? e.flights ?? [] : []));
+    expect(launched.size).toBeGreaterThan(0);
+    expect(flying.length).toBeGreaterThan(0);
+    for (const f of flying) expect(launched.has(f.id)).toBe(true);
+  });
 });

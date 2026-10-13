@@ -207,6 +207,14 @@ export function reportProblems(setup: LabSetup, r: CombatReport): string[] {
     for (const e of round) {
       const where = `round ${i + 1}, ${e.kind}`;
       for (const [k, v] of Object.entries(e)) if (isNum(v) && !Number.isFinite(v as number)) bad(`${where}: ${k} = ${v}`);
+      if (e.kind === "flights") {
+        // Missiles and craft in flight: launched by and aimed at units of the battle, somewhere on the field.
+        for (const f of e.flights ?? []) {
+          if (!units.has(f.owner) || !units.has(f.target)) bad(`${where}: ${f.id} between unknown units`);
+          if (!Number.isFinite(f.x) || !Number.isFinite(f.y) || f.count <= 0) bad(`${where}: ${f.id} at ${f.x}, ${f.y} x${f.count}`);
+        }
+        continue;
+      }
       const u = units.get(e.ship);
       if (!u) { bad(`${where}: unknown unit ${e.ship}`); continue; }
       const t = e.target ? units.get(e.target) : undefined;

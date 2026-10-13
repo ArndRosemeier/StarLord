@@ -581,7 +581,7 @@ export interface CombatRoundEvent {
    * "captured": boarders took `ship` for the owner of `target`; `hit` is true when the prize fights on for its
    * captor (a telepathic captor), otherwise it sits out the rest of the battle.
    */
-  kind: "move" | "fire" | "destroyed" | "retreat" | "launch" | "board" | "repair" | "captured";
+  kind: "move" | "fire" | "destroyed" | "retreat" | "launch" | "board" | "repair" | "captured" | "flights";
   ship: string;
   target?: string;
   x?: number;
@@ -595,6 +595,24 @@ export interface CombatRoundEvent {
   structureDamage?: number;
   /** Internal system knocked out by the hit (drive, computer, shield, weapon id, special id). */
   systemHit?: string;
+  /** "launch": the missile, torpedo or squadron it sends off (x, y: where from). */
+  projectile?: string;
+  /** "flights": everything in flight after a side's missiles and craft moved (`ship` is empty). */
+  flights?: CombatFlight[];
+}
+
+/** A missile, torpedo or squadron on its way, as a battle log records it. */
+export interface CombatFlight {
+  id: string;
+  /** The unit that launched it, and the one it flies at. */
+  owner: string;
+  target: string;
+  weapon: string;
+  x: number;
+  y: number;
+  /** Missiles or craft still in the volley. */
+  count: number;
+  craft?: string;
 }
 
 export interface CombatReport {
