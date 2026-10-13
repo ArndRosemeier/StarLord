@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   availableTiers, commandPointsAvailable, commandPointsUsed, empireIncome, empireTotals, empires, treatyIncome,
-  TIERS_BY_ID, extraResearch, isTradeGoodsOnly, nextBreakthroughChance, researchCost, type CombatReport, type PlayerView,
+  TIERS_BY_ID, extraResearch, isTradeGoodsOnly, nextBreakthroughChance, researchCost, type CombatReport, type GameEvent, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, signed } from "../ui/format";
@@ -24,6 +24,7 @@ import { GameOver } from "./GameOver";
 import { EndTurnPrompt } from "./EndTurnPrompt";
 import { BasePrompt, coloniesWithReadyBases } from "./BasePrompt";
 import { BattlePopup } from "./BattlePopup";
+import { NewsPopup } from "./NewsPopup";
 import { CommandBattle } from "./CommandBattle";
 import { OrbitalStrike } from "./OrbitalStrike";
 import { battlesOfLastTurn } from "../game/battles";
@@ -89,6 +90,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [debugOpen, setDebugOpen] = useState(false);
   /** Last turn's battles, opened by themselves as the new turn starts. */
   const [battles, setBattles] = useState<CombatReport[]>([]);
+  /** Last turn's Galactic News (random events), shown after the battles. */
+  const [news, setNews] = useState<Extract<GameEvent, { kind: "random" }>[]>([]);
   /** Audiences waiting to be held, the current one first. */
   const [audiences, setAudiences] = useState<AudienceRequest[]>([]);
   const debug = !!view.settings.debug && !readOnly;
@@ -142,6 +145,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     if (readOnly || autoplay) return;
     // Battles the player commanded were watched as they were fought.
     setBattles(battlesOfLastTurn(session.history, me.id, view.turn).filter((b) => !session.commandedBattles.has(b.id)));
+    setNews(session.lastTurnEvents(me.id).flatMap((e) => (e.kind === "random" ? [e] : [])));
   }, [view.turn]);
 
   // A finished base with several possible planets waits for the player to pick one, as in MoO2.
@@ -316,8 +320,11 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
           onOpenColony={(id) => { setEndCheck(null); openColony(id); }} />
       )}
       {battles.length > 0 && !(view.over && !overSeen) && <BattlePopup battles={battles} onClose={() => setBattles([])} />}
+      {news.length > 0 && !battles.length && !(view.over && !overSeen) && (
+        <NewsPopup news={news} onClose={() => setNews([])} onShowStar={showStar} />
+      )}
       {basePrompt && !endCheck && !audiences[0] && !battles.length && <BasePrompt onClose={() => setBasePrompt(false)} />}
-      {audiences[0] && !battles.length && !(view.over && !overSeen) && (
+      {audiences[0] && !battles.length && !news.length && !(view.over && !overSeen) && (
         <Audience key={`${view.turn}:${audiences.length}:${audiences[0].themId}:${audiences[0].opening.kind}`} request={audiences[0]}
           onClose={() => setAudiences((q) => q.slice(1))} />
       )}

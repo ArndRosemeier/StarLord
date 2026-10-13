@@ -2,7 +2,7 @@ import { STANCE_TIPS, climateTip, crewTip, gravityTip, mineralsTip, sizeTip, spe
 import { Tip } from "./Tip";
 import { useState, type ReactNode } from "react";
 import {
-  CLIMATES, canReach, crewLevel, crewName, designStats, findDesign, getRace, isHostile, maxPopulation, population, relation, travelTurns,
+  CLIMATES, canReach, crewLevel, crewName, designStats, findDesign, getRace, isHostile, maxPopulation, movementHalted, population, relation, travelTurns,
   type Fleet, type Planet, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "./hooks";
@@ -172,7 +172,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
       <div className="muted">
         {fleet.starId ? <>At {view.galaxy.stars.find((s) => s.id === fleet.starId)?.name}</> : "In deep space"}
         {owner.kind === "monsters" && <> · {monsterBehavior(leadMonster(fleet))}</>}
-        {dest && <> · heading to {dest.name}, {eta} turn{eta === 1 ? "" : "s"}</>}
+        {dest && <> · heading to {dest.name}, {movementHalted(view, fleet) ? "held by hyperspace flux" : <>{eta} turn{eta === 1 ? "" : "s"}</>}</>}
         {captain && <> · Captain {captain.name}</>}
       </div>
       <table>
