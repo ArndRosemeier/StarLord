@@ -85,8 +85,6 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
     }
   };
 
-  const traits = useMemo(() => race.picks.traits.map((t) => TRAIT_COSTS[t]?.name ?? words(t)), [race]);
-
   if (editing) {
     return (
       <div className="title-screen">
@@ -126,32 +124,13 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
       <div className="race-detail">
         <video key={race.assetKey} src={`races/${race.assetKey}.mp4`} poster={`races/${race.assetKey}.webp`} autoPlay muted loop playsInline />
         <div className="col">
-          <div className="row">
-            <span className="dot" style={{ background: race.color, width: 14, height: 14 }} />
-            <h2 style={{ margin: 0 }}>{race.name}</h2>
-            <span className="muted">{race.archetype}</span>
-            {chosenCustom && (
-              <button onClick={() => editCustom(chosenCustom.spec)}>Edit race</button>
-            )}
+          {/* Every race's info sits in the same grid cell, only the chosen one visible, so the cell is as tall as the
+              longest one and the options below never move when you pick another race. */}
+          <div className="race-info-stack">
+            {[...RACES.map((r) => ({ def: r, spec: undefined as CustomRaceSpec | undefined })), ...custom].map(({ def, spec }) => (
+              <RaceInfo key={def.id} race={def} hidden={def.id !== race.id} onEdit={spec ? () => editCustom(spec) : undefined} />
+            ))}
           </div>
-          {race.description && <p style={{ margin: 0 }}>{race.description}</p>}
-          <div className="row">
-            <Tip card={governmentTip(race.picks.government)}><span className="chip explained">{words(race.picks.government)}</span></Tip>
-            {race.picks.traits.map((t) => <Tip key={t} card={traitTip(t)}><span className="chip explained">{traits[race.picks.traits.indexOf(t)]}</span></Tip>)}
-          </div>
-          <table style={{ maxWidth: 360 }}>
-            <tbody>
-              {PICKS.filter(([k]) => race.picks[k] !== 0).map(([k, label]) => {
-                const v = race.picks[k] as number;
-                return (
-                  <tr key={k}>
-                    <td title={pickText(k as NumericPick, v)}>{label}</td>
-                    <td className={v > 0 ? "good" : "bad"} title={pickText(k as NumericPick, v)}>{k === "growth" ? `${v > 0 ? "+" : ""}${Math.round(v * 100)}%` : `${v > 0 ? "+" : ""}${v}`}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
 
           <div className="panel col" style={{ marginTop: 8 }}>
             <div className="row">
@@ -264,6 +243,37 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
           <span>Create your own race</span>
         </button>
       </div>
+    </div>
+  );
+}
+
+function RaceInfo({ race, hidden, onEdit }: { race: ReturnType<typeof getRace>; hidden: boolean; onEdit?: () => void }) {
+  return (
+    <div className={`col race-info${hidden ? " hidden" : ""}`} aria-hidden={hidden || undefined}>
+      <div className="row">
+        <span className="dot" style={{ background: race.color, width: 14, height: 14 }} />
+        <h2 style={{ margin: 0 }}>{race.name}</h2>
+        <span className="muted">{race.archetype}</span>
+        {onEdit && <button onClick={onEdit}>Edit race</button>}
+      </div>
+      {race.description && <p style={{ margin: 0 }}>{race.description}</p>}
+      <div className="row">
+        <Tip card={governmentTip(race.picks.government)}><span className="chip explained">{words(race.picks.government)}</span></Tip>
+        {race.picks.traits.map((t) => <Tip key={t} card={traitTip(t)}><span className="chip explained">{TRAIT_COSTS[t]?.name ?? words(t)}</span></Tip>)}
+      </div>
+      <table style={{ maxWidth: 360 }}>
+        <tbody>
+          {PICKS.filter(([k]) => race.picks[k] !== 0).map(([k, label]) => {
+            const v = race.picks[k] as number;
+            return (
+              <tr key={k}>
+                <td title={pickText(k as NumericPick, v)}>{label}</td>
+                <td className={v > 0 ? "good" : "bad"} title={pickText(k as NumericPick, v)}>{k === "growth" ? `${v > 0 ? "+" : ""}${Math.round(v * 100)}%` : `${v > 0 ? "+" : ""}${v}`}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
