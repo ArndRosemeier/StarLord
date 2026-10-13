@@ -25,7 +25,7 @@ import { EndTurnPrompt } from "./EndTurnPrompt";
 import { BasePrompt, coloniesWithReadyBases } from "./BasePrompt";
 import { BattlePopup } from "./BattlePopup";
 import { NewsPopup } from "./NewsPopup";
-import { CouncilResultPopup, CouncilVotePopup, castBallot, mayCastCouncilVote } from "./CouncilPopup";
+import { CouncilResultPopup, CouncilSession, castBallot, councilSession, mayCastCouncilVote } from "./CouncilPopup";
 import { CommandBattle } from "./CommandBattle";
 import { OrbitalStrike } from "./OrbitalStrike";
 import { battlesOfLastTurn } from "../game/battles";
@@ -118,8 +118,9 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   // Colonies with nothing queued sell their industry as Trade Goods; the player can ask to be told, per game.
   const idleColonies = readOnly || me.idleAlertOff || me.automation.includes("production") ? []
     : Object.values(view.colonies).filter((c) => c.ownerId === me.id && isTradeGoodsOnly(c)).map((c) => c.id);
-  // The council meets at the end of this turn: a ruler with votes is asked for them, as in MoO2.
-  const councilAsk = !readOnly && !autoplay && !me.automation.includes("diplomacy") && mayCastCouncilVote(view, me.id);
+  // The council is in session this turn: it plays out as the turn starts, and a ruler with votes declares them, as in MoO2.
+  const councilWatch = !readOnly && !autoplay && !me.automation.includes("diplomacy") && !!councilSession(view);
+  const councilAsk = councilWatch && mayCastCouncilVote(view, me.id);
   const councilReminded = useRef(-1);
   const endTurn = () => {
     if (councilAsk && castBallot(session) === undefined && councilReminded.current !== view.turn) {
@@ -156,7 +157,10 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     // Battles the player commanded were watched as they were fought.
     setBattles(battlesOfLastTurn(session.history, me.id, view.turn).filter((b) => !session.commandedBattles.has(b.id)));
     setNews(session.lastTurnEvents(me.id).flatMap((e) => (e.kind === "random" ? [e] : [])));
-    setCouncilPopup(view.council.lastResult?.turn === view.turn - 1 ? "result" : councilAsk ? "vote" : null);
+    // The result window follows a session the player did not watch, or one whose verdict they may refuse.
+    const verdict = view.council.pending && view.council.pending.winner !== me.id;
+    const missed = view.council.lastResult?.turn === view.turn - 1 && (verdict || me.automation.includes("diplomacy"));
+    setCouncilPopup(missed ? "result" : councilWatch ? "vote" : null);
   }, [view.turn]);
 
   // A finished base with several possible planets waits for the player to pick one, as in MoO2.
@@ -311,7 +315,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
               {tab === "research" && <ResearchScreen />}
               {tab === "designs" && <DesignScreen />}
               {tab === "fleets" && <FleetsScreen onShowStar={showStar} />}
-              {tab === "diplomacy" && <DiplomacyScreen onAudience={(r) => setAudiences((q) => [r, ...q])} />}
+              {tab === "diplomacy" && <DiplomacyScreen onAudience={(r) => setAudiences((q) => [r, ...q])} onCouncil={() => setCouncilPopup("vote")} />}
               {tab === "espionage" && <EspionageScreen />}
               {tab === "leaders" && <LeadersScreen />}
               {tab === "empire" && <EmpireScreen />}
@@ -335,7 +339,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         <NewsPopup news={news} onClose={() => setNews([])} onShowStar={showStar} />
       )}
       {councilPopup && !battles.length && !news.length && !(view.over && !overSeen) && (
-        councilPopup === "vote" ? <CouncilVotePopup onClose={() => setCouncilPopup(null)} /> : <CouncilResultPopup onClose={() => setCouncilPopup(null)} />
+        councilPopup === "vote" ? <CouncilSession onClose={() => setCouncilPopup(null)} /> : <CouncilResultPopup onClose={() => setCouncilPopup(null)} />
       )}
       {basePrompt && !endCheck && !audiences[0] && !battles.length && !councilPopup && <BasePrompt onClose={() => setBasePrompt(false)} />}
       {audiences[0] && !battles.length && !news.length && !councilPopup && !(view.over && !overSeen) && (
