@@ -102,7 +102,7 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
     case "leader":
       return { text: `Leader: ${e.what}.`, tone: "info" };
     case "council":
-      return { text: `Galactic council: ${e.what}.`, tone: "info" };
+      return { text: `Galactic council: ${e.what.replace(/\.$/, "")}.`, tone: "info" };
     case "random":
       return { text: e.what, tone: "info" };
     case "raid":

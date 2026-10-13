@@ -105,6 +105,8 @@ export type Command =
   | { type: "assignLeader"; leaderId: Id; targetId: Id | null }
   | { type: "dismissLeader"; leaderId: Id }
   | { type: "setCouncilVote"; vote: PlayerId | "abstain" | "auto" }
+  /** Casts this player's votes at the council session meeting at the end of this turn. */
+  | { type: "castCouncilVote"; vote: PlayerId | "abstain" }
   | { type: "setAutomation"; domains: string[] }
   /** Picks the strategy an automated area follows; "balanced" is the default. */
   | { type: "setAutomationStrategy"; domain: string; strategy: string }
@@ -416,6 +418,12 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
     case "dismissLeader": {
       const l = state.leaders[cmd.leaderId];
       return l && l.ownerId === playerId && l.status === "hired" ? OK : fail("not your leader");
+    }
+    case "castCouncilVote": {
+      const called = state.council.called;
+      if (!called || called.turn !== state.turn) return fail("the council does not meet this turn");
+      if (called.candidates.includes(playerId)) return fail("candidates vote for themselves");
+      return cmd.vote === "abstain" || called.candidates.includes(cmd.vote) ? OK : fail("not a candidate");
     }
     case "setCouncilVote":
       if (cmd.vote === "abstain" || cmd.vote === "auto") return OK;

@@ -9,6 +9,7 @@ import { pct, playerName, signed, words } from "../ui/format";
 import { Envoy } from "../ui/panels";
 import { describeProposal } from "../diplomacy/terms";
 import { mood, type AudienceRequest } from "./Audience";
+import { CouncilBallot, CouncilResult, councilSession } from "./CouncilPopup";
 import { activeEffects, incomingEffect, TIRED_TEXT, temperamentText } from "../diplomacy/effects";
 
 /** Your relation with them, where it drifts, and what holds it up or down. */
@@ -169,7 +170,7 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
           <h3>Galactic council</h3>
           <div className="muted">
             The council first convenes once {pct(COUNCIL.settledShare)} of the galaxy's systems are owned (not before turn {COUNCIL.earliestTurn}),
-            then every {COUNCIL_INTERVAL} turns. The two empires with the most votes (one per {COUNCIL.popPerVote} population, rounded up) stand; {pct(COUNCIL_MAJORITY)} of all votes elects one.
+            then every {COUNCIL_INTERVAL} turns; each session is announced a turn ahead and asks for your votes. The two empires with the most votes (one per {COUNCIL.popPerVote} population, rounded up) stand; {pct(COUNCIL_MAJORITY)} of all votes elects one.
             Computer empires back a candidate on a d{COUNCIL_VOTE.die} against relation + trust + 2 × reputation, +{COUNCIL_VOTE.sameAsLastTime} for the one it backed last time, +{COUNCIL_VOTE.nonAggression} for a non-aggression pact,
             +{COUNCIL_VOTE.trade} each for trade and research treaties, +{COUNCIL_VOTE.charismatic} for a charismatic candidate, +{COUNCIL_VOTE.holdsOrion} for one holding Orion,
             +{COUNCIL_VOTE.xenoPsychology} for Xeno Psychology, +{COUNCIL_VOTE.atWarWithRival} if at war with the other candidate, {COUNCIL_VOTE.repulsive} for a repulsive one,
@@ -177,7 +178,12 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
             always for an ally, never for an enemy, and they abstain unless exactly one candidate passes.{" "}
             {nextSession !== null ? `Next session: turn ${nextSession}.` : `Owned so far: ${pct(settledShare(view))}.`}
           </div>
-          {(() => {
+          {councilSession(view) ? (
+            <div className="panel col incoming">
+              <b>The council meets at the end of this turn</b>
+              <CouncilBallot />
+            </div>
+          ) : (() => {
             const [a, b] = councilCandidates(view);
             if (a === undefined || b === undefined) return null;
             const voters = view.players.filter((p) => p.kind === "empire" && p.alive && p.id !== a && p.id !== b && !p.isHuman);
@@ -193,20 +199,23 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
             );
           })()}
           {council.lastResult && (
-            <div>
-              Last vote (turn {council.lastResult.turn}):{" "}
-              {council.lastResult.candidates.map((c) => `${view.players[c]!.name} ${council.lastResult!.votes[c] ?? 0}`).join(" vs ")}
-              {council.lastResult.winner === null ? " · no winner" : ` · ${view.players[council.lastResult.winner]!.name} elected`}
-            </div>
+            <details>
+              <summary>
+                Last vote (turn {council.lastResult.turn}):{" "}
+                {council.lastResult.candidates.map((c) => `${view.players[c]!.name} ${council.lastResult!.votes[c] ?? 0}`).join(" vs ")}
+                {council.lastResult.winner === null ? " · no winner" : ` · ${view.players[council.lastResult.winner]!.name} elected`}
+              </summary>
+              <CouncilResult verdict={false} />
+            </details>
           )}
-          <label className="row">
-            Your vote
+          <label className="row" title="Each session asks for your votes; this decides them when you end the turn without casting them, or when diplomacy is automated.">
+            Votes you don't cast yourself
             <select value={String(me.councilVote)} disabled={readOnly}
               onChange={(e) => {
                 const v = e.target.value;
                 session.issue({ type: "setCouncilVote", vote: v === "auto" || v === "abstain" ? v : Number(v) });
               }}>
-              <option value="auto">Automatic (yourself, or as a computer empire would)</option>
+              <option value="auto">As a computer empire would (by your relations with the candidates)</option>
               <option value="abstain">Abstain</option>
               {view.players.filter((p) => p.kind === "empire" && p.alive).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>

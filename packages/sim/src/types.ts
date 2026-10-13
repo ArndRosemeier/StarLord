@@ -335,7 +335,7 @@ export interface Player {
   lastLeaderOffer?: number;
   /** Diplomatic points from race and leaders, public so rivals' deal-making can read it. */
   diplomacyBonus?: number;
-  /** Empires this player votes for at the council; "self" and "abstain" are allowed. */
+  /** How this player votes at a session where they cast no ballot themselves ("auto": as a computer empire would). */
   councilVote: PlayerId | "abstain" | "auto";
   doctrine: CombatDoctrine;
   /** Areas a human has handed to automation; ignored for AI players. */
@@ -638,7 +638,19 @@ export type GameEvent =
 
 export interface CouncilState {
   nextTurn: number;
-  lastResult: { turn: number; candidates: PlayerId[]; votes: Record<string, number>; winner: PlayerId | null } | null;
+  lastResult: {
+    turn: number; candidates: PlayerId[]; votes: Record<string, number>; winner: PlayerId | null;
+    /** All votes in the council, and how many a candidate needed (absent in older saves). */
+    total?: number; needed?: number;
+    /** Each empire's votes and whom they went to (null: abstained). */
+    weights?: Record<string, number>; ballots?: Record<string, PlayerId | null>;
+  } | null;
+  /**
+   * A session called for a coming turn, so every ruler can cast their votes:
+   * the candidates are fixed when it is called, and ballots are the votes
+   * people cast during that turn (null: abstain).
+   */
+  called?: { turn: number; candidates: PlayerId[]; ballots: Record<string, PlayerId | null> } | null;
   /** An elected leader awaiting acceptance; any empire may refuse during the next turn. */
   pending?: { winner: PlayerId; turn: number; refused: PlayerId[] } | null;
   /** Whether the council has started meeting (it first meets once most of the galaxy is settled). */

@@ -680,8 +680,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         vote).
       </P>
       <P>
-        A candidate with {pct(COUNCIL_MAJORITY)} of all votes is elected. Candidates vote for themselves; you can set
-        your vote on the Diplomacy screen. Computer empires only back a candidate they clearly like, and lean +{COUNCIL_VOTE.sameAsLastTime}{" "}
+        A candidate with {pct(COUNCIL_MAJORITY)} of all votes is elected. Each session is announced{" "}
+        {COUNCIL.notice === 1 ? "a turn" : `${COUNCIL.notice} turns`} ahead with its two candidates, and you cast your votes during
+        that turn: a window asks for them (the Diplomacy screen shows the same ballot), with how the computer empires lean.
+        Candidates vote for themselves. Afterwards a window shows how every empire voted and why someone was or was not elected. Computer empires only back a candidate they clearly like, and lean +{COUNCIL_VOTE.sameAsLastTime}{" "}
         toward the one they backed last time. Voting for an empire pleases it; voting against it, or abstaining, does
         not. You may refuse another ruler's election on the next turn: if the winner is a computer empire, every other
         computer empire joins it and the united empire goes to war with you; if it is a human, you are at war with every
