@@ -640,3 +640,17 @@ html, body { overscroll-behavior: none; }
 .attitude-breakdown summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .attitude-breakdown[open] summary { margin-bottom: 4px; }
 .explained { border-bottom: 1px dotted color-mix(in srgb, currentColor 55%, transparent); cursor: help; }
+
+/* ---- dragging people between job rows */
+.job-row { border-radius: 6px; transition: background 0.12s; }
+.job-row.drop-target { background: rgba(91, 157, 255, 0.14); box-shadow: inset 0 0 0 1px rgba(91, 157, 255, 0.45); }
+.pips.draggable { touch-action: none; user-select: none; -webkit-user-select: none; min-height: 17px; align-items: center; }
+.pips.draggable i { cursor: grab; position: relative; }
+/* A bigger invisible grab area for fingers. */
+.pips.draggable i::after { content: ""; position: absolute; inset: -4px -2px; }
+.pips.draggable i.fixed { cursor: default; opacity: 0.55; }
+.pips.draggable i.lifted { opacity: 0.25; box-shadow: none; }
+.pips.draggable i.arriving { outline: 1px solid #fff; outline-offset: 1px; }
+.job-drag-card { min-width: 190px; }
+.job-drag-card .tip-title .pips { flex-wrap: nowrap; }
+body:has(.job-drag-card) { cursor: grabbing; }

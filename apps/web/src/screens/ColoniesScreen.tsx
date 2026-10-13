@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   exterminateProblem,
   BUILDINGS_BY_ID, MAX_QUEUE, PLACED_PROJECTS, PROJECTS_BY_ID, baseTargets, availableBuildings, availableDesigns, availableProjects, buyCost,
-  FREIGHTERS, androids, colonyOutput, farmerFood, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
+  FREIGHTERS, androids, colonyOutput, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
   type BuildItem, type Colony,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -13,6 +13,7 @@ import { Tip } from "../ui/Tip";
 import { PlanetFacts, buildingTip, moraleTip, projectTip, tradeGoodsBC, tradeGoodsTip } from "../ui/explain";
 import { designTip } from "./designTips";
 import { BaseChoices } from "./BasePrompt";
+import { JobRows } from "./JobRows";
 
 export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (starId: string) => void; initialColony?: string | null }) {
   const { view, me } = useGame();
@@ -66,7 +67,6 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
   const planet = view.planets[colony.planetId]!;
   const star = viewStarOfColony(view, colony.id);
   const o = colonyOutput(view, colony);
-  const perFarmer = farmerFood(view, colony);
   const food = foodPlan(view, me.id);
   const shortfall = food.shortfall[colony.id] ?? 0;
   const andr = androids(colony);
@@ -74,25 +74,6 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
   const sameRace = Object.values(view.colonies).filter(
     (c) => c.ownerId === me.id && c.id !== colony.id && !c.outpost && c.raceId === colony.raceId,
   );
-  const jobs = { farmers: colony.farmers, workers: colony.workers, scientists: colony.scientists };
-
-  const move = (to: keyof typeof jobs, delta: 1 | -1) => {
-    const next = { ...jobs };
-    if (delta === 1) {
-      // Natives only ever farm.
-      const natives = colony.natives ?? 0;
-      const from = (["workers", "scientists", "farmers"] as const).find((k) => k !== to && next[k] > (k === "farmers" ? natives : 0));
-      if (!from) return;
-      next[from]--;
-      next[to]++;
-    } else {
-      if (next[to] === 0 || (to === "farmers" && next.farmers <= (colony.natives ?? 0))) return;
-      next[to]--;
-      next[to === "workers" ? "scientists" : "workers"]++;
-    }
-    session.issue({ type: "setJobs", colonyId: colony.id, ...next });
-  };
-
   const setQueue = (queue: BuildItem[]) => session.issue({ type: "setQueue", colonyId: colony.id, queue });
   const queuedBuildings = new Set(colony.queue.flatMap((q) => (q.kind === "building" ? [q.id] : [])));
   const buildings = availableBuildings(view, me.id, colony).filter((b) => !queuedBuildings.has(b));
@@ -147,20 +128,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
               </tbody>
             </table>
             <h4>Jobs</h4>
-            {(["farmers", "workers", "scientists"] as const).map((k) => (
-              <div className="row" key={k}>
-                <span style={{ width: 80 }} className={k === "farmers" ? "food" : k === "workers" ? "industry" : "research"}>{words(k)}</span>
-                <button className="small" disabled={readOnly || jobs[k] === 0} onClick={() => move(k, -1)}>−</button>
-                <b style={{ width: 22, textAlign: "center" }}>{jobs[k]}</b>
-                <button className="small" disabled={readOnly || jobs[k] === population(colony)} onClick={() => move(k, 1)}>+</button>
-                <span className={`pips ${k === "farmers" ? "food" : k === "workers" ? "industry" : "research"}`}>
-                  {Array.from({ length: jobs[k] }, (_, i) => <i key={i} />)}
-                </span>
-                {k === "farmers" && (perFarmer > 0
-                  ? <small className="muted">+{fmt(perFarmer, 1)} food per extra farmer</small>
-                  : <small className="bad">Farming grows no food here</small>)}
-              </div>
-            ))}
+            <JobRows colony={colony} />
           </>
         )}
         {!colony.outpost && sameRace.length > 0 && population(colony) > 1 && (
