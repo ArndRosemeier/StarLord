@@ -365,7 +365,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         orders yourself, or <b>Auto-resolve</b> to let your combat doctrine fight it (you watch the replay after the
         turn). While you command, each of your ships, stations and armed planets waits for you on its turn and takes
         as many orders as it has movement and weapons for, as in the original: click the field inside the blue ring and
-        press <b>Move here</b> (turning uses some of the movement), pick an enemy (orange rings: in reach of a weapon;
+        press <b>Move here</b>, or double-click (double-tap) the spot to move there at once (turning uses some of the movement), pick an enemy (orange rings: in reach of a weapon;
         grey: out of reach) and <b>Fire</b> the weapon groups that can reach it, then pick another target for the rest,
         or move on and fire later. Each weapon group shows its chance to hit, damage per hit and the damage likely to
         get through the target's shields. Its switch cycles <b>Fire</b>, <b>Standby</b> (sits out the next volley)

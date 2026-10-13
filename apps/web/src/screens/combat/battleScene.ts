@@ -85,6 +85,8 @@ export class BattleScene {
   private cameraTouched = false;
   /** The player's turn in a commanded battle, drawn as rings on the field. */
   private command: CommandOverlay | null = null;
+  /** When the last order click on the field landed; a double click there is a move order, not a camera reset. */
+  private fieldClickAt = -Infinity;
   private commandGroup = new THREE.Group();
   private downAt: { x: number; y: number } | null = null;
 
@@ -94,6 +96,7 @@ export class BattleScene {
       fov: 40, far: 3000, minDistance: 12, maxDistance: MAX_DISTANCE,
       minPolarAngle: 0.2, maxPolarAngle: 1.25, azimuthRange: 1.1,
     });
+    this.stage.resetOnDoubleClick = () => performance.now() - this.fieldClickAt > 600;
     const { scene, textures } = this.stage;
     scene.background = new THREE.Color(0x020308);
     this.kit = this.stage.own(new ModelKit(textures));
@@ -609,17 +612,28 @@ export class BattleScene {
         cmd.onUnit(key);
         return;
       }
-      this.raycaster.setFromCamera(this.pointer, this.stage.camera);
-      const hit = this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -SHIP_Y), new THREE.Vector3());
-      if (hit) {
-        const x = hit.x + FIELD_WIDTH / 2 - 0.5;
-        const y = hit.z + FIELD_HEIGHT / 2 - 0.5;
-        if (x >= 0 && x <= FIELD_WIDTH && y >= 0 && y <= FIELD_HEIGHT) cmd.onField(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
+      const at = this.fieldAt(ev);
+      if (at) {
+        this.fieldClickAt = performance.now();
+        cmd.onField(at.x, at.y);
       }
       return;
     }
     this.selected = this.hovered === this.selected ? null : this.hovered;
   };
+
+  /** The battlefield square under a screen point, if it is on the field. */
+  private fieldAt(ev: MouseEvent): { x: number; y: number } | null {
+    const rect = this.stage.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.stage.camera);
+    const hit = this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -SHIP_Y), new THREE.Vector3());
+    if (!hit) return null;
+    const x = hit.x + FIELD_WIDTH / 2 - 0.5;
+    const y = hit.z + FIELD_HEIGHT / 2 - 0.5;
+    if (x < 0 || x > FIELD_WIDTH || y < 0 || y > FIELD_HEIGHT) return null;
+    return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+  }
 
   /** The unit nearest the pointer ray, if the ray passes close enough. */
   private pick(): string | null {

@@ -101,7 +101,7 @@ export class Stage {
     this.lastTap = { x: e.clientX, y: e.clientY, t: now };
     if (prev && now - prev.t < 350 && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 30) {
       this.lastTap = null;
-      this.renderer.domElement.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      this.renderer.domElement.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: e.clientX, clientY: e.clientY }));
     }
   };
 
@@ -139,7 +139,12 @@ export class Stage {
     this.controls.update();
   }
 
-  private onDoubleClick = () => this.resetCamera();
+  /** When set and it returns false, a double click is someone else's (e.g. a move order) and leaves the camera alone. */
+  resetOnDoubleClick: ((ev: MouseEvent) => boolean) | null = null;
+  private onDoubleClick = (ev: MouseEvent) => {
+    if (this.resetOnDoubleClick && !this.resetOnDoubleClick(ev)) return;
+    this.resetCamera();
+  };
 
   /** A brief camera shake, e.g. for an explosion. Callers skip it under reduced motion. */
   shake(amount: number): void {
