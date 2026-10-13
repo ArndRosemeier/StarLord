@@ -172,8 +172,19 @@ export class BattleScene {
     const margin = 1.25;
     const needW = ((maxX - minX) / 2) * margin / halfH;
     const needD = ((maxZ - minZ) / 2) * Math.sin(elevation) * margin / halfV;
-    const dist = THREE.MathUtils.clamp(Math.max(HOME_DISTANCE, needW, needD), HOME_DISTANCE, MAX_DISTANCE);
+    let dist = THREE.MathUtils.clamp(Math.max(HOME_DISTANCE, needW, needD), HOME_DISTANCE, MAX_DISTANCE);
     const target = new THREE.Vector3(cx, -1.5, cz);
+    // Perspective spreads the near corners wider than the estimate above; back off until every corner is in view.
+    const probe = this.stage.camera.clone();
+    const corners = [[minX, minZ], [maxX, minZ], [minX, maxZ], [maxX, maxZ]].map(([x, z]) => new THREE.Vector3(x, SHIP_Y, z));
+    for (let i = 0; i < 24 && dist < MAX_DISTANCE; i++) {
+      probe.position.copy(target).addScaledVector(dir, dist);
+      probe.lookAt(target);
+      probe.updateMatrixWorld();
+      const worst = Math.max(...corners.map((c) => { const p = c.clone().project(probe); return Math.max(Math.abs(p.x), Math.abs(p.y)); }));
+      if (worst <= 0.9) break;
+      dist = Math.min(MAX_DISTANCE, dist * 1.05);
+    }
     this.stage.setHome(target.clone().addScaledVector(dir, dist), target);
   }
 
