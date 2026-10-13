@@ -423,7 +423,8 @@ describe("galactic council", () => {
     let s = settled("ballot");
     expect(validateCommand(s, 2, { type: "castCouncilVote", vote: 1 }).ok).toBe(false);
     s = processTurn(s, {});
-    expect(validateCommand(s, 0, { type: "castCouncilVote", vote: 1 }).ok).toBe(false);
+    // A computer candidate has nothing to cast; a human candidate declares like everyone else.
+    expect(validateCommand(s, 0, { type: "castCouncilVote", vote: 1 }).ok).toBe(true);
     expect(validateCommand(s, 2, { type: "castCouncilVote", vote: 2 }).ok).toBe(false);
     expect(validateCommand(s, 2, { type: "castCouncilVote", vote: 1 }).ok).toBe(true);
     // Nothing votes for a person: without a ballot they abstain.
@@ -433,6 +434,17 @@ describe("galactic council", () => {
     const backed = processTurn(s, { 2: [{ type: "castCouncilVote", vote: 1 }] });
     expect(backed.council.lastResult!.ballots![2]).toBe(1);
     expect(backed.council.lastResult!.votes[1]).toBe(councilVotes(s, 1) + councilVotes(s, 2));
+  });
+
+  it("never votes for a human candidate: they declare, or abstain", () => {
+    let s = settled("candidate", ["terran", "felhari", "kordex"], [0]);
+    s = processTurn(s, {});
+    expect(s.council.called!.candidates).toContain(0);
+    expect(s.events.some((e) => e.kind === "council" && e.playerId === 0 && /as a candidate/.test(e.what))).toBe(true);
+    expect(processTurn(s, {}).council.lastResult!.ballots![0]).toBeNull();
+    const rival = s.council.called!.candidates.find((c) => c !== 0)!;
+    expect(processTurn(s, { 0: [{ type: "castCouncilVote", vote: rival }] }).council.lastResult!.ballots![0]).toBe(rival);
+    expect(processTurn(s, { 0: [{ type: "castCouncilVote", vote: 0 }] }).council.lastResult!.ballots![0]).toBe(0);
   });
 
   it("gives one vote per 10 population, rounded up, and none without population", () => {

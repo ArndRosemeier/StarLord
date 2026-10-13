@@ -681,8 +681,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <P>
         A candidate with {pct(COUNCIL_MAJORITY)} of all votes is elected. A session plays out as a turn starts, as in the
-        original: every empire's delegation declares in seat order, candidates for themselves, and the running count is shown
-        against the two thirds needed. When your seat comes up you back a candidate or abstain. Your votes are never cast for you: the
+        original: every empire's delegation declares in seat order, computer candidates for themselves, and the running count is shown
+        against the two thirds needed. When your seat comes up you back a candidate or abstain, even when you stand yourself. Your votes are never cast for you: the
         turn does not end until you have declared, and the Diplomacy screen takes you back into the chamber. The council counts the votes when the turn ends. Computer empires only back a candidate they clearly like, and lean +{COUNCIL_VOTE.sameAsLastTime}{" "}
         toward the one they backed last time. Voting for an empire pleases it; voting against it, or abstaining, does
         not. You may refuse another ruler's election on the next turn: if the winner is a computer empire, every other
