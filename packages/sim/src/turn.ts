@@ -368,6 +368,9 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "setCouncilVote":
       player.councilVote = cmd.vote;
       break;
+    case "castCouncilVote":
+      state.council.called!.ballots[playerId] = cmd.vote === "abstain" ? null : cmd.vote;
+      break;
     case "setAutomation":
       player.automation = [...cmd.domains];
       break;

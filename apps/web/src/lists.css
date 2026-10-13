@@ -89,3 +89,10 @@ th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .event-chip.galaxy, .news-masthead, .news-masthead::after, .news-item { animation: none; }
 }
+
+/* ---- galactic council */
+.council-candidates { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.council-candidate { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.council-table { width: 100%; border-collapse: collapse; }
+.council-table th, .council-table td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.council-table tr.me td { font-weight: 600; }

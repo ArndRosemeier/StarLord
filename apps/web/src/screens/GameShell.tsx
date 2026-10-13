@@ -25,6 +25,7 @@ import { EndTurnPrompt } from "./EndTurnPrompt";
 import { BasePrompt, coloniesWithReadyBases } from "./BasePrompt";
 import { BattlePopup } from "./BattlePopup";
 import { NewsPopup } from "./NewsPopup";
+import { CouncilResultPopup, CouncilVotePopup, castBallot, mayCastCouncilVote } from "./CouncilPopup";
 import { CommandBattle } from "./CommandBattle";
 import { OrbitalStrike } from "./OrbitalStrike";
 import { battlesOfLastTurn } from "../game/battles";
@@ -92,6 +93,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [battles, setBattles] = useState<CombatReport[]>([]);
   /** Last turn's Galactic News (random events), shown after the battles. */
   const [news, setNews] = useState<Extract<GameEvent, { kind: "random" }>[]>([]);
+  /** The council window: casting this turn's votes, or how last turn's session went. */
+  const [councilPopup, setCouncilPopup] = useState<"vote" | "result" | null>(null);
   /** Audiences waiting to be held, the current one first. */
   const [audiences, setAudiences] = useState<AudienceRequest[]>([]);
   const debug = !!view.settings.debug && !readOnly;
@@ -115,8 +118,15 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   // Colonies with nothing queued sell their industry as Trade Goods; the player can ask to be told, per game.
   const idleColonies = readOnly || me.idleAlertOff || me.automation.includes("production") ? []
     : Object.values(view.colonies).filter((c) => c.ownerId === me.id && isTradeGoodsOnly(c)).map((c) => c.id);
+  // The council meets at the end of this turn: a ruler with votes is asked for them, as in MoO2.
+  const councilAsk = !readOnly && !autoplay && !me.automation.includes("diplomacy") && mayCastCouncilVote(view, me.id);
+  const councilReminded = useRef(-1);
   const endTurn = () => {
-    if (noResearch || idleColonies.length > 0) setEndCheck({ points: noResearch ? research : null, idle: idleColonies });
+    if (councilAsk && castBallot(session) === undefined && councilReminded.current !== view.turn) {
+      // Ending the turn without a ballot asks once more; the next End Turn lets the standing choice decide.
+      councilReminded.current = view.turn;
+      setCouncilPopup("vote");
+    } else if (noResearch || idleColonies.length > 0) setEndCheck({ points: noResearch ? research : null, idle: idleColonies });
     else session.endTurn({ commandBattles: !autoplay });
   };
   // Ctrl+Enter is bound once, so it calls the latest endTurn through a ref.
@@ -146,6 +156,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     // Battles the player commanded were watched as they were fought.
     setBattles(battlesOfLastTurn(session.history, me.id, view.turn).filter((b) => !session.commandedBattles.has(b.id)));
     setNews(session.lastTurnEvents(me.id).flatMap((e) => (e.kind === "random" ? [e] : [])));
+    setCouncilPopup(view.council.lastResult?.turn === view.turn - 1 ? "result" : councilAsk ? "vote" : null);
   }, [view.turn]);
 
   // A finished base with several possible planets waits for the player to pick one, as in MoO2.
@@ -323,8 +334,11 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
       {news.length > 0 && !battles.length && !(view.over && !overSeen) && (
         <NewsPopup news={news} onClose={() => setNews([])} onShowStar={showStar} />
       )}
-      {basePrompt && !endCheck && !audiences[0] && !battles.length && <BasePrompt onClose={() => setBasePrompt(false)} />}
-      {audiences[0] && !battles.length && !news.length && !(view.over && !overSeen) && (
+      {councilPopup && !battles.length && !news.length && !(view.over && !overSeen) && (
+        councilPopup === "vote" ? <CouncilVotePopup onClose={() => setCouncilPopup(null)} /> : <CouncilResultPopup onClose={() => setCouncilPopup(null)} />
+      )}
+      {basePrompt && !endCheck && !audiences[0] && !battles.length && !councilPopup && <BasePrompt onClose={() => setBasePrompt(false)} />}
+      {audiences[0] && !battles.length && !news.length && !councilPopup && !(view.over && !overSeen) && (
         <Audience key={`${view.turn}:${audiences.length}:${audiences[0].themId}:${audiences[0].opening.kind}`} request={audiences[0]}
           onClose={() => setAudiences((q) => q.slice(1))} />
       )}

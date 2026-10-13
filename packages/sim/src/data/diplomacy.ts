@@ -469,6 +469,11 @@ export const COUNCIL = {
   /** One vote per this many population units (androids and natives count), rounded up; no population, no vote. */
   popPerVote: 10,
   minEmpires: 3,
+  /**
+   * A session is called this many turns before the vote, so a human ruler
+   * casts their votes during their turn (the original asks mid-turn by menu).
+   */
+  notice: 1,
 } as const;
 
 /**

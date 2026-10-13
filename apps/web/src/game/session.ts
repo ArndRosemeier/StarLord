@@ -348,6 +348,7 @@ function commandKey(cmd: Command): string | null {
     case "setTaxRate":
     case "setDoctrine":
     case "setCouncilVote":
+    case "castCouncilVote":
     case "councilResponse":
     case "setAutomation":
     case "setIdleAlert":

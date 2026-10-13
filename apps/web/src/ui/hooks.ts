@@ -10,6 +10,7 @@ export function useGame() {
   useSyncExternalStore(
     (fn) => session.subscribe(fn),
     () => session.version,
+    () => session.version,
   );
   const view = session.view;
   const me = view.players[view.viewer]!;

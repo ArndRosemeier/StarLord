@@ -5,12 +5,14 @@ import { attitude, declareWar, fixedRoll, relation, reputationOf, setStatus, sur
 import { empires, grantTech } from "./empire.js";
 import { REASON, relationEvent, setRelation } from "./relations.js";
 import type { GameState, PlayerId } from "./types.js";
+import type { PlayerView } from "./view.js";
 import type { Emit } from "./context.js";
 
 /**
  * The Galactic Council forms once nearly the whole galaxy is settled and then
- * meets every 25 turns while three or more empires remain. The two empires
- * with the most votes stand; every empire votes with its size, by its
+ * meets every 25 turns while three or more empires remain. Each session is
+ * called a turn ahead (COUNCIL.notice) with its two candidates, the empires
+ * with the most votes, so people cast their votes during that turn; every empire votes with its size, by its
  * relations with the candidates (the original's rule, see COUNCIL_VOTE), and
  * each vote moves relations: +24 with the candidate backed, -12 with the
  * other, -6 with both for abstaining. A two-thirds majority elects a leader of
@@ -24,8 +26,14 @@ export const COUNCIL_FIRST = COUNCIL.earliestTurn;
 export const COUNCIL_INTERVAL = COUNCIL.interval;
 export const COUNCIL_MAJORITY = COUNCIL.majority;
 
-/** One vote per 10 population (androids and natives count), rounded up; an empire without population has none. */
+/**
+ * One vote per 10 population (androids and natives count), rounded up; an
+ * empire without population has none. A player's view carries everyone's
+ * votes, since it does not hold every colony.
+ */
 export function councilVotes(state: GameState, playerId: PlayerId): number {
+  const known = (state as Partial<PlayerView>).knownCouncilVotes;
+  if (known && playerId in known) return known[playerId]!;
   return Math.ceil(votingPopulation(state, playerId) / COUNCIL.popPerVote);
 }
 
@@ -94,12 +102,19 @@ export function voteChance(state: GameState, voter: PlayerId, candidate: PlayerI
 }
 
 /**
- * Who a player's votes go to. Candidates vote for themselves; "auto" (every
- * computer empire) rolls a d200 against each candidate's vote score and backs
- * the one that passes, abstaining when both or neither do.
+ * Who a player's votes go to. Candidates vote for themselves; a ballot cast
+ * during the session's turn counts next; otherwise the player's standing
+ * choice, where "auto" (every computer empire) rolls a d200 against each
+ * candidate's vote score and backs the one that passes, abstaining when both
+ * or neither do.
  */
 export function resolveVote(state: GameState, voter: PlayerId, candidates: PlayerId[]): PlayerId | null {
   if (candidates.includes(voter)) return voter;
+  const ballots = state.council.called?.ballots;
+  if (ballots && voter in ballots) {
+    const b = ballots[voter]!;
+    return b === null || candidates.includes(b) ? b : null;
+  }
   const choice = state.players[voter]!.councilVote;
   if (choice === "abstain") return null;
   if (typeof choice === "number" && candidates.includes(choice)) return choice;
@@ -154,22 +169,56 @@ export function councilTick(state: GameState, emit: Emit): { winner: PlayerId } 
     if (state.turn < COUNCIL.earliestTurn || alive.length < COUNCIL.minEmpires) return null;
     if (settledShare(state) < COUNCIL.settledShare) return null;
     council.convened = true;
-    council.nextTurn = state.turn;
+    council.nextTurn = state.turn + COUNCIL.notice;
   }
-  if (state.turn < council.nextTurn) return null;
+
+  // A session is called ahead of the vote, so every ruler can cast their votes during their turn.
+  if (!council.called) {
+    if (state.turn + COUNCIL.notice < council.nextTurn) return null;
+    if (alive.length < COUNCIL.minEmpires) {
+      council.nextTurn = state.turn + COUNCIL.interval;
+      return null;
+    }
+    const called = { turn: Math.max(council.nextTurn, state.turn + COUNCIL.notice), candidates: councilCandidates(state), ballots: {} };
+    council.called = called;
+    const total = alive.reduce((n, p) => n + councilVotes(state, p.id), 0);
+    const votes = (n: number) => `${n} vote${n === 1 ? "" : "s"}`;
+    const [a, b] = called.candidates.map((c) => `the ${state.players[c]!.name} (${votes(councilVotes(state, c))})`);
+    const when = called.turn === state.turn + 1 ? "next turn" : `on turn ${called.turn}`;
+    for (const p of alive) {
+      const mine = councilVotes(state, p.id);
+      const stand = called.candidates.includes(p.id);
+      emit({
+        kind: "council", playerId: p.id,
+        what: `The council meets ${when}: ${a} and ${b} stand, and ${votesToWin(total)} of ${total} votes elect a leader. `
+          + (stand ? `You stand, and your ${votes(mine)} go to you`
+            : mine > 0 ? `Cast your ${votes(mine)} before it meets` : "Your empire has no population, so no votes"),
+      });
+    }
+    return null;
+  }
+  if (state.turn < council.called.turn) return null;
   council.nextTurn = state.turn + COUNCIL.interval;
-  if (alive.length < COUNCIL.minEmpires) return null;
-  const candidates = councilCandidates(state);
+  if (alive.length < COUNCIL.minEmpires) {
+    council.called = null;
+    return null;
+  }
+  // Candidates were named when the session was called; one that has fallen since is replaced.
+  let candidates = council.called.candidates.filter((c) => state.players[c]?.alive);
+  if (candidates.length < 2) candidates = councilCandidates(state);
   const votes: Record<string, number> = {};
+  const weights: Record<string, number> = {};
   const choices: [PlayerId, PlayerId | null][] = [];
   let total = 0;
   for (const p of alive) {
     const weight = councilVotes(state, p.id);
+    weights[p.id] = weight;
     total += weight;
     const v = resolveVote(state, p.id, candidates);
     if (v !== null) votes[v] = (votes[v] ?? 0) + weight;
     choices.push([p.id, v]);
   }
+  council.called = null;
   // Every vote moves relations with the candidates, and is remembered for the next session.
   const lastVotes: Record<string, PlayerId | null> = {};
   for (const [voter, v] of choices) {
@@ -182,13 +231,17 @@ export function councilTick(state: GameState, emit: Emit): { winner: PlayerId } 
     }
   }
   council.lastVotes = lastVotes;
-  const winner = total > 0 ? candidates.find((c) => (votes[c] ?? 0) >= votesToWin(total)) ?? null : null;
-  council.lastResult = { turn: state.turn, candidates, votes, winner };
+  const needed = votesToWin(total);
+  const winner = total > 0 ? candidates.find((c) => (votes[c] ?? 0) >= needed) ?? null : null;
+  council.lastResult = { turn: state.turn, candidates, votes, winner, total, needed, weights, ballots: lastVotes };
+  const tally = candidates.map((c) => `${state.players[c]!.name} ${votes[c] ?? 0}`).join(", ");
+  const abstained = total - candidates.reduce((n, c) => n + (votes[c] ?? 0), 0);
+  const count = `${tally}${abstained > 0 ? `, ${abstained} abstained` : ""}; ${needed} of ${total} votes needed`;
   for (const p of alive) {
     emit({
       kind: "council",
       playerId: p.id,
-      what: winner === null ? "The council failed to elect a leader." : `${state.players[winner]!.name} was elected leader of the galaxy.`,
+      what: winner === null ? `The council failed to elect a leader (${count})` : `${state.players[winner]!.name} was elected leader of the galaxy (${count})`,
     });
   }
   if (winner === null) return null;

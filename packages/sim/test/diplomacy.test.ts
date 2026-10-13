@@ -364,8 +364,9 @@ describe("strikes: a computer ruler's grievances against a human", () => {
 });
 
 describe("galactic council", () => {
-  it("meets once enough of the galaxy is settled and a big enough majority elects a winner", () => {
-    let s = met("council", ["terran", "felhari", "kordex"], { council: true });
+  /** Three empires, player 2 human, with every system settled by empire 0 on turn 25. */
+  function settled(seed: string): GameState {
+    const s = met(seed, ["terran", "felhari", "kordex"], { council: true, humanPlayers: [2] });
     s.turn = 25;
     // Settle every star system for empire 0 on paper: one colony per system is what counts.
     for (const star of s.galaxy.stars) {
@@ -376,15 +377,44 @@ describe("galactic council", () => {
       s.colonies[id] = { ...structuredClone(src), id, planetId: pid, name: id, buildings: [], queue: [], progress: 0 };
       s.planets[pid]!.colonyId = id;
     }
+    return s;
+  }
+
+  it("meets once enough of the galaxy is settled and a big enough majority elects a winner", () => {
+    let s = settled("council");
     // Everyone loves empire 0.
     s.attitude[1] = { ...(s.attitude[1] ?? {}), 0: 100 };
-    s.attitude[2] = { ...(s.attitude[2] ?? {}), 0: 100 };
     s = processTurn(s, {});
+    // The session is called a turn ahead, with its candidates, and nobody has voted yet.
     expect(s.council.convened).toBe(true);
-    expect(s.council.lastResult?.winner).toBe(0);
+    expect(s.council.called).toMatchObject({ turn: 26, candidates: [0, 1] });
+    expect(s.council.lastResult).toBeNull();
+    expect(s.events.some((e) => e.kind === "council" && e.playerId === 2 && /meets next turn.*Cast your \d+ votes?/.test(e.what))).toBe(true);
+    s = processTurn(s, {});
+    expect(s.council.called).toBeNull();
+    expect(s.council.nextTurn).toBe(26 + 25);
+    const r = s.council.lastResult!;
+    expect(r.winner).toBe(0);
+    expect(r.total).toBe(Object.values(r.weights!).reduce((a, b) => a + b, 0));
+    expect(r.needed).toBe(votesToWin(r.total!));
     // Every vote is remembered for the next session.
     expect(Object.keys(s.council.lastVotes ?? {})).toHaveLength(3);
     expect(Object.values(s.council.lastVotes ?? {})).toContain(0);
+    expect(s.events.some((e) => e.kind === "council" && /elected leader of the galaxy \(.*votes needed\)/.test(e.what))).toBe(true);
+  });
+
+  it("asks a human for their votes: the ballot cast during the session's turn counts", () => {
+    let s = settled("ballot");
+    expect(validateCommand(s, 2, { type: "castCouncilVote", vote: 1 }).ok).toBe(false);
+    s = processTurn(s, {});
+    expect(validateCommand(s, 0, { type: "castCouncilVote", vote: 1 }).ok).toBe(false);
+    expect(validateCommand(s, 2, { type: "castCouncilVote", vote: 2 }).ok).toBe(false);
+    expect(validateCommand(s, 2, { type: "castCouncilVote", vote: 1 }).ok).toBe(true);
+    const abstain = processTurn(s, { 2: [{ type: "castCouncilVote", vote: "abstain" }] });
+    expect(abstain.council.lastResult!.ballots![2]).toBeNull();
+    const backed = processTurn(s, { 2: [{ type: "castCouncilVote", vote: 1 }] });
+    expect(backed.council.lastResult!.ballots![2]).toBe(1);
+    expect(backed.council.lastResult!.votes[1]).toBe(councilVotes(s, 1) + councilVotes(s, 2));
   });
 
   it("gives one vote per 10 population, rounded up, and none without population", () => {

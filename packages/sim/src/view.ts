@@ -1,3 +1,4 @@
+import { councilVotes } from "./council.js";
 import { relation, treatyPopulation } from "./diplomacy.js";
 import { empireTotals } from "./economy.js";
 import { BATTLE_SCANNER_RANGE, TRANSIT_DETECTION_PER_SIZE } from "./data/movement.js";
@@ -18,6 +19,8 @@ export type PlayerView = GameState & {
   knownPopulation?: Record<PlayerId, number>;
   /** The same partners' population as treaties count it (see treatyPopulation). */
   knownTreatyPop?: Record<PlayerId, { trade: number; research: number }>;
+  /** Every living empire's council votes, public as on the original's council screen (only with the council on). */
+  knownCouncilVotes?: Record<PlayerId, number>;
 };
 
 /** A point a player's scanners see from: one of its fleets or colonies, with that scanner's range in parsecs. */
@@ -133,6 +136,8 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
     knownPopulation[p.id] = empireTotals(state, p.id).population;
     knownTreatyPop[p.id] = { trade: treatyPopulation(state, p.id, "trade"), research: treatyPopulation(state, p.id, "research") };
   }
+  const knownCouncilVotes: Record<PlayerId, number> = {};
+  if (state.settings.council) for (const p of state.players) if (p.kind === "empire" && p.alive) knownCouncilVotes[p.id] = councilVotes(state, p.id);
   // The history record shows the viewer and the empires they are in contact with, as the original's graphs do.
   const history = state.history?.map((h) => ({ turn: h.turn, rows: h.rows.map((r, id) => (r && knowsStats(state, viewer, id) ? r : null)) }));
   return structuredClone({
@@ -140,6 +145,7 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
     ...(history ? { history } : {}),
     knownPopulation,
     knownTreatyPop,
+    knownCouncilVotes,
     players,
     galaxy: { ...state.galaxy, stars: shownStars },
     planets, colonies, fleets, leaders, proposals, combats, events, viewer,
