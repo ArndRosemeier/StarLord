@@ -72,6 +72,10 @@ describe("finished buildings take effect", () => {
     const def = BUILDINGS.find((b) => b.id === id)!;
     if (def.requires) s.players[0]!.techs.push(def.requires);
     home.buildings = home.buildings.filter((b) => b !== id && !def.replaces?.includes(b));
+    // Make the colony one where the building does something, or it isn't offered.
+    if (def.effects.gravityFix) s.planets[home.planetId]!.gravity = s.planets[home.planetId]!.gravity === "low" ? "heavy" : "low";
+    if (def.effects.morale) s.players[0]!.government = "dictatorship";
+    if (def.effects.alienManagement) home.aliens = 1;
     const before = structuredClone(s);
     const after = processTurn(s, {
       0: [{ type: "setQueue", colonyId: home.id, queue: [{ kind: "building", id }] }, { type: "buy", colonyId: home.id }],

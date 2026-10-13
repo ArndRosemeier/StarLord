@@ -4,8 +4,10 @@ import { GOVERNMENTS } from "./data/governments.js";
 import { getRace, hasTrait } from "./data/races.js";
 import { TECHS, TECH_TIERS, previousTier, type TechTier } from "./data/techs.js";
 import { designStats, validateDesign } from "./designs.js";
-import { knows } from "./empire.js";
-import { canFarm, capitalLost, maxPopulation, population, totalPopulation } from "./economy.js";
+import { government, knows } from "./empire.js";
+import {
+  androidCount, canFarm, capitalLost, gravityMultiplier, isMultiRacial, maxPopulation, population, totalPopulation,
+} from "./economy.js";
 import type { BuildItem, Colony, GameState, Id, Planet, Player, PlayerId, ShipDesign } from "./types.js";
 import { STATION_DOCK_HULLS } from "./data/components.js";
 
@@ -23,10 +25,26 @@ export function availableBuildings(state: GameState, playerId: PlayerId, colony:
     // Buildings that would do nothing here are not offered.
     if (e.needsSoil && SOILLESS.includes(planet.type)) return false;
     if (e.foodPerFarmer && !e.researchPerScientist && !canFarm(planet, player)) return false;
+    if (e.gravityFix && !gravityHurts(colony, planet)) return false;
+    if ((e.pollutionFactor || e.noPollution) && !canPollute(colony)) return false;
+    if (e.morale && government(player).noMorale) return false;
+    if (e.alienManagement && !isMultiRacial(player, colony) && !(colony.aliens ?? 0)) return false;
     // Superseded buildings disappear once their replacement stands.
     const superseded = BUILDINGS.some((o) => o.replaces?.includes(b.id) && colony.buildings.includes(o.id));
     return !superseded;
   }).map((b) => b.id);
+}
+
+/** True when the colony's people or androids lose output to the planet's gravity. */
+function gravityHurts(colony: Colony, planet: Planet): boolean {
+  if (gravityMultiplier(getRace(colony.raceId), planet.gravity) < 1) return true;
+  return androidCount(colony) > 0 && gravityMultiplier(null, planet.gravity) < 1;
+}
+
+/** False when the colony can't pollute: Core Waste Dumps stand, or its people are tolerant (androids never pollute). */
+function canPollute(colony: Colony): boolean {
+  if (colony.buildings.some((id) => BUILDINGS_BY_ID[id]?.effects.noPollution)) return false;
+  return !hasTrait(getRace(colony.raceId), "tolerant");
 }
 
 export function freePlanetsInSystem(state: GameState, colony: Colony, kind: "habitable" | "unsettleable"): Planet[] {
