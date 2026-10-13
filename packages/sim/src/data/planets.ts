@@ -129,6 +129,8 @@ export const ORBIT_ZONES: Record<StarColor, number[]> = {
 
 /** The climates a real planet can be born with (the original has no inferno worlds). */
 export type NaturalClimate = "toxic" | "radiated" | "barren" | "desert" | "tundra" | "ocean" | "swamp" | "arid" | "terran" | "gaia";
+/** The natural climates from worst to best, in the original's order. */
+export const NATURAL_CLIMATES: NaturalClimate[] = ["toxic", "radiated", "barren", "desert", "tundra", "ocean", "swamp", "arid", "terran", "gaia"];
 
 /**
  * Climate weights by zone (0..3). Young and average galaxies share one table,

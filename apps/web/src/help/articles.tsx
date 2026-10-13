@@ -3,7 +3,7 @@ import {
   CREW, DEFENSE_CREW_LEVEL, SIDE_ATTACK_BY_IMMOBILE_SIZE, hullIndex,
   ALL_WEAPONS, ARMORS, ARMORS_BY_ID, BUILDINGS, BUILDINGS_BY_ID, CLIMATES, COMPUTERS, COMPUTERS_BY_ID, CUSTOM_RACE_POINTS,
   DRIVES, EXCLUSIVE_TRAITS, FIELD_NAMES, FUEL_RANGES, GOVERNMENTS, GOVERNMENT_COSTS, HULLS, HULLS_BY_ID, INDUSTRY_PER_WORKER,
-  AVENGER_DESIGN, GUARDIAN_SCORE, LAIR_MONSTERS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, SUPPORT_HULL, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
+  AVENGER_DESIGN, GUARDIAN_SCORE, LAIR_MONSTERS, LAIR_PLANET_UPGRADE, LAIR_SPECIALS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, SUPPORT_HULL, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
   PLANETS_PER_STAR_D10, PLANET_SIZE_WEIGHTS, PROJECTS, PROJECTS_BY_ID, PROJECT_COSTS, RACES, RACES_BY_ID,
   RAIDER_CITADEL, RAIDER_CITADEL_ID, RAIDER_DESIGNS, RAIDER_HULLS, RAIDER_SHIP_NAMES, RAID_BUDGET_MULT, RAID_BUDGET_PERIOD, RAID_DESTROYER_WINDOW, RAID_FLEET_CAP,
   RAID_FRIGATE_WINDOW, RAID_GRACE_TURNS, RAID_HOME_MIN_TITANS, RAID_HOME_QUOTA, RAID_HUMAN_POP_MULT, RAID_LAUNCH_ROLL, RAID_LAUNCH_VALUE_MULT, RAID_MAX_SHIPS,
@@ -985,6 +985,10 @@ function MonsterRow({ d, label }: { d: ShipDesign; label?: string }) {
   );
 }
 
+const LAIR_SPECIAL_NAMES: Partial<Record<string, string>> = {
+  debris: "Space debris", cache: "Pirate cache", splinter: "Splinter colony", artifacts: "Ancient artifacts", hero: "Waiting hero",
+};
+
 const monsterHead = <thead><tr><th>Name</th><th>Structure</th><th>Armor</th><th>Attack</th><th>Defense</th><th>Shield</th><th>Speed</th><th>Weapons</th></tr></thead>;
 
 function MonstersPage() {
@@ -998,11 +1002,32 @@ function MonstersPage() {
         square of combat speed, and cannot be boarded. Each system
         with planets has a {pct(LAIR_CHANCE.average)} chance of a lair ({pct(LAIR_CHANCE.hard)} on Hard,{" "}
         {pct(LAIR_CHANCE.impossible)} on Impossible), at most {MAX_LAIRS} in a galaxy, never at a homeworld. The guard is
-        one of {LAIR_MONSTERS.map((id) => MONSTER_DESIGNS.find((d) => d.id === id)?.name ?? id).join(", ")}, at random. Its
-        lair holds a medium or bigger, rich or ultra rich planet, and keeps whatever special the system already had.
+        one of {LAIR_MONSTERS.map((id) => MONSTER_DESIGNS.find((d) => d.id === id)?.name ?? id).join(", ")}, at random. One
+        planet of its lair (an asteroid belt or gas giant becomes a planet) is raised: its size, minerals and, for some
+        monsters, climate become the better of its own and a random pick from the lists below; its gravity stays as it
+        was. The lair also always holds a special: one a planet already has is kept if it is on the monster's list,
+        otherwise the system's specials are rolled again from that list.
         The guardian holds Orion, near the middle of the map, the best system in the galaxy; whoever destroys it gets the {AVENGER_DESIGN.name}, the battleship it guarded, salvages the <HelpLink to="weapon:deathRay" /> and up to three more random xenon technologies, scores {GUARDIAN_SCORE}, and the last of the elders takes command of the {AVENGER_DESIGN.name} if a captain's post is free.
       </p>
       <table className="help-table">{monsterHead}<tbody>{MONSTER_DESIGNS.map((d) => <MonsterRow key={d.id} d={d} />)}</tbody></table>
+      <h3>Lair rewards</h3>
+      <table className="help-table">
+        <thead><tr><th>Guard</th><th>Planet size</th><th>Minerals</th><th>Climate</th><th>Special</th></tr></thead>
+        <tbody>
+          {LAIR_MONSTERS.map((id) => {
+            const up = LAIR_PLANET_UPGRADE[id]!;
+            return (
+              <tr key={id}>
+                <td>{MONSTER_DESIGNS.find((d) => d.id === id)?.name ?? id}</td>
+                <td>{up.sizes.map(words).join(" / ")}</td>
+                <td>{up.minerals.map(words).join(" / ")}</td>
+                <td>{up.climates === "keep" ? "Unchanged (random if converted)" : up.climates.map(words).join(" / ")}</td>
+                <td>{LAIR_SPECIALS[id]!.map((k) => LAIR_SPECIAL_NAMES[k] ?? words(k)).join(", ")}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
       <h3>Raiders</h3>
       <p>
         The Vexari raiders live in a pocket dimension outside the galaxy. They leave the galaxy alone for the first{" "}
