@@ -26,6 +26,11 @@ export function itemName(view: PlayerView, item: BuildItem): string {
       return PROJECTS_BY_ID[item.id]?.name ?? item.id;
     case "tradeGoods":
       return "Trade Goods";
+    case "refit": {
+      const me = view.players[view.viewer]!;
+      const from = findDesign(me, item.fromDesignId)?.name ?? item.fromDesignId;
+      return `Refit ${from} → ${findDesign(me, item.designId)?.name ?? item.designId}`;
+    }
   }
 }
 

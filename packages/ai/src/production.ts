@@ -5,6 +5,7 @@ import {
 } from "@starlord/sim";
 import { colonizationTargets, outpostTargets } from "./colonization.js";
 import { currentWarship } from "./design.js";
+import { refitOrders } from "./refit.js";
 import { strategyOf } from "./strategies.js";
 import { colonyStar, hostileFleetsNear, isOnly, me, myColonies, myFleets } from "./util.js";
 
@@ -129,7 +130,8 @@ export function productionOrders(view: PlayerView): Command[] {
     const d = player.designs.find((x) => x.id === id);
     return d && !d.module && d.weapons.length > 0 ? HULLS_BY_ID[d.hull].commandPoints : 0;
   };
-  const queuedCp = colonies.reduce((n, c) => n + c.queue.reduce((m, q) => m + (q.kind === "ship" ? hullCp(q.designId) : 0), 0), 0);
+  // Ships in dock for a refit still need their command points once they are back.
+  const queuedCp = colonies.reduce((n, c) => n + c.queue.reduce((m, q) => m + (q.kind === "ship" || q.kind === "refit" ? hullCp(q.designId) : 0), 0), 0);
   // Peacetime: a modest fleet that grows with the economy so late-game industry isn't all turned into BC.
   // Wartime: fill command points, and go over only while income can carry it.
   // The military strategy fills command points in peacetime too; the industry strategy keeps half the usual fleet.
@@ -174,6 +176,10 @@ export function productionOrders(view: PlayerView): Command[] {
       if (target) out.push({ type: "placeBase", colonyId: c.id, projectId: id, planetId: target.id });
     }
   }
+  // Outdated warships idle at a capable colony are refitted; those colonies are busy with that this turn.
+  const refits = refitOrders(view);
+  out.push(...refits);
+  const refitting = new Set(refits.flatMap((c) => (c.type === "refitShips" ? [c.colonyId] : [])));
   let bc = player.bc;
   const ranked = colonies
     .map((c) => ({ c, out: colonyOutput(view, c) }))
@@ -190,8 +196,10 @@ export function productionOrders(view: PlayerView): Command[] {
       }
       continue;
     }
+    if (refitting.has(c.id)) continue;
     const next = chooseItem(view, c, o.industry, rank, wants, designs, war, o.foodNet, player.bc > 1000 && income.net > -player.bc / 100);
-    out.push({ type: "setQueue", colonyId: c.id, queue: [next] });
+    // Refit jobs hold ships and stay in the queue.
+    out.push({ type: "setQueue", colonyId: c.id, queue: [next, ...c.queue.filter((q) => q.kind === "refit")] });
   }
   return out;
 }
