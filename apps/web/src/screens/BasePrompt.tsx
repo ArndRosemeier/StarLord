@@ -10,7 +10,8 @@ import { PlanetOrb } from "../ui/panels";
 function outcome(projectId: string, planet: Planet, maxPop: number): string {
   if (projectId === "colonyBase") return `New colony with 1 pop, room for ${maxPop}`;
   if (planet.type === "asteroids" || planet.type === "gasGiant") {
-    return `Becomes a ${ARTIFICIAL_PLANET[planet.type]} ${climateName(ARTIFICIAL_PLANET.type)} planet, ${ARTIFICIAL_PLANET.minerals} minerals`;
+    const made = `Becomes a ${ARTIFICIAL_PLANET[planet.type]} ${climateName(ARTIFICIAL_PLANET.type)} planet, ${ARTIFICIAL_PLANET.minerals} minerals`;
+    return planet.colonyId ? `${made}; your outpost there stays an outpost, so no colonists` : made;
   }
   return "";
 }

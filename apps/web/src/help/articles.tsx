@@ -640,7 +640,7 @@ function ModulePage({ id }: { id: keyof typeof MODULES }) {
   const tech = Object.keys(TECHS).find((t) => techUnlocks(t).some((u) => u.kind === "module" && u.id === id)) ?? null;
   const text: Record<keyof typeof MODULES, string> = {
     colony: "Settles a habitable planet: move the ship to the star and press Colonize. The ship is used up.",
-    outpost: "Claims any habitable planet as an outpost. Outposts have no population but extend fuel range and count for score. Asteroids and gas giants can't take outposts.",
+    outpost: "Claims any free planet as an outpost, asteroid belts and gas giants included. Outposts have no population and build nothing, but extend fuel and scanner range, claim the system and count for score. The ship is used up.",
     transport: "Carries troops to invade enemy colonies once their orbital defenses are down.",
   };
   return (
@@ -695,8 +695,8 @@ function PlanetsPage() {
     <div className="col">
       <p>
         Climate decides how many people a planet holds per size step and how much food each farmer grows. Hostile
-        worlds hold few people. Asteroids and gas giants can't be settled at all, not even by outposts, until an{" "}
-        <HelpLink to="project:artificialPlanet" /> turns them into barren planets. Max population is the climate's share of
+        worlds hold few people. Asteroids and gas giants hold no colonists until an{" "}
+        <HelpLink to="project:artificialPlanet" /> turns them into barren planets, but outpost ships can claim them. Max population is the climate's share of
         the size's full population (tiny 5 to huge 25), rounded, plus race traits, buildings and techs.
       </p>
       <table className="help-table">
@@ -708,7 +708,7 @@ function PlanetsPage() {
               <tr key={t}>
                 <td><HelpLink to={`climate:${t}`} /></td><td>{c.popPercent}%</td><td>{c.foodPerFarmer}</td>
                 <td>{c.habitable ? SIZES.map((s) => climatePopulation(c.popPercent, s)).join(" / ") : "–"}</td>
-                <td>{!c.habitable ? "Needs Artificial Planet" : c.hostile ? "Hostile" : ""}</td>
+                <td>{!c.habitable ? "Outposts only; colonists need an Artificial Planet" : c.hostile ? "Hostile" : ""}</td>
               </tr>
             );
           })}
@@ -725,7 +725,7 @@ function ClimatePage({ type }: { type: PlanetType }) {
   return (
     <div className="col">
       <Facts rows={[
-        ["Habitable", c.habitable ? "Yes" : "No: not even outposts, until an Artificial Planet converts it"],
+        ["Habitable", c.habitable ? "Yes" : "No colonists until an Artificial Planet converts it; outpost ships can claim it"],
         ["Hostile", c.hostile ? "Yes" : "No"],
         ["Population share", `${c.popPercent}% of a Gaia world`],
         ["Food per farmer", c.foodPerFarmer],

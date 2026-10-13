@@ -284,6 +284,16 @@ export const PROJECT_COSTS = {
  */
 export const BASE_SCRAP_REFUND = 0.5;
 
+/**
+ * Scrapping a building by hand, as in the original colony screen: it pays back
+ * `refund` of the building's base cost in BC (rounded down), one building per
+ * colony per turn, and the Capitol can never be scrapped.
+ */
+export const BUILDING_SCRAP = {
+  refund: 0.5,
+  perColonyPerTurn: 1,
+} as const;
+
 /** BC upkeep per turn of one-off projects that stay in place. */
 export const PROJECT_UPKEEP = {
   dimensionalPortal: 2,

@@ -97,7 +97,7 @@ describe("turns", () => {
     expect(s.fleets[fleet.id]).toBeUndefined();
   });
 
-  it("can't settle asteroids or gas giants until an Artificial Planet converts them", () => {
+  it("keeps colony ships off asteroids and gas giants until an Artificial Planet converts them", () => {
     let s = newGame({ seed: "col", playerCount: 2, ...quiet });
     const fleet = Object.values(s.fleets).find((f) => f.ownerId === 0 && f.ships[0]!.designId === "colonyShip")!;
     const home = s.players[0]!.homeStarId;

@@ -47,12 +47,23 @@ function canPollute(colony: Colony): boolean {
   return !hasTrait(getRace(colony.raceId), "tolerant");
 }
 
+/**
+ * Planets in the colony's system a placed project can use. A Colony Base
+ * needs a free habitable world; an Artificial Planet, as in the original, any
+ * asteroid belt or gas giant there, also one the owner already holds as an
+ * outpost (the outpost stays an outpost on the new world).
+ */
 export function freePlanetsInSystem(state: GameState, colony: Colony, kind: "habitable" | "unsettleable"): Planet[] {
   const starId = state.planets[colony.planetId]!.starId;
   const star = state.galaxy.stars.find((s) => s.id === starId)!;
+  const usable = (p: Planet) => {
+    if (!p.colonyId) return true;
+    const held = state.colonies[p.colonyId];
+    return kind === "unsettleable" && !!held && held.outpost && held.ownerId === colony.ownerId;
+  };
   return star.planetIds
     .map((id) => state.planets[id]!)
-    .filter((p) => !p.colonyId && (kind === "habitable" ? CLIMATES[p.type].habitable : !CLIMATES[p.type].habitable));
+    .filter((p) => usable(p) && (kind === "habitable" ? CLIMATES[p.type].habitable : !CLIMATES[p.type].habitable));
 }
 
 /** Projects that settle or convert another planet in the builder's system, and the planets they can use. */
@@ -88,16 +99,17 @@ export function baseClaims(state: GameState, colony: Colony, projectId: string, 
 
 /**
  * The planet a finished base is best put on: a Colony Base takes the room for
- * the most people,
- * an Artificial Planet a gas giant (it becomes a huge planet) before an asteroid belt.
+ * the most people, an Artificial Planet a free body before one with an
+ * outpost, and a gas giant (it becomes a huge planet) before an asteroid belt.
  */
 export function suggestedBaseTarget(state: GameState, colony: Colony, projectId: string, taken?: Set<Id>): Planet | undefined {
   const free = baseTargets(state, colony, projectId).filter((p) => !taken?.has(p.id));
   const player = state.players[colony.ownerId]!;
   const race = getRace(player.raceId);
   const room = (p: Planet) => maxPopulation(p, race, [], player);
+  // Free bodies first: an outpost on a converted planet stays an outpost.
   const score = (p: Planet) =>
-    projectId === "colonyBase" ? room(p) : p.type === "gasGiant" ? 1 : 0;
+    projectId === "colonyBase" ? room(p) : (p.colonyId ? 0 : 2) + (p.type === "gasGiant" ? 1 : 0);
   return [...free].sort((a, b) => score(b) - score(a))[0];
 }
 

@@ -140,6 +140,8 @@ export interface Colony {
   readyBases?: string[];
   /** A Dimensional Portal stands here: fleets in this system can strike at the raiders' home. */
   portal?: boolean;
+  /** Turn on which the owner last scrapped a building here; only one may go per colony each turn. */
+  scrappedTurn?: number;
 }
 
 export interface AndroidCounts {
