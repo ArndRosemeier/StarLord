@@ -58,10 +58,10 @@ export function createController(domains: readonly AutomationDomain[] = ALL_DOMA
   };
 }
 
-/** Production may scrap a whole fleet; later modules' orders for it would be rejected, so drop them. */
+/** Production may scrap or refit a whole fleet; later modules' orders for it would be rejected, so drop them. */
 function dropScrappedFleets(view: PlayerView, orders: Command[]): Command[] {
   const scrapped = new Map<string, number>();
-  for (const c of orders) if (c.type === "scrapShips") scrapped.set(c.fleetId, (scrapped.get(c.fleetId) ?? 0) + c.count);
+  for (const c of orders) if (c.type === "scrapShips" || c.type === "refitShips") scrapped.set(c.fleetId, (scrapped.get(c.fleetId) ?? 0) + c.count);
   const gone = new Set(
     [...scrapped].filter(([id, n]) => {
       const f = view.fleets[id];
@@ -70,7 +70,7 @@ function dropScrappedFleets(view: PlayerView, orders: Command[]): Command[] {
   );
   if (gone.size === 0) return orders;
   return orders.filter((c) => {
-    if (c.type === "scrapShips") return true;
+    if (c.type === "scrapShips" || c.type === "refitShips") return true;
     const ids: unknown[] = [(c as { fleetId?: string }).fleetId, c.type === "assignLeader" ? c.targetId : undefined];
     return !ids.some((id) => typeof id === "string" && gone.has(id));
   });

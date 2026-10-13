@@ -92,7 +92,25 @@ export type BuildItem =
   | { kind: "building"; id: string }
   | { kind: "ship"; designId: string; repeat?: boolean }
   | { kind: "project"; id: string; planetId?: Id; repeat?: boolean }
-  | { kind: "tradeGoods" };
+  | { kind: "tradeGoods" }
+  /**
+   * A ship taken out of its fleet to be rebuilt to another design of its hull.
+   * Until the job is done the ship is in dock and takes no part in anything;
+   * removing the job from the queue scraps the ship.
+   */
+  | {
+    kind: "refit";
+    refitId: Id;
+    /** Design the ship had, and the design it gets. */
+    fromDesignId: string;
+    designId: string;
+    /** Production the refit costs, fixed when it was ordered. */
+    cost: number;
+    /** The crew keeps its experience. */
+    xp?: number;
+    /** Fleet the ship came from; it rejoins it if that fleet still waits here. */
+    fleetId?: Id;
+  };
 
 export interface Colony {
   id: Id;

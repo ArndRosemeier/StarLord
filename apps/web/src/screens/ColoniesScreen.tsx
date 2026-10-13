@@ -14,6 +14,7 @@ import { PlanetFacts, buildingTip, moraleTip, projectTip, tradeGoodsBC, tradeGoo
 import { designTip } from "./designTips";
 import { BaseChoices } from "./BasePrompt";
 import { JobRows } from "./JobRows";
+import { ColonyRefits } from "../ui/RefitPanel";
 
 export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (starId: string) => void; initialColony?: string | null }) {
   const { view, me } = useGame();
@@ -199,7 +200,12 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
                   [q[i - 1], q[i]] = [q[i]!, q[i - 1]!];
                   setQueue(q);
                 }}>↑</button>
-                <button className="small" disabled={readOnly} onClick={() => setQueue(colony.queue.filter((_, j) => j !== i))}>✕</button>
+                {item.kind === "refit" ? (
+                  <button className="small danger" disabled={readOnly} title="Cancel this refit. The ship in dock is scrapped, as is the production spent on it."
+                    onClick={() => { if (confirm(`Cancel the refit? The ship in dock is scrapped.`)) session.issue({ type: "cancelRefit", colonyId: colony.id, refitId: item.refitId }); }}>✕</button>
+                ) : (
+                  <button className="small" disabled={readOnly} onClick={() => setQueue(colony.queue.filter((_, j) => j !== i))}>✕</button>
+                )}
               </div>
             );
           })}
@@ -213,6 +219,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
               projects={projects}
             />
           )}
+          {!readOnly && <ColonyRefits colony={colony} />}
         </div>
       )}
     </div>

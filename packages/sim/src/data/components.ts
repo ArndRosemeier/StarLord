@@ -63,6 +63,18 @@ export const STATION_HULLS: HullDef<StationHull>[] = [
 /** Ships no colony can build without an orbital station: anything larger than a destroyer. */
 export const STATION_DOCK_HULLS: HullSize[] = ["cruiser", "battleship", "titan", "doomStar"];
 
+/**
+ * Refitting a ship to another design of its hull, priced as in the original:
+ * twice what the new design costs more than the old one, but never less than
+ * a quarter of the bare hull's cost.
+ */
+export const REFIT = {
+  /** A refit costs at least the hull's base cost divided by this. */
+  minHullCostDivisor: 4,
+  /** Multiplier on the cost difference between the new and the old design. */
+  costDifferenceMult: 2,
+} as const;
+
 // ---------------------------------------------------------------- weapons
 
 export type WeaponKind = "beam" | "missile" | "torpedo" | "bomb" | "spores" | "special" | "bay";

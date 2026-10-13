@@ -209,6 +209,8 @@ export function itemCost(state: GameState, playerId: PlayerId, item: BuildItem, 
         default:
           return item.id in ANDROID_PROJECTS ? PROJECT_COSTS.android : Infinity;
       }
+    case "refit":
+      return item.cost;
     case "tradeGoods":
       return Infinity;
   }

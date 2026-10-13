@@ -41,6 +41,7 @@ import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
 import { PLACED_PROJECTS, availableDesigns, availableProjects, baseTargets, canBuildShips, colonyRoom, freePlanetsInSystem, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
 import { applyMutation } from "./mutation.js";
+import { cancelRefit, completeRefit, startRefit } from "./refit.js";
 import { applyDebug } from "./debug.js";
 import { score } from "./score.js";
 import type { BuildItem, Colony, Fleet, GameState, Id, Planet, Player, PlayerId } from "./types.js";
@@ -165,7 +166,9 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "setQueue": {
       const c = state.colonies[cmd.colonyId]!;
       // Like MoO2, progress carries over when the head of the queue changes.
-      c.queue = cmd.queue.map((i) => ({ ...i }));
+      // Refit jobs keep what was stored when they were ordered.
+      const jobs = new Map(c.queue.flatMap((q) => (q.kind === "refit" ? [[q.refitId, q] as const] : [])));
+      c.queue = cmd.queue.map((i) => (i.kind === "refit" ? jobs.get(i.refitId)! : { ...i }));
       if (c.queue.length === 0) c.progress = 0;
       break;
     }
@@ -262,6 +265,12 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       if (d) salvageTech(ctx, playerId, d, cmd.count);
       break;
     }
+    case "refitShips":
+      startRefit(state, playerId, cmd);
+      break;
+    case "cancelRefit":
+      cancelRefit(state, state.colonies[cmd.colonyId]!, cmd.refitId);
+      break;
     case "saveDesign": {
       const design = structuredClone(cmd.design);
       design.obsolete = false;
@@ -979,6 +988,13 @@ function produce(ctx: TurnContext, colony: Colony, industry: number, tradeMult: 
   }
   // Housing turns the production into growth (economy.ts), nothing is built.
   if (head.kind === "project" && head.id === "housing") return 0;
+  // A refit the colony can no longer do (its orbital station is gone) is lost with its ship, as in the original.
+  if (head.kind === "refit" && !canBuildShips(colony, findDesign(state.players[colony.ownerId]!, head.designId))) {
+    colony.queue.shift();
+    const name = findDesign(state.players[colony.ownerId]!, head.fromDesignId)?.name ?? "a ship";
+    ctx.emit({ kind: "random", playerId: colony.ownerId, what: `${colony.name} lost its orbital station; ${name} in its dock for a refit was scrapped.` });
+    return produce(ctx, colony, industry, tradeMult);
+  }
   const cost = itemCost(state, colony.ownerId, head, colony);
   colony.progress += industry;
   if (!Number.isFinite(cost)) {
@@ -1046,6 +1062,8 @@ function completeItem(ctx: TurnContext, colony: Colony, item: BuildItem): void {
     }
   } else if (item.kind === "project") {
     completeProject(ctx, colony, item.id, item.planetId, rng);
+  } else if (item.kind === "refit") {
+    completeRefit(state, colony, item);
   }
   ctx.emit({ kind: "built", playerId: colony.ownerId, colonyId: colony.id, item });
 }

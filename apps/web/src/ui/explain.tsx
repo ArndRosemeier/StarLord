@@ -2,7 +2,7 @@ import {
   ARTIFACTS_RESEARCH, ARTIFACTS_SECOND_TECH_CHANCE, CLIMATES, INDUSTRY_PER_WORKER, NATIVE_FOOD_BONUS, NATIVES_POP, POLLUTION_TOLERANCE, SIZE_POP_BASE,
   SPECIAL_INCOME, SPLINTER_POP, TERRAFORM_STEP, climatePopulation, colonyMoraleParts, colonyOutput, getRace, government,
   gravityMultiplier, ADVANCED_START, CLIMATE_TABLE_BY_AGE, CREW, FIRST_FIELDS, TIERS_BY_ID, bodyMix, meanPlanets, DIFFICULTIES, DIFFICULTY_ORDER, JEALOUSY, GOVERNMENTS, PICK_OPTIONS, STAR_COLORS_BY_AGE, TAX_BC_PER_INDUSTRY,
-  BUILDINGS_BY_ID, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
+  BUILDINGS_BY_ID, GROWTH, HULLS_BY_ID, PROJECTS_BY_ID, REFIT, TRADE_GOODS_RATE, designStats, refitCost, type Player, type ShipDesign, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
 } from "@starlord/sim";
 import { Tip, type TipCard } from "./Tip";
 import { techSummary, unlockSummary } from "../help/articles";
@@ -303,4 +303,31 @@ export function projectTip(id: string, colony: Colony, planet: Planet, industry:
       : "When it is finished it goes to the only free planet. If none is left by then, it is scrapped for half its cost.");
   }
   return { title: p.name, kind: "Project", rows, text };
+}
+
+/** What refitting one ship from one design to another costs and does, with the sim's own formula. */
+export function refitTip(player: Player, from: ShipDesign, to: ShipDesign, turns?: number | null): TipCard {
+  const a = designStats(player, from);
+  const b = designStats(player, to);
+  const hull = HULLS_BY_ID[to.hull];
+  const min = Math.floor(hull.cost / REFIT.minHullCostDivisor);
+  const diff = REFIT.costDifferenceMult * (b.cost - a.cost);
+  const cost = refitCost(player, from, to);
+  return {
+    title: `Refit to ${to.name}`, kind: `${hull.name} refit`,
+    rows: [
+      ["Refit cost", `${cost} production`],
+      ["Cost difference", `${REFIT.costDifferenceMult} × (${b.cost} − ${a.cost}) = ${diff}`],
+      ["Minimum", `${hull.name} hull ${hull.cost} / ${REFIT.minHullCostDivisor} = ${min}`],
+      ["New ship instead", `${b.cost} production`],
+      ["Strength", `${a.strength} → ${b.strength}`],
+      ...(turns !== undefined ? [["Done in", turns === null ? "never (no industry)" : `${turns} turn${turns === 1 ? "" : "s"}`] as [string, string]] : []),
+    ],
+    text: [
+      "The job joins the colony's build queue and is paid with its production; it can be bought like any item.",
+      "Until it is done the ship is in dock and takes no part in anything. It comes back repaired, with its crew's experience.",
+      "Drives and fuel range improve on every ship by themselves; armor, shields, computers, weapons and specials change only by refitting.",
+    ],
+    note: "Removing the job from the queue scraps the ship.",
+  };
 }
