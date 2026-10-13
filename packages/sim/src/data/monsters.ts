@@ -2,7 +2,8 @@ import { SCORE } from "./score.js";
 import type { ShipDesign, WeaponMount } from "../types.js";
 import { DEFENSE_PER_SPEED } from "./combat.js";
 import { COMPUTERS_BY_ID, HULLS_BY_ID, type HullSize, type WeaponDef } from "./components.js";
-import type { Minerals, PlanetSize, PlanetType } from "./planets.js";
+import type { SpecialKind } from "./galaxy.js";
+import type { Minerals, NaturalClimate, PlanetSize } from "./planets.js";
 
 /**
  * Space monsters guard rich systems and Orion's guardian holds the best planet
@@ -107,17 +108,38 @@ export const PASSIVE_MONSTERS = ["ionEel", elderId("ionEel")];
 export const LAIR_MONSTERS = ["voidAmoeba", "latticeCrystal", "ionEel", "starHydra", "starWyrm"];
 
 /**
- * What a lair's guarded planet is raised to (an asteroid belt or gas giant
- * there becomes a real planet first). The original raises size to medium or
- * large and minerals to rich or ultra rich, and some monsters' planets to a
- * terran or Gaia climate; which monster gets which is our reading.
+ * What a lair's guarded planet is raised to, as in the original. One of each
+ * list is picked at random and the planet keeps whichever is better, its own
+ * or the pick. An asteroid belt or gas giant there becomes a real planet
+ * first. "keep" leaves a real planet's climate alone, while a converted body
+ * gets a random climate of the ten. Gravity stays what the planet was born with.
  */
-export const LAIR_PLANET_UPGRADE: Record<string, { size: PlanetSize; minerals: Minerals; climate?: PlanetType }> = {
-  voidAmoeba: { size: "medium", minerals: "rich" },
-  latticeCrystal: { size: "medium", minerals: "ultraRich" },
-  ionEel: { size: "medium", minerals: "rich", climate: "terran" },
-  starHydra: { size: "large", minerals: "rich", climate: "terran" },
-  starWyrm: { size: "large", minerals: "ultraRich", climate: "gaia" },
+export interface LairUpgrade { sizes: PlanetSize[]; minerals: Minerals[]; climates: NaturalClimate[] | "keep" }
+const RICH: Minerals[] = ["rich", "ultraRich"];
+const BIG: PlanetSize[] = ["large", "huge"];
+const LUSH: NaturalClimate[] = ["terran", "gaia"];
+export const LAIR_PLANET_UPGRADE: Record<string, LairUpgrade> = {
+  voidAmoeba: { sizes: ["medium", ...BIG], minerals: RICH, climates: "keep" },
+  latticeCrystal: { sizes: BIG, minerals: RICH, climates: LUSH },
+  starWyrm: { sizes: ["medium", ...BIG], minerals: RICH, climates: LUSH },
+  ionEel: { sizes: BIG, minerals: RICH, climates: "keep" },
+  starHydra: { sizes: BIG, minerals: RICH, climates: LUSH },
+};
+
+/**
+ * Specials a lair system can end up with, as in the original: unless a planet
+ * there already holds a special of this list, the system's specials are
+ * cleared and rolled again from it (with the usual weights) until one fits.
+ * Wyrm lairs hold treasure, eel lairs ores and settlers; the rest anything
+ * but a wormhole.
+ */
+const ANY_LAIR_SPECIAL: SpecialKind[] = ["debris", "cache", "gold", "gems", "natives", "splinter", "hero", "artifacts"];
+export const LAIR_SPECIALS: Record<string, SpecialKind[]> = {
+  voidAmoeba: ANY_LAIR_SPECIAL,
+  latticeCrystal: ANY_LAIR_SPECIAL,
+  starWyrm: ["cache", "gems", "natives", "hero", "artifacts"],
+  ionEel: ["gold", "gems", "splinter"],
+  starHydra: ANY_LAIR_SPECIAL,
 };
 
 /**

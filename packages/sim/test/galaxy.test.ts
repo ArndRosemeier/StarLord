@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BLACK_HOLE_CLEARANCE, FIRST_FIELDS, PLANETS_PER_STAR_D10, Rng, STAR_COUNTS, TECH_TIERS, distance, empires, generateGalaxy,
+  LAIR_PLANET_UPGRADE, LAIR_SPECIALS, MINERAL_STEPS, NATURAL_CLIMATES, PLANET_SIZES,
   getRace, gravityOf, mapSize, meanPlanets, monstersId, newGame, seedRng, type GalaxySize, type Planet, type StarColor,
 } from "@starlord/sim";
 
@@ -134,6 +135,30 @@ describe("home systems and starts", () => {
       const homeIds = empires(s).map((p) => p.homeStarId);
       expect(lairs.some((f) => homeIds.includes(f.starId!))).toBe(false);
     }
+  });
+
+  it("gives every monster lair a raised planet and a special from the monster's list", () => {
+    const rank = (list: readonly string[], v: string) => list.indexOf(v);
+    let lairCount = 0;
+    for (let i = 0; i < 8; i++) {
+      const s = newGame({ seed: `lair${i}`, galaxySize: SIZES[i % 4]!, difficulty: "impossible" });
+      const lairs = Object.values(s.fleets).filter((f) => f.ownerId === monstersId(s) && s.galaxy.stars.find((x) => x.id === f.starId)!.special !== "orion");
+      for (const f of lairs) {
+        lairCount++;
+        const designId = f.ships[0]!.designId;
+        const up = LAIR_PLANET_UPGRADE[designId]!;
+        const star = s.galaxy.stars.find((x) => x.id === f.starId)!;
+        const planets = star.planetIds.map((id) => s.planets[id]!);
+        const raised = planets.filter((p) => rank(PLANET_SIZES, p.size) >= rank(PLANET_SIZES, up.sizes[0]!)
+          && rank(MINERAL_STEPS, p.minerals) >= rank(MINERAL_STEPS, up.minerals[0]!)
+          && (up.climates === "keep" || rank(NATURAL_CLIMATES, p.type) >= rank(NATURAL_CLIMATES, up.climates[0]!)));
+        expect(raised.length).toBeGreaterThan(0);
+        const special = planets.find((p) => p.special !== "none")?.special ?? star.feature;
+        expect(special).toBeDefined();
+        expect(LAIR_SPECIALS[designId]).toContain(special);
+      }
+    }
+    expect(lairCount).toBeGreaterThan(5);
   });
 
   it("starts with the original's fields and money", () => {

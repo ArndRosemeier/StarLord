@@ -215,6 +215,44 @@ export function hasSpecial(star: Star, planets: Record<Id, Planet>): boolean {
   return !!star.feature || star.planetIds.some((id) => planets[id]!.special !== "none");
 }
 
+/** Running special counts while specials are placed: heroes and wormholes are capped per galaxy. */
+export interface SpecialCounts { heroes: number; wormholes: number; maxHeroes: number; maxWormholes: number }
+
+/**
+ * Puts one special of this kind into the system if it fits: gold and gems on
+ * a real planet without a special, natives and splinter colonies on such a
+ * medium or bigger farmable planet, artifacts on such a farmable planet;
+ * heroes and wormholes while under their caps; the rest on the star.
+ * Returns whether it was placed.
+ */
+export function placeSpecial(rng: Rng, star: Star, planets: Record<Id, Planet>, kind: SpecialKind, counts: SpecialCounts): boolean {
+  const real = star.planetIds.map((id) => planets[id]!).filter((p) => isRealPlanet(p) && p.special === "none");
+  if (kind === "gold" || kind === "gems") {
+    if (real.length === 0) return false;
+    rng.pick(real).special = kind;
+  } else if (kind === "natives" || kind === "splinter") {
+    const fit = real.filter((p) => isFarmable(p) && SIZE_RANK(p.size) >= SIZE_RANK("medium"));
+    if (fit.length === 0) return false;
+    const p = rng.pick(fit);
+    p.special = kind;
+    if (kind === "natives") p.natives = NATIVES_POP;
+  } else if (kind === "artifacts") {
+    const fit = real.filter(isFarmable);
+    if (fit.length === 0) return false;
+    rng.pick(fit).special = "artifacts";
+  } else if (kind === "hero") {
+    if (counts.heroes >= counts.maxHeroes) return false;
+    counts.heroes++;
+    star.feature = "hero";
+  } else if (kind === "wormhole") {
+    if (counts.wormholes >= counts.maxWormholes) return false;
+    counts.wormholes++;
+  } else {
+    star.feature = kind;
+  }
+  return true;
+}
+
 /**
  * Specials and monster lairs, rolled per star as the galaxy is made: every
  * star but the first (which may become Orion) with planets and not a black
@@ -224,43 +262,17 @@ export function hasSpecial(star: Star, planets: Record<Id, Planet>): boolean {
 function rollSpecials(
   rng: Rng, stars: Star[], planets: Record<Id, Planet>, size: GalaxySize, difficulty: Difficulty,
 ): { wormholes: number; lairs: number } {
-  let heroes = 0;
-  let wormholes = 0;
+  const counts: SpecialCounts = { heroes: 0, wormholes: 0, maxHeroes: MAX_HERO_SYSTEMS[size], maxWormholes: MAX_WORMHOLES[size] };
   let lairs = 0;
   stars.forEach((star, i) => {
     if (i === 0 || star.color === "blackHole" || star.planetIds.length === 0) return;
     if (rng.chance(LAIR_CHANCE[difficulty])) lairs++;
     if (!rng.chance(SPECIAL_CHANCE)) return;
-    const real = star.planetIds.map((id) => planets[id]!).filter((p) => isRealPlanet(p) && p.special === "none");
     for (let t = 0; t < SPECIAL_TRIES; t++) {
-      const kind: SpecialKind = rng.weighted(SPECIAL_WEIGHTS);
-      if (kind === "gold" || kind === "gems") {
-        if (real.length === 0) continue;
-        rng.pick(real).special = kind;
-      } else if (kind === "natives" || kind === "splinter") {
-        const fit = real.filter((p) => isFarmable(p) && SIZE_RANK(p.size) >= SIZE_RANK("medium"));
-        if (fit.length === 0) continue;
-        const p = rng.pick(fit);
-        p.special = kind;
-        if (kind === "natives") p.natives = NATIVES_POP;
-      } else if (kind === "artifacts") {
-        const fit = real.filter(isFarmable);
-        if (fit.length === 0) continue;
-        rng.pick(fit).special = "artifacts";
-      } else if (kind === "hero") {
-        if (heroes >= MAX_HERO_SYSTEMS[size]) continue;
-        heroes++;
-        star.feature = "hero";
-      } else if (kind === "wormhole") {
-        if (wormholes >= MAX_WORMHOLES[size]) continue;
-        wormholes++;
-      } else {
-        star.feature = kind;
-      }
-      break;
+      if (placeSpecial(rng, star, planets, rng.weighted(SPECIAL_WEIGHTS), counts)) break;
     }
   });
-  return { wormholes, lairs: Math.min(MAX_LAIRS, lairs) };
+  return { wormholes: counts.wormholes, lairs: Math.min(MAX_LAIRS, lairs) };
 }
 
 

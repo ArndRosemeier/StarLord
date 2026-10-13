@@ -1,10 +1,10 @@
-import { AVENGER_DESIGN, GUARDIAN_RANDOM_XENON, LAIR_MONSTERS, LAIR_PLANET_UPGRADE, MONSTER_DESIGNS } from "./data/monsters.js";
-import { LAIR_PLACEMENT_TRIES } from "./data/galaxy.js";
-import { gravityOf } from "./data/planets.js";
+import { AVENGER_DESIGN, GUARDIAN_RANDOM_XENON, LAIR_MONSTERS, LAIR_PLANET_UPGRADE, LAIR_SPECIALS, MONSTER_DESIGNS } from "./data/monsters.js";
+import { LAIR_PLACEMENT_TRIES, MAX_HERO_SYSTEMS, SPECIAL_TRIES, SPECIAL_WEIGHTS, type SpecialKind } from "./data/galaxy.js";
+import { NATURAL_CLIMATES, type NaturalClimate, type PlanetType } from "./data/planets.js";
 import { TIER_OF_TECH, XENON_FIELD_TECHS, emptyHyperLevels } from "./data/techs.js";
 import { grantTech } from "./empire.js";
 import { newId, type TurnContext } from "./context.js";
-import { atLeastMinerals, atLeastSize, distance, isRealPlanet, rollPlanet } from "./galaxy.js";
+import { atLeastMinerals, atLeastSize, distance, isRealPlanet, placeSpecial, rollPlanet, type SpecialCounts } from "./galaxy.js";
 import { heroJoins } from "./leaders.js";
 import { setupRaiders } from "./raiders.js";
 import type { Rng } from "./rng.js";
@@ -64,7 +64,7 @@ export function raidersId(state: GameState): number | null {
  * monster lairs and the raiders' hidden home. Lairs go to random stars with
  * planets that are not homes, Orion, black holes, colonised or in `avoid`,
  * spread at least sqrt((W^2 + H^2) / (2 k)) apart for k lairs; each holds a
- * random monster and keeps its star's own special. Returns the lair stars.
+ * random monster, a raised planet and a special (see lairSpecial). Returns the lair stars.
  */
 export function setupNpcs(state: GameState, rng: Rng, lairs = 0, avoid: Set<Id> = new Set()): Set<Id> {
   const homes = state.players.filter((p) => p.kind === "empire").map((p) => state.galaxy.stars.find((s) => s.id === p.homeStarId)!);
@@ -92,6 +92,7 @@ export function setupNpcs(state: GameState, rng: Rng, lairs = 0, avoid: Set<Id> 
       const design = MONSTER_DESIGNS.find((d) => d.id === designId)!;
       spawn(state, monsters.id, star, [{ designId, count: 1 }], design.name);
       upgradeLairPlanet(state, rng, star, designId, age);
+      lairSpecial(state, rng, star, designId);
     }
   }
 
@@ -99,17 +100,56 @@ export function setupNpcs(state: GameState, rng: Rng, lairs = 0, avoid: Set<Id> 
   return new Set(placed.map((s) => s.id));
 }
 
-/** The planet a monster guards is raised as LAIR_PLANET_UPGRADE says. */
+/**
+ * The planet a monster guards is raised as LAIR_PLANET_UPGRADE says: size,
+ * minerals and (for some monsters) climate become the better of the planet's
+ * own and a random pick from the monster's list. Gravity is left as it was.
+ */
 function upgradeLairPlanet(state: GameState, rng: Rng, star: Star, designId: string, age: GalaxyAge): void {
   const up = LAIR_PLANET_UPGRADE[designId];
   if (!up) return;
   const old = state.planets[rng.pick(star.planetIds)]!;
-  const p: Planet = isRealPlanet(old) ? { ...old } : { ...rollPlanet(rng, star, old.orbit, old.id, age, "planet"), special: old.special };
-  p.size = atLeastSize(p.size, up.size);
-  p.minerals = atLeastMinerals(p.minerals, up.minerals);
-  if (up.climate && !(up.climate === "terran" && p.type === "gaia")) p.type = up.climate;
-  p.gravity = gravityOf(p.size, p.minerals);
+  const converted = !isRealPlanet(old);
+  const p: Planet = converted ? { ...rollPlanet(rng, star, old.orbit, old.id, age, "planet"), special: old.special } : { ...old };
+  p.size = atLeastSize(p.size, rng.pick(up.sizes));
+  p.minerals = atLeastMinerals(p.minerals, rng.pick(up.minerals));
+  const climates = up.climates === "keep" ? (converted ? NATURAL_CLIMATES : null) : up.climates;
+  if (climates) p.type = atLeastClimate(p.type, rng.pick(climates));
   state.planets[p.id] = p;
+}
+
+function atLeastClimate(type: PlanetType, min: NaturalClimate): PlanetType {
+  const rank = NATURAL_CLIMATES.indexOf(type as NaturalClimate);
+  return rank >= NATURAL_CLIMATES.indexOf(min) ? type : min;
+}
+
+/**
+ * Every lair system holds a special, as in the original: one a planet there
+ * already has is kept if the monster's LAIR_SPECIALS allow it; otherwise the
+ * system's specials are cleared and rolled from that list until one fits.
+ */
+function lairSpecial(state: GameState, rng: Rng, star: Star, designId: string): void {
+  const allowed = LAIR_SPECIALS[designId];
+  if (!allowed) return;
+  const planets = star.planetIds.map((id) => state.planets[id]!);
+  const held = planets.find((p) => p.special !== "none");
+  if (held && allowed.includes(held.special as SpecialKind)) return;
+  for (const p of planets) {
+    p.special = "none";
+    delete p.natives;
+  }
+  delete star.feature;
+  const size = state.settings.galaxySize;
+  const counts: SpecialCounts = {
+    heroes: state.galaxy.stars.filter((s) => s.feature === "hero").length,
+    wormholes: 0,
+    maxHeroes: MAX_HERO_SYSTEMS[size],
+    maxWormholes: 0,
+  };
+  const weights = Object.fromEntries(allowed.map((k) => [k, SPECIAL_WEIGHTS[k]])) as Partial<Record<SpecialKind, number>>;
+  for (let t = 0; t < SPECIAL_TRIES; t++) {
+    if (placeSpecial(rng, star, state.planets, rng.weighted(weights), counts)) return;
+  }
 }
 
 /** Games saved before the monsters got their original stats take the current designs. */
