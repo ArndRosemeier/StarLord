@@ -465,7 +465,7 @@ export class PixiMapRenderer implements MapRenderer {
       const selected = scene.selectedFleetIds.has(f.id);
       this.trailList.push({ x1: f.x * UNIT, y1: f.y * UNIT, x2: f.dest.x * UNIT, y2: f.dest.y * UNIT, color: hex(f.color), selected });
       if (selected && f.eta !== null) {
-        const t = label(`arrives in ${turns(f.eta)}`, 0xffffff);
+        const t = f.held ? label("held by hyperspace flux", 0xff8a8a) : label(`arrives in ${turns(f.eta)}`, 0xffffff);
         t.position.set(f.dest.x * UNIT, f.dest.y * UNIT - 24);
         this.world.addChild(t);
       }
@@ -681,7 +681,7 @@ export class PixiMapRenderer implements MapRenderer {
     }
     const color = route.ok ? ROUTE_OK : ROUTE_BAD;
     const only = going.length === 1 ? going[0]! : null;
-    let text = only && only.starId === star.id ? "stay here" : route.ok ? turns(route.turns) : "out of range";
+    let text = only && only.starId === star.id ? "stay here" : route.ok ? (route.held ? `held by hyperspace flux, then ${turns(route.turns)}` : turns(route.turns)) : "out of range";
     if (going.length > 1 && route.ok && inRange < going.length) text = `${inRange} of ${going.length} in range · ${text}`;
     const t = label(text, color, 13);
     t.position.set(star.x * UNIT, star.y * UNIT - 22);

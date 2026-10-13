@@ -9,6 +9,7 @@ import { SystemView } from "./system/SystemView";
 import type { ColonizeOption } from "../game/colonize";
 import { additive, isTouchDevice, useMultiSelect } from "../ui/touch";
 import { LastTurnPanel } from "../ui/LastTurnPanel";
+import { EventStrip } from "../ui/EventStrip";
 import { Tip } from "../ui/Tip";
 import { fuelRangeTip, scanRangeTip } from "../ui/explain";
 import { fleetRange } from "@starlord/sim";
@@ -116,6 +117,9 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
           let text = only && id === only.starId
             ? `${only.name} will stay at ${star.name}.`
             : `${only ? only.name : `${ok.length} fleets`} heading to ${star.name}, ${only ? "arriving" : "all there"} in ${most} turn${most === 1 ? "" : "s"}. Orders take effect when you end the turn.`;
+          if (ok.some((r) => r.route.ok && r.route.held)) {
+            text += " Hyperspace flux holds every ship for now: the trip starts once it subsides.";
+          }
           if (failed.length > 0) {
             text += ` ${failed.map((r) => r.f.name).join(", ")} cannot reach it.`;
           }
@@ -235,6 +239,7 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
         ) : (
           <div className="map-hint">Drag to pan · wheel to zoom · click a star to view its system · click a fleet, then a star to send it there · shift-click to select several fleets</div>
         )}
+        <EventStrip onShowStar={showStar} />
         <div className="map-tools">
           <div className="map-overlays" role="group" aria-label="Map overlays">
             <Tip card={fuelRangeTip(me)}>

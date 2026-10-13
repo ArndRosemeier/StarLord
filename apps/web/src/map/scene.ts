@@ -1,5 +1,5 @@
 import {
-  canReach, distance, distanceToNearestColony, findDesign, fleetFuelRange, fleetRange, refuelStars, scannerEyes, travelTurns,
+  canReach, distance, distanceToNearestColony, findDesign, fleetFuelRange, fleetRange, movementHalted, refuelStars, scannerEyes, travelTurns,
   type Fleet, type HullSize, type Player, type PlayerView, type Star,
 } from "@starlord/sim";
 
@@ -89,11 +89,14 @@ export function rangeOverlays(view: PlayerView, overlays: MapOverlays): Pick<Map
 }
 
 /** Whether a fleet can be sent to a star, and how long it would take or why not. */
-export type Route = { ok: true; turns: number } | { ok: false; reason: string };
+export type Route = { ok: true; turns: number; held?: boolean } | { ok: false; reason: string };
 
 export function routeTo(view: PlayerView, fleet: Fleet, starId: string): Route {
   const dest = view.galaxy.stars.find((s) => s.id === starId)!;
-  if (canReach(view, fleet.ownerId, fleet, starId)) return { ok: true, turns: travelTurns(view, fleet, starId) };
+  if (canReach(view, fleet.ownerId, fleet, starId)) {
+    // Hyperspace flux holds the fleet where it is: the trip only starts once the flux ends.
+    return { ok: true, turns: travelTurns(view, fleet, starId), ...(movementHalted(view, fleet) ? { held: true } : {}) };
+  }
   const here = fleet.starId ? view.galaxy.stars.find((s) => s.id === fleet.starId) : undefined;
   if (dest.special === "raiderHome") return { ok: false, reason: `Only fleets in a system with one of your Dimensional Portals can cross over to ${dest.name}.` };
   if (here?.special === "raiderHome") return { ok: false, reason: "From here the way back leads only to your Dimensional Portals." };
@@ -111,7 +114,7 @@ export function routeTo(view: PlayerView, fleet: Fleet, starId: string): Route {
  */
 export function combineRoutes(routes: Route[]): Route {
   const ok = routes.filter((r): r is Extract<Route, { ok: true }> => r.ok);
-  if (ok.length > 0) return { ok: true, turns: Math.max(...ok.map((r) => r.turns)) };
+  if (ok.length > 0) return { ok: true, turns: Math.max(...ok.map((r) => r.turns)), ...(ok.some((r) => r.held) ? { held: true } : {}) };
   return routes[0] ?? { ok: false, reason: "No fleet selected." };
 }
 
@@ -156,6 +159,8 @@ export interface SceneFleet {
   dest: { x: number; y: number } | null;
   /** Turns until arrival, for the viewer's own fleets under way. */
   eta: number | null;
+  /** Hyperspace flux holds it where it is. */
+  held?: boolean;
   starId: string | null;
   kind: "empire" | "monsters" | "raiders";
   /** The fleet's most significant ship, which picks its icon: the biggest warship, else its civilian role. */
@@ -237,6 +242,7 @@ export function buildScene(
       ships: f.ships.reduce((n, s) => n + s.count, 0),
       dest: dest && f.ownerId === view.viewer ? { x: dest.x, y: dest.y } : null,
       eta: dest && f.ownerId === view.viewer ? travelTurns(view, f, dest.id) : null,
+      ...(dest && f.ownerId === view.viewer && movementHalted(view, f) ? { held: true } : {}),
       starId: f.starId,
       kind: owner.kind,
       look: fleetLook(owner, f),

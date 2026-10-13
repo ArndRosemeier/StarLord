@@ -1,7 +1,7 @@
 import { Tip } from "../ui/Tip";
 import { FOCUS_TIPS, STANCE_TIPS } from "../ui/explain";
 import { useState } from "react";
-import { FREIGHTERS, PROJECT_COSTS, designStats, distance, findDesign, fleetSpeed, foodPlan, type Fleet } from "@starlord/sim";
+import { FREIGHTERS, PROJECT_COSTS, designStats, findDesign, foodPlan, movementHalted, travelTurns, type Fleet } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, pct, words } from "../ui/format";
 import { FleetPanel, fleetShips } from "../ui/panels";
@@ -65,12 +65,13 @@ export function FleetsScreen({ onShowStar }: { onShowStar: (starId: string) => v
             <tbody>
               {sorted.map((f) => {
                 const dest = f.destStarId ? view.galaxy.stars.find((s) => s.id === f.destStarId) : undefined;
-                const eta = dest ? Math.ceil(distance(f, dest) / fleetSpeed(me)) : 0;
+                const eta = dest ? travelTurns(view, f, dest.id) : 0;
+                const held = !!dest && movementHalted(view, f);
                 const at = f.starId ?? f.destStarId;
                 return (
                   <tr key={f.id} className={`clickable${f.id === selected ? " selected" : ""}`} onClick={() => setSelected(f.id)}>
                     <td>{f.name}</td>
-                    <td>{f.starId ? starName(f.starId) : "in transit"}{dest && dest.id !== f.starId && <span className="muted"> → {dest.name} ({eta})</span>}</td>
+                    <td>{f.starId ? starName(f.starId) : "in transit"}{dest && dest.id !== f.starId && <span className="muted"> → {dest.name} ({held ? "held by hyperspace flux" : eta})</span>}</td>
                     <td>{fleetShips(f)}</td>
                     <td>{fmt(strength(f))}</td>
                     <td className={f.stance === "attack" ? "warn" : ""}><Tip card={STANCE_TIPS[f.stance]}><span className="explained">{words(f.stance)}</span></Tip></td>

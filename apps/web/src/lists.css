@@ -44,3 +44,48 @@ th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
 }
 /* Keep the one-line hint clear of the tools. */
 .map-host .map-hint { right: 250px; }
+
+/* ---- events in play (flux, plague, monsters...), pinned top left of the galaxy map */
+.map-host .event-strip {
+  position: absolute; left: 10px; top: 10px; z-index: 2; width: min(340px, calc(100% - 20px));
+  display: flex; flex-direction: column; gap: 6px;
+}
+.event-chip {
+  background: rgba(16, 24, 44, 0.9); border: 1px solid var(--line); border-left: 4px solid #fbbf24; border-radius: 8px;
+  padding: 6px 10px; font-size: 12px; line-height: 1.35;
+}
+.event-chip.bad { border-left-color: #ff6b6b; }
+.event-chip.good { border-left-color: #34d399; }
+.event-chip.clickable { cursor: pointer; }
+.event-chip.galaxy { border-color: #ff6b6b; background: rgba(60, 14, 22, 0.92); animation: event-alarm 2.4s ease-in-out infinite; }
+.event-chip-title { font-weight: 700; font-size: 13px; }
+.event-chip.bad .event-chip-title { color: #ffc9c9; }
+.event-chip.good .event-chip-title { color: #b7f5d8; }
+.event-chip-effect { color: #dbe3f7; }
+.event-chip-ends { color: var(--muted); font-size: 11px; margin-top: 2px; }
+@keyframes event-alarm { 50% { box-shadow: 0 0 18px rgba(255, 107, 107, 0.55); } }
+
+/* ---- Galactic News: random events of the last turn, as the new turn starts */
+.news-modal { max-width: min(560px, calc(100vw - 32px)); overflow: hidden; }
+.news-masthead {
+  position: relative; margin: -4px -4px 12px; padding: 14px 16px; text-align: center; overflow: hidden;
+  font-family: Orbitron, Inter, sans-serif; font-weight: 800; letter-spacing: 0.3em; text-transform: uppercase; font-size: 20px;
+  background: linear-gradient(90deg, rgba(91,157,255,0.12), rgba(91,157,255,0.3), rgba(91,157,255,0.12)); border-radius: 6px;
+  animation: news-in 0.7s both;
+}
+.news-masthead::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 40%, rgba(255,255,255,0.35) 50%, transparent 60%) 100% 0 / 300% 100% no-repeat;
+  animation: news-sweep 1.4s 0.4s ease-out both;
+}
+.news-masthead small { display: block; font-size: 11px; letter-spacing: 0.25em; color: var(--muted); font-weight: 600; }
+.news-item { padding: 8px 0; border-bottom: 1px solid var(--line); animation: news-item 0.5s both; }
+.news-item:last-child { border-bottom: 0; }
+
+
+@keyframes news-in { from { opacity: 0; transform: scale(1.4); filter: blur(6px); } }
+@keyframes news-sweep { from { background-position: 100% 0; } to { background-position: 0% 0; } }
+@keyframes news-item { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) {
+  .event-chip.galaxy, .news-masthead, .news-masthead::after, .news-item { animation: none; }
+}
