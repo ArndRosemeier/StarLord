@@ -229,7 +229,11 @@ export function councilTick(state: GameState, emit: Emit): { winner: PlayerId } 
   const lastVotes: Record<string, PlayerId | null> = {};
   for (const [voter, v] of choices) {
     lastVotes[voter] = v;
-    if (candidates.includes(voter)) continue;
+    if (candidates.includes(voter)) {
+      // A candidate backing its rival is a gesture the rival remembers; voting for itself or abstaining moves nothing.
+      if (v !== null && v !== voter) relationEvent(state, RELATION_EVENTS.councilFor, voter, v, REASON.councilFor);
+      continue;
+    }
     for (const c of candidates) {
       if (v === null) relationEvent(state, RELATION_EVENTS.councilAbstain, voter, c);
       else if (v === c) relationEvent(state, RELATION_EVENTS.councilFor, voter, c, REASON.councilFor);

@@ -56,6 +56,6 @@ describe("galactic council windows", () => {
     const html = render(session, <CouncilSession instant onClose={() => {}} />);
     expect(html).toContain("your turn to declare");
     expect(html).toContain("Vote for yourselves");
-    expect(html).toContain("moves no relations");
+    expect(html).toContain("Backing your rival moves their relation with you");
   });
 });

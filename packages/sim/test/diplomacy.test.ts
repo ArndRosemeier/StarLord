@@ -443,7 +443,11 @@ describe("galactic council", () => {
     expect(s.events.some((e) => e.kind === "council" && e.playerId === 0 && /as a candidate/.test(e.what))).toBe(true);
     expect(processTurn(s, {}).council.lastResult!.ballots![0]).toBeNull();
     const rival = s.council.called!.candidates.find((c) => c !== 0)!;
-    expect(processTurn(s, { 0: [{ type: "castCouncilVote", vote: rival }] }).council.lastResult!.ballots![0]).toBe(rival);
+    const backed = processTurn(s, { 0: [{ type: "castCouncilVote", vote: rival }] });
+    expect(backed.council.lastResult!.ballots![0]).toBe(rival);
+    // Backing the rival pleases it; a vote for yourself does not.
+    const selfVote = processTurn(s, { 0: [{ type: "castCouncilVote", vote: 0 }] });
+    expect(attitude(backed, rival, 0)).toBeGreaterThan(attitude(selfVote, rival, 0));
     expect(processTurn(s, { 0: [{ type: "castCouncilVote", vote: 0 }] }).council.lastResult!.ballots![0]).toBe(0);
   });
 
