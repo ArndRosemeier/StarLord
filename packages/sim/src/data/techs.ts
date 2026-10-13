@@ -353,7 +353,7 @@ const DETAILS: Record<string, Omit<TechDef, "id" | "name"> & { name?: string }> 
   starGate: { description: "Instant travel between your colonies." },
   timeWarpFacilitator: { description: "Ships take an extra turn in combat." },
   dimensionalPortal: { description: "Build a portal to strike at the raiders' home dimension." },
-  stellarConverter: { description: "Ship weapon that burns through any shield." },
+  stellarConverter: { description: "Ship weapon that burns through any shield, and from orbit destroys a planet." },
   // Force fields
   ecmJammer: { name: "ECM Jammer", description: "" },
   multiWaveEcm: { name: "Multi-Wave ECM Jammer", description: "" },

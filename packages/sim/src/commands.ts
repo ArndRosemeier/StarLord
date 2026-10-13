@@ -12,7 +12,7 @@ import {
 import { designStats, findDesign, validateDesign } from "./designs.js";
 import { foodPlan, population } from "./economy.js";
 import { MAX_LEADERS } from "./data/leaders.js";
-import { canMindControl, exterminateProblem } from "./ground.js";
+import { ORBITAL_CHOICES, canMindControl, exterminateProblem } from "./ground.js";
 import { moveProblem } from "./movement.js";
 import { bribeProblem } from "./randomEvents.js";
 import {
@@ -23,7 +23,7 @@ import { validateMutation } from "./mutation.js";
 import { debugProblem, type DebugAction } from "./debug.js";
 import type { RacePicks } from "./data/races.js";
 import type {
-  BuildItem, Colony, CombatDoctrine, Fleet, FleetStance, GameState, Id, PlayerId, ProposalKind, ShipDesign, SpyMission, TacticalOrder,
+  BuildItem, Colony, CombatDoctrine, Fleet, FleetStance, GameState, Id, PlayerId, OrbitalChoice, ProposalKind, ShipDesign, SpyMission, TacticalOrder,
 } from "./types.js";
 
 /**
@@ -65,6 +65,11 @@ export type Command =
    * let the whole battle resolve by itself.
    */
   | { type: "battleOrders"; battle: string; orders: TacticalOrder[] | "auto" }
+  /**
+   * What this player's fleets do this turn to an enemy colony if they hold its orbit after the battles (see
+   * `OrbitalChoice`). Without one, attack-stance fleets bombard without biological weapons.
+   */
+  | { type: "orbitalStrike"; colonyId: Id; choice: OrbitalChoice }
   /** Terms name the technologies, system, third empire or tribute share the proposal is about. */
   | ({ type: "propose"; to: PlayerId; kind: ProposalKind } & ProposalTerms)
   | { type: "breakTreaty"; target: PlayerId; treaty: TreatyName }
@@ -278,6 +283,9 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       return findDesign(player, cmd.designId) ? OK : fail("no such design");
     case "setAutoBattles":
       return OK;
+    case "orbitalStrike":
+      if (!state.colonies[cmd.colonyId]) return fail("no such colony");
+      return ORBITAL_CHOICES.includes(cmd.choice) ? OK : fail("bad orbital choice");
     case "battleOrders": {
       if (typeof cmd.battle !== "string") return fail("no such battle");
       if (cmd.orders === "auto") return OK;

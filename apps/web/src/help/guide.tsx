@@ -338,7 +338,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Stance</h3>
       <Ul>
         <li><b>Defend</b>: fights enemy ships but leaves planets alone.</li>
-        <li><b>Attack</b>: also attacks enemy planets' defenses and bombs colonies once they are down.</li>
+        <li><b>Attack</b>: also attacks enemy planets' defenses; once they are down, the turn asks what the fleet does to the colony (<HelpLink to="guide:invasion" />).</li>
       </Ul>
       <P>Fleets at the same star can be merged or split from the star panel. New ships join an idle fleet of their kind at the star where they were built.</P>
     </>
@@ -463,14 +463,30 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         A colony is open to attack when its orbital defenses are silenced in battle, or it has none, and no armed enemy
         ships remain at the star.
       </P>
-      <h3>Bombing</h3>
+      <h3>Orbital assault</h3>
       <P>
-        Fleets on <b>Attack</b> stance bombard open colonies every turn: every weapon aboard fires at the planet for{" "}
-        {BOMBARD_ROUNDS} combat turns (beams at half damage, missiles and bombs until their shots run out). Each shot
-        loses the planetary shield's worth of damage, and every {BOMB_DAMAGE_PER_HIT} points that get through are one hit. A hit lands at random on a building
-        (not the colony's defenses), a trained marine or tank, or a colonist; a tank needs at least two hits.
-        Death spores and the bio-terminator kill population with a {pct(SPORE_KILL_CHANCE_PER_POINT)} chance per point
-        of damage, which every other empire resents. A colony bombed to zero is destroyed.
+        When your fleets on <b>Attack</b> stance hold the orbit of an open enemy colony after the battles, the turn stops
+        and asks what they do to it, showing the colony's defenders and the expected losses of each choice:
+      </P>
+      <ul>
+        <li><b>Bombard</b>: every weapon aboard fires at the planet for {BOMBARD_ROUNDS} combat turns (beams at half
+          damage, missiles and bombs until their shots run out). Each shot loses the planetary shield's worth of damage,
+          and every {BOMB_DAMAGE_PER_HIT} points that get through are one hit. A hit lands at random on a building (not the
+          colony's defenses), a trained marine or tank, or a colonist; a tank needs at least two hits.</li>
+        <li><b>Bombard with biological weapons</b>: as above, and every launch of death spores or the bio-terminator kills a
+          colonist with a {pct(SPORE_KILL_CHANCE_PER_POINT)} chance per point of damage (halved by Microbiotics, quartered by
+          Universal Antidote; a Planetary Barrier Shield keeps them out). Every computer empire in contact that is not at
+          war with you is appalled: relations fall by 1 to {RELATION_EVENTS.destruction} before their own scaling.</li>
+        <li><b>Destroy the planet</b>, with a Stellar Converter aboard any ship in orbit: the planet becomes an asteroid
+          belt and the colony, its people, buildings and the planet's special are gone. It appals the other empires the
+          same way. In battle the converter only wears down a planet's defenses; it destroys a planet only from orbit.</li>
+        <li><b>Hold fire</b>: leave the colony be this turn.</li>
+      </ul>
+      <P>
+        A colony bombed to zero is destroyed. Without an answer (when the game plays your turns, or for fleets of computer
+        players that give no order) fleets on Attack bombard without biological weapons. Computer players spare a colony
+        they mean to invade once their troops outnumber its garrison, and destroy a planet they cannot take when it hides
+        behind a barrier shield or is its owner's last system.
       </P>
       <h3>Defenders</h3>
       <P>

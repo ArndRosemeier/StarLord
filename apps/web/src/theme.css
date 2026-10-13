@@ -662,6 +662,13 @@ body:has(.job-drag-card) { cursor: grabbing; }
   background: rgba(8, 10, 20, 0.88); border: 1px solid var(--line); border-radius: 10px; padding: 16px; backdrop-filter: blur(4px);
 }
 .command-ask h3 { margin: 0 0 6px; }
+.modal.orbital-strike { max-width: 640px; }
+.orbital-strike h3 { margin: 0 0 6px; }
+.orbital-facts { gap: 4px 14px; font-size: 13px; margin: 8px 0; }
+.orbital-options { gap: 10px; margin: 8px 0; }
+.orbital-option { display: grid; grid-template-columns: minmax(150px, 210px) 1fr; gap: 10px; align-items: start; font-size: 13px; }
+.orbital-option.faded { opacity: 0.6; }
+@media (max-width: 560px) { .orbital-option { grid-template-columns: 1fr; gap: 4px; } }
 .command-panel { display: flex; flex-direction: column; gap: 6px; }
 .command-weapons { gap: 4px 14px; font-size: 13px; }
 .command-weapons .faded { opacity: 0.5; }
