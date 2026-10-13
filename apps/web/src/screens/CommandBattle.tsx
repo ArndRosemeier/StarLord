@@ -9,7 +9,8 @@ import { audio } from "../audio/sound";
 import { useReducedMotion } from "../ui/fx";
 import { webglAvailable } from "../three/webgl";
 import { Combat2D } from "./combat/Combat2D";
-import { describe, framesAt, unitAlive, unitInfo, type CommandOverlay, type ReplayStep } from "./combat/replayModel";
+import { describe, framesAt, unitAlive, unitInfo, type CommandOverlay, type ReplayStep, type UnitState } from "./combat/replayModel";
+import { isTouchDevice } from "../ui/touch";
 
 const Combat3D = lazy(() => import("./combat/Combat3D"));
 
@@ -99,6 +100,8 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState<string | null>(null);
   const [confirmBlast, setConfirmBlast] = useState(false);
+  // On narrow screens the unit lists open as drawers over the field.
+  const [forces, setForces] = useState(false);
   // Weapon switches per unit, kept for the whole battle as in the original.
   const modes = useRef(new Map<string, Map<number, WeaponMode>>());
   const lastField = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -178,12 +181,39 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
   const done = () => send({ kind: "done" });
   const act = () => (firing(options, decision?.unit, target).length > 0 ? fire() : moveTo ? move() : done());
 
+  const cycleTarget = (dir: 1 | -1) => {
+    const list = options?.targets ?? [];
+    if (list.length === 0) return;
+    const i = list.findIndex((t) => t.key === target);
+    const next = i < 0 ? (dir > 0 ? 0 : list.length - 1) : (i + dir + list.length) % list.length;
+    setTarget(list[next]!.key);
+  };
+  const toggleScan = () => {
+    setScanning(!scanning);
+    setScanned(scanning ? null : target);
+  };
+
+  // Keys for every button that has one (shown on the buttons), plus Enter for the obvious next step.
   useEffect(() => {
     if (!yourTurn) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Enter" || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (k === "Enter") {
+        if (e.target instanceof HTMLButtonElement) return;
+        act();
+      } else if (k === "f") fire();
+      else if (k === "m") move();
+      else if (k === "w") { if (decision?.canWait) send({ kind: "wait" }); }
+      else if (k === "d") done();
+      else if (k === "s") toggleScan();
+      else if (k === "Tab") cycleTarget(e.shiftKey ? -1 : 1);
+      else if (k === "Escape") {
+        if (scanned || scanning) { setScanned(null); setScanning(false); }
+        else if (confirmBlast) setConfirmBlast(false);
+        else setMoveTo(null);
+      } else return;
       e.preventDefault();
-      act();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -233,29 +263,118 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
 
   const liveReport = useMemo(() => ({ ...base, rounds: pending.battle.rounds.map((r) => [...r]) }), [base, steps]);
   const props = { report: base, view, units, frames, event, step: shown, reduced, resetKey: 0, command };
-  const flat = <Combat2D {...props} report={liveReport} />;
+  const flat = <Combat2D {...props} report={liveReport} fit />;
   const active = snap(decision?.unit);
   const targetInfo = options?.targets.find((t) => t.key === target);
   const round = (steps[Math.max(0, shown - 1)]?.round ?? 0) + 1;
+  const touch = isTouchDevice();
+  const kbd = (k: string) => (touch ? null : <kbd>{k}</kbd>);
+  const color = (id: number | undefined) => (id === undefined ? undefined : view.players[id]?.color);
+
+  // Everything the deck shows about the unit on its turn and its target, with the sim's own numbers.
+  const self = yourTurn && decision ? pending.battle.scan(decision.unit) : null;
+  const aim = target ? pending.battle.scan(target) : null;
+  const here = decision ? frames.now.get(decision.unit) : undefined;
+  const there = target ? frames.now.get(target) : undefined;
+  const range = here && there ? Math.round(Math.hypot(there.x - here.x, there.y - here.y)) : null;
+  const moveLen = here && moveTo ? Math.round(Math.hypot(moveTo.x - here.x, moveTo.y - here.y) * 10) / 10 : null;
+  const groups = firing(options, decision?.unit, target);
+  const volley = target ? groups.map((w) => w.vs[target]!) : [];
+  const beamDamage = Math.round(volley.reduce((n, p) => n + (p.expected ?? 0), 0));
+  const missiles = volley.filter((p) => p.hitPct === undefined).reduce((n, p) => n + (p.shots ?? 0), 0);
+  const boardTarget = options?.board.find((b) => b.key === target);
+  const log = steps.slice(0, shown).map((s) => describe(base, s.e)).filter(Boolean).slice(-4);
+  const strength = (id: number) => {
+    let now = 0;
+    let max = 0;
+    for (const s of base.ships) {
+      if (s.ownerId !== id) continue;
+      max += s.maxHits;
+      if (unitAlive(frames, s.key)) now += hpOf(s, frames.now.get(s.key)).now;
+    }
+    return max > 0 ? now / max : 0;
+  };
+
+  const roster = (id: number) => (
+    <aside className={`cb-roster${forces ? " open" : ""}`}>
+      <h4 style={{ color: color(id) }}>{id === me ? "Your forces" : name(id)}</h4>
+      {units.filter((u) => u.snap.ownerId === id).map((u) => {
+        const st = frames.now.get(u.snap.key);
+        const alive = unitAlive(frames, u.snap.key);
+        const hp = hpOf(u.snap, st);
+        const t = options?.targets.find((x) => x.key === u.snap.key);
+        const best = yourTurn && options && t
+          ? Math.max(-1, ...options.weapons.map((w) => (w.ready && w.vs[u.snap.key]?.ok ? w.vs[u.snap.key]?.hitPct ?? -1 : -1)))
+          : -1;
+        const pick = () => {
+          setForces(false);
+          if (scanning || !t) setScanned(u.snap.key);
+          else setTarget(u.snap.key);
+        };
+        return (
+          <button key={u.snap.key} disabled={!alive}
+            className={`cb-unit${u.snap.key === decision?.unit && yourTurn ? " active" : ""}${u.snap.key === target ? " selected" : ""}${alive ? "" : " dead"}`}
+            onClick={pick}
+            title={alive ? (t ? `Target it${t.inRange ? "" : " (no ready weapon reaches it yet)"}` : "Scan it") : st?.alive === false ? "Destroyed" : "Left the battle"}>
+            <span className="cb-unit-icon" style={{ color: color(id) }}>{KIND_ICON[u.kind] ?? "▲"}</span>
+            <span className="cb-unit-name">{u.snap.name}</span>
+            {alive && t && <span className={`cb-chip ${t.inRange ? "good" : "muted"}`}>{best >= 0 ? `${best}% hit` : t.inRange ? "in reach" : "out of reach"}</span>}
+            {!alive && <span className="cb-chip muted">{st?.alive === false ? "destroyed" : "left"}</span>}
+            <Bar value={alive ? hp.now : 0} max={hp.max} />
+          </button>
+        );
+      })}
+    </aside>
+  );
 
   return (
-    <div className="modal-back">
-      <div className="modal command-battle">
-        <div className="combat-head">
-          <span className="combat-side" style={{ color: view.players[me]?.color }}>
-            <span className="dot glow" style={{ background: view.players[me]?.color }} /> {name(me)} <small>{alive(me)} left</small>
-          </span>
-          <span className="combat-round">Battle at {starName(view, pending.starId)} · Round {round}</span>
-          <span className="combat-side right" style={{ color: view.players[enemy]?.color }}>
-            <small>{alive(enemy)} left</small> {name(enemy)} <span className="dot glow" style={{ background: view.players[enemy]?.color }} />
-          </span>
-        </div>
-        <div className="combat-field">
+    <div className="modal-back cb-root">
+      <div className="cb">
+        <header className="cb-top">
+          <div className="cb-side" style={{ color: color(me) }}>
+            <span className="dot glow" style={{ background: color(me) }} /> <b>{name(me)}</b>
+            <small>{alive(me)} left</small>
+            <Bar value={strength(me)} max={1} title="Fleet strength left" />
+          </div>
+          <div className="cb-title">
+            <span>Battle at {starName(view, pending.starId)}</span>
+            <b>Round {round}</b>
+          </div>
+          <div className="cb-side right" style={{ color: color(enemy) }}>
+            <Bar value={strength(enemy)} max={1} title="Fleet strength left" />
+            <small>{alive(enemy)} left</small>
+            <b>{name(enemy)}</b> <span className="dot glow" style={{ background: color(enemy) }} />
+          </div>
+          <div className="cb-tools">
+            <button className="small cb-forces-toggle" onClick={() => setForces(!forces)}>{forces ? "Hide forces" : "Forces"}</button>
+            {webglAvailable() && <button className="small" onClick={() => setUse3d(!use3d)}>{use3d ? "2D view" : "3D view"}</button>}
+          </div>
+        </header>
+
+        {roster(me)}
+        <div className="combat-field cb-field">
           {use3d ? (
             <Suspense fallback={<div className="combat-3d" />}>
               <Combat3D {...props} onFail={() => setUse3d(false)} />
             </Suspense>
           ) : flat}
+          {yourTurn && options && decision && options.incoming.length > 0 && (
+            <div className="cb-alerts">
+              {options.incoming.map((f) => {
+                // Where the planned move ends, the volley may arrive sooner.
+                const soon = moveTo && f.speed > 0 && here
+                  ? Math.max(1, Math.ceil(Math.max(0, Math.hypot(moveTo.x - f.x, moveTo.y - f.y) - f.radius) / f.speed))
+                  : f.turns;
+                const what = `${f.count}× ${WEAPONS_BY_ID[f.weapon]?.name ?? f.weapon}${f.craft ? "" : ` (${f.damage} damage each)`}`;
+                return (
+                  <div key={f.id} className={`cb-alert ${soon < f.turns ? "bad" : "warn"}`}>
+                    <b>Incoming</b> {what}, hits in {f.turns} turn{f.turns === 1 ? "" : "s"}
+                    {soon < f.turns ? `; moving there it hits in ${soon}` : ""}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {asking && (
             <div className="command-ask">
               <h3>{name(enemy)} at {starName(view, pending.starId)}</h3>
@@ -277,113 +396,145 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
           )}
           {scanned && (() => {
             const info = pending.battle.scan(scanned);
-            return info ? <ScanPanel info={info} color={view.players[snap(scanned)?.ownerId ?? -1]?.color} onClose={() => setScanned(null)} /> : null;
+            return info ? <ScanPanel info={info} color={color(snap(scanned)?.ownerId)} onClose={() => setScanned(null)} /> : null;
           })()}
           {!asking && outcome && caughtUp && (
             <div className="combat-result">
-              {outcome.report.winner === null ? "No winner" : <><span style={{ color: view.players[outcome.report.winner]?.color }}>{name(outcome.report.winner)}</span> victorious</>}
+              {outcome.report.winner === null ? "No winner" : <><span style={{ color: color(outcome.report.winner) }}>{name(outcome.report.winner)}</span> victorious</>}
             </div>
           )}
         </div>
+        {roster(enemy)}
+
         {!asking && (
-          <div className="command-panel">
+          <footer className="cb-deck">
             {yourTurn && active && options && decision ? (
               <>
-                <div className="row wrap">
-                  <b style={{ color: view.players[active.ownerId]?.color }}>{active.name}</b>
-                  <span className="muted">
-                    {options.reach > 0 ? `${Math.floor(options.reach)} squares of movement left (turning uses some)` : "no movement left"}
-                  </span>
-                  <span className="spacer" />
-                  {moveTo ? (
-                    <>
-                      <span className="muted">To {Math.round(moveTo.x)}, {Math.round(moveTo.y)}</span>
-                      <button onClick={move} title="Fly there now; the ship can still fire and move on afterwards">Move here</button>
-                      <button className="small" onClick={() => setMoveTo(null)}>Cancel</button>
-                    </>
-                  ) : options.reach > 0 ? <span className="muted">Click the field to plan a move, or double-click to move there now</span> : null}
-                </div>
-                <div className="row wrap">
-                  <span>Target:</span>
-                  <select value={target ?? ""} onChange={(e) => setTarget(e.target.value || null)}>
-                    <option value="">None</option>
-                    {options.targets.map((t) => (
-                      <option key={t.key} value={t.key}>{snap(t.key)?.name ?? t.key}{t.inRange ? "" : " (no ready weapon reaches it)"}</option>
-                    ))}
-                  </select>
-                  {targetInfo && <span className={targetInfo.inRange ? "good" : "muted"}>{targetInfo.inRange ? "in reach" : "no ready weapon reaches it: move or turn"}</span>}
-                  {target && options.reach > 0 && options.weapons.some((w) => w.ready && w.vs[target]?.why === "out of arc") && (
-                    <button className="small" onClick={() => send({ kind: "face", target })} title="Turn toward the target; turning costs movement">Turn to face it</button>
-                  )}
-                </div>
-                {snap(target)?.kind === "planet" && options.weapons.some((w) => w.id === "stellarConverter") && (
-                  <div className="row muted">
-                    In battle the Stellar Converter only wears down the planet's defenses. Win the orbit and the turn asks whether to destroy the planet.
+                <section className="cb-card cb-self">
+                  <div className="cb-card-head">
+                    <span className="cb-label">Your turn</span>
+                    <b style={{ color: color(active.ownerId) }}>{active.name}</b>
+                    {self?.hullId && <span className="muted">{label(self.hullId)}</span>}
                   </div>
-                )}
-                {options.incoming.length > 0 && (
-                  <div className="row wrap command-incoming">
-                    {options.incoming.map((f) => {
-                      const at = frames.now.get(decision.unit);
-                      // Where the planned move ends, the volley may arrive sooner.
-                      const there = moveTo && f.speed > 0 && at
-                        ? Math.max(1, Math.ceil(Math.max(0, Math.hypot(moveTo.x - f.x, moveTo.y - f.y) - f.radius) / f.speed))
-                        : f.turns;
-                      const what = `${f.count}× ${WEAPONS_BY_ID[f.weapon]?.name ?? f.weapon}${f.craft ? "" : ` (${f.damage} damage each)`}`;
+                  {self && <Vitals info={self} />}
+                  {(self?.speed ?? 0) > 0 && (
+                    <div className="cb-stat" title="Squares it can still fly this turn; turning uses some">
+                      <span>Move</span>
+                      <Bar value={options.reach} max={Math.max(options.reach, self?.speed ?? 0)} tone="move" />
+                      <span>{Math.floor(options.reach)} / {self?.speed}</span>
+                    </div>
+                  )}
+                  {(self?.speed ?? 0) === 0 ? (
+                    <div className="cb-hint">It cannot move; it fires from where it stands.</div>
+                  ) : moveTo ? (
+                    <div className="row wrap">
+                      <button className="primary" onClick={move} title="Fly there now; the ship can still fire and move on afterwards">
+                        Move {moveLen} squares {kbd("M")}
+                      </button>
+                      <button className="small" onClick={() => setMoveTo(null)}>Cancel</button>
+                    </div>
+                  ) : options.reach > 0 ? (
+                    <div className="cb-hint">{touch ? "Tap the field to aim a move, double-tap to go there." : "Click the field to aim a move, double-click to go there."}</div>
+                  ) : <div className="cb-hint">No movement left this turn.</div>}
+                </section>
+
+                <section className="cb-weapons">
+                  <div className="cb-card-head">
+                    <span className="cb-label">Weapons</span>
+                    <span className="muted">{options.weapons.length > 0 ? "tap a group to switch it Fire / Standby / Off" : "none"}</span>
+                  </div>
+                  <div className="cb-wgrid">
+                    {options.weapons.map((w) => {
+                      const mode = modeOf(decision.unit, w.mount);
+                      const p = target ? w.vs[target] : undefined;
+                      const live = w.ready && mode === "on" && !!p?.ok;
+                      const arc = ARCS[w.arc as FiringArc]?.name ?? w.arc;
                       return (
-                        <span key={f.id} className={there < f.turns ? "bad" : "warn"}>
-                          Incoming: {what}, hits in {f.turns} turn{f.turns === 1 ? "" : "s"}
-                          {there < f.turns ? `; moving there it hits in ${there}` : ""}
-                        </span>
+                        <button key={w.mount} className={`cb-wtile ${mode}${live ? " live" : ""}${w.ready ? "" : " spent"}`} disabled={!w.ready}
+                          onClick={() => setMode(decision.unit, w.mount, NEXT_MODE[mode])}
+                          title={[`${arc} arc`, ...w.mods.map((m) => WEAPON_MODS_BY_ID[m as keyof typeof WEAPON_MODS_BY_ID]?.name ?? m),
+                            "Fire: fires with the ship. Standby: sits out the next volley, then turns back on. Off: stays off until switched on."].join(". ")}>
+                          <span className="cb-wtop">
+                            <span className={`cb-led ${w.ready ? mode : "spent"}`} />
+                            <b>{w.count}× {w.name}</b>
+                            {w.mods.length > 0 && <span className="cb-mods">{w.mods.map((m) => WEAPON_MODS_BY_ID[m as keyof typeof WEAPON_MODS_BY_ID]?.abbr ?? m).join(" ")}</span>}
+                            <span className="cb-mode">{w.ready ? MODE_LABEL[mode] : "Fired"}</span>
+                          </span>
+                          <span className="cb-wsub">
+                            {arc} arc{w.shots !== null ? ` · ${w.shots} shots left` : ""}{w.second ? " · second volley ready" : ""}
+                          </span>
+                          {!w.ready ? (
+                            <span className="cb-wnote">{p?.why ?? "not ready this turn"}</span>
+                          ) : !target ? (
+                            <span className="cb-wnote">Pick a target to see its odds</span>
+                          ) : p?.ok && p.hitPct !== undefined ? (
+                            <span className="cb-odds">
+                              <Bar value={p.hitPct} max={100} tone="hit" />
+                              <span>{p.hitPct}% · {p.min === p.max ? p.min : `${p.min}-${p.max}`}/hit · ≈{p.expected} through</span>
+                            </span>
+                          ) : (
+                            <span className={`cb-wnote${p?.ok ? " good" : " bad"}`}>{previewText(p, "other")}</span>
+                          )}
+                        </button>
                       );
                     })}
                   </div>
-                )}
-                <div className="command-weapons">
-                  {options.weapons.length === 0 ? <span className="muted">No weapons</span> : options.weapons.map((w) => {
-                    const mode = modeOf(decision.unit, w.mount);
-                    const p = target ? w.vs[target] : undefined;
-                    const live = w.ready && mode === "on" && !!p?.ok;
-                    return (
-                      <div key={w.mount} className={`weapon-row${live ? "" : " faded"}`}>
-                        <button className={`small weapon-mode ${mode}`} disabled={!w.ready}
-                          onClick={() => setMode(decision.unit, w.mount, NEXT_MODE[mode])}
-                          title="Fire: fires with the ship. Standby: sits out the next volley, then turns back on. Off: stays off until switched on.">
-                          {MODE_LABEL[mode]}
-                        </button>
-                        <span title={[`${ARCS[w.arc as FiringArc]?.name ?? w.arc} arc`, ...w.mods.map((m) => WEAPON_MODS_BY_ID[m as keyof typeof WEAPON_MODS_BY_ID]?.name ?? m)].join(", ")}>
-                          {w.count}× {w.name}
-                          {w.mods.length > 0 && ` ${w.mods.map((m) => WEAPON_MODS_BY_ID[m as keyof typeof WEAPON_MODS_BY_ID]?.abbr ?? m).join(" ")}`}
-                          {` · ${ARCS[w.arc as FiringArc]?.name ?? w.arc}`}
-                          {w.shots !== null ? ` (${w.shots} shots)` : ""}
-                        </span>
-                        <span className="muted">
-                          {!w.ready ? (p?.why ?? "not ready this turn") : w.second ? "second volley ready · " : ""}
-                          {w.ready && target ? previewText(p, w.vs[target]?.hitPct !== undefined ? "beam" : "other") : ""}
-                        </span>
+                  <button className="primary cb-fire" onClick={fire} disabled={groups.length === 0}
+                    title="Enter. Groups that cannot reach this target keep their shot for another.">
+                    {groups.length === 0
+                      ? (!options.weapons.some((w) => w.ready) ? "All weapons have fired this turn" : target ? "No switched-on group can hit it" : "Pick a target")
+                      : <>Fire {groups.length} group{groups.length === 1 ? "" : "s"} at {snap(target)?.name}
+                        <small>{[beamDamage > 0 ? `about ${beamDamage} damage through shields` : "", missiles > 0 ? `${missiles} missiles or craft` : ""].filter(Boolean).join(", ")}</small>
+                        {kbd("F")}</>}
+                  </button>
+                </section>
+
+                <section className="cb-card cb-target">
+                  <div className="cb-card-head">
+                    <span className="cb-label">Target</span>
+                    <button className="small" onClick={() => cycleTarget(-1)} disabled={options.targets.length === 0} title="Previous target (Shift+Tab)">‹</button>
+                    <button className="small" onClick={() => cycleTarget(1)} disabled={options.targets.length === 0} title="Next target (Tab)">›</button>
+                    {aim && <b style={{ color: color(snap(target)?.ownerId) }}>{aim.name}</b>}
+                  </div>
+                  {aim && targetInfo ? (
+                    <>
+                      <div className="cb-target-sub">
+                        {aim.hullId ? label(aim.hullId) : aim.kind}
+                        {range !== null && <span> · {range} squares away</span>}
+                        <span className={targetInfo.inRange ? "good" : "warn"}> · {targetInfo.inRange ? "in reach" : "no ready weapon reaches it"}</span>
                       </div>
-                    );
-                  })}
-                </div>
-                <div className="row wrap">
-                  {(() => {
-                    const n = firing(options, decision.unit, target).length;
-                    return (
-                      <button className="primary" onClick={fire} disabled={n === 0} title="Enter. Groups that cannot reach this target keep their shot for another.">
-                        {n === 0 ? "Nothing to fire" : `Fire ${n} group${n === 1 ? "" : "s"} at ${snap(target)?.name ?? "target"}`}
-                      </button>
-                    );
-                  })()}
-                  {options.board.map((b) => (
-                    <button key={b.key} onClick={() => send({ kind: "board", target: b.key })}
-                      title={b.mode === 2 ? "Its marines are likely strong enough to take the ship" : "Its marines can raid the ship and wreck systems, but are unlikely to take it"}>
+                      <Vitals info={aim} />
+                      <div className="row wrap">
+                        <button className="small" onClick={() => setScanned(target)}>Details</button>
+                        {options.reach > 0 && options.weapons.some((w) => w.ready && w.vs[target!]?.why === "out of arc") && (
+                          <button className="small" onClick={() => send({ kind: "face", target: target! })} title="Turn toward the target so more weapon arcs cover it; turning costs movement">Turn to face it</button>
+                        )}
+                        {boardTarget && (
+                          <button className="small" onClick={() => send({ kind: "board", target: boardTarget.key })}
+                            title={boardTarget.mode === 2 ? "Its marines are likely strong enough to take the ship" : "Its marines can raid the ship and wreck systems, but are unlikely to take it"}>
+                            Board ({boardTarget.party} marines, {boardTarget.mode === 2 ? "capture" : "hit-and-run"})
+                          </button>
+                        )}
+                      </div>
+                      {snap(target)?.kind === "planet" && options.weapons.some((w) => w.id === "stellarConverter") && (
+                        <div className="cb-hint">In battle the Stellar Converter only wears down the planet's defenses. Win the orbit and the turn asks whether to destroy the planet.</div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="cb-hint">{touch ? "Tap" : "Click"} an enemy on the field or in the list to target it.</div>
+                  )}
+                  {options.board.filter((b) => b.key !== target).map((b) => (
+                    <button key={b.key} className="small" onClick={() => send({ kind: "board", target: b.key })}>
                       Board {snap(b.key)?.name ?? b.key} ({b.party} marines, {b.mode === 2 ? "capture" : "hit-and-run"})
                     </button>
                   ))}
-                  {decision.canWait && <button onClick={() => send({ kind: "wait" })} title="Act with your other ships first; this one keeps what it has left">Wait</button>}
-                  <button onClick={done} title={firing(options, decision.unit, target).length === 0 ? "Enter" : undefined}>Done</button>
-                  <button className={scanning ? "primary" : ""} onClick={() => { setScanning(!scanning); setScanned(scanning ? null : target); }}
-                    title="Shows the target's armor, shields, systems and weapons; while on, click any ship, station or planet to scan it">Scan</button>
+                </section>
+
+                <div className="cb-actions">
+                  {decision.canWait && <button onClick={() => send({ kind: "wait" })} title="Act with your other ships first; this one keeps what it has left">Wait {kbd("W")}</button>}
+                  <button onClick={done} title="End this unit's turn">Done {kbd("D")}</button>
+                  <button className={scanning ? "primary" : ""} onClick={toggleScan}
+                    title="Shows a unit's armor, shields, systems and weapons; while on, click any ship, station or planet to scan it">Scan {kbd("S")}</button>
                   {options.canSelfDestruct && (confirmBlast ? (
                     <button className="danger" onClick={() => send({ kind: "selfDestruct" })}
                       title={`The ship is lost and explodes: every unit within ${EXPLOSION.radius} squares takes damage, more the closer it is`}>
@@ -394,33 +545,64 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
                       title={`Blow up this ship: it is lost and its explosion damages every unit within ${EXPLOSION.radius} squares, friend or foe`}>Self-destruct…</button>
                   ))}
                   {options.canRetreat && <button onClick={() => send({ kind: "retreat" })} title="The ship leaves the battle as its next turn begins">Retreat</button>}
-                  <button onClick={() => send({ kind: "ai" })} title="The computer plays the rest of this ship's turn as your doctrine says">Computer plays this turn</button>
                   <span className="spacer" />
+                  <button onClick={() => send({ kind: "ai" })} title="The computer plays the rest of this ship's turn as your doctrine says">Computer plays this turn</button>
                   <button onClick={() => send({ kind: "auto" })} title="The computer fights the rest of the battle for you, following your combat doctrine">Auto-resolve the rest</button>
                 </div>
               </>
             ) : outcome && caughtUp ? (
-              <div className="row">
-                <span>{outcome.report.winner === me ? "Victory." : outcome.report.winner === null ? "Neither side won." : "Defeat."}</span>
+              <div className="cb-actions">
+                <b>{outcome.report.winner === me ? "Victory." : outcome.report.winner === null ? "Neither side won." : "Defeat."}</b>
                 <span className="spacer" />
                 <button className="primary" onClick={() => session.finishBattle(engine.orders)}>Continue the turn</button>
               </div>
             ) : (
-              <div className="row">
-                <span className="muted combat-log">{describe(base, event)}</span>
+              <div className="cb-actions cb-playing">
+                <div className="cb-log">
+                  {log.map((l, i) => <div key={i} className={i === log.length - 1 ? "" : "muted"}>{l}</div>)}
+                </div>
                 <span className="spacer" />
                 <button className="small" onClick={() => setShown(steps.length)}>Skip ahead</button>
               </div>
             )}
-            {webglAvailable() && (
-              <div className="row">
-                <span className="spacer" />
-                <button className="small" onClick={() => setUse3d(!use3d)}>{use3d ? "2D view" : "3D view"}</button>
-              </div>
-            )}
-          </div>
+          </footer>
         )}
       </div>
+    </div>
+  );
+}
+
+const KIND_ICON: Record<string, string> = { ship: "➤", station: "◆", planet: "●", monster: "✶" };
+
+/** Armor and structure left (or hit points, for units without layers) and their maximum. */
+function hpOf(s: { maxHits: number; maxArmor?: number; maxStructure?: number }, st: UnitState | undefined): { now: number; max: number } {
+  if (!st) return { now: s.maxHits, max: s.maxHits };
+  if (st.armor !== null && st.structure !== null && s.maxArmor !== undefined && s.maxStructure !== undefined) {
+    return { now: st.armor + st.structure, max: s.maxArmor + s.maxStructure };
+  }
+  return { now: st.hits, max: s.maxHits };
+}
+
+function Bar({ value, max, tone, title }: { value: number; max: number; tone?: "hp" | "move" | "hit" | "armor" | "shield"; title?: string }) {
+  const f = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
+  const t = tone ?? (f > 0.6 ? "hp" : f > 0.3 ? "hurt" : "low");
+  return <span className={`cb-bar ${t}`} title={title}><span style={{ width: `${f * 100}%` }} /></span>;
+}
+
+/** Armor, structure and shields of a unit as bars with their numbers. */
+function Vitals({ info }: { info: ScanInfo }) {
+  return (
+    <div className="cb-vitals">
+      {info.maxArmor > 0 && <div className="cb-stat"><span>Armor</span><Bar value={info.armor} max={info.maxArmor} tone="armor" /><span>{Math.round(info.armor)} / {info.maxArmor}</span></div>}
+      <div className="cb-stat"><span>Structure</span><Bar value={info.structure} max={info.maxStructure} /><span>{Math.round(info.structure)} / {info.maxStructure}</span></div>
+      {info.shieldClass > 0 && (
+        <div className="cb-stat" title={`Class ${info.shieldClass}: takes ${info.shieldClass} off every hit. Per facing: ${info.shields.map((v, i) => `${FACINGS[i]} ${Math.round(v)}`).join(", ")}`}>
+          <span>Shields</span>
+          <span className="cb-facings">{info.shields.map((v, i) => <Bar key={i} value={v} max={info.shieldMax} tone="shield" title={`${FACINGS[i]} ${Math.round(v)} / ${info.shieldMax}`} />)}</span>
+          <span>{info.shieldsWork ? `class ${info.shieldClass}` : "down"}</span>
+        </div>
+      )}
+      {info.shieldClass === 0 && <div className="cb-stat"><span>Shields</span><span className="muted">none</span><span /></div>}
     </div>
   );
 }

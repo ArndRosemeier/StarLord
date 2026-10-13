@@ -379,6 +379,13 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         question off with <b>Let me command my battles</b> under Game (or on the Fleets screen), and every battle then
         resolves by itself.
       </P>
+      <P>
+        The battle screen lists your units on the left and the enemy's on the right with what each has left (on narrow
+        screens <b>Forces</b> opens the lists); an enemy's tag shows your best chance to hit it, and a click on it targets
+        it. The deck below shows the unit on its turn (armor, structure, shields per facing, movement left), its weapon
+        groups and the target. Keys: <Key>F</Key> fire, <Key>M</Key> move, <Key>W</Key> wait, <Key>D</Key> done,
+        <Key>S</Key> scan, <Key>Tab</Key> next target, <Key>Enter</Key> the obvious next step, <Key>Esc</Key> cancel.
+      </P>
       <h3>Moving and firing</h3>
       <Ul>
         <li>Whoever started the fight attacks, unless the battle is at the other side's colony: a colony's owner always defends. The defender deploys on the left, the attacker {DEPLOY.rightColumn - DEPLOY.leftColumn} squares away on the right (a human attacker takes the left instead). Ships line up in a column by size, biggest in the middle; the planet sits behind the defenders with its station in front of it.</li>
