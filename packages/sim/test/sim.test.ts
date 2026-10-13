@@ -172,4 +172,13 @@ describe("unexplored systems", () => {
     expect(v.galaxy.stars.some((x) => x.name === "Orion")).toBe(false);
     expect(s.galaxy.stars.some((x) => x.name === "Orion")).toBe(true);
   });
+
+  it("hide Orion's special until it is explored", () => {
+    const s = newGame({ seed: "names", races: ["terran", "felhari"] });
+    const orion = s.galaxy.stars.find((x) => x.special === "orion")!;
+    expect(s.players[0]!.explored).not.toContain(orion.id);
+    expect(playerView(s, 0).galaxy.stars.find((x) => x.id === orion.id)!.special).toBeNull();
+    s.players[0]!.explored.push(orion.id);
+    expect(playerView(s, 0).galaxy.stars.find((x) => x.id === orion.id)!.special).toBe("orion");
+  });
 });
