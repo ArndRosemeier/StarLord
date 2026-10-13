@@ -189,7 +189,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Colony and outpost bases</h3>
       <P>
-        A finished Colony Base, Outpost Base or Artificial Planet asks which free planet in the system it goes to, showing
+        A finished Colony Base or Artificial Planet asks which free planet in the system it goes to, showing
         what each would become; with only one free planet it settles there by itself. A base whose planets were all taken
         before it is used is scrapped for {pct(BASE_SCRAP_REFUND)} of its cost.
       </P>

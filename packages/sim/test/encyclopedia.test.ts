@@ -7,7 +7,7 @@ describe("encyclopedia cross-references", () => {
   it("finds what a tech unlocks across the tables", () => {
     expect(techUnlocks("laserCannon").map((u) => u.kind)).toContain("weapon");
     expect(techUnlocks("titanHull")).toEqual([{ kind: "hull", id: "titan", name: "Titan hull" }]);
-    expect(techUnlocks("outpostShip").map((u) => u.kind).sort()).toEqual(["module", "project"]);
+    expect(techUnlocks("outpostShip").map((u) => u.kind).sort()).toEqual(["module"]);
     expect(techUnlocks("ionDrive")[0]!.kind).toBe("drive");
   });
 

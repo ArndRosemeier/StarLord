@@ -96,10 +96,22 @@ describe("colony bases", () => {
     expect(validateCommand(s0, 0, { type: "setQueue", colonyId: home.id, queue: [one, one] }).ok).toBe(false);
     const s = processTurn(s0, { 0: [{ type: "setQueue", colonyId: home.id, queue: [one] }] });
     expect(availableProjects(s, 0, s.colonies[home.id]!)).not.toContain("colonyBase");
-    // Reordering keeps it; an Outpost Base would need the same planet.
+    // Reordering keeps it.
     expect(validateCommand(s, 0, { type: "setQueue", colonyId: home.id, queue: [{ kind: "project", id: "spy" }, one] }).ok).toBe(true);
-    s.players[0]!.techs.push("outpostShip");
-    expect(validateCommand(s, 0, { type: "setQueue", colonyId: home.id, queue: [{ kind: "project", id: "outpostBase" }, one] }).ok).toBe(false);
   });
 
+  it("has no Outpost Base, and clears one an older save left waiting", () => {
+    const { s: s0, home } = homeWithFree(2);
+    s0.players[0]!.techs.push("outpostShip");
+    expect(availableProjects(s0, 0, home)).not.toContain("outpostBase");
+    home.readyBases = ["outpostBase"];
+    home.queue = [{ kind: "project", id: "outpostBase" }];
+    const bc = s0.players[0]!.bc;
+    const s = processTurn(s0, {});
+    const after = s.colonies[home.id]!;
+    expect(after.readyBases ?? []).not.toContain("outpostBase");
+    expect(after.queue.some((q) => q.kind === "project" && q.id === "outpostBase")).toBe(false);
+    expect(Number.isFinite(s.players[0]!.bc)).toBe(true);
+    expect(s.players[0]!.bc).toBeGreaterThanOrEqual(bc - 1000);
+  });
 });

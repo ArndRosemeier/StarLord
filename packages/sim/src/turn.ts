@@ -1003,7 +1003,6 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
   }
   switch (id) {
     case "colonyBase":
-    case "outpostBase":
     case "artificialPlanet": {
       // MoO2 asks where a finished base goes; with one choice there is nothing to ask.
       const free = baseTargets(state, colony, id);
@@ -1039,7 +1038,7 @@ function completeProject(ctx: TurnContext, colony: Colony, id: string, planetId:
   }
 }
 
-/** Settles or converts the chosen planet with a finished Colony Base, Outpost Base or Artificial Planet. */
+/** Settles or converts the chosen planet with a finished Colony Base or Artificial Planet. */
 function placeBase(ctx: TurnContext, colony: Colony, id: string, target: Planet): void {
   if (id === "artificialPlanet") {
     if (target.type === "asteroids" || target.type === "gasGiant") {
@@ -1056,7 +1055,9 @@ function placeBase(ctx: TurnContext, colony: Colony, id: string, target: Planet)
 
 /** A finished base with no planet left to use is scrapped for part of its cost, never lost silently. */
 function scrapBase(ctx: TurnContext, colony: Colony, id: string): void {
-  const refund = Math.floor(itemCost(ctx.state, colony.ownerId, { kind: "project", id }, colony) * BASE_SCRAP_REFUND);
+  const cost = itemCost(ctx.state, colony.ownerId, { kind: "project", id }, colony);
+  // An Outpost Base left waiting in an older save has no price any more.
+  const refund = Number.isFinite(cost) ? Math.floor(cost * BASE_SCRAP_REFUND) : 0;
   ctx.state.players[colony.ownerId]!.bc += refund;
   ctx.emit({ kind: "baseScrapped", playerId: colony.ownerId, colonyId: colony.id, projectId: id, refund });
 }
