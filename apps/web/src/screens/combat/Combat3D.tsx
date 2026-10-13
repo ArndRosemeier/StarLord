@@ -54,8 +54,8 @@ export default function Combat3D(props: CombatViewProps & { onFail: (error: unkn
   return (
     <div ref={host} className="combat-3d">
       <div className="combat-3d-hint muted">{command ? (isTouchDevice()
-        ? "Tap the field to move · tap an enemy to target · drag to orbit"
-        : "Click the field to move · click an enemy to target · drag to orbit · wheel to zoom") : isTouchDevice()
+        ? "Tap the field to aim a move · double-tap to move there · tap an enemy to target · drag to orbit"
+        : "Click the field to aim a move · double-click to move there · click an enemy to target · drag to orbit · wheel to zoom") : isTouchDevice()
         ? "Drag to orbit · pinch to zoom · double-tap to reset · tap a unit to pin its label"
         : "Drag to orbit · wheel to zoom · double-click to reset · click a unit to pin its label"}</div>
     </div>

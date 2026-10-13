@@ -15,6 +15,9 @@ const Combat3D = lazy(() => import("./combat/Combat3D"));
 
 /** Milliseconds per event while the battle plays out between the player's turns. */
 const PLAY_MS = 110;
+/** Two field clicks this close in time (ms) and space (squares) count as a double click: move there now. */
+const DOUBLE_MS = 450;
+const DOUBLE_SQUARES = 1.5;
 
 interface Engine {
   fight: Generator<BattleDecision, CombatOutcome, TacticalOrder>;
@@ -98,6 +101,7 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
   const [confirmBlast, setConfirmBlast] = useState(false);
   // Weapon switches per unit, kept for the whole battle as in the original.
   const modes = useRef(new Map<string, Map<number, WeaponMode>>());
+  const lastField = useRef<{ x: number; y: number; t: number } | null>(null);
   const [, setModeVersion] = useState(0);
   const [use3d, setUse3d] = useState(() => webglAvailable());
   const { base, decision, outcome } = engine;
@@ -206,7 +210,18 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
         // Past its reach the ship only gets as far as it can; show where that is.
         const d = Math.hypot(x - at.x, y - at.y);
         const k = d > options.reach ? options.reach / d : 1;
-        setMoveTo({ x: Math.round((at.x + (x - at.x) * k) * 10) / 10, y: Math.round((at.y + (y - at.y) * k) * 10) / 10 });
+        const to = { x: Math.round((at.x + (x - at.x) * k) * 10) / 10, y: Math.round((at.y + (y - at.y) * k) * 10) / 10 };
+        // A double click (or double tap) on the same spot moves there at once.
+        const now = performance.now();
+        const prev = lastField.current;
+        if (prev && now - prev.t < DOUBLE_MS && Math.hypot(x - prev.x, y - prev.y) < DOUBLE_SQUARES) {
+          lastField.current = null;
+          setMoveTo(null);
+          send({ kind: "move", to });
+          return;
+        }
+        lastField.current = { x, y, t: now };
+        setMoveTo(to);
       },
       onUnit: (key) => {
         if (scanning) setScanned(key);
@@ -286,7 +301,7 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
                       <button onClick={move} title="Fly there now; the ship can still fire and move on afterwards">Move here</button>
                       <button className="small" onClick={() => setMoveTo(null)}>Cancel</button>
                     </>
-                  ) : options.reach > 0 ? <span className="muted">Click the field to plan a move</span> : null}
+                  ) : options.reach > 0 ? <span className="muted">Click the field to plan a move, or double-click to move there now</span> : null}
                 </div>
                 <div className="row wrap">
                   <span>Target:</span>

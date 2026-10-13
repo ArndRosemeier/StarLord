@@ -407,7 +407,7 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
     else command.onField(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
   };
 
-  return <canvas ref={canvas} onClick={onClick} style={{ width: "100%", aspectRatio: `${W} / ${H}`, display: "block", cursor: command ? "crosshair" : undefined }} />;
+  return <canvas ref={canvas} onClick={onClick} style={{ width: "100%", aspectRatio: `${W} / ${H}`, display: "block", cursor: command ? "crosshair" : undefined, touchAction: "manipulation" }} />;
 }
 
 const ease = (k: number) => 1 - Math.pow(1 - k, 3);
