@@ -95,25 +95,35 @@ function layoutStars(rng: Rng, size: GalaxySize, colors: StarColor[], names: str
   const rowWidth = (P.rowWidth * 10) / L.scale;
   const placed: Spot[] = [];
   const toParsec = (units: number) => round2(units / P.unitsPerParsec);
+  // As in the original, only the new star's own label is checked, and (once a star is down) its label must not
+  // run off the right edge.
   const fits = (s: Spot) => placed.every((o) => {
+    if (s.sx + Math.floor((2 * s.label) / 3) > P.screen.width) return false;
     const dx = Math.abs(s.sx - o.sx);
     const dy = Math.abs(s.sy - o.sy);
     if (dx * dx + dy * dy <= P.minDistance2) return false;
-    if (dy < L.labelGap && dx < (s.label + o.label) / 2) return false;
+    if (dy < L.labelGap && dx < s.label) return false;
     if (dy < P.rowGap && dx < rowWidth) return false;
     if ((s.bh || o.bh) && Math.hypot(s.x - o.x, s.y - o.y) < BLACK_HOLE_CLEARANCE) return false;
     return true;
   });
+  const toScreen = (units: number) => Math.floor((units * 10) / L.scale);
   for (let i = 0; i < colors.length; i++) {
     const bh = colors[i] === "blackHole";
     const label = labelWidth(names[i]!);
     let spot: Spot | null = null;
+    // Cell i starts at column i mod cols and at row height x i / cols (a slight diagonal, as in the original).
+    const x0 = cw * (i % L.cols);
+    const y0 = Math.floor((ch * i) / L.cols);
     for (let t = 0; t < P.cellTries && !spot; t++) {
-      const ix = (cw * (i % L.cols) + rng.int(1, 2 * cw)) % W;
-      const iy = (ch * Math.floor(i / L.cols) + rng.int(1, 2 * ch)) % H;
-      const s = { sx: (ix * 10) / L.scale, sy: (iy * 10) / L.scale, x: toParsec(ix), y: toParsec(iy), bh, label };
-      if (s.sx < P.margins.left || s.sx > P.screen.width - P.margins.right) continue;
-      if (s.sy < P.margins.top || s.sy > P.screen.height - P.margins.bottom - L.bottomMargin) continue;
+      // Rolls that land outside the margins are rolled again without using up a try.
+      let ix: number;
+      do ix = (x0 + rng.int(1, 2 * cw)) % W;
+      while (toScreen(ix) < P.margins.left || toScreen(ix) > P.screen.width - P.margins.right);
+      let iy: number;
+      do iy = (y0 + rng.int(1, 2 * ch)) % H;
+      while (toScreen(iy) < P.margins.top || toScreen(iy) > P.screen.height - P.margins.bottom - L.bottomMargin);
+      const s = { sx: toScreen(ix), sy: toScreen(iy), x: toParsec(ix), y: toParsec(iy), bh, label };
       if (fits(s)) spot = s;
     }
     for (let t = 0; t < P.anywhereTries && !spot; t++) {
@@ -257,7 +267,7 @@ function rollSpecials(
 /**
  * Picks the home stars: sets of stars pairwise at least the home spacing
  * apart (see HOME_SPACING), built greedily from every start star; one such set
- * is picked at random and shuffled. The first star is never a home (it may
+ * is picked at random and mixed. The first star is never a home (it may
  * become Orion). Returns null when no set is big enough even after easing the
  * spacing HOME_SPACING.maxExtra times; `relax` keeps easing it (for more
  * empires than the setup screen offers).
@@ -279,18 +289,30 @@ export function pickHomeStars(
   return null;
 }
 
+/**
+ * The original's home sets: from each start star, the other stars in index
+ * order join while they are far enough from every member (at most
+ * HOME_SPACING.maxSet). One big enough set is picked, a few random swaps mix
+ * it, and its first `count` stars become the homes.
+ */
 function homeSet(rng: Rng, stars: Star[], count: number, d: number): Star[] | null {
   const sets: Star[][] = [];
   for (let k = 0; k < stars.length; k++) {
     const set = [stars[k]!];
-    for (let j = 1; j < stars.length; j++) {
-      const s = stars[(k + j) % stars.length]!;
-      if (set.every((h) => distance(h, s) >= d)) set.push(s);
+    for (let j = 0; j < stars.length && set.length < HOME_SPACING.maxSet; j++) {
+      const s = stars[j]!;
+      if (j !== k && set.every((h) => distance(h, s) >= d)) set.push(s);
     }
     if (set.length >= count) sets.push(set);
   }
   if (sets.length === 0) return null;
-  return rng.shuffle([...rng.pick(sets)]).slice(0, count);
+  const set = [...rng.pick(sets)];
+  for (let i = 0; i < HOME_SPACING.swaps; i++) {
+    const a = rng.int(0, set.length - 1);
+    const b = rng.int(0, set.length - 1);
+    [set[a], set[b]] = [set[b]!, set[a]!];
+  }
+  return set.slice(0, count);
 }
 
 const NOT_BLACK_HOLE = (c: StarColor) => c !== "blackHole";

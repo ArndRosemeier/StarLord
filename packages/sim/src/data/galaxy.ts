@@ -147,9 +147,10 @@ export const WORMHOLE_PARTNER_POOL = 19;
  * MAP_LAYOUT scale, W x H the map in parsecs, n the empires plus the galaxy
  * size step when there are more than `manyEmpires`), but never under `min`.
  * When no such set of stars exists, n grows by one up to `maxExtra` times,
- * then the galaxy is rolled again.
+ * then the galaxy is rolled again. A set holds at most `maxSet` stars, and
+ * `swaps` random swaps mix the picked set before its first stars become homes.
  */
-export const HOME_SPACING = { min: Math.sqrt(15000) / 30, manyEmpires: 6, maxExtra: 4 };
+export const HOME_SPACING = { min: Math.sqrt(15000) / 30, manyEmpires: 6, maxExtra: 4, maxSet: 20, swaps: 4 };
 /** Galaxies rolled before home spacing drops below the original's rule (only for more empires than the setup screen offers). */
 export const HOME_GALAXY_TRIES = 40;
 
