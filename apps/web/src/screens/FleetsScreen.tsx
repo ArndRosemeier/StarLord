@@ -78,6 +78,10 @@ export function FleetsScreen({ onShowStar }: { onShowStar: (starId: string) => v
           <h3>Combat doctrine</h3>
           <div className="muted">How your ships fight when you are not giving orders in battle.</div>
           <label className="row">
+            <input type="checkbox" checked={!me.autoBattles} disabled={readOnly} onChange={(e) => session.issue({ type: "setAutoBattles", on: !e.target.checked })} />
+            Command my battles: the turn stops at each battle and I choose to fight it myself or auto-resolve it
+          </label>
+          <label className="row">
             Retreat when weaker than {pct(doctrine.retreatBelow)} of the enemy
             <input type="range" min={0} max={1} step={0.05} value={doctrine.retreatBelow} disabled={readOnly}
               onChange={(e) => session.issue({ type: "setDoctrine", doctrine: { ...doctrine, retreatBelow: Number(e.target.value) } })} />

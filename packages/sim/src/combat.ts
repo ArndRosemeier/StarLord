@@ -30,7 +30,7 @@ import {
 } from "./raceEffects.js";
 import type { Rng } from "./rng.js";
 import type {
-  Colony, CombatReport, CombatRoundEvent, CombatShipSnapshot, Fleet, GameState, LeaderSkills, Player, PlayerId,
+  Colony, CombatReport, CombatRoundEvent, CombatShipSnapshot, Fleet, GameState, LeaderSkills, Player, PlayerId, TacticalOrder,
   ShipStack, WeaponMount,
 } from "./types.js";
 
@@ -701,11 +701,52 @@ const active = (u: Unit) => u.alive && !u.retreated && (!u.captured || u.capture
 const hasWeapons = (u: Unit) => u.mounts.some((m) => m.count > 0 && m.shots > 0 && m.def.effect !== "antiMissile");
 const armed = (u: Unit) => active(u) && hasWeapons(u);
 
-export function resolveCombat(state: GameState, rng: Rng, starId: string, a: CombatSide, b: CombatSide, reportId: string): CombatOutcome {
+/** One battle per pair of enemies per star per turn, so this names a battle for the orders a human hands in. */
+export function battleKey(turn: number, starId: string, a: PlayerId, b: PlayerId): string {
+  return `${turn}:${starId}:${Math.min(a, b)}:${Math.max(a, b)}`;
+}
+
+/** A battle set up at a star, ready to fight. */
+export function createBattle(state: GameState, rng: Rng, starId: string, a: CombatSide, b: CombatSide): Battle {
   const battle = new Battle(state, rng, a, b);
   // Ionized nebula gas stops deflector shields unless they are hard shields.
   battle.nebula = !!state.galaxy.stars.find((s) => s.id === starId)?.nebula;
+  return battle;
+}
+
+/**
+ * Fights a battle. `orders` holds what human players commanded, by player;
+ * a side without orders is played by the computer.
+ */
+export function resolveCombat(
+  state: GameState, rng: Rng, starId: string, a: CombatSide, b: CombatSide, reportId: string,
+  orders?: ReadonlyMap<PlayerId, TacticalOrder[] | "auto">,
+): CombatOutcome {
+  const battle = createBattle(state, rng, starId, a, b);
+  for (const side of [0, 1] as const) {
+    const o = orders?.get(battle.sides[side].ownerId);
+    if (o) battle.setOrders(side, o);
+  }
   return battle.run(starId, reportId);
+}
+
+/** A unit of a commanded side whose turn it is: the battle waits for its order. */
+export interface BattleDecision {
+  unit: string;
+  side: 0 | 1;
+}
+
+/** What a commanded unit may do on its turn, for the battle screen. */
+export interface UnitOptions {
+  /** Enemies it may fire at, with whether any of its weapons reach each from where it stands. */
+  targets: { key: string; inRange: boolean }[];
+  /** Squares it can still move this turn (0 for stations, planets and ships that already moved). */
+  reach: number;
+  canRetreat: boolean;
+  /** The target the computer would pick. */
+  suggested: string | null;
+  /** Its weapons: how many work, shots left (null: unlimited) and whether each is ready to fire this turn. */
+  weapons: { id: string; name: string; count: number; shots: number | null; ready: boolean; arc: string }[];
 }
 
 /**
@@ -742,6 +783,13 @@ export class Battle {
   pullOut: [boolean, boolean] = [false, false];
   /** Fleets whose captain died with the ship boarders took. */
   captainsKilled: string[] = [];
+  /** Sides a human commands: their units wait for orders on their turns, and they only pull out when ordered. */
+  manual: [boolean, boolean] = [false, false];
+  /** Orders handed in for commanded sides, used up in turn order by `run`. */
+  private queued: [TacticalOrder[], TacticalOrder[]] = [[], []];
+  /** Units as they started, and every combat turn's events so far. */
+  snapshots: CombatShipSnapshot[] = [];
+  rounds: CombatRoundEvent[][] = [];
   readonly sides: readonly [CombatSide, CombatSide];
   /** The side that came to fight: whoever picked the target, unless the battle is at the other side's colony. */
   readonly attacker: 0 | 1;
@@ -781,6 +829,12 @@ export class Battle {
         + Math.max(0, ...this.sides[side].fleets.map((f) => captainSkills(state, f.id).monsterBonus ?? 0));
       this.mayRetreat[side] = this.retreatAllowed(side);
     }
+  }
+
+  /** Hands a side's recorded orders in; "auto" leaves the side to the computer. */
+  setOrders(side: 0 | 1, orders: TacticalOrder[] | "auto"): void {
+    this.manual[side] = orders !== "auto";
+    this.queued[side] = orders === "auto" ? [] : [...orders];
   }
 
   /**
@@ -884,16 +938,32 @@ export class Battle {
     }
   }
 
+  /** Fights the battle to the end, taking commanded sides' orders from what was handed in. */
   run(starId: string, reportId: string): CombatOutcome {
+    const fight = this.fight(starId, reportId);
+    let step = fight.next();
+    while (!step.done) {
+      // Orders run out only when the player let the computer finish; it then plays the rest.
+      step = fight.next(this.queued[step.value.side].shift() ?? { kind: "auto" });
+    }
+    return step.value;
+  }
+
+  /**
+   * The battle, step by step: it pauses at each turn of a commanded side's
+   * unit and goes on with the order sent in (`next(order)`), until it returns
+   * the outcome.
+   */
+  *fight(starId: string, reportId: string): Generator<BattleDecision, CombatOutcome, TacticalOrder> {
     const { units, state, sides } = this;
-    const snapshots: CombatShipSnapshot[] = units.map((u) => ({
+    const snapshots: CombatShipSnapshot[] = this.snapshots = units.map((u) => ({
       key: u.key, ownerId: u.ownerId, designId: u.designId, name: u.name, maxHits: u.maxArmor + u.maxStructure,
       x: u.x, y: u.y, isPlanet: u.kind === "planet", kind: u.kind, hullId: u.hullId, sizeClass: u.sizeClass,
       ...(u.shipStyle ? { shipStyle: u.shipStyle } : {}),
       maxArmor: u.maxArmor, maxStructure: u.maxStructure, maxShield: u.shieldMax,
       ...(u.kind === "ship" && u.armor + u.structure < u.maxArmor + u.maxStructure ? { armor: u.armor, structure: u.structure } : {}),
     }));
-    const rounds: CombatRoundEvent[][] = [];
+    const rounds: CombatRoundEvent[][] = this.rounds = [];
     // The attacker acts first every round; raiders defending their home strike first instead.
     const att = this.attacker;
     const def = (1 - att) as 0 | 1;
@@ -911,20 +981,20 @@ export class Battle {
         for (const side of order) this.decideRetreat(side);
         const initiative = (u: Unit) => this.currentSpeed(u) + this.attackOf(u, u) / 10;
         const all = units.filter((u) => active(u)).sort((a, b) => initiative(b) - initiative(a));
-        for (const u of all) if (active(u)) this.act(u);
+        for (const u of all) if (active(u)) yield* this.unitTurn(u);
         for (const side of order) this.moveProjectiles(side);
       } else {
         for (const side of order) {
           // Each side weighs retreat as its phase begins; then its units act in their fixed order.
           this.decideRetreat(side);
           const mine = units.filter((u) => u.side === side && active(u));
-          for (const u of mine) this.act(u);
+          for (const u of mine) yield* this.unitTurn(u);
           this.moveProjectiles(side);
         }
       }
       // Time Warp Facilitators give their ships an extra turn once both sides have moved.
       for (const side of order) {
-        for (const u of units) if (u.side === side && u.fx.extraTurn && active(u)) this.act(u);
+        for (const u of units) if (u.side === side && u.fx.extraTurn && active(u)) yield* this.unitTurn(u);
       }
 
       this.endRound(order);
@@ -1340,8 +1410,19 @@ export class Battle {
 
   // ------------------------------------------------------------ a unit's turn
 
-  /** Turns, moves and fires. Returns whether the unit did anything. */
+  /** A unit's turn, the computer playing it even on a commanded side. Returns whether the unit did anything. */
   act(u: Unit): boolean {
+    const turn = this.unitTurn(u);
+    let step = turn.next();
+    while (!step.done) step = turn.next({ kind: "ai" });
+    return step.value;
+  }
+
+  /**
+   * Turns, moves and fires; a commanded side's unit first waits for its
+   * order. Returns whether the unit did anything.
+   */
+  *unitTurn(u: Unit): Generator<BattleDecision, boolean, TacticalOrder> {
     if (!active(u) || u.held) return false;
 
     // A retreat ordered on an earlier turn takes effect as the ship's next turn begins.
@@ -1352,6 +1433,59 @@ export class Battle {
       for (const p of [...this.projectiles]) if (p.owner === u && p.craft) this.removeProjectile(p);
       return true;
     }
+    if (this.manual[u.side]) {
+      const order: TacticalOrder = yield { unit: u.key, side: u.side };
+      if (order.kind === "auto") this.manual[u.side] = false;
+      else if (order.kind === "retreat") {
+        if (!this.canRetreat(u)) return false;
+        u.retreatOrdered = true;
+        return true;
+      } else if (order.kind === "act") return this.actAsOrdered(u, order);
+      // "ai" and "auto": the computer plays this turn.
+    }
+    return this.autoAct(u);
+  }
+
+  /** What a unit may do on its turn, for a player commanding it. */
+  options(key: string): UnitOptions | null {
+    const u = this.units.find((x) => x.key === key);
+    if (!u || !active(u)) return null;
+    const reaches = (t: Unit) => u.mounts.some((m) => m.count > 0 && m.shots > 0 && m.cooldown <= 0 && m.def.effect !== "antiMissile"
+      && (m.def.kind === "beam" ? this.band(u, t) < MAX_BAND : m.def.kind !== "bomb" || t.kind === "planet"));
+    return {
+      targets: this.targets(u).map((t) => ({ key: t.key, inRange: reaches(t) })),
+      reach: u.immobile || u.moved ? 0 : Math.max(0, this.currentSpeed(u)),
+      canRetreat: this.canRetreat(u),
+      suggested: this.chooseTarget(u)?.key ?? null,
+      weapons: u.mounts.filter((m) => m.count > 0).map((m) => ({
+        id: m.def.id, name: m.def.name, count: m.count, shots: Number.isFinite(m.shots) ? m.shots : null,
+        ready: m.shots > 0 && m.cooldown <= 0 && !m.firedThisRound && !(m.def.kind === "bay" && (m.out || m.rearm > 0)), arc: m.arc,
+      })),
+    };
+  }
+
+  /** A commanded unit's turn: move toward the ordered square (or turn to face the target), then fire at the target. */
+  actAsOrdered(u: Unit, order: Extract<TacticalOrder, { kind: "act" }>): boolean {
+    const target = order.target ? this.targets(u).find((t) => t.key === order.target) : undefined;
+    let did = false;
+    if (u.kind === "station") this.stationTurn(u);
+    else if (!u.immobile && !u.moved) {
+      const to = order.moveTo;
+      if (to && Number.isFinite(to.x) && Number.isFinite(to.y)) {
+        const x = Math.min(FIELD_WIDTH - 0.5, Math.max(0.5, to.x));
+        const y = Math.min(FIELD_HEIGHT - 0.5, Math.max(0.5, to.y));
+        did = this.steer(u, Math.atan2(y - u.y, x - u.x), this.dist(u, { x, y }));
+      } else if (target) this.steer(u, Math.atan2(target.y - u.y, target.x - u.x), 0);
+    }
+    u.moved = true;
+    if (!target) return did;
+    if (this.fire(u, target)) did = true;
+    if (this.boardSomeone(u, target)) did = true;
+    return did;
+  }
+
+  /** The computer's play for a unit's turn. */
+  autoAct(u: Unit): boolean {
     // Ordering a retreat takes the ship's turn (likely, as the original's retreat button ends it).
     if (this.wantsOut(u) && this.canRetreat(u)) {
       u.retreatOrdered = true;
@@ -1398,11 +1532,14 @@ export class Battle {
   }
 
   move(u: Unit, target: Unit): boolean {
+    const want = this.preferredRange(u);
+    return this.steer(u, Math.atan2(target.y - u.y, target.x - u.x), this.edge(u, target) - want);
+  }
+
+  /** Turns toward `goal` (radians) and flies up to `gap` squares that way, as far as its movement allows. */
+  steer(u: Unit, goal: number, gap: number): boolean {
     let mp = this.currentSpeed(u);
     if (mp <= 0) return false;
-    const want = this.preferredRange(u);
-    const gap = this.edge(u, target) - want;
-    const goal = Math.atan2(target.y - u.y, target.x - u.x);
     // Turning costs movement: two points per 22.5 degrees, less with inertial systems.
     const turnCost = TURN_COST_PER_STEP * u.fx.turnCost;
     const steps = Math.ceil(Math.abs(normAngle(goal - u.heading)) / STEP - 1e-9);
@@ -2440,6 +2577,8 @@ export class Battle {
    */
   decideRetreat(side: 0 | 1): void {
     this.pullOut[side] = false;
+    // A commanding player orders retreats ship by ship.
+    if (this.manual[side]) return;
     const owner = this.state.players[this.sides[side].ownerId]!;
     if (owner.kind !== "empire") return;
     const mine = this.units.filter((x) => x.side === side && active(x));

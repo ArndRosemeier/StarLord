@@ -44,6 +44,13 @@ export function GameMenu({ onQuit }: { onQuit: () => void }) {
             Before ending the turn, warn me about colonies making only Trade Goods (this game only)
           </label>
         )}
+        {!readOnly && (
+          <label className="row" style={{ gap: 6 }}
+            title="When on, the turn stops at every battle you take part in: you choose to command it (move and target each of your ships, stations and planets on their turns) or let it resolve. When off, battles resolve by your combat doctrine and you watch the replay after the turn.">
+            <input type="checkbox" checked={!me.autoBattles} onChange={(e) => session.issue({ type: "setAutoBattles", on: !e.target.checked })} />
+            Let me command my battles (otherwise they resolve by themselves)
+          </label>
+        )}
         {message && <div>{message}</div>}
         {saves.length > 0 && <div className="muted">{saves.length} saved game{saves.length === 1 ? "" : "s"} in this browser; load them from the title screen.</div>}
       </div>

@@ -23,7 +23,7 @@ import { validateMutation } from "./mutation.js";
 import { debugProblem, type DebugAction } from "./debug.js";
 import type { RacePicks } from "./data/races.js";
 import type {
-  BuildItem, Colony, CombatDoctrine, Fleet, FleetStance, GameState, Id, PlayerId, ProposalKind, ShipDesign, SpyMission,
+  BuildItem, Colony, CombatDoctrine, Fleet, FleetStance, GameState, Id, PlayerId, ProposalKind, ShipDesign, SpyMission, TacticalOrder,
 } from "./types.js";
 
 /**
@@ -57,6 +57,14 @@ export type Command =
   | { type: "saveDesign"; design: ShipDesign }
   | { type: "obsoleteDesign"; designId: string; obsolete: boolean }
   | { type: "setDoctrine"; doctrine: CombatDoctrine }
+  /** Whether this human commands their battles (the default) or lets them resolve by themselves. */
+  | { type: "setAutoBattles"; on: boolean }
+  /**
+   * The player's orders for a battle of this turn, keyed by `battleKey`: one
+   * per turn of their units in the order the units act, or "auto" when they
+   * let the whole battle resolve by itself.
+   */
+  | { type: "battleOrders"; battle: string; orders: TacticalOrder[] | "auto" }
   /** Terms name the technologies, system, third empire or tribute share the proposal is about. */
   | ({ type: "propose"; to: PlayerId; kind: ProposalKind } & ProposalTerms)
   | { type: "breakTreaty"; target: PlayerId; treaty: TreatyName }
@@ -268,6 +276,15 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
     }
     case "obsoleteDesign":
       return findDesign(player, cmd.designId) ? OK : fail("no such design");
+    case "setAutoBattles":
+      return OK;
+    case "battleOrders": {
+      if (typeof cmd.battle !== "string") return fail("no such battle");
+      if (cmd.orders === "auto") return OK;
+      if (!Array.isArray(cmd.orders)) return fail("bad orders");
+      const kinds = ["act", "retreat", "ai", "auto"];
+      return cmd.orders.every((o) => o && kinds.includes(o.kind)) ? OK : fail("bad orders");
+    }
     case "setDoctrine": {
       const d = cmd.doctrine;
       if (!(d.retreatBelow >= 0 && d.retreatBelow <= 1)) return fail("retreat threshold must be 0..1");

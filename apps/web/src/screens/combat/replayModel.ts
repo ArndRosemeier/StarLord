@@ -62,6 +62,25 @@ export interface UnitInfo {
   side: 0 | 1;
 }
 
+/**
+ * What a commanded battle draws over the field on the player's turn: the
+ * unit whose turn it is, how far it can move, where it is headed, what it
+ * may fire at, and where clicks go.
+ */
+export interface CommandOverlay {
+  active: string;
+  /** Enemies the unit may fire at, and whether any of its weapons reach each from where it stands. */
+  targets: { key: string; inRange: boolean }[];
+  target: string | null;
+  /** Squares it can still move this turn (0: it cannot move). */
+  reach: number;
+  moveTo: { x: number; y: number } | null;
+  /** A click on the battlefield, in battlefield squares. */
+  onField: (x: number, y: number) => void;
+  /** A click on a unit. */
+  onUnit: (key: string) => void;
+}
+
 export interface UnitState {
   x: number;
   y: number;

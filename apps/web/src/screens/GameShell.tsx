@@ -22,6 +22,7 @@ import { GameOver } from "./GameOver";
 import { EndTurnPrompt } from "./EndTurnPrompt";
 import { BasePrompt, coloniesWithReadyBases } from "./BasePrompt";
 import { BattlePopup } from "./BattlePopup";
+import { CommandBattle } from "./CommandBattle";
 import { battlesOfLastTurn } from "../game/battles";
 import { audio } from "../audio/sound";
 import { MuteButton } from "../ui/AudioControls";
@@ -96,7 +97,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     : Object.values(view.colonies).filter((c) => c.ownerId === me.id && isTradeGoodsOnly(c)).map((c) => c.id);
   const endTurn = () => {
     if (noResearch || idleColonies.length > 0) setEndCheck({ points: noResearch ? research : null, idle: idleColonies });
-    else session.endTurn();
+    else session.endTurn({ commandBattles: !autoplay });
   };
   // Ctrl+Enter is bound once, so it calls the latest endTurn through a ref.
   const endTurnRef = useRef(endTurn);
@@ -122,7 +123,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   // Every battle we fought opens as the turn starts, so no loss goes unseen.
   useEffect(() => {
     if (readOnly || autoplay) return;
-    setBattles(battlesOfLastTurn(session.history, me.id, view.turn));
+    // Battles the player commanded were watched as they were fought.
+    setBattles(battlesOfLastTurn(session.history, me.id, view.turn).filter((b) => !session.commandedBattles.has(b.id)));
   }, [view.turn]);
 
   // A finished base with several possible planets waits for the player to pick one, as in MoO2.
@@ -272,6 +274,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         <Audience key={`${view.turn}:${audiences.length}:${audiences[0].themId}:${audiences[0].opening.kind}`} request={audiences[0]}
           onClose={() => setAudiences((q) => q.slice(1))} />
       )}
+      {session.battle && <CommandBattle key={session.battle.pending.key} pending={session.battle.pending} />}
       {debug && debugOpen && <DebugMenu onClose={() => setDebugOpen(false)} />}
       <TurnBanner turn={view.turn} quiet={autoplay} />
     </div>

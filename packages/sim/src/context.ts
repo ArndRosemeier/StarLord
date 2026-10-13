@@ -1,5 +1,5 @@
 import type { Rng } from "./rng.js";
-import type { GameEvent, GameState } from "./types.js";
+import type { GameEvent, GameState, PlayerId, TacticalOrder } from "./types.js";
 
 type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never;
 
@@ -11,6 +11,10 @@ export interface TurnContext {
   state: GameState;
   rng: Rng;
   emit: Emit;
+  /** Humans' orders for this turn's battles, by battle key and player (see the `battleOrders` command). */
+  battleOrders?: Map<string, Map<PlayerId, TacticalOrder[] | "auto">>;
+  /** Asked before each battle; a battle it returns true for is not fought (see `pendingBattle`). */
+  pauseAt?: (battle: import("./combat.js").Battle, key: string) => boolean;
 }
 
 export function newId(state: GameState, prefix: string): string {

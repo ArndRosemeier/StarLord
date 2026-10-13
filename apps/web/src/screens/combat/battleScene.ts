@@ -13,7 +13,7 @@ import { monsterSpecies } from "../../game/monsters";
 import { buildPlanet } from "../../three/models/planet";
 import {
   STEP_MS, starPlanetType, systemName, weaponLook,
-  type CombatEvent, type Frames, type UnitInfo, type UnitState,
+  type CombatEvent, type CommandOverlay, type Frames, type UnitInfo, type UnitState,
 } from "./replayModel";
 
 /**
@@ -79,6 +79,10 @@ export class BattleScene {
   private raycaster = new THREE.Raycaster();
   private starfield: THREE.Points;
   private cameraTouched = false;
+  /** The player's turn in a commanded battle, drawn as rings on the field. */
+  private command: CommandOverlay | null = null;
+  private commandGroup = new THREE.Group();
+  private downAt: { x: number; y: number } | null = null;
 
   constructor(container: HTMLElement, private input: BattleSceneInput) {
     this.reduced = input.reduced;
@@ -129,6 +133,8 @@ export class BattleScene {
     el.addEventListener("pointermove", this.onPointerMove);
     el.addEventListener("pointerleave", this.onPointerLeave);
     el.addEventListener("click", this.onClick);
+    el.addEventListener("pointerdown", this.onPointerDown);
+    scene.add(this.commandGroup);
     this.stage.start();
     // Handy for poking at the scene from the console or a browser test.
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__battle = this;
@@ -281,6 +287,64 @@ export class BattleScene {
       if (s) u.heading = this.headingOf(u, s);
     }
     if (fresh && event) this.spawn(event);
+    this.layoutCommand();
+  }
+
+  /** Shows (or with null, clears) the player's turn in a commanded battle. */
+  setCommand(command: CommandOverlay | null): void {
+    this.command = command;
+    this.layoutCommand();
+  }
+
+  private layoutCommand(): void {
+    const g = this.commandGroup;
+    for (const child of [...g.children]) {
+      g.remove(child);
+      const m = child as THREE.Mesh | THREE.Line;
+      m.geometry.dispose();
+      (m.material as THREE.Material).dispose();
+    }
+    const cmd = this.command;
+    if (!cmd || !this.frames) return;
+    const flat = (inner: number, outer: number, color: number, opacity: number, at: THREE.Vector3) => {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(inner, outer, 64).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide }),
+      );
+      ring.position.set(at.x, 0.04, at.z);
+      ring.renderOrder = 2;
+      g.add(ring);
+      return ring;
+    };
+    const where = (key: string): { at: THREE.Vector3; r: number } | null => {
+      const u = this.units.get(key);
+      const s = this.frames?.now.get(key);
+      if (!u || !s) return null;
+      if (u.planetCenter) return { at: u.planetCenter, r: PLANET_RADIUS + 0.5 };
+      return { at: gridToWorld(s.x, s.y), r: Math.max(0.7, this.radiusOf(key) * 1.5) };
+    };
+    const me = where(cmd.active);
+    if (!me) return;
+    flat(me.r, me.r + 0.14, 0xffffff, 0.85, me.at);
+    if (cmd.reach > 0) {
+      flat(cmd.reach - 0.08, cmd.reach, 0x7ad7ff, 0.55, me.at);
+      flat(0, cmd.reach, 0x7ad7ff, 0.05, me.at);
+    }
+    for (const t of cmd.targets) {
+      const w = where(t.key);
+      if (!w) continue;
+      const chosen = t.key === cmd.target;
+      flat(w.r, w.r + (chosen ? 0.22 : 0.1), chosen ? 0xff3b3b : t.inRange ? 0xffa040 : 0x8a8f9c, chosen ? 0.95 : t.inRange ? 0.6 : 0.35, w.at);
+    }
+    if (cmd.moveTo) {
+      const to = gridToWorld(cmd.moveTo.x, cmd.moveTo.y);
+      flat(0.35, 0.5, 0x7dffb0, 0.9, to);
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([me.at.clone().setY(0.05), to.clone().setY(0.05)]),
+        new THREE.LineBasicMaterial({ color: 0x7dffb0, transparent: true, opacity: 0.7, depthWrite: false }),
+      );
+      g.add(line);
+    }
   }
 
   private headingOf(u: UnitView, s: UnitState): number {
@@ -494,7 +558,32 @@ export class BattleScene {
     this.pointerInside = false;
   };
 
-  private onClick = () => {
+  private onPointerDown = (ev: PointerEvent) => {
+    this.downAt = { x: ev.clientX, y: ev.clientY };
+  };
+
+  private onClick = (ev: MouseEvent) => {
+    const cmd = this.command;
+    // A drag turns the camera; only a click without one gives an order.
+    const dragged = this.downAt && Math.hypot(ev.clientX - this.downAt.x, ev.clientY - this.downAt.y) > 6;
+    if (cmd && !dragged) {
+      const rect = this.stage.renderer.domElement.getBoundingClientRect();
+      this.pointer.set(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
+      this.pointerInside = true;
+      const key = this.pick();
+      if (key) {
+        cmd.onUnit(key);
+        return;
+      }
+      this.raycaster.setFromCamera(this.pointer, this.stage.camera);
+      const hit = this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -SHIP_Y), new THREE.Vector3());
+      if (hit) {
+        const x = hit.x + FIELD_WIDTH / 2 - 0.5;
+        const y = hit.z + FIELD_HEIGHT / 2 - 0.5;
+        if (x >= 0 && x <= FIELD_WIDTH && y >= 0 && y <= FIELD_HEIGHT) cmd.onField(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
+      }
+      return;
+    }
     this.selected = this.hovered === this.selected ? null : this.hovered;
   };
 
@@ -520,7 +609,7 @@ export class BattleScene {
 
   private updatePointer(): void {
     this.hovered = this.pick();
-    this.stage.renderer.domElement.style.cursor = this.hovered ? "pointer" : "";
+    this.stage.renderer.domElement.style.cursor = this.hovered ? "pointer" : this.command ? "crosshair" : "";
     const key = this.hovered ?? this.selected;
     const u = key ? this.units.get(key) : undefined;
     const s = key ? this.frames?.now.get(key) : undefined;
@@ -543,6 +632,8 @@ export class BattleScene {
     el.removeEventListener("pointermove", this.onPointerMove);
     el.removeEventListener("pointerleave", this.onPointerLeave);
     el.removeEventListener("click", this.onClick);
+    el.removeEventListener("pointerdown", this.onPointerDown);
+    this.setCommand(null);
     for (const u of this.units.values()) {
       disposeModel(u.model);
       u.bar.dispose();

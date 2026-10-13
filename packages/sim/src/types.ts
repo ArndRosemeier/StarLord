@@ -252,6 +252,21 @@ export type PlayerKind = "empire" | "monsters" | "raiders";
 
 export type SpyMission = "steal" | "sabotage" | "idle";
 
+/**
+ * A human's order for one unit's turn in a battle they command. Battles are
+ * fought inside the turn, so these are recorded in the order the units act
+ * and handed in with the turn's commands (see `battleOrders`).
+ */
+export type TacticalOrder =
+  /** Move toward a square (ships only) and fire at a target; no target holds fire. */
+  | { kind: "act"; moveTo?: { x: number; y: number }; target?: string }
+  /** Order the ship out; it leaves as its next turn begins. */
+  | { kind: "retreat" }
+  /** Let the computer play this one turn. */
+  | { kind: "ai" }
+  /** Let the computer play this and every later turn of the side, following the combat doctrine. */
+  | { kind: "auto" };
+
 export interface CombatDoctrine {
   /** Retreat when the fleet's strength falls below this fraction of the enemy's. */
   retreatBelow: number;
@@ -303,6 +318,8 @@ export interface Player {
   automationStrategies?: Record<string, string>;
   /** Set when the player turned off the end-turn alert about colonies making only Trade Goods; this game only. */
   idleAlertOff?: boolean;
+  /** Set when a human lets every battle resolve by itself instead of commanding it (the default is to command). */
+  autoBattles?: boolean;
   /** Whether any colony of the empire has a Dimensional Portal (kept in step with `Colony.portal`). */
   hasPortal: boolean;
   eliminatedTurn: number | null;
