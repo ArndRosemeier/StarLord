@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ASSIMILATION, FREIGHTERS, GOVERNMENTS, availableBuildings, colonyMorale, commandPointsAvailable, computeOutput, foodPlan,
+  ASSIMILATION, BUILDINGS_BY_ID, FREIGHTERS, GOVERNMENTS, availableBuildings, colonyMorale, commandPointsAvailable, computeOutput, foodPlan,
   colonyPollution, itemCost, newGame, population, processTurn, surplusFoodBc, getRace, validateCommand,
   type Colony, type Fleet, type GameState,
 } from "@starlord/sim";
@@ -200,5 +200,54 @@ describe("conquest", () => {
   it("can't invade through a barrier shield", () => {
     const { colony } = invasion(true);
     expect(colony.ownerId).toBe(1);
+  });
+});
+
+describe("buildings that would do nothing are not offered", () => {
+  const ALL = ["gravityGenerator", "pollutionProcessor", "atmosphericRenewer", "coreWasteDumps", "holoSimulator", "pleasureDome", "alienManagementCenter"];
+  function setup(race: string, gravity: "low" | "normal" | "heavy") {
+    const s = newGame({ seed: "noop", races: [race, "felhari"], ...quiet });
+    const p = s.players[0]!;
+    p.techs.push(...ALL.map((id) => BUILDINGS_BY_ID[id]!.requires!));
+    const c = home(s);
+    s.planets[c.planetId]!.gravity = gravity;
+    return { s, c, offered: () => availableBuildings(s, 0, c) };
+  }
+
+  it("offers the Gravity Generator only where gravity hurts the colony's race", () => {
+    expect(setup("terran", "normal").offered()).not.toContain("gravityGenerator");
+    expect(setup("terran", "heavy").offered()).toContain("gravityGenerator");
+    expect(setup("gorvath", "heavy").offered()).not.toContain("gravityGenerator");
+    expect(setup("gorvath", "normal").offered()).not.toContain("gravityGenerator");
+    expect(setup("gorvath", "low").offered()).toContain("gravityGenerator");
+  });
+
+  it("offers it to androids on a heavy-gravity world of a heavy-world race", () => {
+    const { c, offered } = setup("gorvath", "heavy");
+    c.androids = { farmers: 0, workers: 1, scientists: 0 };
+    expect(offered()).toContain("gravityGenerator");
+  });
+
+  it("hides pollution cleanup for tolerant races and after Core Waste Dumps", () => {
+    expect(setup("petrani", "normal").offered()).not.toContain("pollutionProcessor");
+    const { c, offered } = setup("terran", "normal");
+    expect(offered()).toContain("pollutionProcessor");
+    c.buildings.push("coreWasteDumps");
+    expect(offered()).not.toContain("atmosphericRenewer");
+  });
+
+  it("hides morale buildings under governments without morale", () => {
+    const { s, offered } = setup("terran", "normal");
+    expect(offered()).toContain("holoSimulator");
+    s.players[0]!.government = Object.keys(GOVERNMENTS).find((g) => GOVERNMENTS[g as keyof typeof GOVERNMENTS].noMorale)! as never;
+    expect(offered()).not.toContain("holoSimulator");
+    expect(offered()).not.toContain("pleasureDome");
+  });
+
+  it("offers the Alien Management Center only where aliens live", () => {
+    const { c, offered } = setup("terran", "normal");
+    expect(offered()).not.toContain("alienManagementCenter");
+    c.aliens = 1;
+    expect(offered()).toContain("alienManagementCenter");
   });
 });
