@@ -259,9 +259,9 @@ export function crewTip(level: number, xp: number): TipCard {
 export function difficultyText(d: keyof typeof DIFFICULTIES): string {
   const x = DIFFICULTIES[d];
   const parts = [
-    x.aiOutputPerUnit ? `computer empires make ${signed(x.aiOutputPerUnit)} industry or research per worker and scientist (${signed(x.aiOutputPerUnit / 2)} food per farmer)` : "computer empires produce normally",
+    x.aiOutputPerUnit ? `computer empires make ${signed(x.aiOutputPerUnit, 2)} industry or research per worker and scientist (${signed(x.aiOutputPerUnit / 2, 2)} food per farmer)` : "computer empires produce normally",
     x.aiGrowthPercent ? `grow ${signed(x.aiGrowthPercent)}% faster` : "",
-    x.aiBcPerPop ? `earn ${signed(x.aiBcPerPop)} BC per population` : "",
+    x.aiBcPerPop ? `earn ${signed(x.aiBcPerPop, 2)} BC per population` : "",
     // AI_OFFERS: x grows by 4 per level, and offers come less often the bigger x; AI_TREATIES: the die shrinks by 40 per level.
     `come to you with offers ${DIFFICULTY_ORDER.indexOf(d) >= 3 ? "rarely" : DIFFICULTY_ORDER.indexOf(d) >= 2 ? "now and then" : "often"} and sign treaties among themselves ${DIFFICULTY_ORDER.indexOf(d) >= 3 ? "often" : DIFFICULTY_ORDER.indexOf(d) >= 2 ? "now and then" : "rarely"}`,
     DIFFICULTY_ORDER.indexOf(d) >= JEALOUSY.minDifficulty ? "grow jealous of your treaties with others" : "",

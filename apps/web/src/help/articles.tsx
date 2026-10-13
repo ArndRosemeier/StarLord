@@ -8,6 +8,7 @@ import {
   RAIDER_CITADEL, RAIDER_CITADEL_ID, RAIDER_DESIGNS, RAIDER_HULLS, RAIDER_SHIP_NAMES, RAID_BUDGET_MULT, RAID_BUDGET_PERIOD, RAID_DESTROYER_WINDOW, RAID_FLEET_CAP,
   RAID_FRIGATE_WINDOW, RAID_GRACE_TURNS, RAID_HOME_MIN_TITANS, RAID_HOME_QUOTA, RAID_HUMAN_POP_MULT, RAID_LAUNCH_ROLL, RAID_LAUNCH_VALUE_MULT, RAID_MAX_SHIPS,
   RAID_TITAN_DISCOUNT, RAIDER_HULL_COST, BOMB_DAMAGE_PER_HIT, crewName, type Difficulty, type WeaponMount, SCRAP_TECH_CHANCE, SHIELDS, SHIELDS_BY_ID, POLLUTION_TOLERANCE, SIZE_FACTOR, SIZE_POP_BASE, SPECIALS, SPECIALS_BY_ID, climatePopulation,
+  HOME_FOOD_RANGE, HOME_MIN_PLANETS, HOME_PLANET_RANGE, MAX_WORMHOLES, NEBULAE, ORION_PLACEMENT, STAR_COUNTS, WORMHOLE_MIN_DISTANCE, BLACK_HOLE_RADIUS,
   RESEARCH, STARTING_TECH_APPS, STARTING_TIERS, STAR_COLORS_BY_AGE, LAIR_CHANCE, MAX_LAIRS, SPECIAL_CHANCE, BLACK_HOLE_CLEARANCE, TECHS, TECH_FIELDS, TECH_TIERS, TERRAFORM_STEP,
   TIERS_BY_ID, TRAIT_COSTS, WEAPONS, WEAPONS_BY_ID, nextTier, previousTier, ARCS, MISSILE_RACKS, STATION_HULLS,
   WEAPON_MODS, WEAPON_MODS_BY_ID, SHIELD_SPACE_BY_HULL, SHIELD_COST_BY_HULL, COMPUTER_COST_BY_HULL,
@@ -143,7 +144,7 @@ export function unlockSummary(u: Unlock): string {
     }
     case "module": {
       const m = MODULES[u.id as keyof typeof MODULES];
-      return `${m.name}: fixed design, ${m.cost} BC before government.`;
+      return `${m.name}: fixed design, ${m.cost} production before government.`;
     }
   }
 }
@@ -340,7 +341,8 @@ function BuildingsPage() {
     <div className="col">
       <p>
         Buildings are built from a colony's production queue, one item per turn at most. Each costs BC upkeep every
-        turn. A building that replaces another removes it when finished.
+        turn. A building that replaces another removes it when finished. A colony's build list leaves out buildings that
+        would do nothing there (see <HelpLink to="guide:colonies" />).
       </p>
       <table className="help-table">
         <thead><tr><th>Building</th><th>Cost</th><th>Upkeep</th><th>Effect</th><th>Requires</th></tr></thead>
@@ -647,7 +649,7 @@ function ModulePage({ id }: { id: keyof typeof MODULES }) {
     <div className="col">
       <p>{text[id]}</p>
       <Facts rows={[
-        ["Hull", <HelpLink to={`hull:${SUPPORT_HULL}`} />], ["Armor", "your best"], ["Weapons", "none"], ["Cost", `${m.cost} BC before government`],
+        ["Hull", <HelpLink to={`hull:${SUPPORT_HULL}`} />], ["Armor", "your best"], ["Weapons", "none"], ["Cost", `${m.cost} production before government`],
         ...(m.troops ? [["Troops", m.troops] as [string, ReactNode]] : []),
         ["Requires", <Requires tech={tech} />],
       ]} />
@@ -796,6 +798,32 @@ function StarsPage() {
         holes have no planets and stand at least {BLACK_HOLE_CLEARANCE} parsecs from any other star.
         About {pct(SPECIAL_CHANCE)} of systems with planets hold a special.
       </p>
+      <h3>Galaxy layout</h3>
+      <p>
+        Stars are placed as the original places them: each in its own cell of a grid over the map, a little off center,
+        never too close to another star or its name. Home stars are spread as far apart as the map allows for the number
+        of empires. Every home system has at least {HOME_MIN_PLANETS} real planets (not counting asteroid belts and gas
+        giants), a star with a planet within {HOME_PLANET_RANGE} parsecs and, unless its people eat no food, a farmable
+        planet within {HOME_FOOD_RANGE} parsecs.
+      </p>
+      <ul className="help-ul">
+        <li>
+          Orion takes the place of a random star within {ORION_PLACEMENT.radius} parsecs of the map's center (further
+          out, up to {ORION_PLACEMENT.maxRadius}, when fewer than {ORION_PLACEMENT.candidates} stars are that close). Its system holds the best planet in the galaxy (huge, Gaia, ultra rich, normal gravity) and its
+          other planets become asteroid belts. Until someone explores it, it looks like any other unexplored star, name and
+          all (see <HelpLink to="page:monsters" />).
+        </li>
+        <li>
+          Nebulae: {(Object.keys(STAR_COUNTS) as (keyof typeof STAR_COUNTS)[]).map((g) => `${NEBULAE.count[g][0]}–${NEBULAE.count[g][1]} in a ${g} galaxy`).join(", ")}.
+          Ships in one crawl and shields don't work there (<HelpLink to="guide:fleets" />).
+        </li>
+        <li>
+          Wormholes: up to {(Object.keys(STAR_COUNTS) as (keyof typeof STAR_COUNTS)[]).map((g) => `${MAX_WORMHOLES[g]} (${g})`).join(", ")},
+          linking stars more than {(Object.keys(STAR_COUNTS) as (keyof typeof STAR_COUNTS)[]).map((g) => WORMHOLE_MIN_DISTANCE[g]).join(", ")} parsecs
+          apart by galaxy size. You only see a wormhole's far end once you know it.
+        </li>
+        <li>Without a Navigator, no ship may pass within {BLACK_HOLE_RADIUS} parsecs of a black hole.</li>
+      </ul>
       <table className="help-table">
         <thead>
           <tr><th>Star</th>{ages.map((a) => <th key={a}>{words(a)} galaxy</th>)}<th>Planets</th><th>Most common bodies</th><th>Rich or better minerals</th></tr>
@@ -1007,7 +1035,8 @@ function MonstersPage() {
         monsters, climate become the better of its own and a random pick from the lists below; its gravity stays as it
         was. The lair also always holds a special: one a planet already has is kept if it is on the monster's list,
         otherwise the system's specials are rolled again from that list.
-        The guardian holds Orion, near the middle of the map, the best system in the galaxy; whoever destroys it gets the {AVENGER_DESIGN.name}, the battleship it guarded, salvages the <HelpLink to="weapon:deathRay" /> and up to three more random xenon technologies, scores {GUARDIAN_SCORE}, and the last of the elders takes command of the {AVENGER_DESIGN.name} if a captain's post is free.
+        The guardian holds Orion, near the middle of the map, the best system in the galaxy (it looks like any other
+        star until explored); whoever destroys it gets the {AVENGER_DESIGN.name}, the battleship it guarded, salvages the <HelpLink to="weapon:deathRay" /> and up to three more random xenon technologies, scores {GUARDIAN_SCORE}, and the last of the elders takes command of the {AVENGER_DESIGN.name} if a captain's post is free.
       </p>
       <table className="help-table">{monsterHead}<tbody>{MONSTER_DESIGNS.map((d) => <MonsterRow key={d.id} d={d} />)}</tbody></table>
       <h3>Lair rewards</h3>
@@ -1180,7 +1209,7 @@ const PAGES: Record<string, () => ReactNode> = {
         your best armor and drive and no weapons, so it can't defend itself.
       </p>
       <table className="help-table">
-        <thead><tr><th>Ship</th><th>Cost (BC)</th><th>Troops</th></tr></thead>
+        <thead><tr><th>Ship</th><th>Cost (production)</th><th>Troops</th></tr></thead>
         <tbody>{(Object.keys(MODULES) as (keyof typeof MODULES)[]).map((id) => (
           <tr key={id}><td><HelpLink to={`module:${id}`} /></td><td>{MODULES[id].cost}</td><td>{MODULES[id].troops || "-"}</td></tr>
         ))}</tbody>
