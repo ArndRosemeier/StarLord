@@ -1703,8 +1703,8 @@ export class Battle {
   options(key: string): UnitOptions | null {
     const u = this.units.find((x) => x.key === key);
     if (!u || !active(u)) return null;
-    const reaches = (t: Unit) => u.mounts.some((m) => m.count > 0 && m.shots > 0 && m.cooldown <= 0 && m.def.effect !== "antiMissile"
-      && (m.def.kind === "beam" ? this.band(u, t) < MAX_BAND : m.def.kind !== "bomb" || t.kind === "planet"));
+    // In reach: some weapon that can still fire this turn reaches it from here (arc, range, ammunition).
+    const reaches = (t: Unit) => u.mounts.some((m) => !this.mountBlocked(u, m, t));
     return {
       targets: this.targets(u).map((t) => ({ key: t.key, inRange: reaches(t) })),
       reach: u.immobile || u.moved ? 0 : Math.max(0, this.currentSpeed(u) - u.mpUsed),

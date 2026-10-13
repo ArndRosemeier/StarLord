@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   LAB_DEFENSES, LAB_PLANET_SHIELDS, LAB_PRESETS, LAB_STATIONS, MAX_TECH_LEVEL, addToBatch, finishBatch, randomLabSpec, runCombatLab, setupCombatLab,
   type CombatLabSpec, type LabArms, type LabBatch, type LabResult, type LabSetup, type LabShips,
@@ -8,7 +9,9 @@ import {
   designStats, findDesign, type HullSize, type PlayerId, type WeaponMount,
 } from "@starlord/sim";
 import { GameSession } from "../game/session";
-import { SessionContext } from "../ui/hooks";
+import { SessionContext, useGame } from "../ui/hooks";
+import { commandLabBattle } from "../game/labBattle";
+import { CommandBattle } from "./CommandBattle";
 import { fmt } from "../ui/format";
 import { CombatReplay } from "./CombatReplay";
 
@@ -39,6 +42,7 @@ export function CombatLab() {
   const [watching, setWatching] = useState<{ result: LabResult; run: number } | null>(null);
   const [batch, setBatch] = useState<{ result: LabBatch; done: number; total: number } | null>(null);
   const [fuzz, setFuzz] = useState<{ done: number; total: number; found: { seed: string; message: string }[] } | null>(null);
+  const [commanding, setCommanding] = useState<GameSession | null>(null);
   const cancel = useRef(false);
   useEffect(() => () => { cancel.current = true; }, []);
 
@@ -82,6 +86,13 @@ export function CombatLab() {
   };
 
   if (watching) return <Watch setup={setup} {...watching} onBack={() => setWatching(null)} />;
+  if (commanding) {
+    return (
+      <SessionContext.Provider value={commanding}>
+        <LabCommand onBack={() => setCommanding(null)} onAgain={() => setCommanding(commandLabBattle(setup, commanding.me === setup.attackerId ? "attacker" : "defender"))} />
+      </SessionContext.Provider>
+    );
+  }
 
   const name = (id: PlayerId) => setup.state.players[id]!.name;
   return (
@@ -115,6 +126,10 @@ export function CombatLab() {
 
       <div className="row debug-row">
         <button className="primary" onClick={() => fight(0)} disabled={!!busy}>Fight and watch</button>
+        <button onClick={() => setCommanding(commandLabBattle(setup, "attacker"))} disabled={!!busy}
+          title="Fight it yourself on the same battle screen as in a game, giving the attacker's orders">Command the attacker</button>
+        <button onClick={() => setCommanding(commandLabBattle(setup, "defender"))} disabled={!!busy}
+          title="Fight it yourself on the same battle screen as in a game, giving the defender's orders">Command the defender</button>
         <button onClick={() => void fightMany(DEBUG.labRuns)} disabled={!!busy}>Fight {DEBUG.labRuns} times</button>
         <button onClick={() => void fuzzMany(DEBUG.labFuzz)} disabled={!!busy} title="Fights random matchups looking only for broken rules">Test {DEBUG.labFuzz} random battles</button>
         {busy && <button onClick={() => { cancel.current = true; }}>Stop</button>}
@@ -280,6 +295,26 @@ function Watch({ setup, result, run, onBack }: { setup: LabSetup; result: LabRes
           <CombatReplay key={report.id} report={report} />
         </SessionContext.Provider>
       ) : <p className="muted">No battle took place.</p>}
+    </div>
+  );
+}
+
+/**
+ * A lab battle the player commands, on the in-game battle screen. Once the
+ * battle is over (or was auto-resolved), its replay shows here.
+ */
+function LabCommand({ onBack, onAgain }: { onBack: () => void; onAgain: () => void }) {
+  const { session } = useGame();
+  // The battle screen covers the whole window, as in a game, not just the debug menu's box.
+  if (session.battle) return createPortal(<CommandBattle key={session.battle.pending.key} pending={session.battle.pending} />, document.body);
+  const report = session.state.combats[0];
+  return (
+    <div className="combat-lab">
+      <div className="row debug-row">
+        <button onClick={onBack}>Back to the setup</button>
+        <button className="primary" onClick={onAgain}>Command it again</button>
+      </div>
+      {report ? <CombatReplay key={report.id} report={report} /> : <p className="muted">No battle took place.</p>}
     </div>
   );
 }
