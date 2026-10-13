@@ -530,7 +530,7 @@ function WeaponsPage() {
         ))}</tbody>
       </table>
       <h3>Firing arcs</h3>
-      <p>Beams fire forward by default. Wider arcs cost extra space: {(Object.values(ARCS)).map((a) => `${a.name} ${signed(a.pct)}%`).join(", ")}.</p>
+      <p>Beams fire forward by default. Wider arcs cost extra space: {(Object.values(ARCS)).map((a) => `${a.name} ${signed(a.pct)}%`).join(", ")}. A point-defense mount only shoots down missiles and craft coming in inside its arc, so All round covers every side.</p>
       <h3>Missile racks</h3>
       <p>A missile mount picks how many shots it carries: {MISSILE_RACKS.map((r) => `${r.shots} shots for ${r.space} space`).join(", ")}.</p>
     </div>

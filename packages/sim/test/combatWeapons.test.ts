@@ -184,3 +184,28 @@ describe("original combat weapons and damage", () => {
     expect(designStats(p, outpost).cost).toBe(Math.round(100 * mult));
   });
 });
+
+describe("point defense firing arcs", () => {
+  /** Point-defense shots the defender fires at one missile volley, facing it head on or turned away. */
+  const pdShots = (heading: number, arc: "forward" | "full") => {
+    const { battle, x, y } = duel(
+      design("m", "cruiser", [{ weaponId: "nuclearMissile", count: 1 }]),
+      design("pd", "cruiser", [{ weaponId: "laserCannon", count: 2, mods: ["pointDefense"], arc }]),
+    );
+    Object.assign(x, { x: 10, y: 30, heading: 0 });
+    Object.assign(y, { x: 30, y: 30, heading });
+    battle.launch(x, 0, x.mounts[0]!, y);
+    for (let i = 0; i < 20 && battle.projectiles.length > 0; i++) battle.moveProjectiles(0);
+    return battle.log.filter((e) => e.kind === "fire" && e.ship === y.key && e.weapon === "laserCannon").length;
+  };
+
+  it("fires a forward point-defense mount only at missiles coming in inside its arc", () => {
+    expect(pdShots(Math.PI, "forward")).toBe(1);
+    expect(pdShots(0, "forward")).toBe(0);
+  });
+
+  it("covers every side with a 360 degree arc", () => {
+    expect(pdShots(0, "full")).toBe(1);
+    expect(pdShots(Math.PI / 2, "full")).toBe(1);
+  });
+});
