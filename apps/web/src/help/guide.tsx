@@ -8,7 +8,7 @@ import {
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES, EVENT_NUMBERS,
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, GUARDIAN_SCORE, BANKRUPTCY,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
-  SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, STARTING_SHIPS, STARTING_STATION, BUILDINGS, BASE_SCRAP_REFUND, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
+  SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, STARTING_SHIPS, STARTING_STATION, BUILDINGS, BASE_SCRAP_REFUND, BUILDING_SCRAP, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
   TRADE_GOODS_RATE, TRAIT_EFFECTS, GOVERNMENTS, RESEARCH_PER_SCIENTIST, AI_PEACE, EVENTS, MAX_WEAPON_SLOTS, COMM_REDIRECT_RANGE, HULLS, TECHS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, abilityValue, type HeroSkill, type HeroSkillGroup,
 } from "@starlord/sim";
 import { fmt, pct } from "../ui/format";
@@ -195,9 +195,17 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Outposts</h3>
       <P>
-        Outposts hold no population and produce nothing, but they claim the planet, extend your fuel range and count
-        for score. Asteroids and gas giants can't be settled at all until an{" "}
-        <HelpLink to="project:artificialPlanet" /> turns them into barren planets.
+        Outposts hold no population and produce nothing, but they claim the planet, extend your fuel and scanner range
+        and count for score. Outpost ships can claim any free planet, asteroid belts and gas giants included; colony
+        ships need a habitable world. Any colony in a system with an asteroid belt or gas giant can build an{" "}
+        <HelpLink to="project:artificialPlanet" />, which turns one into a barren planet colonists can live on. No
+        outpost is needed first, and an outpost already there stays an outpost on the new world.
+      </P>
+      <h3>Scrapping buildings</h3>
+      <P>
+        Click a building on the Colonies screen to scrap it. It pays back {pct(BUILDING_SCRAP.refund)} of the
+        building's base cost and its upkeep stops, but its effect is gone. Only {BUILDING_SCRAP.perColonyPerTurn} building
+        per colony can be scrapped each turn, and never the Capitol. Debt sells buildings by itself at the same rate.
       </P>
     </>
   ),

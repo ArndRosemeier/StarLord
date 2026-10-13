@@ -16,7 +16,7 @@ export interface ClimateInfo {
   /** Share of the size's full population this climate holds, in percent (Gaia 100). */
   popPercent: number;
   foodPerFarmer: number;
-  /** Asteroids and gas giants can't be settled, not even by outposts, until an Artificial Planet turns them into barren planets. */
+  /** Asteroids and gas giants can't hold colonists until an Artificial Planet turns them into barren planets; outposts can claim them. */
   habitable: boolean;
   hostile: boolean;
   /** Extra building upkeep on this climate, as a fraction of the normal upkeep. */

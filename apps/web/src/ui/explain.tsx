@@ -2,7 +2,7 @@ import {
   ARTIFACTS_RESEARCH, ARTIFACTS_SECOND_TECH_CHANCE, CLIMATES, INDUSTRY_PER_WORKER, NATIVE_FOOD_BONUS, NATIVES_POP, POLLUTION_TOLERANCE, SIZE_POP_BASE,
   SPECIAL_INCOME, SPLINTER_POP, TERRAFORM_STEP, climatePopulation, colonyMoraleParts, colonyOutput, getRace, government,
   gravityMultiplier, ADVANCED_START, CLIMATE_TABLE_BY_AGE, CREW, FIRST_FIELDS, TIERS_BY_ID, bodyMix, meanPlanets, DIFFICULTIES, DIFFICULTY_ORDER, JEALOUSY, GOVERNMENTS, PICK_OPTIONS, STAR_COLORS_BY_AGE, TAX_BC_PER_INDUSTRY,
-  BUILDINGS_BY_ID, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
+  BUILDINGS_BY_ID, BUILDING_SCRAP, buildingScrapRefund, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
 } from "@starlord/sim";
 import { Tip, type TipCard } from "./Tip";
 import { techSummary, unlockSummary } from "../help/articles";
@@ -37,7 +37,7 @@ export function climateTip(planet: Planet): TipCard {
       ["Building upkeep", c.maintenancePenalty ? `+${Math.round(c.maintenancePenalty * 100)}%` : "normal"],
       ...(next ? [["Terraforms into", next.map(climateName).join(" or ")] as [string, string]] : []),
     ],
-    text: [c.habitable ? (c.hostile ? "Hostile: only outposts and hardy races thrive here." : "Habitable.") : "Not habitable until an Artificial Planet converts it."],
+    text: [c.habitable ? (c.hostile ? "Hostile: only outposts and hardy races thrive here." : "Habitable.") : "No colonists until an Artificial Planet converts it, but an outpost ship can claim it: no population, more fuel and scanner range."],
   };
 }
 
@@ -266,6 +266,22 @@ export function buildingTip(id: string): TipCard {
   };
 }
 
+/** What scrapping a building pays and costs, for the confirm step on the Colonies screen. */
+export function buildingScrapTip(id: string): TipCard {
+  const b = BUILDINGS_BY_ID[id]!;
+  return {
+    title: `Scrap ${b.name}`, kind: "Scrap",
+    rows: [
+      ["Refund", `+${buildingScrapRefund(id)} BC (${pct(BUILDING_SCRAP.refund)} of its ${b.cost} cost)`],
+      ["Upkeep saved", `${b.maintenance} BC a turn`],
+    ],
+    text: [
+      `Lost: ${[...buildingEffects(b.effects), ...(b.description ? [b.description] : [])].join(" ")}`,
+      `Only ${BUILDING_SCRAP.perColonyPerTurn} building per colony can be scrapped each turn; the Capitol never.`,
+    ],
+  };
+}
+
 /** BC a turn that this colony's industry would bring as trade goods. */
 export function tradeGoodsBC(raceId: string, industry: number): number {
   return tradeGoodsMult(getRace(raceId)) > 1 ? industry : Math.ceil(industry * TRADE_GOODS_RATE);
@@ -297,7 +313,7 @@ export function projectTip(id: string, colony: Colony, planet: Planet, industry:
     if (colony.terraformed) rows.push(["Done here", `${colony.terraformed} time${colony.terraformed > 1 ? "s" : ""}`]);
   }
   if (freePlanets) {
-    rows.push(["Free planets here", freePlanets.length ? freePlanets.map((f) => `${words(f.size)} ${climateName(f.type)}`).join(", ") : "none"]);
+    rows.push(["Free planets here", freePlanets.length ? freePlanets.map((f) => `${words(f.size)} ${climateName(f.type)}${f.colonyId ? " (your outpost)" : ""}`).join(", ") : "none"]);
     text.push(freePlanets.length > 1
       ? "When it is finished you choose which planet it goes to."
       : "When it is finished it goes to the only free planet. If none is left by then, it is scrapped for half its cost.");

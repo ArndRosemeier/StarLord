@@ -1,4 +1,4 @@
-import { BUILDINGS_BY_ID } from "./data/buildings.js";
+import { BUILDINGS_BY_ID, BUILDING_SCRAP } from "./data/buildings.js";
 import { BUY_PRICE_PER_POINT, FREIGHTERS, TAX_STEPS } from "./data/economy.js";
 import { CLIMATES } from "./data/planets.js";
 import { TIERS_BY_ID } from "./data/techs.js";
@@ -35,6 +35,8 @@ export type Command =
   | { type: "setJobs"; colonyId: Id; farmers: number; workers: number; scientists: number }
   | { type: "setQueue"; colonyId: Id; queue: BuildItem[] }
   | { type: "buy"; colonyId: Id }
+  /** Tears down a building for part of its cost; one per colony per turn, never the Capitol. */
+  | { type: "scrapBuilding"; colonyId: Id; buildingId: string }
   /** Puts a finished Colony Base or Artificial Planet waiting at this colony on a planet in its system. */
   | { type: "placeBase"; colonyId: Id; projectId: string; planetId: Id }
   /** techId picks the application; general and hyper-advanced fields need none. */
@@ -47,7 +49,12 @@ export type Command =
   /** Scraps idle freighters; they are worth nothing, but no longer need upkeep. */
   | { type: "scrapFreighters"; count: number }
   | { type: "moveFleet"; fleetId: Id; destStarId: Id }
-  | { type: "colonize"; fleetId: Id; planetId: Id }
+  /**
+   * Lands a colony or outpost ship on a free planet. `module` picks which kind
+   * when the fleet carries both; by default a colony ship goes first on a
+   * habitable world. Asteroids and gas giants only take outposts.
+   */
+  | { type: "colonize"; fleetId: Id; planetId: Id; module?: "colony" | "outpost" }
   | { type: "invade"; fleetId: Id; colonyId: Id }
   | { type: "splitFleet"; fleetId: Id; ships: { designId: string; count: number }[] }
   | { type: "mergeFleets"; fleetIds: Id[] }
@@ -166,6 +173,10 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       if (!baseTargets(state, c, cmd.projectId).some((p) => p.id === cmd.planetId)) return fail("that planet can't take it");
       return OK;
     }
+    case "scrapBuilding": {
+      const why = scrapBuildingProblem(state, playerId, cmd.colonyId, cmd.buildingId);
+      return why ? fail(why) : OK;
+    }
     case "buy": {
       const c = ownColony(state, playerId, cmd.colonyId);
       if (!c) return fail("not your colony");
@@ -214,12 +225,12 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const p = state.planets[cmd.planetId];
       if (!p || p.starId !== f.starId) return fail("fleet is not at that planet's star");
       if (p.colonyId) return fail("planet already colonized");
-      if (!CLIMATES[p.type].habitable) return fail("asteroids and gas giants need an Artificial Planet first");
-      const hasShip = f.ships.some((s) => {
-        const d = findDesign(player, s.designId);
-        return d && (d.module === "colony" || d.module === "outpost") && s.count > 0;
-      });
-      if (!hasShip) return fail("no colony or outpost ship");
+      if (cmd.module !== undefined && cmd.module !== "colony" && cmd.module !== "outpost") return fail("bad ship kind");
+      const module = settlerModule(state, playerId, f, p.id, cmd.module);
+      if (!module) {
+        if (!CLIMATES[p.type].habitable) return fail("only outpost ships can claim asteroids and gas giants");
+        return fail(cmd.module ? `no ${cmd.module} ship` : "no colony or outpost ship");
+      }
       if (guarded(state, playerId, p.starId)) return fail("system is guarded by hostile ships");
       return OK;
     }
@@ -387,6 +398,40 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       return why ? fail(why) : OK;
     }
   }
+}
+
+/**
+ * The kind of settler ship a colonize order would use: `wanted` if the fleet
+ * has one and it may land there, else a colony ship before an outpost ship.
+ * As in the original, outposts go on any free planet, asteroid belts and gas
+ * giants included, while colonists need a habitable world. Undefined when no
+ * ship in the fleet can settle the planet.
+ */
+export function settlerModule(
+  state: GameState, playerId: PlayerId, fleet: Fleet, planetId: Id, wanted?: "colony" | "outpost",
+): "colony" | "outpost" | undefined {
+  const player = state.players[playerId];
+  const planet = state.planets[planetId];
+  if (!player || !planet) return undefined;
+  const has = (m: "colony" | "outpost") => fleet.ships.some((s) => s.count > 0 && findDesign(player, s.designId)?.module === m);
+  const allowed = (m: "colony" | "outpost") => has(m) && (m === "outpost" || CLIMATES[planet.type].habitable);
+  if (wanted) return allowed(wanted) ? wanted : undefined;
+  return allowed("colony") ? "colony" : allowed("outpost") ? "outpost" : undefined;
+}
+
+/** BC a scrapped building pays back: part of its base cost. */
+export function buildingScrapRefund(buildingId: string): number {
+  return Math.floor((BUILDINGS_BY_ID[buildingId]?.cost ?? 0) * BUILDING_SCRAP.refund);
+}
+
+/** Why this building can't be scrapped at this colony right now, or null when it can. */
+export function scrapBuildingProblem(state: GameState, playerId: PlayerId, colonyId: Id, buildingId: string): string | null {
+  const c = ownColony(state, playerId, colonyId);
+  if (!c) return "not your colony";
+  if (!c.buildings.includes(buildingId)) return "no such building here";
+  if (BUILDINGS_BY_ID[buildingId]?.effects.capitol) return "the Capitol can't be scrapped";
+  if (c.scrappedTurn === state.turn) return `only ${BUILDING_SCRAP.perColonyPerTurn} building per colony can be scrapped each turn`;
+  return null;
 }
 
 /** Freighters not carrying colonists or food this turn. */

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  exterminateProblem,
+  exterminateProblem, buildingScrapRefund, scrapBuildingProblem,
   BUILDINGS_BY_ID, MAX_QUEUE, PLACED_PROJECTS, PROJECTS_BY_ID, baseTargets, availableBuildings, availableDesigns, availableProjects, buyCost,
   FREIGHTERS, androids, colonyOutput, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
   type BuildItem, type Colony,
@@ -9,8 +9,8 @@ import { useGame } from "../ui/hooks";
 import { climateName, fmt, itemName, signed, words } from "../ui/format";
 import { PlanetIcon, PlanetOrb, viewStarOfColony } from "../ui/panels";
 import { Icon } from "../ui/fx";
-import { Tip } from "../ui/Tip";
-import { PlanetFacts, buildingTip, moraleTip, projectTip, tradeGoodsBC, tradeGoodsTip } from "../ui/explain";
+import { Tip, TipBody } from "../ui/Tip";
+import { PlanetFacts, buildingScrapTip, buildingTip, moraleTip, projectTip, tradeGoodsBC, tradeGoodsTip } from "../ui/explain";
 import { designTip } from "./designTips";
 import { BaseChoices } from "./BasePrompt";
 import { JobRows } from "./JobRows";
@@ -58,6 +58,54 @@ export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (sta
       </div>
       {colony && <ColonyDetail key={colony.id} colony={colony} onShowStar={onShowStar} />}
     </div>
+  );
+}
+
+/**
+ * The colony's buildings as chips. Picking one opens a confirm step that
+ * shows the refund, the upkeep saved and the effect lost before scrapping it.
+ */
+function BuildingList({ colony }: { colony: Colony }) {
+  const { session, view, me, readOnly } = useGame();
+  const [picked, setPicked] = useState<string | null>(null);
+  const target = picked && colony.buildings.includes(picked) ? picked : null;
+  const why = target ? scrapBuildingProblem(view, me.id, colony.id, target) : null;
+  return (
+    <>
+      <div className="row">
+        {colony.buildings.length === 0 && <span className="muted">None</span>}
+        {colony.buildings.map((b) => (
+          <Tip key={b} card={BUILDINGS_BY_ID[b] ? () => buildingTip(b) : null}>
+            <span
+              className={`chip${readOnly ? "" : " pickable"}${b === target ? " active" : ""}`}
+              role={readOnly ? undefined : "button"}
+              tabIndex={readOnly ? undefined : 0}
+              style={readOnly ? undefined : { cursor: "pointer" }}
+              onClick={readOnly ? undefined : () => setPicked(b === target ? null : b)}
+              onKeyDown={readOnly ? undefined : (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPicked(b === target ? null : b); } }}
+            >
+              {BUILDINGS_BY_ID[b]?.name ?? b}
+            </span>
+          </Tip>
+        ))}
+      </div>
+      {!readOnly && colony.buildings.length > 0 && !target && <small className="muted">Click a building to scrap it.</small>}
+      {target && BUILDINGS_BY_ID[target] && (
+        <div className="panel col" style={{ gap: 6 }}>
+          <TipBody card={buildingScrapTip(target)} />
+          {why && <div className="bad">{why[0]!.toUpperCase() + why.slice(1)}.</div>}
+          <div className="row">
+            <button className="small danger" disabled={!!why} onClick={() => {
+              session.issue({ type: "scrapBuilding", colonyId: colony.id, buildingId: target });
+              setPicked(null);
+            }}>
+              Scrap for {buildingScrapRefund(target)} BC
+            </button>
+            <button className="small" onClick={() => setPicked(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -144,10 +192,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
           </div>
         )}
         <h4>Buildings</h4>
-        <div className="row">
-          {colony.buildings.length === 0 && <span className="muted">None</span>}
-          {colony.buildings.map((b) => <Tip key={b} card={BUILDINGS_BY_ID[b] ? () => buildingTip(b) : null}><span className="chip">{BUILDINGS_BY_ID[b]?.name ?? b}</span></Tip>)}
-        </div>
+        <BuildingList key={colony.id} colony={colony} />
       </div>
 
       {(colony.readyBases?.length ?? 0) > 0 && (

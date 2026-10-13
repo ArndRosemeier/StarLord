@@ -8,7 +8,7 @@ import {
 import { useGame } from "./hooks";
 import { climateName, fmt, words } from "./format";
 import { additive } from "./touch";
-import { colonizeOption, type ColonizeOption } from "../game/colonize";
+import { colonizeCommand, colonizeOption, type ColonizeOption } from "../game/colonize";
 import { leadMonster, monsterBehavior, monsterName } from "../game/monsters";
 
 /** Painted planet art in public/planets, scaled by planet size. */
@@ -93,7 +93,7 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
               <small className="muted">
                 <Tip card={mineralsTip(p)}><span className="explained">{words(p.minerals)} minerals</span></Tip>,{" "}
                 <Tip card={gravityTip(p, me.raceId)}><span className="explained">{p.gravity} gravity</span></Tip>
-                {habitable ? <> · max pop {maxPopulation(p, race, [], me)}</> : !colony && <> · needs an Artificial Planet</>}
+                {habitable ? <> · max pop {maxPopulation(p, race, [], me)}</> : !colony && <> · outposts only, colonists need an Artificial Planet</>}
               </small>
               {colony && owner && (
                 <div>
@@ -107,8 +107,8 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
                 <button
                   className="small primary"
                   disabled={!!settle.blocked}
-                  title={settle.blocked ? `Can't settle: ${settle.blocked}.` : `${settle.fleetName} settles this planet when you end the turn.`}
-                  onClick={() => (onColonize ? onColonize(pid, settle) : session.issue({ type: "colonize", fleetId: settle.fleetId, planetId: pid }))}
+                  title={settle.blocked ? `Can't settle: ${settle.blocked}.` : settle.outpost ? `${settle.fleetName} builds an outpost here when you end the turn: no population, but it extends fuel and scanner range and claims the planet.` : `${settle.fleetName} settles this planet when you end the turn.`}
+                  onClick={() => (onColonize ? onColonize(pid, settle) : session.issue(colonizeCommand(pid, settle)))}
                 >
                   {settle.outpost ? "Outpost" : "Colonize"}
                 </button>

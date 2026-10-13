@@ -1,5 +1,5 @@
 import {
-  BUILDINGS_BY_ID, availableBuildings, availableDesigns, availableProjects, buyCost, colonyOutput, commandPointsAvailable,
+  BUILDINGS_BY_ID, availableBuildings, availableDesigns, availableProjects, baseTargets, buyCost, colonyOutput, commandPointsAvailable,
   commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasMarineBarracks, hasStarDock, queuedAnywhere, relation, suggestedBaseTarget,
   type BuildItem, type Colony, type Command, type PlayerView,
 } from "@starlord/sim";
@@ -302,7 +302,10 @@ function chooseItem(
   }
   if (projects.has("gaiaTransform") && industry >= 20) return { kind: "project", id: "gaiaTransform" };
   if (projects.has("terraform") && industry >= 20 && c.terraformed < 3) return { kind: "project", id: "terraform" };
-  if (projects.has("artificialPlanet") && industry >= 30) return { kind: "project", id: "artificialPlanet" };
+  // A body already holding an outpost would stay an outpost after the conversion: only free ones are worth it.
+  if (projects.has("artificialPlanet") && industry >= 30 && baseTargets(view, c, "artificialPlanet").some((p) => !p.colonyId)) {
+    return { kind: "project", id: "artificialPlanet" };
+  }
   const defense = DEFENSE_BUILDINGS.find((b) => buildable.has(b));
   if (defense && industry >= (military ? 10 : 25)) return { kind: "building", id: defense };
   if (pop < 6) return { kind: "project", id: "housing" };
