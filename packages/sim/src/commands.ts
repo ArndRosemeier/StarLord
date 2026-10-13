@@ -1,4 +1,4 @@
-import { BUILDINGS_BY_ID } from "./data/buildings.js";
+import { BUILDINGS_BY_ID, BUILDING_SCRAP } from "./data/buildings.js";
 import { BUY_PRICE_PER_POINT, FREIGHTERS, TAX_STEPS } from "./data/economy.js";
 import { CLIMATES } from "./data/planets.js";
 import { TIERS_BY_ID } from "./data/techs.js";
@@ -12,7 +12,7 @@ import {
 import { designStats, findDesign, validateDesign } from "./designs.js";
 import { foodPlan, population } from "./economy.js";
 import { MAX_LEADERS } from "./data/leaders.js";
-import { canMindControl, exterminateProblem } from "./ground.js";
+import { ORBITAL_CHOICES, canMindControl, exterminateProblem } from "./ground.js";
 import { moveProblem } from "./movement.js";
 import { bribeProblem } from "./randomEvents.js";
 import {
@@ -20,10 +20,11 @@ import {
   researchOptions,
 } from "./rules.js";
 import { validateMutation } from "./mutation.js";
+import { refitProblem } from "./refit.js";
 import { debugProblem, type DebugAction } from "./debug.js";
 import type { RacePicks } from "./data/races.js";
 import type {
-  BuildItem, Colony, CombatDoctrine, Fleet, FleetStance, GameState, Id, PlayerId, ProposalKind, ShipDesign, SpyMission, TacticalOrder,
+  BuildItem, Colony, CombatDoctrine, Fleet, FleetStance, GameState, Id, PlayerId, OrbitalChoice, ProposalKind, ShipDesign, SpyMission, TacticalOrder,
 } from "./types.js";
 
 /**
@@ -35,6 +36,8 @@ export type Command =
   | { type: "setJobs"; colonyId: Id; farmers: number; workers: number; scientists: number }
   | { type: "setQueue"; colonyId: Id; queue: BuildItem[] }
   | { type: "buy"; colonyId: Id }
+  /** Tears down a building for part of its cost; one per colony per turn, never the Capitol. */
+  | { type: "scrapBuilding"; colonyId: Id; buildingId: string }
   /** Puts a finished Colony Base or Artificial Planet waiting at this colony on a planet in its system. */
   | { type: "placeBase"; colonyId: Id; projectId: string; planetId: Id }
   /** techId picks the application; general and hyper-advanced fields need none. */
@@ -47,13 +50,25 @@ export type Command =
   /** Scraps idle freighters; they are worth nothing, but no longer need upkeep. */
   | { type: "scrapFreighters"; count: number }
   | { type: "moveFleet"; fleetId: Id; destStarId: Id }
-  | { type: "colonize"; fleetId: Id; planetId: Id }
+  /**
+   * Lands a colony or outpost ship on a free planet. `module` picks which kind
+   * when the fleet carries both; by default a colony ship goes first on a
+   * habitable world. Asteroids and gas giants only take outposts.
+   */
+  | { type: "colonize"; fleetId: Id; planetId: Id; module?: "colony" | "outpost" }
   | { type: "invade"; fleetId: Id; colonyId: Id }
   | { type: "splitFleet"; fleetId: Id; ships: { designId: string; count: number }[] }
   | { type: "mergeFleets"; fleetIds: Id[] }
   | { type: "setStance"; fleetId: Id; stance: FleetStance }
   | { type: "renameFleet"; fleetId: Id; name: string }
   | { type: "scrapShips"; fleetId: Id; designId: string; count: number }
+  /**
+   * Takes `count` ships of a design out of a fleet and queues a refit to
+   * another design of the same hull at a colony in the system they orbit.
+   */
+  | { type: "refitShips"; fleetId: Id; designId: string; toDesignId: string; colonyId: Id; count: number }
+  /** Removes a refit job from a colony's queue; the ship in dock is scrapped. */
+  | { type: "cancelRefit"; colonyId: Id; refitId: Id }
   | { type: "saveDesign"; design: ShipDesign }
   | { type: "obsoleteDesign"; designId: string; obsolete: boolean }
   | { type: "setDoctrine"; doctrine: CombatDoctrine }
@@ -65,6 +80,11 @@ export type Command =
    * let the whole battle resolve by itself.
    */
   | { type: "battleOrders"; battle: string; orders: TacticalOrder[] | "auto" }
+  /**
+   * What this player's fleets do this turn to an enemy colony if they hold its orbit after the battles (see
+   * `OrbitalChoice`). Without one, attack-stance fleets bombard without biological weapons.
+   */
+  | { type: "orbitalStrike"; colonyId: Id; choice: OrbitalChoice }
   /** Terms name the technologies, system, third empire or tribute share the proposal is about. */
   | ({ type: "propose"; to: PlayerId; kind: ProposalKind } & ProposalTerms)
   | { type: "breakTreaty"; target: PlayerId; treaty: TreatyName }
@@ -136,7 +156,14 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const projects = new Set(availableProjects(state, playerId, c));
       const designs = new Set(availableDesigns(state, playerId));
       const seen = new Set<string>();
+      // Refit jobs hold a ship: they may be moved, but only cancelRefit removes one.
+      const refits = new Set(c.queue.flatMap((q) => (q.kind === "refit" ? [q.refitId] : [])));
+      const kept = new Set<string>();
       for (const item of cmd.queue) {
+        if (item.kind === "refit") {
+          if (!refits.has(item.refitId) || kept.has(item.refitId)) return fail("no such refit job here");
+          kept.add(item.refitId);
+        }
         if (item.kind === "building") {
           if (!BUILDINGS_BY_ID[item.id]) return fail(`unknown building ${item.id}`);
           if (!buildable.has(item.id)) return fail(`${item.id} not available`);
@@ -151,6 +178,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
         const alreadyHere = item.kind === "project" && c.queue.some((q) => q.kind === "project" && q.id === item.id);
         if (item.kind === "project" && !projects.has(item.id) && !alreadyHere) return fail(`project ${item.id} not available`);
       }
+      if (kept.size < refits.size) return fail("removing a refit job scraps its ship; cancel it instead");
       // Every Colony Base or Artificial Planet needs a planet of its own.
       for (const id of new Set(cmd.queue.flatMap((q) => (q.kind === "project" && PLACED_PROJECTS[q.id] ? [q.id] : [])))) {
         const claims = baseClaims(state, c, id, cmd.queue);
@@ -165,6 +193,10 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       if (!(c.readyBases ?? []).includes(cmd.projectId)) return fail("no such base waiting here");
       if (!baseTargets(state, c, cmd.projectId).some((p) => p.id === cmd.planetId)) return fail("that planet can't take it");
       return OK;
+    }
+    case "scrapBuilding": {
+      const why = scrapBuildingProblem(state, playerId, cmd.colonyId, cmd.buildingId);
+      return why ? fail(why) : OK;
     }
     case "buy": {
       const c = ownColony(state, playerId, cmd.colonyId);
@@ -214,12 +246,12 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const p = state.planets[cmd.planetId];
       if (!p || p.starId !== f.starId) return fail("fleet is not at that planet's star");
       if (p.colonyId) return fail("planet already colonized");
-      if (!CLIMATES[p.type].habitable) return fail("asteroids and gas giants need an Artificial Planet first");
-      const hasShip = f.ships.some((s) => {
-        const d = findDesign(player, s.designId);
-        return d && (d.module === "colony" || d.module === "outpost") && s.count > 0;
-      });
-      if (!hasShip) return fail("no colony or outpost ship");
+      if (cmd.module !== undefined && cmd.module !== "colony" && cmd.module !== "outpost") return fail("bad ship kind");
+      const module = settlerModule(state, playerId, f, p.id, cmd.module);
+      if (!module) {
+        if (!CLIMATES[p.type].habitable) return fail("only outpost ships can claim asteroids and gas giants");
+        return fail(cmd.module ? `no ${cmd.module} ship` : "no colony or outpost ship");
+      }
       if (guarded(state, playerId, p.starId)) return fail("system is guarded by hostile ships");
       return OK;
     }
@@ -265,6 +297,17 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const have = f?.ships.find((s) => s.designId === cmd.designId)?.count ?? 0;
       return f && Number.isInteger(cmd.count) && cmd.count > 0 && cmd.count <= have ? OK : fail("nothing to scrap");
     }
+    case "refitShips": {
+      const why = refitProblem(state, playerId, cmd);
+      if (why) return fail(why);
+      const c = state.colonies[cmd.colonyId]!;
+      return c.queue.length + cmd.count <= MAX_QUEUE ? OK : fail(`queue holds at most ${MAX_QUEUE} items`);
+    }
+    case "cancelRefit": {
+      const c = ownColony(state, playerId, cmd.colonyId);
+      if (!c) return fail("not your colony");
+      return c.queue.some((q) => q.kind === "refit" && q.refitId === cmd.refitId) ? OK : fail("no such refit job here");
+    }
     case "saveDesign": {
       if (player.designs.filter((d) => !d.obsolete).length >= 30 && !findDesign(player, cmd.design.id)) {
         return fail("too many designs; mark some obsolete");
@@ -278,6 +321,9 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       return findDesign(player, cmd.designId) ? OK : fail("no such design");
     case "setAutoBattles":
       return OK;
+    case "orbitalStrike":
+      if (!state.colonies[cmd.colonyId]) return fail("no such colony");
+      return ORBITAL_CHOICES.includes(cmd.choice) ? OK : fail("bad orbital choice");
     case "battleOrders": {
       if (typeof cmd.battle !== "string") return fail("no such battle");
       if (cmd.orders === "auto") return OK;
@@ -389,6 +435,40 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
   }
 }
 
+/**
+ * The kind of settler ship a colonize order would use: `wanted` if the fleet
+ * has one and it may land there, else a colony ship before an outpost ship.
+ * As in the original, outposts go on any free planet, asteroid belts and gas
+ * giants included, while colonists need a habitable world. Undefined when no
+ * ship in the fleet can settle the planet.
+ */
+export function settlerModule(
+  state: GameState, playerId: PlayerId, fleet: Fleet, planetId: Id, wanted?: "colony" | "outpost",
+): "colony" | "outpost" | undefined {
+  const player = state.players[playerId];
+  const planet = state.planets[planetId];
+  if (!player || !planet) return undefined;
+  const has = (m: "colony" | "outpost") => fleet.ships.some((s) => s.count > 0 && findDesign(player, s.designId)?.module === m);
+  const allowed = (m: "colony" | "outpost") => has(m) && (m === "outpost" || CLIMATES[planet.type].habitable);
+  if (wanted) return allowed(wanted) ? wanted : undefined;
+  return allowed("colony") ? "colony" : allowed("outpost") ? "outpost" : undefined;
+}
+
+/** BC a scrapped building pays back: part of its base cost. */
+export function buildingScrapRefund(buildingId: string): number {
+  return Math.floor((BUILDINGS_BY_ID[buildingId]?.cost ?? 0) * BUILDING_SCRAP.refund);
+}
+
+/** Why this building can't be scrapped at this colony right now, or null when it can. */
+export function scrapBuildingProblem(state: GameState, playerId: PlayerId, colonyId: Id, buildingId: string): string | null {
+  const c = ownColony(state, playerId, colonyId);
+  if (!c) return "not your colony";
+  if (!c.buildings.includes(buildingId)) return "no such building here";
+  if (BUILDINGS_BY_ID[buildingId]?.effects.capitol) return "the Capitol can't be scrapped";
+  if (c.scrappedTurn === state.turn) return `only ${BUILDING_SCRAP.perColonyPerTurn} building per colony can be scrapped each turn`;
+  return null;
+}
+
 /** Freighters not carrying colonists or food this turn. */
 export function freeFreighters(state: GameState, playerId: PlayerId): number {
   return foodPlan(state, playerId).free;
@@ -402,7 +482,7 @@ export function blocksInvasion(colony: Colony): boolean {
 
 export function shipsBuilt(state: GameState, playerId: PlayerId, designId: string): boolean {
   return Object.values(state.fleets).some((f) => f.ownerId === playerId && f.ships.some((s) => s.designId === designId)) ||
-    Object.values(state.colonies).some((c) => c.ownerId === playerId && c.queue.some((q) => q.kind === "ship" && q.designId === designId));
+    Object.values(state.colonies).some((c) => c.ownerId === playerId && c.queue.some((q) => (q.kind === "ship" || q.kind === "refit") && q.designId === designId));
 }
 
 /** Hostile armed ships at a star stop colonization. */
@@ -426,6 +506,7 @@ export function termsOf(x: ProposalTerms): ProposalTerms {
   if (x.third !== undefined) out.third = x.third;
   if (x.percent !== undefined) out.percent = x.percent;
   if (x.price !== undefined) out.price = x.price;
+  if (x.payment !== undefined) out.payment = x.payment;
   return out;
 }
 

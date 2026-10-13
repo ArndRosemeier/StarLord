@@ -1,0 +1,46 @@
+/* ---- sortable table headers (Colonies, Fleets, Planets) */
+th.sortable { padding: 0; }
+.shell th .sort-button, th .sort-button {
+  all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 4px; width: 100%;
+  padding: 5px 8px; cursor: pointer; color: inherit; font: inherit; white-space: nowrap; border-radius: 4px;
+}
+.shell th .sort-button:hover, th .sort-button:hover { color: var(--text); background: rgba(91, 157, 255, 0.1); box-shadow: none; }
+.shell th .sort-button:focus-visible { outline: 1px solid var(--accent); }
+th.sorted { color: #cfe0ff; }
+.sort-arrow { font-size: 9px; opacity: 0.45; }
+/* Unsorted columns show their arrow only on hover, to keep tables narrow. */
+th.sortable:not(.sorted) .sort-arrow { display: none; }
+th.sortable:not(.sorted) .sort-button:hover .sort-arrow { display: inline; }
+th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+
+/* ---- Planets screen */
+.planets-screen { min-height: 0; }
+.planets-filters { gap: 10px; }
+.planets-table-wrap { overflow-x: auto; }
+.planets-table td { font-size: 13px; white-space: nowrap; }
+.planets-table td small { font-size: 11px; }
+.planets-table .out-of-range { font-size: 10.5px; padding: 0 6px; margin-left: 2px; }
+.planets-table th .sort-button { padding: 5px 4px; }
+.shell .planets-table th { letter-spacing: 0.04em; }
+.planets-table td { padding: 5px 4px; }
+.planets-table td.wrap { white-space: normal; min-width: 90px; }
+
+/* ---- galaxy map tools: range overlays and the touch multi-select switch, bottom right */
+.map-host .map-tools {
+  position: absolute; right: 10px; bottom: 10px; z-index: 2;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+}
+.map-host .map-tools .map-several { position: static; }
+.map-overlays { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.shell .map-overlays button { background: rgba(16, 24, 44, 0.88); display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; }
+.map-overlays .swatch { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid currentColor; display: inline-block; }
+.map-overlays .fuel .swatch { color: #34d399; }
+.map-overlays .scan .swatch { color: #fbbf24; border-style: dashed; }
+.shell .map-overlays button.fuel.active { border-color: #34d399; background: rgba(20, 83, 64, 0.85); box-shadow: 0 0 10px rgba(52, 211, 153, 0.35); }
+.shell .map-overlays button.scan.active { border-color: #fbbf24; background: rgba(92, 66, 12, 0.85); box-shadow: 0 0 10px rgba(251, 191, 36, 0.3); }
+.map-overlays button.active .swatch { background: currentColor; }
+@media (pointer: coarse) {
+  .shell .map-overlays button { padding: 8px 12px; font-size: 13px; }
+}
+/* Keep the one-line hint clear of the tools. */
+.map-host .map-hint { right: 250px; }

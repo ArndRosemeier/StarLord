@@ -2,20 +2,41 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { isTradeGoodsOnly, type Fleet } from "@starlord/sim";
 import { PixiMapRenderer } from "../map/pixiRenderer";
 import type { MapRenderer } from "../map/renderer";
-import { buildScene, routeTo, toggleFleetSelection } from "../map/scene";
+import { buildScene, routeTo, toggleFleetSelection, type MapOverlays } from "../map/scene";
 import { useGame } from "../ui/hooks";
 import { FleetPanel, StarPanel, fleetShips, plural } from "../ui/panels";
 import { SystemView } from "./system/SystemView";
 import type { ColonizeOption } from "../game/colonize";
 import { additive, isTouchDevice, useMultiSelect } from "../ui/touch";
 import { LastTurnPanel } from "../ui/LastTurnPanel";
+import { Tip } from "../ui/Tip";
+import { fuelRangeTip, scanRangeTip } from "../ui/explain";
+import { fleetRange } from "@starlord/sim";
 
-export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, onOpenReports }: {
+const OVERLAYS_KEY = "starlord.map.overlays";
+function loadOverlays(): MapOverlays {
+  try {
+    const v = JSON.parse(localStorage.getItem(OVERLAYS_KEY) ?? "{}") as Partial<MapOverlays>;
+    return { fuel: !!v.fuel, scan: !!v.scan };
+  } catch {
+    return { fuel: false, scan: false };
+  }
+}
+
+/** A request from the keyboard to jump to the next idle fleet or the next colony. */
+export interface MapCycle {
+  kind: "fleet" | "colony";
+  n: number;
+}
+
+export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, onOpenReports, cycle, onCycled }: {
   focusStar: string | null;
   onFocused: () => void;
   onOpenColony: (colonyId: string) => void;
   onOpenResearch: () => void;
   onOpenReports: () => void;
+  cycle?: MapCycle | null;
+  onCycled?: () => void;
 }) {
   const { session, view, me, readOnly } = useGame();
   const host = useRef<HTMLDivElement>(null);
@@ -31,6 +52,12 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
   const [colonizeOnOpen, setColonizeOnOpen] = useState<{ planetId: string; settle: ColonizeOption } | null>(null);
   const [notice, setNotice] = useState<{ text: string; bad: boolean; at: number } | null>(null);
   const touch = useMemo(isTouchDevice, []);
+  /** The empire-wide fuel range and scanner coverage displays, remembered between games. */
+  const [overlays, setOverlaysState] = useState<MapOverlays>(loadOverlays);
+  const setOverlays = (o: MapOverlays) => {
+    setOverlaysState(o);
+    try { localStorage.setItem(OVERLAYS_KEY, JSON.stringify(o)); } catch { /* storage may be unavailable */ }
+  };
   const [several, setSeveral] = useMultiSelect();
   // The "select several" switch belongs to the map; leaving it turns it off.
   useEffect(() => () => setSeveral(false), []);
@@ -117,8 +144,8 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
   }, [session]);
 
   const scene = useMemo(
-    () => buildScene(view, starId, fleetIds, !readOnly),
-    [view, starId, fleetIds, readOnly],
+    () => buildScene(view, starId, fleetIds, !readOnly, overlays),
+    [view, starId, fleetIds, readOnly, overlays],
   );
 
   useEffect(() => {
@@ -149,6 +176,45 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
     renderer.current?.focus(s.x, s.y);
   };
 
+  // "Next idle fleet" (N) and "Next colony" (.) step through your fleets with no orders and your colonies.
+  const lastColony = useRef<string | null>(null);
+  const idleFleets = readOnly ? [] : Object.values(view.fleets)
+    .filter((f) => f.ownerId === me.id && f.starId && !f.destStarId)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const myColonies = readOnly ? [] : Object.values(view.colonies)
+    .filter((c) => c.ownerId === me.id)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const after = <T extends { id: string }>(list: T[], current: string | null | undefined): T | undefined =>
+    list[(list.findIndex((x) => x.id === current) + 1) % list.length];
+  const focusOn = (starId: string) => {
+    const s = view.galaxy.stars.find((x) => x.id === starId);
+    if (s) requestAnimationFrame(() => renderer.current?.focus(s.x, s.y));
+  };
+  const nextIdleFleet = () => {
+    const f = after(idleFleets, fleetId);
+    if (!f) return setNotice({ text: "No idle fleets: every fleet has orders.", bad: false, at: Date.now() });
+    setFleetIds([f.id]);
+    setStarId(f.starId!);
+    focusOn(f.starId!);
+  };
+  const nextColony = () => {
+    const c = after(myColonies, lastColony.current ?? myColonies.find((x) => view.planets[x.planetId]?.starId === starId)?.id);
+    if (!c) return;
+    lastColony.current = c.id;
+    const star = view.planets[c.planetId]?.starId;
+    if (!star) return;
+    setStarId(star);
+    setFleetIds([]);
+    focusOn(star);
+    setNotice({ text: `${c.name}${c.outpost ? " (outpost)" : ""}`, bad: false, at: Date.now() });
+  };
+  useEffect(() => {
+    if (!cycle) return;
+    if (cycle.kind === "fleet") nextIdleFleet();
+    else nextColony();
+    onCycled?.();
+  }, [cycle]);
+
   const ordering = readOnly ? [] : fleetIds.map((id) => view.fleets[id]).filter((f): f is Fleet => !!f && f.ownerId === me.id);
 
   return (
@@ -169,15 +235,39 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
         ) : (
           <div className="map-hint">Drag to pan · wheel to zoom · click a star to view its system · click a fleet, then a star to send it there · shift-click to select several fleets</div>
         )}
-        {touch && !readOnly && (
-          <button className={`map-several${several ? " active" : ""}`} aria-pressed={several} onClick={() => setSeveral(!several)}
-            title="While on, every fleet you tap is added to the selection or taken out of it, as Shift-click does.">
-            {several ? "✓ Selecting several" : "Select several"}
-          </button>
-        )}
+        <div className="map-tools">
+          <div className="map-overlays" role="group" aria-label="Map overlays">
+            <Tip card={fuelRangeTip(me)}>
+              <button className={`small fuel${overlays.fuel ? " active" : ""}`} aria-pressed={overlays.fuel}
+                onClick={() => setOverlays({ ...overlays, fuel: !overlays.fuel })}>
+                <span className="swatch" aria-hidden />Fuel range {fleetRange(me)} pc
+              </button>
+            </Tip>
+            <Tip card={scanRangeTip(me)}>
+              <button className={`small scan${overlays.scan ? " active" : ""}`} aria-pressed={overlays.scan}
+                onClick={() => setOverlays({ ...overlays, scan: !overlays.scan })}>
+                <span className="swatch" aria-hidden />Scanners
+              </button>
+            </Tip>
+          </div>
+          {touch && !readOnly && (
+            <button className={`map-several${several ? " active" : ""}`} aria-pressed={several} onClick={() => setSeveral(!several)}
+              title="While on, every fleet you tap is added to the selection or taken out of it, as Shift-click does.">
+              {several ? "✓ Selecting several" : "Select several"}
+            </button>
+          )}
+        </div>
         {notice && <div key={notice.at} className={`map-notice${notice.bad ? " bad" : ""}`}>{notice.text}</div>}
       </div>
       <aside className="side">
+        {!readOnly && (
+          <div className="row map-cycle" style={{ gap: 4 }}>
+            <button className="small" onClick={nextIdleFleet} disabled={idleFleets.length === 0}
+              title="Select your next fleet that has no orders (N)">Next idle fleet ({idleFleets.length})</button>
+            <button className="small" onClick={nextColony} disabled={myColonies.length === 0}
+              title="Center the map on your next colony (.)">Next colony</button>
+          </div>
+        )}
         <LastTurnPanel onTarget={(t) => {
           if (t.kind === "colony") onOpenColony(t.colonyId);
           else if (t.kind === "star") showStar(t.starId);

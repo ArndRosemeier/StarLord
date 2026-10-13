@@ -8,6 +8,7 @@ import { useGame } from "../ui/hooks";
 import { fmt, pct, words } from "../ui/format";
 import { ShipModelView, ShipThumb } from "../ui/ShipModel";
 import { Tip, tipText } from "../ui/Tip";
+import { DesignRefits } from "../ui/RefitPanel";
 import {
   arcTip, armorTip, computerTip, designTip, styleTip, hullTip, modTip, rackTip, shieldTip, spaceTip, specialTip, statTip, weaponTip,
 } from "./designTips";
@@ -21,6 +22,7 @@ export function DesignScreen() {
   });
   const [draft, setDraft] = useState<ShipDesign>(blank);
   const [addWeapon, setAddWeapon] = useState("");
+  const [refitTo, setRefitTo] = useState<string | null>(null);
 
   const hulls = HULLS.filter((h) => knows(me, h.requires));
   const armors = ARMORS.filter((a) => knows(me, a.requires));
@@ -171,7 +173,8 @@ export function DesignScreen() {
           const s = designStats(me, d);
           const valid = validateDesign(me, d) === null;
           return (
-            <div key={d.id} className="row design-row" style={{ opacity: d.obsolete ? 0.5 : 1, borderBottom: "1px solid var(--line)", paddingBottom: 6 }}>
+            <div key={d.id} className="col" style={{ gap: 4, borderBottom: "1px solid var(--line)", paddingBottom: 6 }}>
+            <div className="row design-row" style={{ opacity: d.obsolete ? 0.5 : 1 }}>
               <ShipThumb hull={d.hull} color={me.color} style={designStyle(me, d)} size={64} />
               <Tip block card={() => designTip(me, d)}>
               <div style={{ flex: 1 }}>
@@ -192,6 +195,13 @@ export function DesignScreen() {
                   {d.obsolete ? "Restore" : "Obsolete"}
                 </button>
               </Tip>
+              {!d.obsolete && valid && (
+                <Tip card={{ title: "Refit ships to this design", text: [`Lists your ships of other ${HULLS_BY_ID[d.hull]?.name} designs in orbit where a colony could refit them to ${d.name}, with the cost and time.`] }}>
+                  <button className={`small${refitTo === d.id ? " active" : ""}`} disabled={readOnly} onClick={() => setRefitTo(refitTo === d.id ? null : d.id)}>Refit…</button>
+                </Tip>
+              )}
+            </div>
+            {refitTo === d.id && <DesignRefits design={d} />}
             </div>
           );
         })}

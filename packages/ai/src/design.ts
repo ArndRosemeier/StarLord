@@ -21,6 +21,9 @@ const MOD_SETS: WeaponModId[][] = [
   ["mirv"], ["fast"], ["eccm"], ["overloaded"], ["enveloping"],
 ];
 
+/** Most of a hull's space a Stellar Converter may take on an AI warship (a Doom Star fits one unminiaturized). */
+const CONVERTER_SHARE = 0.45;
+
 /**
  * Turns of a colony's industry a warship's hull may cost, by design strategy.
  * Command points, not industry, cap a fleet, so a balanced empire takes about
@@ -112,6 +115,13 @@ export function bestWarship(view: PlayerView, hull: HullSize, kind: "beam" | "mi
     const pdCount = Math.max(1, Math.floor((space().spaceTotal * 0.1) / weaponUnitCost(player, pd).space));
     design.weapons[0]!.count = pdCount;
     if (!fits()) design.weapons = [];
+  }
+  // The biggest hulls carry a Stellar Converter when it takes at most CONVERTER_SHARE of the space: it burns
+  // through any shield, and from orbit it can destroy a planet the empire has no use for.
+  if ((hull === "titan" || hull === "doomStar") && kind !== "bomb" && knows(player, "stellarConverter")) {
+    const converter: WeaponMount = { weaponId: "stellarConverter", count: 1, mods: [] };
+    design.weapons.push(converter);
+    if (!fits() || weaponUnitCost(player, converter).space > space().spaceTotal * CONVERTER_SHARE) design.weapons.pop();
   }
   design.weapons.unshift({ ...main, count: 1 });
   if (!fits()) return null;

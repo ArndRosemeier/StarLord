@@ -34,6 +34,21 @@ function refuelOwners(state: GameState, playerId: PlayerId): Set<PlayerId> {
   return owners;
 }
 
+/**
+ * Stars a player's ships refuel at: those with one of its colonies or outposts, or an ally's.
+ * Ships may fly their fuel range out from any of them.
+ */
+export function refuelStars(state: GameState, playerId: PlayerId): Star[] {
+  const owners = refuelOwners(state, playerId);
+  const out = new Map<Id, Star>();
+  for (const c of Object.values(state.colonies)) {
+    if (!owners.has(c.ownerId)) continue;
+    const s = starById(state, state.planets[c.planetId]?.starId);
+    if (s) out.set(s.id, s);
+  }
+  return [...out.values()];
+}
+
 export function distanceToNearestColony(state: GameState, playerId: PlayerId, point: Point): number {
   const owners = refuelOwners(state, playerId);
   let best = Infinity;

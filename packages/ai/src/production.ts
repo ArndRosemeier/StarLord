@@ -1,10 +1,12 @@
 import {
-  BUILDINGS_BY_ID, STATION_DOCK_HULLS, availableBuildings, distanceToNearestColony, fleetRange, availableDesigns, availableProjects, buyCost, colonyOutput, commandPointsAvailable,
+  BUILDINGS_BY_ID, STATION_DOCK_HULLS, availableBuildings, availableDesigns, availableProjects, baseTargets, buyCost, colonyOutput, commandPointsAvailable,
+  distanceToNearestColony, fleetRange,
   commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasMarineBarracks, hasStarDock, queuedAnywhere, relation, suggestedBaseTarget,
   type BuildItem, type Colony, type Command, type PlayerView,
 } from "@starlord/sim";
 import { colonizationTargets, outpostTargets } from "./colonization.js";
 import { canBuildInTime, currentWarship } from "./design.js";
+import { refitOrders } from "./refit.js";
 import { strategyOf } from "./strategies.js";
 import { colonyStar, hostileFleetsNear, isOnly, me, myColonies, myFleets } from "./util.js";
 
@@ -144,7 +146,8 @@ export function productionOrders(view: PlayerView): Command[] {
     const d = player.designs.find((x) => x.id === id);
     return d && !d.module && d.weapons.length > 0 ? HULLS_BY_ID[d.hull].commandPoints : 0;
   };
-  const queuedCp = colonies.reduce((n, c) => n + c.queue.reduce((m, q) => m + (q.kind === "ship" ? hullCp(q.designId) : 0), 0), 0);
+  // Ships in dock for a refit still need their command points once they are back.
+  const queuedCp = colonies.reduce((n, c) => n + c.queue.reduce((m, q) => m + (q.kind === "ship" || q.kind === "refit" ? hullCp(q.designId) : 0), 0), 0);
   // Peacetime: a modest fleet that grows with the economy so late-game industry isn't all turned into BC.
   // Wartime: fill command points, and go over only while income can carry it.
   // The military strategy fills command points in peacetime too; the industry strategy keeps half the usual fleet.
@@ -198,6 +201,10 @@ export function productionOrders(view: PlayerView): Command[] {
       if (target) out.push({ type: "placeBase", colonyId: c.id, projectId: id, planetId: target.id });
     }
   }
+  // Outdated warships idle at a capable colony are refitted; those colonies are busy with that this turn.
+  const refits = refitOrders(view);
+  out.push(...refits);
+  const refitting = new Set(refits.flatMap((c) => (c.type === "refitShips" ? [c.colonyId] : [])));
   let bc = player.bc;
   const ranked = colonies
     .map((c) => ({ c, out: colonyOutput(view, c) }))
@@ -222,8 +229,10 @@ export function productionOrders(view: PlayerView): Command[] {
       }
       continue;
     }
+    if (refitting.has(c.id)) continue;
     const next = chooseItem(view, c, o.industry, rank, wants, designs, war, o.foodNet, player.bc > 1000 && income.net > -player.bc / 100);
-    out.push({ type: "setQueue", colonyId: c.id, queue: [next] });
+    // Refit jobs hold ships and stay in the queue.
+    out.push({ type: "setQueue", colonyId: c.id, queue: [next, ...c.queue.filter((q) => q.kind === "refit")] });
   }
   return out;
 }
@@ -343,7 +352,10 @@ function chooseItem(
   }
   if (projects.has("gaiaTransform") && industry >= 20) return { kind: "project", id: "gaiaTransform" };
   if (projects.has("terraform") && industry >= 20 && c.terraformed < 3) return { kind: "project", id: "terraform" };
-  if (projects.has("artificialPlanet") && industry >= 30) return { kind: "project", id: "artificialPlanet" };
+  // A body already holding an outpost would stay an outpost after the conversion: only free ones are worth it.
+  if (projects.has("artificialPlanet") && industry >= 30 && baseTargets(view, c, "artificialPlanet").some((p) => !p.colonyId)) {
+    return { kind: "project", id: "artificialPlanet" };
+  }
   const defense = DEFENSE_BUILDINGS.find((b) => buildable.has(b));
   if (defense && industry >= (military ? 10 : 25)) return { kind: "building", id: defense };
   if (pop < 6) return { kind: "project", id: "housing" };

@@ -361,6 +361,28 @@ export const AI_WAR = {
 export const STRIKES = { warStrength: 66, councilVote: 100 } as const;
 
 /**
+ * Before that war, a ruler that is not Honorable and covets one of your
+ * systems demands it instead, after the original (FUN_0004f596); refusing
+ * (or letting the demand lapse) means war. The original only covets from
+ * average difficulty up (`minDifficulty`, its war planner's gate), a system
+ * its fleets can reach, never your capital's, and only while you hold another,
+ * when the system is worth at least `minValue`. That worth comes from its
+ * invasion planner, which is not decoded: StarLord counts `perPop` for every
+ * population unit there (an estimate, so a system of 10 is coveted).
+ */
+export const COVET = { minDifficulty: 2, minValue: 200, perPop: 20 } as const;
+
+/**
+ * A computer ruler pays to bring you into its war, after the original
+ * (FUN_000501c5): when a treaty offer it picked falls through, it looks for an
+ * enemy it has fought for at least `minWarTurns` turns, likes no more than
+ * `maxRelation`, and has lost more ships to; you must know that enemy and not
+ * be at war with it, and Xenophobic rulers never ask. The payment is a BC sum
+ * or a technology at level (its ship losses / (the enemy's + 1)), at most `maxLevel`.
+ */
+export const PAID_WAR = { minWarTurns: 20, maxRelation: -50, maxLevel: 6 } as const;
+
+/**
  * How often a computer ruler comes to a human with an offer, after the
  * original: x = 10 + 4 x difficulty - patience/20 - trust/20 + relation/20 -
  * diplomat/15 + 3 x the personality's vsHumans - temperament/5 - 4 (pact) - 8
@@ -384,9 +406,11 @@ export const AI_OFFERS = {
  * yours + strength% / 10 - 10 + 40 per system of yours its ships hold - 20 per
  * system of its your ships hold + reputation + trust / 2 + K / 10 - temperament
  * / 5 + 20 per system of yours a third empire's ships hold. Chance %: -S x t
- * when S < 0, else t / sqrt(S + 3); over `askAbove` they ask a price.
+ * when S < 0, else t / sqrt(S + 3); over `askAbove` they ask a price, at
+ * level (S - 10) / 5 + 2; under `payBelow` they offer to pay one (a sum, a
+ * technology, a tribute or a system), at level (-10 - S) / 5 + 2.
  */
-export const AI_PEACE = { minTurns: 10, askAbove: 10, priceStep: 5, priceBase: 2 } as const;
+export const AI_PEACE = { minTurns: 10, askAbove: 10, payBelow: -10, priceStep: 5, priceBase: 2 } as const;
 
 /**
  * How a computer ruler answers a demand, after the original: d200 + power +

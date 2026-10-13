@@ -1,5 +1,5 @@
 import type { Rng } from "./rng.js";
-import type { GameEvent, GameState, PlayerId, TacticalOrder } from "./types.js";
+import type { GameEvent, GameState, Id, OrbitalChoice, PlayerId, TacticalOrder } from "./types.js";
 
 type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never;
 
@@ -15,6 +15,13 @@ export interface TurnContext {
   battleOrders?: Map<string, Map<PlayerId, TacticalOrder[] | "auto">>;
   /** Asked before each battle; a battle it returns true for is not fought (see `pendingBattle`). */
   pauseAt?: (battle: import("./combat.js").Battle, key: string) => boolean;
+  /** Players' orbital strike orders for this turn, by colony and player (see the `orbitalStrike` command). */
+  orbitalOrders?: Map<Id, Map<PlayerId, OrbitalChoice>>;
+  /**
+   * Asked when a player's fleets hold orbit over an enemy colony they have given no orbital order for; true stops
+   * the turn there (see `pendingOrbital`).
+   */
+  pauseAtOrbit?: (playerId: PlayerId, colonyId: Id) => boolean;
 }
 
 export function newId(state: GameState, prefix: string): string {

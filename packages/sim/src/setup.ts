@@ -1,3 +1,4 @@
+import { recordHistory } from "./score.js";
 import {
   ADVANCED_START, FIRST_FIELDS, HOME_GALAXY_TRIES, STARTING_SHIPS, STARTING_STATION, TECH_LEVELS,
 } from "./data/galaxy.js";
@@ -177,7 +178,7 @@ export function newGame(opts: NewGameOptions): GameState {
       id: newId("c"), planetId: hw.id, ownerId: i, raceId, name: home.name, outpost: false,
       farmers: 0, workers: level.advancedPop ? advancedHomePop(hw, race) : HOMEWORLD_POP, scientists: 0, growthK: 0,
       // Unified governments neither have nor need a capital.
-      buildings: [...(needsCapitol ? ["capitol"] : []), STARTING_STATION, ...level.buildings], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
+      buildings: [...(needsCapitol ? ["capitol"] : []), STARTING_STATION, ...level.buildings], queue: [], progress: 0, founded: 1, terraformed: 0,
     };
     hw.colonyId = colony.id;
     state.colonies[colony.id] = colony;
@@ -213,7 +214,7 @@ export function newGame(opts: NewGameOptions): GameState {
       const c: Colony = {
         id: newId("c"), planetId: planet.id, ownerId: player.id, raceId: player.raceId, name: `${star.name} ${["I", "II", "III", "IV", "V"][planet.orbit - 1]}`,
         outpost: false, farmers: 0, workers: level.extraColonyPop, scientists: 0, growthK: 0,
-        buildings: [], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
+        buildings: [], queue: [], progress: 0, founded: 1, terraformed: 0,
       };
       planet.colonyId = c.id;
       state.colonies[c.id] = c;
@@ -231,6 +232,7 @@ export function newGame(opts: NewGameOptions): GameState {
       p.explored = state.galaxy.stars.filter((s) => s.special !== "raiderHome").map((s) => s.id);
     }
   }
+  recordHistory(state);
   return state;
 }
 

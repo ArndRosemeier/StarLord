@@ -6,10 +6,10 @@ import {
   BOARDING, DEPLOY, EXPLOSION, HULLS_BY_ID, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE, STATION_ARMS, ANTI_MISSILE, BOMBARD_ROUNDS,
   COMBAT_BOMB_RANGE, CRAFT, DAMAGE, PLANET_POPULATION_HP,
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES, EVENT_NUMBERS,
-  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, GUARDIAN_SCORE, BANKRUPTCY,
+  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, SCORE, BANKRUPTCY,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
-  SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, STARTING_SHIPS, STARTING_STATION, BUILDINGS, BASE_SCRAP_REFUND, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
-  TRADE_GOODS_RATE, TRAIT_EFFECTS, GOVERNMENTS, RESEARCH_PER_SCIENTIST, AI_PEACE, EVENTS, MAX_WEAPON_SLOTS, COMM_REDIRECT_RANGE, HULLS, TECHS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, abilityValue, type HeroSkill, type HeroSkillGroup,
+  SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, STARTING_SHIPS, STARTING_STATION, BUILDINGS, BASE_SCRAP_REFUND, BUILDING_SCRAP, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
+  TRADE_GOODS_RATE, TRAIT_EFFECTS, GOVERNMENTS, RESEARCH_PER_SCIENTIST, AI_PEACE, EVENTS, MAX_WEAPON_SLOTS, COMM_REDIRECT_RANGE, HULLS, TECHS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, COVET, PAID_WAR, abilityValue, type HeroSkill, type HeroSkillGroup,
 } from "@starlord/sim";
 import { fmt, pct } from "../ui/format";
 import type { GuideSlug } from "./entries";
@@ -195,9 +195,17 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Outposts</h3>
       <P>
-        Outposts hold no population and produce nothing, but they claim the planet, extend your fuel range and count
-        for score. Asteroids and gas giants can't be settled at all until an{" "}
-        <HelpLink to="project:artificialPlanet" /> turns them into barren planets.
+        Outposts hold no population and produce nothing, but they claim the planet, extend your fuel and scanner range
+        and count for score. Outpost ships can claim any free planet, asteroid belts and gas giants included; colony
+        ships need a habitable world. Any colony in a system with an asteroid belt or gas giant can build an{" "}
+        <HelpLink to="project:artificialPlanet" />, which turns one into a barren planet colonists can live on. No
+        outpost is needed first, and an outpost already there stays an outpost on the new world.
+      </P>
+      <h3>Scrapping buildings</h3>
+      <P>
+        Click a building on the Colonies screen to scrap it. It pays back {pct(BUILDING_SCRAP.refund)} of the
+        building's base cost and its upkeep stops, but its effect is gone. Only {BUILDING_SCRAP.perColonyPerTurn} building
+        per colony can be scrapped each turn, and never the Capitol. Debt sells buildings by itself at the same rate.
       </P>
     </>
   ),
@@ -262,7 +270,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         </li>
         <li>
           When a category is finished, its hyper-advanced field ({fmt(RESEARCH.hyperCost)} RP, {fmt(RESEARCH.hyperCostStep)} more for each further level) can be researched again
-          and again: each level makes that category's components smaller and adds {RESEARCH.hyperScore} to the score.
+          and again: each level makes that category's components smaller, and the first adds {RESEARCH.hyperScore} to the score.
         </li>
         <li>Applications you skipped can still be gained: stolen by spies, captured with a colony, found on a derelict ship, or learned from the guardian of Orion.</li>
       </Ul>
@@ -338,7 +346,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Stance</h3>
       <Ul>
         <li><b>Defend</b>: fights enemy ships but leaves planets alone.</li>
-        <li><b>Attack</b>: also attacks enemy planets' defenses and bombs colonies once they are down.</li>
+        <li><b>Attack</b>: also attacks enemy planets' defenses; once they are down, the turn asks what the fleet does to the colony (<HelpLink to="guide:invasion" />).</li>
       </Ul>
       <P>Fleets at the same star can be merged or split from the star panel. New ships join an idle fleet of their kind at the star where they were built.</P>
     </>
@@ -365,7 +373,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Moving and firing</h3>
       <Ul>
         <li>Whoever started the fight attacks, unless the battle is at the other side's colony: a colony's owner always defends. The defender deploys on the left, the attacker {DEPLOY.rightColumn - DEPLOY.leftColumn} squares away on the right (a human attacker takes the left instead). Ships line up in a column by size, biggest in the middle; the planet sits behind the defenders with its station in front of it.</li>
-        <li>Every round the attacker's ships act first, one after another, then the defender's. With the <b>Ship initiative</b> game option, every ship of both sides acts in order of combat speed plus a tenth of its beam attack instead.</li>
+        <li>Every round the attacker's ships act first, one after another, then the defender's. With the <b>Ship initiative</b> game option, every ship of both sides acts in order of combat speed plus a tenth of its beam attack instead, plus the Tactics skill of its owner's administrator in that system.</li>
         <li>Ships spend their combat speed to move and turn. Each beam fires only into its arc, so facing matters.</li>
         <li>A beam's hit chance is its attack against the target's beam defense, minus a penalty that grows with range. Damage also drops with range unless the mount ignores it.</li>
         <li>Better rolls do more damage: a shot that barely hits does its minimum, a near-certain one close to its maximum.</li>
@@ -463,14 +471,30 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         A colony is open to attack when its orbital defenses are silenced in battle, or it has none, and no armed enemy
         ships remain at the star.
       </P>
-      <h3>Bombing</h3>
+      <h3>Orbital assault</h3>
       <P>
-        Fleets on <b>Attack</b> stance bombard open colonies every turn: every weapon aboard fires at the planet for{" "}
-        {BOMBARD_ROUNDS} combat turns (beams at half damage, missiles and bombs until their shots run out). Each shot
-        loses the planetary shield's worth of damage, and every {BOMB_DAMAGE_PER_HIT} points that get through are one hit. A hit lands at random on a building
-        (not the colony's defenses), a trained marine or tank, or a colonist; a tank needs at least two hits.
-        Death spores and the bio-terminator kill population with a {pct(SPORE_KILL_CHANCE_PER_POINT)} chance per point
-        of damage, which every other empire resents. A colony bombed to zero is destroyed.
+        When your fleets on <b>Attack</b> stance hold the orbit of an open enemy colony after the battles, the turn stops
+        and asks what they do to it, showing the colony's defenders and the expected losses of each choice:
+      </P>
+      <ul>
+        <li><b>Bombard</b>: every weapon aboard fires at the planet for {BOMBARD_ROUNDS} combat turns (beams at half
+          damage, missiles and bombs until their shots run out). Each shot loses the planetary shield's worth of damage,
+          and every {BOMB_DAMAGE_PER_HIT} points that get through are one hit. A hit lands at random on a building (not the
+          colony's defenses), a trained marine or tank, or a colonist; a tank needs at least two hits.</li>
+        <li><b>Bombard with biological weapons</b>: as above, and every launch of death spores or the bio-terminator kills a
+          colonist with a {pct(SPORE_KILL_CHANCE_PER_POINT)} chance per point of damage (halved by Microbiotics, quartered by
+          Universal Antidote; a Planetary Barrier Shield keeps them out). Every computer empire in contact that is not at
+          war with you is appalled: relations fall by 1 to {RELATION_EVENTS.destruction} before their own scaling.</li>
+        <li><b>Destroy the planet</b>, with a Stellar Converter aboard any ship in orbit: the planet becomes an asteroid
+          belt and the colony, its people, buildings and the planet's special are gone. It appals the other empires the
+          same way. In battle the converter only wears down a planet's defenses; it destroys a planet only from orbit.</li>
+        <li><b>Hold fire</b>: leave the colony be this turn.</li>
+      </ul>
+      <P>
+        A colony bombed to zero is destroyed. Without an answer (when the game plays your turns, or for fleets of computer
+        players that give no order) fleets on Attack bombard without biological weapons. Computer players spare a colony
+        they mean to invade once their troops outnumber its garrison, and destroy a planet they cannot take when it hides
+        behind a barrier shield or is its owner's last system.
       </P>
       <h3>Defenders</h3>
       <P>
@@ -550,7 +574,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Peace comes only after {TREATY_ANSWER.peaceMinWarTurns} turns of war, and relations do not count: the longer the
         war, the more other wars they fight, the stronger you are, the more ships they have lost and the more of their
         systems your ships hold, the likelier they agree. Their strength counts half for every other war they fight; their
-        ships in your systems make them bolder. Computer rulers also offer peace themselves once a war has run {AI_PEACE.minTurns} turns.
+        ships in your systems make them bolder. Computer rulers also offer peace themselves once a war has run {AI_PEACE.minTurns} turns:
+        when they are winning they ask a price for it, when they are losing badly they offer you one (BC, a technology, a
+        tribute or one of their systems), which you get if you accept. A computer ruler that has fought an enemy of yours for
+        {" "}{PAID_WAR.minWarTurns} turns and is losing ships to it may also offer you BC or a technology to declare war on that enemy.
       </P>
       <P>
         Every proposal wears down their patience: {PATIENCE.perAsk} points, and {PATIENCE.firstAsk} to{" "}
@@ -574,7 +601,9 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>
         A computer ruler you hurt (spying, threats, refused demands) may count strikes against you: the first is a
         warning, a second ends your treaties or asks for compensation, and a third means war when its fleets can stand
-        up to yours. Computer rulers also make treaties and wars among themselves. Charisma (+{TRAIT_EFFECTS.charismaticDiplomacy}), telepathy (+{TRAIT_EFFECTS.telepathicDiplomacy}),
+        up to yours. Before that war, a ruler that is not Honorable may demand one of your systems it covets instead (from
+        Average difficulty, a system within its fleets' reach with at least {COVET.minValue / COVET.perPop} population, never your
+        capital's): hand it over, or refuse or ignore the demand and it declares war. Computer rulers also make treaties and wars among themselves. Charisma (+{TRAIT_EFFECTS.charismaticDiplomacy}), telepathy (+{TRAIT_EFFECTS.telepathicDiplomacy}),
         Xeno Psychology and Diplomat leaders add diplomatic points to every deal an empire offers.
       </P>
     </>
@@ -691,7 +720,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><b>Conquest</b>: be the last empire standing. An empire is out when it has no populated colonies left; outposts and colony ships don't keep it alive.</li>
         <li><b>Council</b>: be elected by the <HelpLink to="guide:council">galactic council</HelpLink>.</li>
         <li><b>Raiders</b>: build a Dimensional Portal and send a fleet from that system to destroy the raiders' home fleet and citadel. Every other empire then capitulates (<HelpLink to="page:monsters" />).</li>
-        <li><b>Score</b>: only in games started with a turn limit (off by default; the original has none): when it is reached, the highest score wins. Score counts population, colonies, outposts, techs, industry, research and ships, plus {GUARDIAN_SCORE} for slaying the guardian of Orion.</li>
+        <li><b>Score</b>: only in games started with a turn limit (off by default; the original has none): when it is reached, the highest score wins. See the score below.</li>
       </Ul>
       <P>
         Galaxy sizes: {(Object.keys(STAR_COUNTS) as (keyof typeof STAR_COUNTS)[]).map((k) => `${k} ${STAR_COUNTS[k]} stars on ${Math.round(mapSize(k).width)} × ${Math.round(mapSize(k).height)} parsecs`).join(", ")}. Monsters, raiders,
@@ -702,6 +731,20 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         the tech level starts everyone pre-warp, average or advanced.
 
       </P>
+      <P>
+        <b>Score</b> follows the original. It is shown on the Empire screen during play, broken down when the game ends, and
+        your best final scores go to the Hall of Fame:
+      </P>
+      <Ul>
+        <li>−{SCORE.perTurn} for every turn played: the quicker you win, the better.</li>
+        <li>{SCORE.perRace.base} for every empire that started the game, plus {SCORE.perRace.perSize} for each galaxy size above small. An empire with no population left gets neither this nor the turn penalty.</li>
+        <li>{SCORE.perField} for each researched field, and {SCORE.perHyperCategory} for each category with a hyper-advanced level.</li>
+        <li>{SCORE.perPop} for each population unit, androids and conquered people included.</li>
+        <li>{SCORE.capturedPremium} for each unit taken by invasion, divided by the galaxy size (small 1, medium 2, large 3, huge 4).</li>
+        <li>{SCORE.perEliminated} for each empire eliminated; the credit goes to the last empire that attacked one of its colonies.</li>
+        <li>{SCORE.orion} for slaying the guardian of Orion, {SCORE.council} for a council victory, {SCORE.antares} for destroying the raiders at home.</li>
+        <li>The sum is multiplied by the race pick bonus: 100%, plus {SCORE.perUnspentPick}% for each race pick a custom race left unspent (200% with none spent). Difficulty does not change the score.</li>
+      </Ul>
     </>
   ),
 

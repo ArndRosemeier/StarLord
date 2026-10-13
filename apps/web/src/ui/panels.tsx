@@ -8,8 +8,9 @@ import {
 import { useGame } from "./hooks";
 import { climateName, fmt, words } from "./format";
 import { additive } from "./touch";
-import { colonizeOption, type ColonizeOption } from "../game/colonize";
+import { colonizeCommand, colonizeOption, type ColonizeOption } from "../game/colonize";
 import { leadMonster, monsterBehavior, monsterName } from "../game/monsters";
+import { RefitPicker } from "./RefitPanel";
 
 /** Painted planet art in public/planets, scaled by planet size. */
 export function PlanetIcon({ planet, size }: { planet: Planet; size?: number }) {
@@ -93,7 +94,7 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
               <small className="muted">
                 <Tip card={mineralsTip(p)}><span className="explained">{words(p.minerals)} minerals</span></Tip>,{" "}
                 <Tip card={gravityTip(p, me.raceId)}><span className="explained">{p.gravity} gravity</span></Tip>
-                {habitable ? <> · max pop {maxPopulation(p, race, [], me)}</> : !colony && <> · needs an Artificial Planet</>}
+                {habitable ? <> · max pop {maxPopulation(p, race, [], me)}</> : !colony && <> · outposts only, colonists need an Artificial Planet</>}
               </small>
               {colony && owner && (
                 <div>
@@ -107,8 +108,8 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
                 <button
                   className="small primary"
                   disabled={!!settle.blocked}
-                  title={settle.blocked ? `Can't settle: ${settle.blocked}.` : `${settle.fleetName} settles this planet when you end the turn.`}
-                  onClick={() => (onColonize ? onColonize(pid, settle) : session.issue({ type: "colonize", fleetId: settle.fleetId, planetId: pid }))}
+                  title={settle.blocked ? `Can't settle: ${settle.blocked}.` : settle.outpost ? `${settle.fleetName} builds an outpost here when you end the turn: no population, but it extends fuel and scanner range and claims the planet.` : `${settle.fleetName} settles this planet when you end the turn.`}
+                  onClick={() => (onColonize ? onColonize(pid, settle) : session.issue(colonizeCommand(pid, settle)))}
                 >
                   {settle.outpost ? "Outpost" : "Colonize"}
                 </button>
@@ -138,6 +139,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
   const fleet = view.fleets[fleetId];
   const [split, setSplit] = useState<Record<string, number>>({});
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [refitting, setRefitting] = useState<string | null>(null);
   if (!fleet) return null;
   const owner = view.players[fleet.ownerId]!;
   const mine = owner.id === me.id && !readOnly;
@@ -198,6 +200,10 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
                   <td>
                     <input type="number" min={0} max={s.count} value={split[s.designId] ?? 0} style={{ width: 52 }}
                       onChange={(e) => setSplit({ ...split, [s.designId]: Math.max(0, Math.min(s.count, Number(e.target.value))) })} />
+                    {fleet.starId && d && !d.fixed && !d.module && (
+                      <button className="small" title="Refit: rebuild these ships to another design of their hull at a colony in this system. Refits as many as the Split count, or one."
+                        onClick={() => setRefitting(refitting === s.designId ? null : s.designId)}>Refit</button>
+                    )}
                   </td>
                 )}
               </tr>
@@ -205,6 +211,10 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
           })}
         </tbody>
       </table>
+      {mine && refitting && fleet.ships.some((s) => s.designId === refitting) && (
+        <RefitPicker key={refitting} fleet={fleet} designId={refitting} count={Math.max(1, split[refitting] ?? 0)}
+          onDone={() => { setRefitting(null); setSplit({}); }} />
+      )}
       {mine && (
         <>
           <div className="row">

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FIELD_HEIGHT, FIELD_WIDTH, WEAPONS_BY_ID, type CombatReport, type PlayerView } from "@starlord/sim";
-import { STEP_MS, isProjectile, leftOwner, type CombatEvent, type CommandOverlay, type Frames, type UnitInfo } from "./replayModel";
+import { stepMs, isProjectile, leftOwner, type CombatEvent, type CommandOverlay, type Frames, type UnitInfo } from "./replayModel";
 import { MONSTER_COLORS, monsterSpecies } from "../../game/monsters";
 
 /**
@@ -117,7 +117,7 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
       lastT = t;
       const { frames, event, stepAt, reduced, view, report, units } = live.current;
       const f = fx.current;
-      const k = reduced ? 1 : Math.min(1, (t - stepAt) / STEP_MS);
+      const k = reduced ? 1 : Math.min(1, (t - stepAt) / stepMs());
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (f.shake > 0.2) {
         ctx.translate((Math.random() - 0.5) * f.shake, (Math.random() - 0.5) * f.shake);

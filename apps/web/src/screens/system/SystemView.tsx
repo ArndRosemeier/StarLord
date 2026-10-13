@@ -8,7 +8,7 @@ import { webglAvailable } from "../../three/webgl";
 import { buildSystemModel } from "../../three/system/systemModel";
 import type { SystemPick } from "../../three/system/systemScene";
 import type { ColonizeCue } from "./SystemView3D";
-import type { ColonizeOption } from "../../game/colonize";
+import { colonizeCommand, type ColonizeOption } from "../../game/colonize";
 
 const SystemView3D = lazy(() => import("./SystemView3D"));
 
@@ -40,8 +40,8 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
   const colonize = (planetId: string, settle: ColonizeOption) => {
     if (settle.blocked) return;
     setSelected({ kind: "planet", id: planetId });
-    if (show3d && !reduced) setCue({ id: Date.now(), planetId, fleetId: settle.fleetId, color: me.color });
-    else session.issue({ type: "colonize", fleetId: settle.fleetId, planetId });
+    if (show3d && !reduced) setCue({ id: Date.now(), planetId, fleetId: settle.fleetId, color: me.color, settle });
+    else session.issue(colonizeCommand(planetId, settle));
   };
 
 
@@ -87,7 +87,7 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
                   reduced={reduced}
                   onFail={() => setFailed(true)}
                   colonize={cue}
-                  onColonizeStart={(c) => session.issue({ type: "colonize", fleetId: c.fleetId, planetId: c.planetId })}
+                  onColonizeStart={(c) => session.issue(c.settle ? colonizeCommand(c.planetId, c.settle) : { type: "colonize", fleetId: c.fleetId, planetId: c.planetId })}
                   onColonizeDone={(c) => setCue((now) => (now?.id === c.id ? null : now))}
                   onPick={(p, additive) => {
                     setSelected(p);
@@ -106,7 +106,9 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
                 <span className="muted">
                   {picked.settle.blocked
                     ? `Can't settle: ${picked.settle.blocked}.`
-                    : `${picked.settle.fleetName} lands when you end the turn.`}
+                    : picked.settle.outpost
+                      ? `${picked.settle.fleetName} lands when you end the turn. No population; it extends fuel and scanner range and claims the planet.`
+                      : `${picked.settle.fleetName} lands when you end the turn.`}
                 </span>
               </div>
               <button
@@ -120,12 +122,12 @@ export function SystemView({ starId, fleetId, selectedFleetIds, onClose, onSelec
           ) : colony ? null : settleable.length > 0 ? (
             <div className="system-action hint">
               <span>
-                Your colony ship is here: click a planet marked <b>✚</b> to settle it,
-                {" "}or use Colonize in the list.
+                {settleable.every((p) => p.settle!.outpost) ? "Your outpost ship is here" : "Your colony ship is here"}: click a planet marked <b>✚</b> to settle it,
+                {" "}or use {settleable.every((p) => p.settle!.outpost) ? "Outpost" : "Colonize"} in the list.
               </span>
             </div>
           ) : blocked ? (
-            <div className="system-action hint bad"><span>Your colony ship can't land: {blocked}.</span></div>
+            <div className="system-action hint bad"><span>Your ship can't land: {blocked}.</span></div>
           ) : null}
           <div className="system-title">
             <h2>{model.name}</h2>

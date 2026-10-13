@@ -43,18 +43,28 @@ export function colonizationTargets(view: PlayerView): Target[] {
   return targets.sort((a, b) => b.value - a.value);
 }
 
-/** Hostile worlds worth an outpost: they extend fuel range and claim systems. */
+/**
+ * An asteroid belt or gas giant is the better outpost site: nobody can live
+ * there anyway, while an outpost on a hostile world blocks a later colony.
+ */
+const UNSETTLEABLE_OUTPOST_BONUS = 1.5;
+
+/**
+ * Asteroid belts, gas giants and hostile worlds worth an outpost: they extend
+ * fuel and scanner range and claim systems where the empire has nothing yet.
+ */
 export function outpostTargets(view: PlayerView): Target[] {
   const player = me(view);
   const range = fleetRange(player);
   const targets: Target[] = [];
   for (const planet of Object.values(view.planets)) {
     const climate = CLIMATES[planet.type];
-    if (planet.colonyId || !climate.habitable || !climate.hostile) continue;
+    if (planet.colonyId || (climate.habitable && !climate.hostile)) continue;
     const star = starById(view, planet.starId);
     const d = distanceToNearestColony(view, view.viewer, star);
     if (d > range || d < 1 || guarded(view, view.viewer, star.id)) continue;
-    targets.push({ planet, value: d / (1 + d / 4) });
+    const bonus = climate.habitable ? 1 : UNSETTLEABLE_OUTPOST_BONUS;
+    targets.push({ planet, value: (bonus * d) / (1 + d / 4) });
   }
   return targets.sort((a, b) => b.value - a.value);
 }
@@ -94,7 +104,7 @@ function settle(view: PlayerView, role: "colony" | "outpost", targets: Target[],
     const best = targets.find((t) => !claimed.has(t.planet.id) && !claimedStars.has(t.planet.starId) && canReach(view, view.viewer, f, t.planet.starId));
     if (here && (!best || here.value >= best.value * 0.8)) {
       claimed.add(here.planet.id);
-      out.push({ type: "colonize", fleetId: f.id, planetId: here.planet.id });
+      out.push({ type: "colonize", fleetId: f.id, planetId: here.planet.id, module: role });
       continue;
     }
     if (best) {

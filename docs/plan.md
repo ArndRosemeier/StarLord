@@ -49,10 +49,17 @@
 
 ## Known simplifications
 
-- Food is pooled empire-wide (stands in for MoO2 freighters).
+- Food is not pooled: freighters carry it from fed colonies to hungry ones, one food per ship, and the surplus
+  is sold, as in MoO2. Ships repair completely when they spend a turn at a system with one of their owner's
+  colonies or outposts, also as in MoO2.
 - Humans command their battles unit by unit (or let them resolve by their combat doctrine); the turn stops at
   each battle and the player's orders go in with the turn's commands, so a recorded game replays it exactly.
-- One race per colony; ships repair fully between turns.
+- One race per colony (plus natives). Conquered people keep their race, grow by their own race's rules and
+  assimilate over time; colonists can't be moved into a colony of another race.
+- Where the original's rule could not be decoded StarLord uses an estimate, marked as such in
+  `packages/sim/src/data` (for example how much a computer ruler covets one of your systems).
+- The Tactics leader skill adds initiative, which only orders battles with the Ship initiative option; the
+  original's battle code never reads the skill.
 - Numbers have had one tuning pass (see balance.md); more will follow.
 
 ## Race names

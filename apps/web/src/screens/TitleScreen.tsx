@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { audio } from "../audio/sound";
 import { GameSession } from "../game/session";
-import { listSaves, readSave, readSaveFile } from "../game/saves";
-import { AudioControls } from "../ui/AudioControls";
+import { latestSave, readSave, readSaveFile } from "../game/saves";
+import { SettingsPanel } from "./SettingsPanel";
 import { useHelp } from "../help/HelpDialog";
 import { HeroScene } from "../title/heroScene";
 import { RaceShowcase } from "../title/RaceShowcase";
 import { NewsTicker } from "../title/NewsTicker";
 import { VERSION } from "../changelog/changelog";
 import { WhatsNew } from "../changelog/WhatsNew";
+import { HallOfFame } from "./HallOfFame";
 import { openContactMail } from "../title/contact";
 
 const KONAMI = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
@@ -31,6 +32,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState(false);
   const [whatsNew, setWhatsNew] = useState(false);
+  const [hall, setHall] = useState(false);
   const [toast, setToast] = useState<{ text: string; id: number } | null>(null);
   const [leaving, setLeaving] = useState(false);
   const openHelp = useHelp();
@@ -38,7 +40,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const artRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HeroScene | null>(null);
-  const latest = listSaves().sort((a, b) => b.savedAt.localeCompare(a.savedAt))[0];
+  const latest = latestSave();
 
   useEffect(() => { audio.setMood("menu"); }, []);
 
@@ -109,7 +111,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
         <div className="title-menu">
           <button className="title-button primary" onClick={() => newGame()}>New game</button>
           {latest && (
-            <button className="title-button" onClick={() => load(readSave(latest.name))} title={latest.name}>
+            <button className="title-button" onClick={() => load(readSave(latest.name))} title={`Loads your newest save: ${latest.name}`}>
               Continue <small>{latest.empire}, turn {latest.turn}</small>
             </button>
           )}
@@ -121,10 +123,11 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
             }} />
           </label>
           <button className="title-button" onClick={() => openHelp()}>Encyclopedia</button>
+          <button className="title-button" onClick={() => setHall(true)}>Hall of Fame</button>
           <button className="title-button" onClick={() => setWhatsNew(true)}>What's new <small>v{VERSION}</small></button>
-          <button className="title-button" onClick={() => setSettings(!settings)}>Sound</button>
+          <button className="title-button" onClick={() => setSettings(!settings)}>Settings</button>
           <button className="title-button" onClick={() => openContactMail(VERSION)} title="Write an email to the developer: feedback, bugs, ideas">Contact</button>
-          {settings && <div className="panel title-settings"><AudioControls /></div>}
+          {settings && <div className="panel title-settings"><SettingsPanel shortcuts={false} /></div>}
           {error && <div className="bad">{error}</div>}
         </div>
         <RaceShowcase onPick={newGame} reduced={reduced} />
@@ -133,6 +136,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
       <div className="title-version">v{VERSION}</div>
       <NewsTicker reduced={reduced} />
       {whatsNew && <WhatsNew onClose={() => setWhatsNew(false)} />}
+      {hall && <HallOfFame onClose={() => setHall(false)} />}
     </div>
   );
 }

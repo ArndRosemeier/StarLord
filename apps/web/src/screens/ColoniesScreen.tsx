@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  exterminateProblem,
+  exterminateProblem, buildingScrapRefund, scrapBuildingProblem,
   BUILDINGS_BY_ID, MAX_QUEUE, PLACED_PROJECTS, PROJECTS_BY_ID, baseTargets, availableBuildings, availableDesigns, availableProjects, buyCost,
   FREIGHTERS, androids, colonyOutput, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
   type BuildItem, type Colony,
@@ -9,11 +9,15 @@ import { useGame } from "../ui/hooks";
 import { climateName, fmt, itemName, signed, words } from "../ui/format";
 import { PlanetIcon, PlanetOrb, viewStarOfColony } from "../ui/panels";
 import { Icon } from "../ui/fx";
-import { Tip } from "../ui/Tip";
-import { PlanetFacts, buildingTip, moraleTip, projectTip, tradeGoodsBC, tradeGoodsTip } from "../ui/explain";
+import { Tip, TipBody } from "../ui/Tip";
+import { PlanetFacts, buildingScrapTip, buildingTip, moraleTip, projectTip, tradeGoodsBC, tradeGoodsTip } from "../ui/explain";
 import { designTip } from "./designTips";
 import { BaseChoices } from "./BasePrompt";
 import { JobRows } from "./JobRows";
+import { ColonyRefits } from "../ui/RefitPanel";
+import { SortTh, sortRows, useSort, type SortValue } from "../ui/sort";
+
+type ColonySortKey = "name" | "pop" | "food" | "industry" | "research" | "building";
 
 export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (starId: string) => void; initialColony?: string | null }) {
   const { view, me } = useGame();
@@ -22,6 +26,24 @@ export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (sta
     initialColony && view.colonies[initialColony]?.ownerId === me.id ? initialColony : colonies[0]?.id ?? null,
   );
   const colony = selected ? view.colonies[selected] : undefined;
+  const { sort, toggle } = useSort<ColonySortKey>("name", "asc", (k) => (k === "name" || k === "building" ? "asc" : "desc"));
+  const rows = colonies.map((c) => {
+    const o = colonyOutput(view, c);
+    const head = c.queue[0];
+    const cost = head ? itemCost(view, me.id, head, c) : 0;
+    const turns = head && Number.isFinite(cost) && o.industry > 0 ? Math.ceil((cost - c.progress) / o.industry) : null;
+    return { c, o, head, turns };
+  });
+  const sorted = sortRows(rows, sort, ({ c, o, head }, k): SortValue => {
+    switch (k) {
+      case "name": return c.name;
+      case "pop": return c.outpost ? null : population(c);
+      case "food": return c.outpost ? null : o.foodNet;
+      case "industry": return c.outpost ? null : o.industry;
+      case "research": return c.outpost ? null : o.research;
+      case "building": return head ? itemName(view, head) : c.outpost ? null : "";
+    }
+  });
 
   return (
     <div className="grid2" style={{ gridTemplateColumns: "minmax(420px, 1.1fr) minmax(380px, 1fr)" }}>
@@ -29,35 +51,84 @@ export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (sta
         <h2>Colonies</h2>
         <table>
           <thead>
-            <tr><th>Colony</th><th>Pop</th><th className="food">Food</th><th className="industry">Ind</th><th className="research">Res</th><th>Building</th></tr>
+            <tr>
+              <SortTh k="name" sort={sort} onSort={toggle}>Colony</SortTh>
+              <SortTh k="pop" sort={sort} onSort={toggle}>Pop</SortTh>
+              <SortTh k="food" sort={sort} onSort={toggle} className="food">Food</SortTh>
+              <SortTh k="industry" sort={sort} onSort={toggle} className="industry">Ind</SortTh>
+              <SortTh k="research" sort={sort} onSort={toggle} className="research">Res</SortTh>
+              <SortTh k="building" sort={sort} onSort={toggle}>Building</SortTh>
+            </tr>
           </thead>
           <tbody>
-            {colonies.map((c) => {
-              const o = colonyOutput(view, c);
-              const head = c.queue[0];
-              const cost = head ? itemCost(view, me.id, head, c) : 0;
-              const turns = head && Number.isFinite(cost) && o.industry > 0 ? Math.ceil((cost - c.progress) / o.industry) : null;
-              return (
-                <tr key={c.id} className={`clickable${c.id === selected ? " selected" : ""}`} onClick={() => setSelected(c.id)}>
-                  <td>
-                    <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-                      {view.planets[c.planetId] && <PlanetIcon planet={view.planets[c.planetId]!} size={20} />}
-                      {c.name}{c.outpost && <small className="muted"> outpost</small>}
-                    </span>
-                  </td>
-                  <td>{c.outpost ? "–" : `${population(c)}/${o.maxPopulation}`}</td>
-                  <td className={o.foodNet < 0 ? "bad" : ""}>{c.outpost ? "" : signed(o.foodNet)}</td>
-                  <td>{c.outpost ? "" : fmt(o.industry)}</td>
-                  <td>{c.outpost ? "" : fmt(o.research)}</td>
-                  <td className="muted">{head ? `${itemName(view, head)}${turns !== null && !isContinuous(head) ? ` (${Math.max(1, turns)})` : ""}` : c.outpost ? "" : <span className="warn">Trade Goods</span>}</td>
-                </tr>
-              );
-            })}
+            {sorted.map(({ c, o, head, turns }) => (
+              <tr key={c.id} className={`clickable${c.id === selected ? " selected" : ""}`} onClick={() => setSelected(c.id)}>
+                <td>
+                  <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                    {view.planets[c.planetId] && <PlanetIcon planet={view.planets[c.planetId]!} size={20} />}
+                    {c.name}{c.outpost && <small className="muted"> outpost</small>}
+                  </span>
+                </td>
+                <td>{c.outpost ? "–" : `${population(c)}/${o.maxPopulation}`}</td>
+                <td className={o.foodNet < 0 ? "bad" : ""}>{c.outpost ? "" : signed(o.foodNet)}</td>
+                <td>{c.outpost ? "" : fmt(o.industry)}</td>
+                <td>{c.outpost ? "" : fmt(o.research)}</td>
+                <td className="muted">{head ? `${itemName(view, head)}${turns !== null && !isContinuous(head) ? ` (${Math.max(1, turns)})` : ""}` : c.outpost ? "" : <span className="warn">Trade Goods</span>}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
       {colony && <ColonyDetail key={colony.id} colony={colony} onShowStar={onShowStar} />}
     </div>
+  );
+}
+
+/**
+ * The colony's buildings as chips. Picking one opens a confirm step that
+ * shows the refund, the upkeep saved and the effect lost before scrapping it.
+ */
+function BuildingList({ colony }: { colony: Colony }) {
+  const { session, view, me, readOnly } = useGame();
+  const [picked, setPicked] = useState<string | null>(null);
+  const target = picked && colony.buildings.includes(picked) ? picked : null;
+  const why = target ? scrapBuildingProblem(view, me.id, colony.id, target) : null;
+  return (
+    <>
+      <div className="row">
+        {colony.buildings.length === 0 && <span className="muted">None</span>}
+        {colony.buildings.map((b) => (
+          <Tip key={b} card={BUILDINGS_BY_ID[b] ? () => buildingTip(b) : null}>
+            <span
+              className={`chip${readOnly ? "" : " pickable"}${b === target ? " active" : ""}`}
+              role={readOnly ? undefined : "button"}
+              tabIndex={readOnly ? undefined : 0}
+              style={readOnly ? undefined : { cursor: "pointer" }}
+              onClick={readOnly ? undefined : () => setPicked(b === target ? null : b)}
+              onKeyDown={readOnly ? undefined : (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPicked(b === target ? null : b); } }}
+            >
+              {BUILDINGS_BY_ID[b]?.name ?? b}
+            </span>
+          </Tip>
+        ))}
+      </div>
+      {!readOnly && colony.buildings.length > 0 && !target && <small className="muted">Click a building to scrap it.</small>}
+      {target && BUILDINGS_BY_ID[target] && (
+        <div className="panel col" style={{ gap: 6 }}>
+          <TipBody card={buildingScrapTip(target)} />
+          {why && <div className="bad">{why[0]!.toUpperCase() + why.slice(1)}.</div>}
+          <div className="row">
+            <button className="small danger" disabled={!!why} onClick={() => {
+              session.issue({ type: "scrapBuilding", colonyId: colony.id, buildingId: target });
+              setPicked(null);
+            }}>
+              Scrap for {buildingScrapRefund(target)} BC
+            </button>
+            <button className="small" onClick={() => setPicked(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -144,10 +215,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
           </div>
         )}
         <h4>Buildings</h4>
-        <div className="row">
-          {colony.buildings.length === 0 && <span className="muted">None</span>}
-          {colony.buildings.map((b) => <Tip key={b} card={BUILDINGS_BY_ID[b] ? () => buildingTip(b) : null}><span className="chip">{BUILDINGS_BY_ID[b]?.name ?? b}</span></Tip>)}
-        </div>
+        <BuildingList key={colony.id} colony={colony} />
       </div>
 
       {(colony.readyBases?.length ?? 0) > 0 && (
@@ -199,7 +267,12 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
                   [q[i - 1], q[i]] = [q[i]!, q[i - 1]!];
                   setQueue(q);
                 }}>↑</button>
-                <button className="small" disabled={readOnly} onClick={() => setQueue(colony.queue.filter((_, j) => j !== i))}>✕</button>
+                {item.kind === "refit" ? (
+                  <button className="small danger" disabled={readOnly} title="Cancel this refit. The ship in dock is scrapped, as is the production spent on it."
+                    onClick={() => { if (confirm(`Cancel the refit? The ship in dock is scrapped.`)) session.issue({ type: "cancelRefit", colonyId: colony.id, refitId: item.refitId }); }}>✕</button>
+                ) : (
+                  <button className="small" disabled={readOnly} onClick={() => setQueue(colony.queue.filter((_, j) => j !== i))}>✕</button>
+                )}
               </div>
             );
           })}
@@ -213,6 +286,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
               projects={projects}
             />
           )}
+          {!readOnly && <ColonyRefits colony={colony} />}
         </div>
       )}
     </div>

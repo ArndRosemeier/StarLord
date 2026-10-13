@@ -260,7 +260,7 @@ function FieldPage({ field }: { field: TechTier["field"] }) {
             <span className="muted">{t.hyper ? `${fmt(t.cost)} RP per level, repeatable` : tierCost(t)}{t.general ? " · general" : ""}</span>
           </div>
           {t.hyper
-            ? <span>Each level makes this category's components smaller and cheaper and adds {RESEARCH.hyperScore} to your score.</span>
+            ? <span>Each level makes this category's components smaller and cheaper; the first adds {RESEARCH.hyperScore} to your score.</span>
             : <List items={t.techs.map((id) => <><HelpLink to={`tech:${id}`} />: <span className={techHasEffect(id) ? "" : "muted"}>{techSummary(id)}</span></>)} />}
         </div>
       ))}
@@ -285,8 +285,8 @@ function TierPage({ tier }: { tier: TechTier }) {
       {tier.hyper ? (
         <p>
           A hyper-advanced field. It opens once every other field of the category is researched and can be researched
-          again and again. Each level makes this category's ship components smaller and cheaper and adds{" "}
-          {RESEARCH.hyperScore} to your score.
+          again and again. Each level makes this category's ship components smaller and cheaper; the first level adds{" "}
+          {RESEARCH.hyperScore} to your score (further levels add no more score).
         </p>
       ) : (
         <>
@@ -640,7 +640,7 @@ function ModulePage({ id }: { id: keyof typeof MODULES }) {
   const tech = Object.keys(TECHS).find((t) => techUnlocks(t).some((u) => u.kind === "module" && u.id === id)) ?? null;
   const text: Record<keyof typeof MODULES, string> = {
     colony: "Settles a habitable planet: move the ship to the star and press Colonize. The ship is used up.",
-    outpost: "Claims any habitable planet as an outpost. Outposts have no population but extend fuel range and count for score. Asteroids and gas giants can't take outposts.",
+    outpost: "Claims any free planet as an outpost, asteroid belts and gas giants included. Outposts have no population and build nothing, but extend fuel and scanner range, claim the system and count for score. The ship is used up.",
     transport: "Carries troops to invade enemy colonies once their orbital defenses are down.",
   };
   return (
@@ -695,8 +695,8 @@ function PlanetsPage() {
     <div className="col">
       <p>
         Climate decides how many people a planet holds per size step and how much food each farmer grows. Hostile
-        worlds hold few people. Asteroids and gas giants can't be settled at all, not even by outposts, until an{" "}
-        <HelpLink to="project:artificialPlanet" /> turns them into barren planets. Max population is the climate's share of
+        worlds hold few people. Asteroids and gas giants hold no colonists until an{" "}
+        <HelpLink to="project:artificialPlanet" /> turns them into barren planets, but outpost ships can claim them. Max population is the climate's share of
         the size's full population (tiny 5 to huge 25), rounded, plus race traits, buildings and techs.
       </p>
       <table className="help-table">
@@ -708,7 +708,7 @@ function PlanetsPage() {
               <tr key={t}>
                 <td><HelpLink to={`climate:${t}`} /></td><td>{c.popPercent}%</td><td>{c.foodPerFarmer}</td>
                 <td>{c.habitable ? SIZES.map((s) => climatePopulation(c.popPercent, s)).join(" / ") : "–"}</td>
-                <td>{!c.habitable ? "Needs Artificial Planet" : c.hostile ? "Hostile" : ""}</td>
+                <td>{!c.habitable ? "Outposts only; colonists need an Artificial Planet" : c.hostile ? "Hostile" : ""}</td>
               </tr>
             );
           })}
@@ -725,7 +725,7 @@ function ClimatePage({ type }: { type: PlanetType }) {
   return (
     <div className="col">
       <Facts rows={[
-        ["Habitable", c.habitable ? "Yes" : "No: not even outposts, until an Artificial Planet converts it"],
+        ["Habitable", c.habitable ? "Yes" : "No colonists until an Artificial Planet converts it; outpost ships can claim it"],
         ["Hostile", c.hostile ? "Yes" : "No"],
         ["Population share", `${c.popPercent}% of a Gaia world`],
         ["Food per farmer", c.foodPerFarmer],
@@ -1063,7 +1063,7 @@ function MonstersPage() {
             return (
               <tr key={h}>
                 <td>{RAIDER_SHIP_NAMES[h]}</td>
-                <td>{spec.weapons.map((w) => mountLabel(w) + (w.arc === "full" ? ", all round" : "")).join("; ")}</td>
+                <td>{spec.weapons.map((w) => mountLabel(w) + (w.arc === "full" ? ", all round" : "") + (w.ammo === 0 ? " (carried empty: no shots)" : "")).join("; ")}</td>
                 <td>{spec.specials.map((id, j) => <span key={id}>{j > 0 && ", "}<HelpLink to={`special:${id}`} /></span>)}{spec.specials.length === 0 && "–"}</td>
                 <td>{LEVELS.map((d) => (spec.jammer[d] ? SPECIALS_BY_ID[spec.jammer[d]!]?.name : "none")).join(", ")}</td>
               </tr>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { SystemScene, type SystemPick } from "../../three/system/systemScene";
 import { isTouchDevice } from "../../ui/touch";
 import type { SystemModel } from "../../three/system/systemModel";
+import type { ColonizeOption } from "../../game/colonize";
 
 export interface SystemView3DProps {
   model: SystemModel;
@@ -20,6 +21,8 @@ export interface ColonizeCue {
   planetId: string;
   fleetId: string;
   color: string;
+  /** The settle option the order is issued with (colony or outpost ship). */
+  settle?: ColonizeOption;
 }
 
 /**

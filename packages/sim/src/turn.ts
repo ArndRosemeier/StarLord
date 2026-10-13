@@ -7,7 +7,7 @@ import { getRace, hasTrait, registerRaces } from "./data/races.js";
 import { TRAIT_EFFECTS } from "./data/racePicks.js";
 import { RESEARCH, TECHS, TIERS_BY_ID, emptyHyperLevels, researchCost } from "./data/techs.js";
 import { battleKey, colonyDefenseStrength, createBattle, hasArmedDefenses, type Battle, type CombatSide } from "./combat.js";
-import { buyCost, termsOf, validateCommand, type Command } from "./commands.js";
+import { buildingScrapRefund, buyCost, settlerModule, termsOf, validateCommand, type Command } from "./commands.js";
 import { newId, type TurnContext } from "./context.js";
 import { councilTick } from "./council.js";
 import { designStats, findDesign } from "./designs.js";
@@ -26,7 +26,7 @@ import { distance } from "./galaxy.js";
 import { repairTick } from "./repair.js";
 import { addShips, deleteFleet, removeShips, takeShips } from "./fleetOps.js";
 import { builtCrewXp, crewTick } from "./crew.js";
-import { bombColony, captureColony, destroyColony, exterminate, groundPhase, revoltFight, type Silenced } from "./ground.js";
+import { OrbitalPause, bombColony, captureColony, destroyColony, exterminate, groundPhase, revoltFight, type OrbitalPrompt, type Silenced } from "./ground.js";
 import { assignDefaultJobs, newColonistJob, removeAndroids, removePopulation, starveOne } from "./jobs.js";
 import {
   assignLeader, captainLost, captainOf, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
@@ -41,16 +41,13 @@ import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
 import { PLACED_PROJECTS, availableDesigns, availableProjects, baseTargets, canBuildShips, colonyRoom, freePlanetsInSystem, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
 import { applyMutation } from "./mutation.js";
+import { cancelRefit, completeRefit, startRefit } from "./refit.js";
 import { applyDebug } from "./debug.js";
-import { score } from "./score.js";
+import { creditElimination, noteAttack, recordHistory, score } from "./score.js";
 import type { BuildItem, Colony, Fleet, GameState, Id, Planet, Player, PlayerId } from "./types.js";
 
 export type TurnOrders = Partial<Record<PlayerId, Command[]>>;
 
-/**
- * Advances the game by one turn. Pure with respect to its input: the given
- * state is cloned, so callers can keep history for replays and undo.
- */
 /**
  * The order in which players' orders are carried out this turn. It rotates
  * each turn so no seat always wins same-turn contests (two colony ships at one
@@ -61,14 +58,20 @@ export function seatOrder(state: Pick<GameState, "players" | "turn">): PlayerId[
   return Array.from({ length: n }, (_, i) => state.players[(state.turn + i) % n]!.id);
 }
 
-export function processTurn(prev: GameState, orders: TurnOrders, pauseAt?: TurnContext["pauseAt"]): GameState {
+/**
+ * Advances the game by one turn. Pure with respect to its input: the given
+ * state is cloned, so callers can keep history for replays and undo.
+ */
+export function processTurn(
+  prev: GameState, orders: TurnOrders, pauseAt?: TurnContext["pauseAt"], pauseAtOrbit?: TurnContext["pauseAtOrbit"],
+): GameState {
   registerRaces(prev.settings.customRaces);
   const state = structuredClone(prev);
   if (state.over) return state;
   state.events = [];
   state.combats = [];
   const rng = new Rng(state.rng);
-  const ctx: TurnContext = { state, rng, emit: (e) => state.events.push({ turn: state.turn, ...e }), pauseAt };
+  const ctx: TurnContext = { state, rng, emit: (e) => state.events.push({ turn: state.turn, ...e }), pauseAt, pauseAtOrbit };
 
   // Answers to proposals come after everything else, so an empire can answer
   // in the same turn a proposal put to it in an audience.
@@ -102,6 +105,7 @@ export function processTurn(prev: GameState, orders: TurnOrders, pauseAt?: TurnC
     const best = alive.reduce((b, p) => (score(state, p.id) > score(state, b.id) ? p : b), alive[0]!);
     endGame(ctx, best.id, "score");
   }
+  recordHistory(state);
   return state;
 }
 
@@ -173,7 +177,9 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "setQueue": {
       const c = state.colonies[cmd.colonyId]!;
       // Like MoO2, progress carries over when the head of the queue changes.
-      c.queue = cmd.queue.map((i) => ({ ...i }));
+      // Refit jobs keep what was stored when they were ordered.
+      const jobs = new Map(c.queue.flatMap((q) => (q.kind === "refit" ? [[q.refitId, q] as const] : [])));
+      c.queue = cmd.queue.map((i) => (i.kind === "refit" ? jobs.get(i.refitId)! : { ...i }));
       if (c.queue.length === 0) c.progress = 0;
       break;
     }
@@ -182,6 +188,15 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       c.readyBases!.splice(c.readyBases!.indexOf(cmd.projectId), 1);
       if (c.readyBases!.length === 0) delete c.readyBases;
       placeBase(ctx, c, cmd.projectId, state.planets[cmd.planetId]!);
+      break;
+    }
+    case "scrapBuilding": {
+      const c = state.colonies[cmd.colonyId]!;
+      c.buildings = c.buildings.filter((b) => b !== cmd.buildingId);
+      c.scrappedTurn = state.turn;
+      const refund = buildingScrapRefund(cmd.buildingId);
+      player.bc += refund;
+      ctx.emit({ kind: "random", playerId, what: `${BUILDINGS_BY_ID[cmd.buildingId]?.name ?? cmd.buildingId} at ${c.name} was scrapped for ${refund} BC.` });
       break;
     }
     case "buy": {
@@ -222,12 +237,10 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "colonize": {
       const f = state.fleets[cmd.fleetId]!;
       const planet = state.planets[cmd.planetId]!;
-      const pickModule = (m: "colony" | "outpost") =>
-        f.ships.find((s) => findDesign(player, s.designId)?.module === m && s.count > 0);
-      const stack = pickModule("colony") ?? pickModule("outpost")!;
-      const outpost = findDesign(player, stack.designId)!.module === "outpost";
+      const module = settlerModule(state, playerId, f, planet.id, cmd.module)!;
+      const stack = f.ships.find((s) => findDesign(player, s.designId)?.module === module && s.count > 0)!;
       removeShips(state, f, stack.designId, 1);
-      foundColony(ctx, playerId, cmd.planetId, outpost ? 0 : 1, player.raceId);
+      foundColony(ctx, playerId, cmd.planetId, module === "outpost" ? 0 : 1, player.raceId);
       break;
     }
     case "invade":
@@ -270,6 +283,12 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       if (d) salvageTech(ctx, playerId, d, cmd.count);
       break;
     }
+    case "refitShips":
+      startRefit(state, playerId, cmd);
+      break;
+    case "cancelRefit":
+      cancelRefit(state, state.colonies[cmd.colonyId]!, cmd.refitId);
+      break;
     case "saveDesign": {
       const design = structuredClone(cmd.design);
       design.obsolete = false;
@@ -371,6 +390,13 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       map.set(cmd.battle, forBattle);
       break;
     }
+    case "orbitalStrike": {
+      const map = ctx.orbitalOrders ??= new Map();
+      const forColony = map.get(cmd.colonyId) ?? new Map();
+      forColony.set(playerId, cmd.choice);
+      map.set(cmd.colonyId, forColony);
+      break;
+    }
     case "setIdleAlert":
       if (cmd.on) delete player.idleAlertOff;
       else player.idleAlertOff = true;
@@ -390,7 +416,7 @@ function foundColony(ctx: TurnContext, playerId: PlayerId, planetId: Id, pop: nu
   const colony: Colony = {
     id: newId(state, "c"), planetId, ownerId: playerId, raceId, name: `${star.name}${roman}`, outpost: pop === 0,
     farmers: 0, workers: pop, scientists: 0, growthK: 0,
-    buildings: [], queue: [], progress: 0, founded: state.turn, terraformed: 0, unrestUntil: 0,
+    buildings: [], queue: [], progress: 0, founded: state.turn, terraformed: 0,
   };
   planet.colonyId = colony.id;
   state.colonies[colony.id] = colony;
@@ -467,6 +493,25 @@ export function pendingBattle(prev: GameState, orders: TurnOrders, playerId: Pla
   return null;
 }
 
+/**
+ * The first enemy colony whose orbit `playerId`'s attack-stance fleets will
+ * hold after this turn's battles and that they have given no `orbitalStrike`
+ * order for, with what each choice would do there (as the original's Orbital
+ * Combat Selection window asks after a won battle). Battles still waiting on
+ * the player's orders (`pendingBattle`) resolve by themselves here, so ask for
+ * those first. Null when nothing is left to decide.
+ */
+export function pendingOrbital(prev: GameState, orders: TurnOrders, playerId: PlayerId): OrbitalPrompt | null {
+  if (!prev.players[playerId]?.isHuman) return null;
+  try {
+    processTurn(prev, orders, undefined, (p) => p === playerId);
+  } catch (e) {
+    if (e instanceof OrbitalPause) return e.prompt;
+    throw e;
+  }
+  return null;
+}
+
 function combatPhase(ctx: TurnContext): Silenced {
   const { state, rng } = ctx;
   const silenced: Silenced = new Set();
@@ -494,6 +539,12 @@ function combatPhase(ctx: TurnContext): Silenced {
       if (ctx.pauseAt?.(battle, key)) throw new BattlePause(battle, key, starId, reportId);
       const outcome = battle.run(starId, reportId);
       state.combats.push(outcome.report);
+      // A side that started a fight where the other holds a colony has attacked that colony (elimination credit).
+      for (const [x, y] of [[a, b], [b, a]] as const) {
+        if (x.initiates && Object.values(state.colonies).some((c) => c.ownerId === y.ownerId && state.planets[c.planetId]!.starId === starId)) {
+          noteAttack(state, y.ownerId, x.ownerId);
+        }
+      }
       applyCombat(ctx, starId, [a, b], outcome);
       for (const [owner, down] of outcome.planetSilenced) {
         const side = owner === a.ownerId ? a : b;
@@ -987,6 +1038,13 @@ function produce(ctx: TurnContext, colony: Colony, industry: number, tradeMult: 
   }
   // Housing turns the production into growth (economy.ts), nothing is built.
   if (head.kind === "project" && head.id === "housing") return 0;
+  // A refit the colony can no longer do (its orbital station is gone) is lost with its ship, as in the original.
+  if (head.kind === "refit" && !canBuildShips(colony, findDesign(state.players[colony.ownerId]!, head.designId))) {
+    colony.queue.shift();
+    const name = findDesign(state.players[colony.ownerId]!, head.fromDesignId)?.name ?? "a ship";
+    ctx.emit({ kind: "random", playerId: colony.ownerId, what: `${colony.name} lost its orbital station; ${name} in its dock for a refit was scrapped.` });
+    return produce(ctx, colony, industry, tradeMult);
+  }
   const cost = itemCost(state, colony.ownerId, head, colony);
   colony.progress += industry;
   if (!Number.isFinite(cost)) {
@@ -1054,6 +1112,8 @@ function completeItem(ctx: TurnContext, colony: Colony, item: BuildItem): void {
     }
   } else if (item.kind === "project") {
     completeProject(ctx, colony, item.id, item.planetId, rng);
+  } else if (item.kind === "refit") {
+    completeRefit(state, colony, item);
   }
   ctx.emit({ kind: "built", playerId: colony.ownerId, colonyId: colony.id, item });
 }
@@ -1297,6 +1357,7 @@ function checkElimination(ctx: TurnContext): void {
     if (Object.values(state.colonies).some((c) => c.ownerId === p.id && !c.outpost)) continue;
     p.alive = false;
     p.eliminatedTurn = state.turn;
+    creditElimination(state, p.id);
     for (const f of Object.values(state.fleets)) if (f.ownerId === p.id) deleteFleet(state, f.id);
     for (const c of Object.values(state.colonies)) if (c.ownerId === p.id) destroyColony(state, c);
     // Their leaders go back to the pool of free heroes.

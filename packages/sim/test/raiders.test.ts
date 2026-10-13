@@ -22,7 +22,7 @@ function addColony(s: GameState, owner: number, outpost = false): Colony {
   const planet = Object.values(s.planets).find((p) => !p.colonyId && !used.has(p.starId))!;
   const c: Colony = {
     id: `cx${s.nextId++}`, planetId: planet.id, ownerId: owner, raceId: s.players[owner]!.raceId, name: "Rock", outpost,
-    farmers: 0, workers: outpost ? 0 : 2, scientists: 0, growthK: 0, buildings: [], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
+    farmers: 0, workers: outpost ? 0 : 2, scientists: 0, growthK: 0, buildings: [], queue: [], progress: 0, founded: 1, terraformed: 0,
   };
   planet.colonyId = c.id;
   s.colonies[c.id] = c;

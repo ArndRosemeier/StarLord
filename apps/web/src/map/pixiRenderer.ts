@@ -1,6 +1,7 @@
 import { Application, Assets, Circle, Container, Graphics, Sprite, Text, Texture, type Ticker } from "pixi.js";
 import type { MapInput, MapRenderer } from "./renderer";
 import type { FleetLook, MapScene } from "./scene";
+import { rangeLayer } from "./rangeOverlay";
 import { prefersReducedMotion } from "../ui/fx";
 import { HOLD_MS, HOLD_SLOP, additive, buzz, isTouchDevice } from "../ui/touch";
 
@@ -11,6 +12,9 @@ const DRAG_THRESHOLD = 4;
 const hex = (c: string) => parseInt(c.replace("#", ""), 16);
 const ROUTE_OK = 0x7dd3fc;
 const ROUTE_BAD = 0xff6b6b;
+/** Range overlay colours; the map's toggle buttons use the same ones (see .map-overlays in lists.css). */
+const FUEL_COLOR = 0x34d399;
+const SCAN_COLOR = 0xfbbf24;
 const turns = (n: number) => `${n} turn${n === 1 ? "" : "s"}`;
 
 function label(text: string, color: number, size = 12): Text {
@@ -162,6 +166,7 @@ export class PixiMapRenderer implements MapRenderer {
   private container!: HTMLElement;
   private mounted = false;
   private pending: MapScene | null = null;
+  private pendingFocus: { x: number; y: number } | null = null;
   private drag: { x: number; y: number; camX: number; camY: number; moved: boolean } | null = null;
   /** Fingers on the map, for pinch zoom; screen positions by pointer id. */
   private touches = new Map<number, { x: number; y: number }>();
@@ -243,6 +248,8 @@ export class PixiMapRenderer implements MapRenderer {
     this.app.stage.on("pointerupoutside", endDrag);
     this.mounted = true;
     if (this.pending) this.render(this.pending);
+    if (this.pendingFocus) this.focus(this.pendingFocus.x, this.pendingFocus.y);
+    this.pendingFocus = null;
   }
 
   /** Keep the nebula covering the screen, drifting slightly with the camera. */
@@ -346,6 +353,11 @@ export class PixiMapRenderer implements MapRenderer {
   }
 
   focus(x: number, y: number): void {
+    // A focus asked for while Pixi is still starting up (e.g. "show on map" from another screen) waits for the first render.
+    if (!this.mounted) {
+      this.pendingFocus = { x, y };
+      return;
+    }
     const s = this.camera.scale.x;
     this.camera.x = this.app.screen.width / 2 - x * UNIT * s;
     this.camera.y = this.app.screen.height / 2 - y * UNIT * s;
@@ -414,7 +426,7 @@ export class PixiMapRenderer implements MapRenderer {
     this.scene = scene;
     this.fit(scene);
     for (const child of this.world.removeChildren()) child.destroy({ children: true });
-    for (const child of this.territory.removeChildren()) child.destroy();
+    for (const child of this.territory.removeChildren()) child.destroy({ children: true });
     this.pulses = [];
     this.spins = [];
     this.trailList = [];
@@ -437,6 +449,9 @@ export class PixiMapRenderer implements MapRenderer {
       links.stroke({ width: 1.5, color: 0x6ee7ff, alpha: 0.45 });
       this.territory.addChild(links);
     }
+    // Empire-wide range displays, switched on from the map's overlay buttons.
+    if (scene.scanRange.length > 0) this.territory.addChild(rangeLayer(scene.scanRange, UNIT, SCAN_COLOR, { fill: 0.08, dashed: true }));
+    if (scene.fuelRange.length > 0) this.territory.addChild(rangeLayer(scene.fuelRange, UNIT, FUEL_COLOR, { fill: 0.1 }));
 
     for (const s of scene.stars) {
       if (s.owners.length === 0) continue;

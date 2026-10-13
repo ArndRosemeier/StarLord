@@ -54,3 +54,10 @@ export const CAPTURE_TECH = {
   perBuilding: { human: 125, ai: 115, aiPerDifficulty: 5 },
   perColonist: { human: 65, ai: 55, aiPerDifficulty: 5 },
 } as const;
+
+/**
+ * A planet a Stellar Converter destroys from orbit becomes an asteroid belt of
+ * this size (the original only sets the planet's type to asteroids; StarLord's
+ * asteroid belts are all small).
+ */
+export const ASTEROID_BELT_SIZE = "small" as const;

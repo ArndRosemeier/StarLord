@@ -92,7 +92,25 @@ export type BuildItem =
   | { kind: "building"; id: string }
   | { kind: "ship"; designId: string; repeat?: boolean }
   | { kind: "project"; id: string; planetId?: Id; repeat?: boolean }
-  | { kind: "tradeGoods" };
+  | { kind: "tradeGoods" }
+  /**
+   * A ship taken out of its fleet to be rebuilt to another design of its hull.
+   * Until the job is done the ship is in dock and takes no part in anything;
+   * removing the job from the queue scraps the ship.
+   */
+  | {
+    kind: "refit";
+    refitId: Id;
+    /** Design the ship had, and the design it gets. */
+    fromDesignId: string;
+    designId: string;
+    /** Production the refit costs, fixed when it was ordered. */
+    cost: number;
+    /** The crew keeps its experience. */
+    xp?: number;
+    /** Fleet the ship came from; it rejoins it if that fleet still waits here. */
+    fleetId?: Id;
+  };
 
 export interface Colony {
   id: Id;
@@ -115,8 +133,6 @@ export interface Colony {
   progress: number;
   founded: number;
   terraformed: number;
-  /** No longer used: conquered people now assimilate instead (see `aliens`). Kept for old saves. */
-  unrestUntil: number;
   /** Population units not yet assimilated after a conquest; they produce half and may revolt. */
   aliens?: number;
   /** Turns spent assimilating the next alien unit. */
@@ -140,6 +156,8 @@ export interface Colony {
   readyBases?: string[];
   /** A Dimensional Portal stands here: fleets in this system can strike at the raiders' home. */
   portal?: boolean;
+  /** Turn on which the owner last scrapped a building here; only one may go per colony each turn. */
+  scrappedTurn?: number;
 }
 
 export interface AndroidCounts {
@@ -267,6 +285,14 @@ export type TacticalOrder =
   /** Let the computer play this and every later turn of the side, following the combat doctrine. */
   | { kind: "auto" };
 
+/**
+ * What a fleet that holds orbit over an enemy colony does to it, as the
+ * original's Orbital Combat Selection window asks: bombard with every weapon
+ * but biological ones, bombard and also release biological weapons, destroy
+ * the planet with a Stellar Converter, or hold fire.
+ */
+export type OrbitalChoice = "bomb" | "bio" | "destroy" | "none";
+
 export interface CombatDoctrine {
   /** Retreat when the fleet's strength falls below this fraction of the enemy's. */
   retreatBelow: number;
@@ -329,6 +355,22 @@ export interface Player {
   transfers?: ColonistTransfer[];
   /** Whether the empire still holds its Capitol. Unset for empires that never had one. */
   capitol?: "held" | "lost";
+  /** Population units this empire has taken by invasion or mind control; they earn a score premium. */
+  capturedPop?: number;
+  /** The empire that last attacked one of this empire's colonies; it is credited if this empire is eliminated. */
+  lastAttackedBy?: PlayerId;
+  /** Empires this one is credited with eliminating (score). */
+  eliminated?: PlayerId[];
+}
+
+/**
+ * One turn of the history record: per empire (indexed by player id) its
+ * HISTORY_STATS values (score.ts), or null for non-empires, eliminated empires and, in a
+ * player's view, empires that player has not met.
+ */
+export interface HistoryPoint {
+  turn: number;
+  rows: (number[] | null)[];
 }
 
 export type AdvancedGovernment = "confederation" | "imperium" | "federation" | "galacticUnification";
@@ -462,6 +504,8 @@ export interface Proposal {
   percent?: number;
   /** A price the proposer asks of the receiver for signing (a counter-offer). */
   price?: Price;
+  /** What the proposer pays the receiver if it accepts (a computer ruler buying peace, or paying you to join its war). */
+  payment?: Price;
   /** The listener's d100 for its answer, fixed when the proposal is made. */
   roll?: number;
   /** The listener's patience with the proposer just before this ask. */
@@ -573,6 +617,14 @@ export type GameEvent =
   | { turn: number; kind: "colonyCaptured"; playerId: PlayerId; colonyId: Id; from: PlayerId }
   | { turn: number; kind: "invasionFailed"; playerId: PlayerId; colonyId: Id }
   | { turn: number; kind: "bombarded"; playerId: PlayerId; colonyId: Id; popLost: number }
+  /**
+   * An orbital strike `by` an empire on a colony of `victim` (see `OrbitalChoice`): told to the attacker, and to the
+   * victim when the planet was destroyed. `colonyGone`: nobody is left; `planetDestroyed`: it is an asteroid belt now.
+   */
+  | {
+    turn: number; kind: "orbitalStrike"; playerId: PlayerId; by: PlayerId; victim: PlayerId; starId: Id; colonyName: string;
+    choice: Exclude<OrbitalChoice, "none">; popKilled: number; buildingsLost: number; colonyGone: boolean; planetDestroyed: boolean;
+  }
   | { turn: number; kind: "diplomacy"; playerId: PlayerId; other: PlayerId; what: string }
   | { turn: number; kind: "spy"; playerId: PlayerId; other: PlayerId; what: string }
   | { turn: number; kind: "leader"; playerId: PlayerId; leaderId: Id; what: string }
@@ -681,6 +733,9 @@ export interface GameState {
   eventClock?: { last: number; luck: Record<string, number>; used?: string[] };
   /** Empires that ordered a surrender this turn, mapped to who receives them. */
   surrenders?: Record<string, PlayerId>;
+
+  /** Per-turn statistics of every empire, for the info screen's history graphs. Missing in old saves. */
+  history?: HistoryPoint[];
 
   /** Combats from the most recent turn, kept for replay. */
   combats: CombatReport[];

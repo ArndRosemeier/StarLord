@@ -60,9 +60,9 @@ export function mountMods(m: WeaponMount): Set<WeaponModId> {
   return new Set(m.mods ?? []);
 }
 
-/** Missile rack size of a mount (shots per battle). */
+/** Shots per battle of a mount: a missile's rack, or the weapon's own ammunition unless a fixed design sets it (raider frigates carry an empty bomb). */
 export function rackShots(w: WeaponDef, m: WeaponMount): number {
-  return w.kind === "missile" ? (m.ammo ?? DEFAULT_MISSILE_SHOTS) : (w.ammo ?? Infinity);
+  return w.kind === "missile" ? (m.ammo ?? DEFAULT_MISSILE_SHOTS) : (m.ammo ?? w.ammo ?? Infinity);
 }
 
 /** Space and cost of one weapon of a mount, with its rack, mods, arc and miniaturization. */

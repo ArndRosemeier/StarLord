@@ -104,7 +104,7 @@ export function DiplomacyScreen({ onAudience }: { onAudience: (r: AudienceReques
                     title={canSign(view, p.from, p.to, p.kind, p) ?? undefined}
                     onClick={() => session.issue({ type: "respond", proposalId: p.id, accept: true })}>Accept</button>
                   <button className="small" disabled={readOnly} onClick={() => session.issue({ type: "respond", proposalId: p.id, accept: false })}>
-                    {p.kind.startsWith("demand") ? "Refuse" : "Decline"}
+                    {p.kind.startsWith("demand") && !p.payment ? "Refuse" : "Decline"}
                   </button>
                 </>
               )}

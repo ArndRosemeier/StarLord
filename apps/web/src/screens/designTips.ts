@@ -47,7 +47,7 @@ const EFFECT_TEXT: Record<WeaponEffect, string> = {
   plasmaWeb: "Wraps the target in plasma that keeps burning it in later rounds, weaker each time.",
   pulsar: "An energy burst that hits every ship around the firing ship, friend or foe, harder against bigger hulls.",
   blackHole: "Traps one ship or station so it cannot move; unless the generator is lost first, the ship is destroyed at the end of the second turn after.",
-  stellarConverter: "400 damage to every shield facing of the target; never misses.",
+  stellarConverter: "400 damage to every shield facing of the target; never misses. Fired from orbit after a won battle it can destroy an enemy planet, leaving an asteroid belt.",
   tractor: "Slows the target; enough tractor beams for its size hold it in place.",
   fighters: "Launches interceptors: each makes four strafing passes, one a turn, with your best point-defense-capable beam.",
   bombers: "Launches bombers: each drops your best bomb once, which always hits.",

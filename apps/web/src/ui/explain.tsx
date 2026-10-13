@@ -2,7 +2,10 @@ import {
   ARTIFACTS_RESEARCH, ARTIFACTS_SECOND_TECH_CHANCE, CLIMATES, INDUSTRY_PER_WORKER, NATIVE_FOOD_BONUS, NATIVES_POP, POLLUTION_TOLERANCE, SIZE_POP_BASE,
   SPECIAL_INCOME, SPLINTER_POP, TERRAFORM_STEP, climatePopulation, colonyMoraleParts, colonyOutput, getRace, government,
   gravityMultiplier, ADVANCED_START, CLIMATE_TABLE_BY_AGE, CREW, FIRST_FIELDS, TIERS_BY_ID, bodyMix, meanPlanets, DIFFICULTIES, DIFFICULTY_ORDER, JEALOUSY, GOVERNMENTS, PICK_OPTIONS, STAR_COLORS_BY_AGE, TAX_BC_PER_INDUSTRY,
-  BUILDINGS_BY_ID, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
+  BATTLE_SCANNER_RANGE, FUEL_RANGES, ORBITAL_BASES, SPECIALS_BY_ID, TRANSIT_DETECTION_PER_SIZE, canColonize, fleetRange, maxPopulation, raceMaxPopulation, scanRange, type Player,
+  BUILDINGS_BY_ID, BUILDING_SCRAP, buildingScrapRefund, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
+  HULLS_BY_ID, REFIT, designStats, refitCost, type ShipDesign,
+  SCORE, type ScoreBreakdown,
 } from "@starlord/sim";
 import { Tip, type TipCard } from "./Tip";
 import { techSummary, unlockSummary } from "../help/articles";
@@ -37,7 +40,7 @@ export function climateTip(planet: Planet): TipCard {
       ["Building upkeep", c.maintenancePenalty ? `+${Math.round(c.maintenancePenalty * 100)}%` : "normal"],
       ...(next ? [["Terraforms into", next.map(climateName).join(" or ")] as [string, string]] : []),
     ],
-    text: [c.habitable ? (c.hostile ? "Hostile: only outposts and hardy races thrive here." : "Habitable.") : "Not habitable until an Artificial Planet converts it."],
+    text: [c.habitable ? (c.hostile ? "Hostile: only outposts and hardy races thrive here." : "Habitable.") : "No colonists until an Artificial Planet converts it, but an outpost ship can claim it: no population, more fuel and scanner range."],
   };
 }
 
@@ -109,6 +112,61 @@ export function PlanetFacts({ planet, raceId }: { planet: Planet; raceId: string
 }
 
 const mult = (v: number) => (v === 1 ? "normal" : `${signed(Math.round((v - 1) * 100))}%`);
+
+/** How many of the player's race a planet holds once settled, and where the number comes from. */
+export function maxPopTip(planet: Planet, player: Player): TipCard {
+  const race = getRace(player.raceId);
+  const max = canColonize(planet.type) ? maxPopulation(planet, race, [], player) : 0;
+  if (!canColonize(planet.type)) {
+    return {
+      title: "Max population", kind: "0",
+      text: [`Nobody can live on ${climateName(planet.type).toLowerCase()} until an Artificial Planet converts it.`],
+    };
+  }
+  return {
+    title: "Max population", kind: `${max} ${race.plural}`,
+    rows: [
+      ["Size and climate alone", String(climatePopulation(CLIMATES[planet.type].popPercent, planet.size))],
+      [`${race.plural}, by racial traits`, String(raceMaxPopulation(race, planet.type, planet.size))],
+      ["With your technology", String(max)],
+    ],
+    text: ["The most people the planet holds right after colonizing. Buildings raise it further, and terraforming improves the climate."],
+  };
+}
+
+const parsecs = (n: number) => `${n} parsec${n === 1 ? "" : "s"}`;
+const FUEL_BY_TECH = (tech: string) => TECHS[tech]?.name ?? words(tech);
+
+/** The empire's fuel range: how far its ships fly from the nearest colony they can refuel at. */
+export function fuelRangeTip(player: Player): TipCard {
+  const range = fleetRange(player);
+  const next = FUEL_RANGES.find((f) => f.range > range && !player.techs.includes(f.tech));
+  const tanks = SPECIALS_BY_ID.extendedFuelTanks?.effects.fuelRangePct ?? 0;
+  return {
+    title: "Fuel range", kind: parsecs(range),
+    rows: [
+      ["Refuel at", "your colonies and outposts, and your allies' colonies"],
+      ...(next ? [[`With ${FUEL_BY_TECH(next.tech)}`, parsecs(next.range)] as [string, string]] : []),
+      ...(tanks ? [["Extended Fuel Tanks", `+${tanks}% for a fleet whose every ship carries them`] as [string, string]] : []),
+    ],
+    text: ["Ships can fly to any star within this distance of a colony they can refuel at. Better fuel cells raise it."],
+  };
+}
+
+/** The empire's scanner coverage around its colonies and fleets. */
+export function scanRangeTip(player: Player): TipCard {
+  const range = scanRange(player);
+  return {
+    title: "Scanner range", kind: parsecs(range),
+    rows: [
+      ["Every colony and fleet", parsecs(range)],
+      ["Orbital stations", `up to +${parsecs(Math.max(...ORBITAL_BASES.map((b) => BUILDINGS_BY_ID[b]?.effects.scanRange ?? 0)))} around their colony`],
+      ["Battle Scanner", `+${parsecs(BATTLE_SCANNER_RANGE)} around the fleet carrying it`],
+      ["Big ships", `seen ${parsecs(TRANSIT_DETECTION_PER_SIZE)} further per size class above a frigate`],
+    ],
+    text: ["Foreign fleets inside this range show on your map; outside it only stars and what you have explored are known. Stealthy and cloaked ships are only seen in the same system."],
+  };
+}
 
 export function governmentTip(id: keyof typeof GOVERNMENTS): TipCard {
   const g = GOVERNMENTS[id];
@@ -266,6 +324,22 @@ export function buildingTip(id: string): TipCard {
   };
 }
 
+/** What scrapping a building pays and costs, for the confirm step on the Colonies screen. */
+export function buildingScrapTip(id: string): TipCard {
+  const b = BUILDINGS_BY_ID[id]!;
+  return {
+    title: `Scrap ${b.name}`, kind: "Scrap",
+    rows: [
+      ["Refund", `+${buildingScrapRefund(id)} BC (${pct(BUILDING_SCRAP.refund)} of its ${b.cost} cost)`],
+      ["Upkeep saved", `${b.maintenance} BC a turn`],
+    ],
+    text: [
+      `Lost: ${[...buildingEffects(b.effects), ...(b.description ? [b.description] : [])].join(" ")}`,
+      `Only ${BUILDING_SCRAP.perColonyPerTurn} building per colony can be scrapped each turn; the Capitol never.`,
+    ],
+  };
+}
+
 /** BC a turn that this colony's industry would bring as trade goods. */
 export function tradeGoodsBC(raceId: string, industry: number): number {
   return tradeGoodsMult(getRace(raceId)) > 1 ? industry : Math.ceil(industry * TRADE_GOODS_RATE);
@@ -297,10 +371,70 @@ export function projectTip(id: string, colony: Colony, planet: Planet, industry:
     if (colony.terraformed) rows.push(["Done here", `${colony.terraformed} time${colony.terraformed > 1 ? "s" : ""}`]);
   }
   if (freePlanets) {
-    rows.push(["Free planets here", freePlanets.length ? freePlanets.map((f) => `${words(f.size)} ${climateName(f.type)}`).join(", ") : "none"]);
+    rows.push(["Free planets here", freePlanets.length ? freePlanets.map((f) => `${words(f.size)} ${climateName(f.type)}${f.colonyId ? " (your outpost)" : ""}`).join(", ") : "none"]);
     text.push(freePlanets.length > 1
       ? "When it is finished you choose which planet it goes to."
       : "When it is finished it goes to the only free planet. If none is left by then, it is scrapped for half its cost.");
   }
   return { title: p.name, kind: "Project", rows, text };
+}
+
+/** What refitting one ship from one design to another costs and does, with the sim's own formula. */
+export function refitTip(player: Player, from: ShipDesign, to: ShipDesign, turns?: number | null): TipCard {
+  const a = designStats(player, from);
+  const b = designStats(player, to);
+  const hull = HULLS_BY_ID[to.hull];
+  const min = Math.floor(hull.cost / REFIT.minHullCostDivisor);
+  const diff = REFIT.costDifferenceMult * (b.cost - a.cost);
+  const cost = refitCost(player, from, to);
+  return {
+    title: `Refit to ${to.name}`, kind: `${hull.name} refit`,
+    rows: [
+      ["Refit cost", `${cost} production`],
+      ["Cost difference", `${REFIT.costDifferenceMult} × (${b.cost} − ${a.cost}) = ${diff}`],
+      ["Minimum", `${hull.name} hull ${hull.cost} / ${REFIT.minHullCostDivisor} = ${min}`],
+      ["New ship instead", `${b.cost} production`],
+      ["Strength", `${a.strength} → ${b.strength}`],
+      ...(turns !== undefined ? [["Done in", turns === null ? "never (no industry)" : `${turns} turn${turns === 1 ? "" : "s"}`] as [string, string]] : []),
+    ],
+    text: [
+      "The job joins the colony's build queue and is paid with its production; it can be bought like any item.",
+      "Until it is done the ship is in dock and takes no part in anything. It comes back repaired, with its crew's experience.",
+      "Drives and fuel range improve on every ship by themselves; armor, shields, computers, weapons and specials change only by refitting.",
+    ],
+    note: "Removing the job from the queue scraps the ship.",
+  };
+}
+
+/** The terms of an empire's score, each with what it counts, from the sim's SCORE numbers. */
+export function scoreParts(b: ScoreBreakdown): { label: string; value: number; why: string }[] {
+  const c = b.counts;
+  const parts = [
+    { label: "Turns played", value: b.turns, why: b.turns === 0 && c.turns > 0 ? "none: no population left" : `−${SCORE.perTurn} for each of ${c.turns} turns` },
+    { label: "Galaxy and rivals", value: b.galaxy, why: b.galaxy > 0 ? `${c.empires} empires × ${b.galaxy / c.empires} for this galaxy size` : "none: no population left" },
+    { label: "Research", value: b.research, why: `${c.fields} fields × ${SCORE.perField}` },
+    { label: "Hyper-advanced", value: b.hyper, why: `${c.hyperCategories} categories × ${SCORE.perHyperCategory}` },
+    { label: "Population", value: b.population, why: `${c.population} units × ${SCORE.perPop}` },
+    { label: "Captured population", value: b.captured, why: `${c.capturedPop} units taken by invasion × ${SCORE.capturedPremium}, divided by galaxy size` },
+    { label: "Empires eliminated", value: b.eliminations, why: `${c.eliminated} × ${SCORE.perEliminated}` },
+    { label: "Guardian of Orion", value: b.orion, why: `${SCORE.orion} for slaying it` },
+    { label: "Council victory", value: b.council, why: `${SCORE.council} for being elected` },
+    { label: "Raiders destroyed", value: b.antares, why: `${SCORE.antares} for beating them at home` },
+  ];
+  return parts.filter((p) => p.value !== 0 || p.label === "Turns played" || p.label === "Population" || p.label === "Research");
+}
+
+/** Tip card for a score: its terms and the race pick multiplier. */
+export function scoreTip(b: ScoreBreakdown): TipCard {
+  return {
+    title: `Score ${b.total}`, kind: "As in the original",
+    rows: [
+      ...scoreParts(b).map((p) => [p.label, signed(p.value)] as [string, string]),
+      ["Subtotal", String(b.subtotal)],
+      ["Race pick bonus", `×${b.multiplier / 100}`],
+    ],
+    text: [
+      `The sum is multiplied by 100% plus ${SCORE.perUnspentPick}% for each race pick left unspent (${b.counts.unspentPicks} here). Quicker wins score higher: every turn costs a point.`,
+    ],
+  };
 }
