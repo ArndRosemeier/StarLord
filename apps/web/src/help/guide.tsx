@@ -9,7 +9,7 @@ import {
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, GUARDIAN_SCORE, BANKRUPTCY,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
   SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, STARTING_SHIPS, STARTING_STATION, BUILDINGS, BASE_SCRAP_REFUND, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
-  TRADE_GOODS_RATE, TRAIT_EFFECTS, GOVERNMENTS, RESEARCH_PER_SCIENTIST, AI_PEACE, EVENTS, MAX_WEAPON_SLOTS, COMM_REDIRECT_RANGE, HULLS, TECHS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, abilityValue, type HeroSkill, type HeroSkillGroup,
+  TRADE_GOODS_RATE, TRAIT_EFFECTS, GOVERNMENTS, RESEARCH_PER_SCIENTIST, AI_PEACE, EVENTS, MAX_WEAPON_SLOTS, COMM_REDIRECT_RANGE, HULLS, TECHS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, COVET, PAID_WAR, abilityValue, type HeroSkill, type HeroSkillGroup,
 } from "@starlord/sim";
 import { fmt, pct } from "../ui/format";
 import type { GuideSlug } from "./entries";
@@ -365,7 +365,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Moving and firing</h3>
       <Ul>
         <li>Whoever started the fight attacks, unless the battle is at the other side's colony: a colony's owner always defends. The defender deploys on the left, the attacker {DEPLOY.rightColumn - DEPLOY.leftColumn} squares away on the right (a human attacker takes the left instead). Ships line up in a column by size, biggest in the middle; the planet sits behind the defenders with its station in front of it.</li>
-        <li>Every round the attacker's ships act first, one after another, then the defender's. With the <b>Ship initiative</b> game option, every ship of both sides acts in order of combat speed plus a tenth of its beam attack instead.</li>
+        <li>Every round the attacker's ships act first, one after another, then the defender's. With the <b>Ship initiative</b> game option, every ship of both sides acts in order of combat speed plus a tenth of its beam attack instead, plus the Tactics skill of its owner's administrator in that system.</li>
         <li>Ships spend their combat speed to move and turn. Each beam fires only into its arc, so facing matters.</li>
         <li>A beam's hit chance is its attack against the target's beam defense, minus a penalty that grows with range. Damage also drops with range unless the mount ignores it.</li>
         <li>Better rolls do more damage: a shot that barely hits does its minimum, a near-certain one close to its maximum.</li>
@@ -550,7 +550,10 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Peace comes only after {TREATY_ANSWER.peaceMinWarTurns} turns of war, and relations do not count: the longer the
         war, the more other wars they fight, the stronger you are, the more ships they have lost and the more of their
         systems your ships hold, the likelier they agree. Their strength counts half for every other war they fight; their
-        ships in your systems make them bolder. Computer rulers also offer peace themselves once a war has run {AI_PEACE.minTurns} turns.
+        ships in your systems make them bolder. Computer rulers also offer peace themselves once a war has run {AI_PEACE.minTurns} turns:
+        when they are winning they ask a price for it, when they are losing badly they offer you one (BC, a technology, a
+        tribute or one of their systems), which you get if you accept. A computer ruler that has fought an enemy of yours for
+        {" "}{PAID_WAR.minWarTurns} turns and is losing ships to it may also offer you BC or a technology to declare war on that enemy.
       </P>
       <P>
         Every proposal wears down their patience: {PATIENCE.perAsk} points, and {PATIENCE.firstAsk} to{" "}
@@ -574,7 +577,9 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>
         A computer ruler you hurt (spying, threats, refused demands) may count strikes against you: the first is a
         warning, a second ends your treaties or asks for compensation, and a third means war when its fleets can stand
-        up to yours. Computer rulers also make treaties and wars among themselves. Charisma (+{TRAIT_EFFECTS.charismaticDiplomacy}), telepathy (+{TRAIT_EFFECTS.telepathicDiplomacy}),
+        up to yours. Before that war, a ruler that is not Honorable may demand one of your systems it covets instead (from
+        Average difficulty, a system within its fleets' reach with at least {COVET.minValue / COVET.perPop} population, never your
+        capital's): hand it over, or refuse or ignore the demand and it declares war. Computer rulers also make treaties and wars among themselves. Charisma (+{TRAIT_EFFECTS.charismaticDiplomacy}), telepathy (+{TRAIT_EFFECTS.telepathicDiplomacy}),
         Xeno Psychology and Diplomat leaders add diplomatic points to every deal an empire offers.
       </P>
     </>

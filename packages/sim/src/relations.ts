@@ -10,7 +10,7 @@ import { empires } from "./empire.js";
 import { population } from "./economy.js";
 import type { GameState, PlayerId } from "./types.js";
 import type { Rng } from "./rng.js";
-import { attitude, breakAllTreaties, declareWar, fixedRoll, offerCompensation, relation, temperament } from "./diplomacy.js";
+import { attitude, breakAllTreaties, declareWar, demandCovetedSystem, fixedRoll, offerCompensation, relation, temperament } from "./diplomacy.js";
 
 /**
  * The relation model, after the original: one value per pair of empires
@@ -542,7 +542,8 @@ function strike(state: GameState, ai: PlayerId, p: PlayerId, ev: { reason: numbe
     return;
   }
   if (n > 2 || (n > 1 && !treaty)) {
-    // The original may demand a coveted system first; how it picks one is not decoded, so StarLord goes straight to the strength test.
+    // A ruler that is not Honorable demands a system it covets first (see COVET); otherwise war if its fleets measure up.
+    if (t?.name !== TEMPERAMENTS.honorable.name && demandCovetedSystem(state, ai, p, emit)) return;
     if (strengthRatio(state, ai, p) > STRIKES.warStrength) strikeWar(state, ai, p, roll, emit);
     return;
   }

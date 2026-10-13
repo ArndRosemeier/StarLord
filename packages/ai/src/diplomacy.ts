@@ -1,7 +1,7 @@
 import {
-  AI_OFFERS, AI_WAR, TIER_OF_TECH, attitude, audienceTired, canSign, counterPrice, demandAnswer, difficultyLevel, effectiveTemperament,
-  empireExpenses, fixedRoll, isDemand, isScoredTreaty, monsterDemands, patience, peacePriceLevel, peaceWish, persOf, raceDiplomacyPoints,
-  getRace, relation, strengthRatio, treatyAnswer, trustIn,
+  AI_OFFERS, AI_PEACE, AI_WAR, PAID_WAR, TIER_OF_TECH, attitude, audienceTired, canSign, counterPrice, demandAnswer, difficultyLevel, effectiveTemperament,
+  empireExpenses, fixedRoll, isDemand, isScoredTreaty, monsterDemands, patience, peacePayLevel, peacePriceLevel, peaceWish, persOf, raceDiplomacyPoints,
+  getRace, relation, shipLossesOf, strengthRatio, temperament, tradableTechs, treatyAnswer, trustIn,
   type Command, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type ProposalTerms,
 } from "@starlord/sim";
 import { strategyOf } from "./strategies.js";
@@ -73,8 +73,9 @@ export function audienceAnswer(view: PlayerView, p: Proposal): { accept: boolean
   }
   if (isDemand(p.kind)) {
     if (!player.isHuman) return { accept: demandAnswer(view, p).outcome === "accept" };
-    // A human's automation answers its ally's call to arms if its fleets can take the enemy, and other demands like a computer ruler.
-    if (p.kind === "demandWar" && relation(view, p.from, p.to).status === "alliance" && p.third !== undefined) {
+    // A human's automation answers its ally's call to arms (or a paid offer to join a war) if its fleets can take the enemy,
+    // and other demands like a computer ruler.
+    if (p.kind === "demandWar" && (p.payment || relation(view, p.from, p.to).status === "alliance") && p.third !== undefined) {
       return { accept: !peaceful && strengthRatio(view, view.viewer, p.third) >= 100 };
     }
     return { accept: demandAnswer(view, p).outcome === "accept" };
@@ -104,9 +105,9 @@ function canOffer(view: PlayerView, other: PlayerId, kind: ProposalKind, terms: 
 function techSwap(view: PlayerView, other: PlayerId): ProposalTerms | null {
   const player = me(view);
   const them = view.players[other]!;
-  const want = them.techs.filter((t) => !player.techs.includes(t) && TIER_OF_TECH[t]).sort((a, b) => techValue(b) - techValue(a) || a.localeCompare(b))[0];
+  const want = tradableTechs(them, player).sort((a, b) => techValue(b) - techValue(a) || a.localeCompare(b))[0];
   if (!want) return null;
-  const give = player.techs.filter((t) => !them.techs.includes(t) && TIER_OF_TECH[t] && techValue(t) >= techValue(want) * 0.8)
+  const give = tradableTechs(player, them).filter((t) => techValue(t) >= techValue(want) * 0.8)
     .sort((a, b) => techValue(a) - techValue(b) || a.localeCompare(b))[0];
   return give ? { techId: give, wantTechId: want } : null;
 }
@@ -169,9 +170,37 @@ function offer(view: PlayerView, other: PlayerId): Command | null {
     default:
       break;
   }
-  // The original then may ask the human to attack an enemy for pay; StarLord's proposals cannot carry a payment to the receiver, so that offer is left out.
+  // A trade treaty it would not offer turns into an offer to pay the human to attack one of its enemies.
+  if (pick === "trade" && !go) return paidWarOffer(view, other, roll);
   if (!go || !canOffer(view, other, pick, terms)) return null;
   return { type: "propose", to: other, kind: pick, ...terms };
+}
+
+/**
+ * The original's paid call to arms (FUN_000501c5, see PAID_WAR): an enemy the
+ * ruler has fought long, hates and is losing ships to, picked at random, and
+ * a payment (BC or a technology) at level its losses / (the enemy's + 1).
+ */
+function paidWarOffer(view: PlayerView, other: PlayerId, roll: (n: number) => number): Command | null {
+  const P = PAID_WAR;
+  if (temperament(view, view.viewer) === "xenophobic" || me(view).isHuman || !view.players[other]?.isHuman) return null;
+  const player = me(view);
+  const them = view.players[other]!;
+  const enemies = player.contacts.filter((k) => {
+    if (k === other || !them.contacts.includes(k) || !view.players[k]?.alive) return false;
+    const r = relation(view, view.viewer, k);
+    if (r.status !== "war" || view.turn - r.since < P.minWarTurns) return false;
+    if (relation(view, other, k).status === "war") return false;
+    const lost = shipLossesOf(view, view.viewer, k);
+    return attitude(view, view.viewer, k) <= P.maxRelation && lost > 0 && shipLossesOf(view, k, view.viewer) < lost;
+  });
+  if (enemies.length === 0) return null;
+  const enemy = enemies[roll(enemies.length) - 1]!;
+  const level = Math.min(P.maxLevel, Math.trunc(shipLossesOf(view, view.viewer, enemy) / (shipLossesOf(view, enemy, view.viewer) + 1)));
+  const payment = counterPrice(view, other, view.viewer, level, `paidWar${view.turn}|${view.viewer}|${other}`, "nonAggression");
+  if (!payment) return null;
+  const terms: ProposalTerms = { third: enemy, payment };
+  return canOffer(view, other, "demandWar", terms) ? { type: "propose", to: other, kind: "demandWar", ...terms } : null;
 }
 
 /** Peace by the original's formula (AI_PEACE); between two computer empires StarLord uses the same (the original's rule there is not decoded). */
@@ -184,7 +213,11 @@ function peaceOffer(view: PlayerView, other: PlayerId, peaceful: boolean): Comma
     const price = counterPrice(view, view.viewer, other, peacePriceLevel(w.score), `peace${view.turn}|${view.viewer}|${other}`, "peace");
     if (price && canOffer(view, other, "peace", { price })) return { type: "propose", to: other, kind: "peace", price };
   }
-  // The original's losing ruler offers to pay for peace; StarLord's proposals cannot carry that, so it offers plain peace.
+  // A losing computer ruler offers a human something for peace: a sum, a technology, a tribute or a system.
+  if (w.score < AI_PEACE.payBelow && !me(view).isHuman && view.players[other]?.isHuman) {
+    const payment = counterPrice(view, other, view.viewer, peacePayLevel(w.score), `peacePay${view.turn}|${view.viewer}|${other}`, "peace");
+    if (payment && canOffer(view, other, "peace", { payment })) return { type: "propose", to: other, kind: "peace", payment };
+  }
   return { type: "propose", to: other, kind: "peace" };
 }
 

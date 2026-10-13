@@ -1,21 +1,21 @@
 import {
-  AI_PEACE, COUNTER_PRICE, DEMAND_ANSWER, NO_WAR_MULT, PATIENCE, PEACE_ANSWER, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS,
+  AI_PEACE, COUNTER_PRICE, COVET, DEMAND_ANSWER, NO_WAR_MULT, PATIENCE, PEACE_ANSWER, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS,
   TEMPERAMENTS, TREATY_ANSWER, TREATY_YIELD, TRIBUTE_PERCENTS, TRUST, type Temperament, PROPOSAL_LIFETIME,
 } from "./data/diplomacy.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import { leaderTradeBonus } from "./leaders.js";
 import { raceDiplomacyPoints } from "./raceEffects.js";
 import { getRace, hasTrait } from "./data/races.js";
-import { TIER_OF_TECH } from "./data/techs.js";
+import { TECHS, TIER_OF_TECH } from "./data/techs.js";
 import type { Emit } from "./context.js";
 import { androids, empireTotals, population } from "./economy.js";
 import { empireBonus, empireIncome, empires, fleetRange, grantTech, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
 import { piratesActive } from "./randomEvents.js";
-import type { DiplomaticStatus, GameState, Id, PlayerId, Price, Proposal, ProposalKind, Relation } from "./types.js";
+import type { DiplomaticStatus, GameState, Id, Player, PlayerId, Price, Proposal, ProposalKind, Relation } from "./types.js";
 import type { Rng } from "./rng.js";
 import {
-  REASON, addTreatyNoWar, baselineOf, clearShipLosses, firstContact, fleetPower, keyedRoll, persOf,
+  REASON, addTreatyNoWar, baselineOf, clearShipLosses, difficultyLevel, firstContact, fleetPower, keyedRoll, persOf,
   raceRelation, relationEvent, relationsTick, rngRoll, setBaseline, setNoWar, setRelation, setStrikes, shipLossesOf, strengthRatio,
   strikesOf, type Roll,
 } from "./relations.js";
@@ -96,7 +96,24 @@ function repulsivePair(state: GameState, a: PlayerId, b: PlayerId): boolean {
   return hasTrait(getRace(state.players[a]!.raceId), "repulsive") || hasTrait(getRace(state.players[b]!.raceId), "repulsive");
 }
 
-export type ProposalTerms = Pick<Proposal, "techId" | "wantTechId" | "starId" | "third" | "percent" | "price">;
+export type ProposalTerms = Pick<Proposal, "techId" | "wantTechId" | "starId" | "third" | "percent" | "price" | "payment">;
+
+/**
+ * Whether `receiver` can use a technology handed over in a trade, gift,
+ * demand or price, as in the original (FUN_000e410f): it must be an
+ * application they don't know yet, and an advanced government only goes to
+ * the empire whose government it advances.
+ */
+export function canReceiveTech(receiver: Player, techId: string): boolean {
+  if (!TIER_OF_TECH[techId] || receiver.techs.includes(techId)) return false;
+  const gov = TECHS[techId]?.government;
+  return !gov || gov === GOVERNMENTS[receiver.government]?.advanced;
+}
+
+/** Technologies `from` knows that `to` could be given. */
+export function tradableTechs(from: Player, to: Player): string[] {
+  return from.techs.filter((t) => canReceiveTech(to, t));
+}
 
 function coloniesAt(state: GameState, playerId: PlayerId, starId: Id) {
   return Object.values(state.colonies).filter((c) => c.ownerId === playerId && state.planets[c.planetId]?.starId === starId);
@@ -121,6 +138,10 @@ export function canSign(state: GameState, from: PlayerId, to: PlayerId, kind: Pr
     const why = giftProblem(state, to, from, terms.price);
     if (why) return `can't pay the price: ${why}`;
   }
+  if (terms.payment) {
+    const why = giftProblem(state, from, to, terms.payment);
+    if (why) return `can't make the payment: ${why}`;
+  }
   const third = terms.third !== undefined ? state.players[terms.third] : undefined;
   const validThird = () => !!third && third.kind === "empire" && third.alive && third.id !== from && third.id !== to;
   switch (kind) {
@@ -140,12 +161,15 @@ export function canSign(state: GameState, from: PlayerId, to: PlayerId, kind: Pr
       if (!pf.techs.includes(terms.techId) || pt.techs.includes(terms.techId)) return "they already know what you offer";
       if (!pt.techs.includes(terms.wantTechId) || pf.techs.includes(terms.wantTechId)) return "they do not have what you ask for";
       if (!TIER_OF_TECH[terms.techId] || !TIER_OF_TECH[terms.wantTechId]) return "that technology cannot be traded";
+      if (!canReceiveTech(pt, terms.techId)) return "they cannot use what you offer";
+      if (!canReceiveTech(pf, terms.wantTechId)) return "you cannot use what you ask for";
       return null;
     case "demandTribute":
       return TRIBUTE_PERCENTS.includes(terms.percent as 5 | 10) ? null : "tribute is 5% or 10%";
     case "demandTech":
       if (!terms.wantTechId || !TIER_OF_TECH[terms.wantTechId]) return "name a technology";
-      return pt.techs.includes(terms.wantTechId) && !pf.techs.includes(terms.wantTechId) ? null : "they do not have it";
+      if (!pt.techs.includes(terms.wantTechId) || pf.techs.includes(terms.wantTechId)) return "they do not have it";
+      return canReceiveTech(pf, terms.wantTechId) ? null : "you cannot use it";
     case "demandSystem":
       if (!terms.starId) return "name a system";
       return coloniesAt(state, to, terms.starId).length > 0 ? null : "they have no colony there";
@@ -448,8 +472,8 @@ export function counterPrice(state: GameState, ruler: PlayerId, payer: PlayerId,
   const mine = bestTechLevel(state, payer);
   const theirs = bestTechLevel(state, ruler);
   const r = mine >= theirs ? 10 : Math.max(1, Math.trunc((mine * 10) / theirs));
-  // The original also leaves out techs the ruler cannot learn and other governments' techs; StarLord lets every listed tech be traded.
-  const techs = you.techs.filter((t) => TIER_OF_TECH[t] && !them.techs.includes(t))
+  // Only techs the ruler can use: not known yet, and an advanced government only for the government it advances.
+  const techs = tradableTechs(you, them)
     .sort((a, b) => (TIER_OF_TECH[b]!.cost - TIER_OF_TECH[a]!.cost) || a.localeCompare(b));
   let techId: string | null = null;
   if (level <= r && techs.length) {
@@ -515,6 +539,7 @@ const isComputer = (state: GameState, id: PlayerId) => state.players[id]?.kind =
 /** Carries out an accepted proposal. */
 export function acceptProposal(state: GameState, p: Proposal, emit?: Emit): void {
   if (p.price) payPrice(state, p.to, p.from, p.price, emit);
+  if (p.payment) payPrice(state, p.from, p.to, p.payment, emit);
   const roll = keyedRoll(state, `${p.id}|accept`);
   switch (p.kind) {
     case "ceasefire":
@@ -593,7 +618,12 @@ export function rejectProposal(state: GameState, p: Proposal, emit?: Emit): void
   if (isDemand(p.kind) && isComputer(state, p.to) && state.players[p.from]?.alive) {
     demandConsequences(state, p, roll, emit);
   }
-  if (p.kind === "demandWar" && isComputer(state, p.from) && relation(state, p.from, p.to).status === "alliance") {
+  if (isCovetDemand(state, p) && state.players[p.from]?.alive && relation(state, p.from, p.to).status !== "war") {
+    declareWar(state, p.from, p.to, { blame: p.to, roll });
+    emit?.({ kind: "diplomacy", playerId: p.to, other: p.from, what: "declared war on you" });
+  }
+  // A paid offer to join a war is only an offer: refusing it leaves an alliance standing.
+  if (p.kind === "demandWar" && !p.payment && isComputer(state, p.from) && relation(state, p.from, p.to).status === "alliance") {
     recordBrokenFaith(state, p.to, p.from, "alliance");
     setStatus(state, p.from, p.to, "none");
     exhaustPatience(state, p.from, p.to);
@@ -787,6 +817,69 @@ export function offerCompensation(state: GameState, ai: PlayerId, human: PlayerI
   return true;
 }
 
+/** Stars where the player's capital stands (the Capitol, or the home system while it has none). */
+function capitalStars(state: GameState, playerId: PlayerId): Set<Id> {
+  const out = new Set(Object.values(state.colonies).filter((c) => c.ownerId === playerId && c.buildings.includes("capitol")).map((c) => state.planets[c.planetId]!.starId));
+  if (out.size === 0) out.add(state.players[playerId]!.homeStarId);
+  return out;
+}
+
+/**
+ * The system of `you` a computer ruler covets, after the original
+ * (FUN_0004f596 and its war planner, see COVET): the one worth most to it
+ * (nearest first on a tie) of those within its fleets' range of its colonies,
+ * worth at least COVET.minValue, never your capital's and only while you hold
+ * another system. Null when it covets none.
+ */
+export function covetedSystem(state: GameState, ai: PlayerId, you: PlayerId): { starId: Id; value: number } | null {
+  if (difficultyLevel(state) < COVET.minDifficulty) return null;
+  const ruler = state.players[ai]!;
+  const starOf = new Map(state.galaxy.stars.map((s) => [s.id, s]));
+  const own = Object.values(state.colonies).filter((c) => c.ownerId === ai).map((c) => starOf.get(state.planets[c.planetId]!.starId)!).filter(Boolean);
+  if (own.length === 0) return null;
+  const pops = new Map<Id, number>();
+  for (const c of Object.values(state.colonies)) {
+    if (c.ownerId !== you) continue;
+    const s = state.planets[c.planetId]!.starId;
+    pops.set(s, (pops.get(s) ?? 0) + population(c));
+  }
+  if (pops.size < 2) return null;
+  const capital = capitalStars(state, you);
+  const range = fleetRange(ruler);
+  let best: { starId: Id; value: number; d: number } | null = null;
+  for (const [starId, pop] of pops) {
+    const star = starOf.get(starId);
+    if (!star || capital.has(starId)) continue;
+    const value = pop * COVET.perPop;
+    if (value < COVET.minValue) continue;
+    const d = Math.min(...own.map((o) => distance(o, star)));
+    if (d > range) continue;
+    if (!best || value > best.value || (value === best.value && (d < best.d || (d === best.d && starId < best.starId)))) best = { starId, value, d };
+  }
+  return best && { starId: best.starId, value: best.value };
+}
+
+/** A computer ruler demands the system it covets; refusing means war. False when it covets none or has already asked. */
+export function demandCovetedSystem(state: GameState, ai: PlayerId, you: PlayerId, emit?: Emit): boolean {
+  const target = covetedSystem(state, ai, you);
+  if (!target) return false;
+  const id = proposalId(state.turn, ai, you, "demandSystem");
+  if (state.proposals.some((p) => p.id === id)) return false;
+  state.proposals.push({ id, from: ai, to: you, kind: "demandSystem", turn: state.turn, starId: target.starId });
+  emit?.({ kind: "diplomacy", playerId: you, other: ai, what: "demands one of your systems, or there will be war" });
+  return true;
+}
+
+/** A system demand a computer ruler put to a human over its grievances: refusing it (or ignoring it) means war. */
+export function isCovetDemand(state: GameState, p: Proposal): boolean {
+  return p.kind === "demandSystem" && isComputer(state, p.from) && !!state.players[p.to]?.isHuman;
+}
+
+/** The level of what a computer ruler offers to pay for peace when it is losing (S under -10): level (-10 - S) / 5 + 2. */
+export function peacePayLevel(score: number): number {
+  return Math.trunc((AI_PEACE.payBelow - score) / AI_PEACE.priceStep) + AI_PEACE.priceBase;
+}
+
 /** Whether `from` has that treaty with `to` to break. */
 export function hasTreaty(state: GameState, from: PlayerId, to: PlayerId, treaty: TreatyName): boolean {
   const r = relation(state, from, to);
@@ -817,8 +910,8 @@ export function giftProblem(state: GameState, from: PlayerId, to: PlayerId, gift
   if (!pt || pt.kind !== "empire" || !pt.alive || to === from) return "no such empire";
   if (!pf.contacts.includes(to)) return "no contact";
   if (gift.bc !== undefined && (!(gift.bc > 0) || gift.bc > pf.bc)) return "not enough BC";
-  if (gift.techId !== undefined && (!pf.techs.includes(gift.techId) || pt.techs.includes(gift.techId) || !TIER_OF_TECH[gift.techId])) {
-    return "cannot give that technology";
+  if (gift.techId !== undefined && (!pf.techs.includes(gift.techId) || !canReceiveTech(pt, gift.techId))) {
+    return pf.techs.includes(gift.techId) && TIER_OF_TECH[gift.techId] && !pt.techs.includes(gift.techId) ? "they cannot use that technology" : "cannot give that technology";
   }
   if (gift.starId !== undefined && coloniesAt(state, from, gift.starId).length === 0) return "you have no colony there";
   if (gift.tribute !== undefined && !TRIBUTE_PERCENTS.includes(gift.tribute as 5 | 10)) return "tribute is 5% or 10%";
@@ -877,6 +970,10 @@ export function diplomacyTick(state: GameState, rng: Rng, emit?: Emit): void {
   aiDiplomacyTick(state, rng, emit);
   rampTreaties(state, rngRoll(rng));
   payTributes(state, emit);
+  // A coveted system's demand left unanswered counts as refused.
+  for (const p of state.proposals) {
+    if (state.turn - p.turn >= PROPOSAL_LIFETIME && isCovetDemand(state, p)) rejectProposal(state, p, emit);
+  }
   state.proposals = state.proposals.filter((p) => state.turn - p.turn < PROPOSAL_LIFETIME);
 }
 

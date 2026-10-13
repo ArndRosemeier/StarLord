@@ -115,8 +115,6 @@ export interface Colony {
   progress: number;
   founded: number;
   terraformed: number;
-  /** No longer used: conquered people now assimilate instead (see `aliens`). Kept for old saves. */
-  unrestUntil: number;
   /** Population units not yet assimilated after a conquest; they produce half and may revolt. */
   aliens?: number;
   /** Turns spent assimilating the next alien unit. */
@@ -462,6 +460,8 @@ export interface Proposal {
   percent?: number;
   /** A price the proposer asks of the receiver for signing (a counter-offer). */
   price?: Price;
+  /** What the proposer pays the receiver if it accepts (a computer ruler buying peace, or paying you to join its war). */
+  payment?: Price;
   /** The listener's d100 for its answer, fixed when the proposal is made. */
   roll?: number;
   /** The listener's patience with the proposer just before this ask. */
