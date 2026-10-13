@@ -26,7 +26,7 @@ import { distance } from "./galaxy.js";
 import { repairTick } from "./repair.js";
 import { addShips, deleteFleet, removeShips, takeShips } from "./fleetOps.js";
 import { builtCrewXp, crewTick } from "./crew.js";
-import { bombColony, captureColony, destroyColony, exterminate, groundPhase, revoltFight, type Silenced } from "./ground.js";
+import { OrbitalPause, bombColony, captureColony, destroyColony, exterminate, groundPhase, revoltFight, type OrbitalPrompt, type Silenced } from "./ground.js";
 import { assignDefaultJobs, newColonistJob, removeAndroids, removePopulation, starveOne } from "./jobs.js";
 import {
   assignLeader, captainLost, captainOf, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
@@ -51,14 +51,16 @@ export type TurnOrders = Partial<Record<PlayerId, Command[]>>;
  * Advances the game by one turn. Pure with respect to its input: the given
  * state is cloned, so callers can keep history for replays and undo.
  */
-export function processTurn(prev: GameState, orders: TurnOrders, pauseAt?: TurnContext["pauseAt"]): GameState {
+export function processTurn(
+  prev: GameState, orders: TurnOrders, pauseAt?: TurnContext["pauseAt"], pauseAtOrbit?: TurnContext["pauseAtOrbit"],
+): GameState {
   registerRaces(prev.settings.customRaces);
   const state = structuredClone(prev);
   if (state.over) return state;
   state.events = [];
   state.combats = [];
   const rng = new Rng(state.rng);
-  const ctx: TurnContext = { state, rng, emit: (e) => state.events.push({ turn: state.turn, ...e }), pauseAt };
+  const ctx: TurnContext = { state, rng, emit: (e) => state.events.push({ turn: state.turn, ...e }), pauseAt, pauseAtOrbit };
 
   // Rotate who acts first each turn so no seat always wins same-turn contests.
   // Answers to proposals come after everything else, so an empire can answer
@@ -370,6 +372,13 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       map.set(cmd.battle, forBattle);
       break;
     }
+    case "orbitalStrike": {
+      const map = ctx.orbitalOrders ??= new Map();
+      const forColony = map.get(cmd.colonyId) ?? new Map();
+      forColony.set(playerId, cmd.choice);
+      map.set(cmd.colonyId, forColony);
+      break;
+    }
     case "setIdleAlert":
       if (cmd.on) delete player.idleAlertOff;
       else player.idleAlertOff = true;
@@ -461,6 +470,25 @@ export function pendingBattle(prev: GameState, orders: TurnOrders, playerId: Pla
     });
   } catch (e) {
     if (e instanceof BattlePause) return { battle: e.battle, key: e.key, starId: e.starId, reportId: e.reportId, playerId };
+    throw e;
+  }
+  return null;
+}
+
+/**
+ * The first enemy colony whose orbit `playerId`'s attack-stance fleets will
+ * hold after this turn's battles and that they have given no `orbitalStrike`
+ * order for, with what each choice would do there (as the original's Orbital
+ * Combat Selection window asks after a won battle). Battles still waiting on
+ * the player's orders (`pendingBattle`) resolve by themselves here, so ask for
+ * those first. Null when nothing is left to decide.
+ */
+export function pendingOrbital(prev: GameState, orders: TurnOrders, playerId: PlayerId): OrbitalPrompt | null {
+  if (!prev.players[playerId]?.isHuman) return null;
+  try {
+    processTurn(prev, orders, undefined, (p) => p === playerId);
+  } catch (e) {
+    if (e instanceof OrbitalPause) return e.prompt;
     throw e;
   }
   return null;

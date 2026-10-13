@@ -1,6 +1,7 @@
 import {
   blocksInvasion, canMindControl, canReach, colonyDefenseStrength, distance, isHostile, portalStars, raiderHomeShips, relation, type Command, type Fleet, type PlayerView,
 } from "@starlord/sim";
+import { orbitalOrders } from "./orbital.js";
 import { strategyOf } from "./strategies.js";
 import { colonyStar, fleetRoles, fleetStrength, hostileFleetsNear, me, myColonies, myFleets, personality, starById } from "./util.js";
 
@@ -33,7 +34,8 @@ function rallyStar(view: PlayerView): string | null {
  */
 export function militaryOrders(view: PlayerView): Command[] {
   const player = me(view);
-  const out: Command[] = [];
+  // What the fleets do from orbit to enemy colonies this turn (bomb, biological weapons, destroy or spare).
+  const out: Command[] = orbitalOrders(view);
   const pers = personality(view);
   const posture = POSTURE[strategyOf(view, "military")] ?? POSTURE.balanced!;
   const wantDoctrine = posture.retreatBelow ?? (pers.aggression > 0.6 ? 0.3 : 0.55);

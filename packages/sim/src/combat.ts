@@ -2664,8 +2664,8 @@ export class Battle {
  * beam defense) and are halved; missiles and bombs use up to that many shots,
  * torpedoes fire as they reload; every hit loses the planet's shield. The
  * total is the expected damage (the original rolls each shot). Bomber
- * squadrons are counted for two sorties (an estimate). Spores are counted
- * once, as before.
+ * squadrons are counted for two sorties (an estimate). Biological weapons launch
+ * each round they have ammunition for, like bombs.
  */
 export function bombardment(state: GameState, fleet: Fleet, shield = 0): { bombs: number; spores: number } {
   const player = state.players[fleet.ownerId]!;
@@ -2706,7 +2706,8 @@ export function bombardment(state: GameState, fleet: Fleet, shield = 0): { bombs
       } else if (w.kind === "bomb") {
         bombs += Math.max(0, (w.damageMin + w.damageMax) / 2 - shield) * n * Math.min(rounds, w.ammo ?? rounds);
       } else if (w.kind === "spores") {
-        spores += w.damageMax * n;
+        // Each launch of the ten bombardment rounds is a separate chance (shields don't stop them).
+        spores += w.damageMax * n * Math.min(rounds, w.ammo ?? rounds);
       } else if (w.effect === "bombers" && bestBomb) {
         // Bomber squadrons carry one bomb per craft.
         bombs += Math.max(0, (bestBomb.damageMin + bestBomb.damageMax) / 2 - shield) * SQUADRON_SIZE * n * 2;
