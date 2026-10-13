@@ -104,7 +104,6 @@ export type Command =
   | { type: "hireLeader"; leaderId: Id }
   | { type: "assignLeader"; leaderId: Id; targetId: Id | null }
   | { type: "dismissLeader"; leaderId: Id }
-  | { type: "setCouncilVote"; vote: PlayerId | "abstain" | "auto" }
   /** Casts this player's votes at the council session meeting at the end of this turn. */
   | { type: "castCouncilVote"; vote: PlayerId | "abstain" }
   | { type: "setAutomation"; domains: string[] }
@@ -425,9 +424,6 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       if (called.candidates.includes(playerId)) return fail("candidates vote for themselves");
       return cmd.vote === "abstain" || called.candidates.includes(cmd.vote) ? OK : fail("not a candidate");
     }
-    case "setCouncilVote":
-      if (cmd.vote === "abstain" || cmd.vote === "auto") return OK;
-      return state.players[cmd.vote]?.kind === "empire" ? OK : fail("no such empire");
     case "setAutomation":
       return Array.isArray(cmd.domains) ? OK : fail("bad automation list");
     case "setAutomationStrategy":

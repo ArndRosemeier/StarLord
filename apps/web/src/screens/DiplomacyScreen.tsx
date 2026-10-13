@@ -214,18 +214,6 @@ export function DiplomacyScreen({ onAudience, onCouncil }: { onAudience: (r: Aud
               <CouncilResult verdict={false} />
             </details>
           )}
-          <label className="row" title="Each session asks for your votes; this decides them when you end the turn without casting them, or when diplomacy is automated.">
-            Votes you don't cast yourself
-            <select value={String(me.councilVote)} disabled={readOnly}
-              onChange={(e) => {
-                const v = e.target.value;
-                session.issue({ type: "setCouncilVote", vote: v === "auto" || v === "abstain" ? v : Number(v) });
-              }}>
-              <option value="auto">As a computer empire would (by your relations with the candidates)</option>
-              <option value="abstain">Abstain</option>
-              {view.players.filter((p) => p.kind === "empire" && p.alive).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </label>
         </div>
       )}
     </div>

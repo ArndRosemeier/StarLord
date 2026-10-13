@@ -365,9 +365,6 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "dismissLeader":
       dismissLeader(state, cmd.leaderId);
       break;
-    case "setCouncilVote":
-      player.councilVote = cmd.vote;
-      break;
     case "castCouncilVote":
       state.council.called!.ballots[playerId] = cmd.vote === "abstain" ? null : cmd.vote;
       break;

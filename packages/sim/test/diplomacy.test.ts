@@ -426,6 +426,8 @@ describe("galactic council", () => {
     expect(validateCommand(s, 0, { type: "castCouncilVote", vote: 1 }).ok).toBe(false);
     expect(validateCommand(s, 2, { type: "castCouncilVote", vote: 2 }).ok).toBe(false);
     expect(validateCommand(s, 2, { type: "castCouncilVote", vote: 1 }).ok).toBe(true);
+    // Nothing votes for a person: without a ballot they abstain.
+    expect(processTurn(s, {}).council.lastResult!.ballots![2]).toBeNull();
     const abstain = processTurn(s, { 2: [{ type: "castCouncilVote", vote: "abstain" }] });
     expect(abstain.council.lastResult!.ballots![2]).toBeNull();
     const backed = processTurn(s, { 2: [{ type: "castCouncilVote", vote: 1 }] });

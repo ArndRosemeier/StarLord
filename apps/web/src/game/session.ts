@@ -318,7 +318,9 @@ export class GameSession {
     const save = data as SavedGame;
     if (save?.format !== "starlord-save" || !save.state) throw new Error("Not a StarLord save file");
     if (save.state.version !== 2) throw new Error(`Unsupported game version ${save.state.version}`);
-    return new GameSession(save.state, save.me, save.pending ?? [], save.record ?? null, save.answers ?? {}, save.counters ?? {});
+    // Saves from before councils were always asked may hold the old standing council vote order.
+    const pending = (save.pending ?? []).filter((c) => (c.type as string) !== "setCouncilVote");
+    return new GameSession(save.state, save.me, pending, save.record ?? null, save.answers ?? {}, save.counters ?? {});
   }
 }
 
@@ -347,7 +349,6 @@ function commandKey(cmd: Command): string | null {
     case "setResearch":
     case "setTaxRate":
     case "setDoctrine":
-    case "setCouncilVote":
     case "castCouncilVote":
     case "councilResponse":
     case "setAutomation":

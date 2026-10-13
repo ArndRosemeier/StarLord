@@ -335,8 +335,6 @@ export interface Player {
   lastLeaderOffer?: number;
   /** Diplomatic points from race and leaders, public so rivals' deal-making can read it. */
   diplomacyBonus?: number;
-  /** How this player votes at a session where they cast no ballot themselves ("auto": as a computer empire would). */
-  councilVote: PlayerId | "abstain" | "auto";
   doctrine: CombatDoctrine;
   /** Areas a human has handed to automation; ignored for AI players. */
   automation: string[];

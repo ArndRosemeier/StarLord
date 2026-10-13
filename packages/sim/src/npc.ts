@@ -35,7 +35,6 @@ export function npcPlayer(id: number, kind: "monsters" | "raiders"): Player {
     designs: kind === "monsters" ? structuredClone(MONSTER_DESIGNS) : [],
     spies: { home: 0, abroad: {} },
     leaderOffers: [],
-    councilVote: "abstain",
     doctrine: { retreatBelow: 0, focus: "nearest" },
     automation: [],
     hasPortal: false,

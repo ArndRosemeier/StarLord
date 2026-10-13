@@ -119,15 +119,12 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const idleColonies = readOnly || me.idleAlertOff || me.automation.includes("production") ? []
     : Object.values(view.colonies).filter((c) => c.ownerId === me.id && isTradeGoodsOnly(c)).map((c) => c.id);
   // The council is in session this turn: it plays out as the turn starts, and a ruler with votes declares them, as in MoO2.
-  const councilWatch = !readOnly && !autoplay && !me.automation.includes("diplomacy") && !!councilSession(view);
+  // Councils are never automated: the turn does not end until the player has declared.
+  const councilWatch = !readOnly && !autoplay && !!councilSession(view);
   const councilAsk = councilWatch && mayCastCouncilVote(view, me.id);
-  const councilReminded = useRef(-1);
   const endTurn = () => {
-    if (councilAsk && castBallot(session) === undefined && councilReminded.current !== view.turn) {
-      // Ending the turn without a ballot asks once more; the next End Turn lets the standing choice decide.
-      councilReminded.current = view.turn;
-      setCouncilPopup("vote");
-    } else if (noResearch || idleColonies.length > 0) setEndCheck({ points: noResearch ? research : null, idle: idleColonies });
+    if (councilAsk && castBallot(session) === undefined) setCouncilPopup("vote");
+    else if (noResearch || idleColonies.length > 0) setEndCheck({ points: noResearch ? research : null, idle: idleColonies });
     else session.endTurn({ commandBattles: !autoplay });
   };
   // Ctrl+Enter is bound once, so it calls the latest endTurn through a ref.
@@ -157,9 +154,9 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     // Battles the player commanded were watched as they were fought.
     setBattles(battlesOfLastTurn(session.history, me.id, view.turn).filter((b) => !session.commandedBattles.has(b.id)));
     setNews(session.lastTurnEvents(me.id).flatMap((e) => (e.kind === "random" ? [e] : [])));
-    // The result window follows a session the player did not watch, or one whose verdict they may refuse.
+    // The result window follows a session whose verdict the player may refuse.
     const verdict = view.council.pending && view.council.pending.winner !== me.id;
-    const missed = view.council.lastResult?.turn === view.turn - 1 && (verdict || me.automation.includes("diplomacy"));
+    const missed = view.council.lastResult?.turn === view.turn - 1 && verdict;
     setCouncilPopup(missed ? "result" : councilWatch ? "vote" : null);
   }, [view.turn]);
 
