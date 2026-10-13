@@ -9,7 +9,6 @@ import { PlanetOrb } from "../ui/panels";
 /** What putting a finished base on a planet will do there, with the sim's numbers. */
 function outcome(projectId: string, planet: Planet, maxPop: number): string {
   if (projectId === "colonyBase") return `New colony with 1 pop, room for ${maxPop}`;
-  if (projectId === "outpostBase") return maxPop > 0 ? `Outpost; a colony here could hold ${maxPop} pop` : "Outpost; claims the planet";
   if (planet.type === "asteroids" || planet.type === "gasGiant") {
     return `Becomes a ${ARTIFICIAL_PLANET[planet.type]} ${climateName(ARTIFICIAL_PLANET.type)} planet, ${ARTIFICIAL_PLANET.minerals} minerals`;
   }
@@ -17,7 +16,7 @@ function outcome(projectId: string, planet: Planet, maxPop: number): string {
 }
 
 /**
- * The planet choices for every finished Colony Base, Outpost Base or
+ * The planet choices for every finished Colony Base or
  * Artificial Planet waiting at one colony. Picking a planet places it at once.
  */
 export function BaseChoices({ colony, onPlaced }: { colony: Colony; onPlaced?: () => void }) {

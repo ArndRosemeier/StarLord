@@ -35,7 +35,7 @@ export type Command =
   | { type: "setJobs"; colonyId: Id; farmers: number; workers: number; scientists: number }
   | { type: "setQueue"; colonyId: Id; queue: BuildItem[] }
   | { type: "buy"; colonyId: Id }
-  /** Puts a finished Colony Base, Outpost Base or Artificial Planet waiting at this colony on a planet in its system. */
+  /** Puts a finished Colony Base or Artificial Planet waiting at this colony on a planet in its system. */
   | { type: "placeBase"; colonyId: Id; projectId: string; planetId: Id }
   /** techId picks the application; general and hyper-advanced fields need none. */
   | { type: "setResearch"; tierId: string; techId?: string }
@@ -143,7 +143,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
         const alreadyHere = item.kind === "project" && c.queue.some((q) => q.kind === "project" && q.id === item.id);
         if (item.kind === "project" && !projects.has(item.id) && !alreadyHere) return fail(`project ${item.id} not available`);
       }
-      // Every Colony Base, Outpost Base or Artificial Planet needs a planet of its own.
+      // Every Colony Base or Artificial Planet needs a planet of its own.
       for (const id of new Set(cmd.queue.flatMap((q) => (q.kind === "project" && PLACED_PROJECTS[q.id] ? [q.id] : [])))) {
         const claims = baseClaims(state, c, id, cmd.queue);
         const free = baseTargets(state, c, id).length;

@@ -240,7 +240,6 @@ export type AndroidJob = "farmers" | "workers" | "scientists";
 
 export const PROJECTS: ProjectDef[] = [
   { id: "colonyBase", name: "Colony Base", requires: "colonyBase", description: "Settles another planet in this star system with 1 pop." },
-  { id: "outpostBase", name: "Outpost Base", requires: "outpostShip", description: "Places an outpost on a free planet in this system." },
   { id: "freighterFleet", name: "Freighter Fleet", requires: "freighters", description: "Five freighters. Each carries 1 food a turn between your colonies; a whole fleet moves 1 colonist." },
   { id: "androidFarmers", name: "Android Farmers", requires: "androidFarmers", description: "A robot farmer: the planet's food per farmer +3, eats no food, costs 1 industry a turn, ignores morale and pays no tax." },
   { id: "androidWorkers", name: "Android Workers", requires: "androidWorkers", description: "A robot worker: the planet's industry per worker +3, eats no food, costs 1 industry a turn, ignores morale and pays no tax." },
@@ -264,11 +263,10 @@ export const ANDROID_PROJECTS: Record<string, AndroidJob> = {
 
 /**
  * Project costs. Freighter Fleet 50, each android 50 and a spy 100 come from
- * the original's item cost routine; the Outpost Base is ours.
+ * the original's item cost routine.
  */
 export const PROJECT_COSTS = {
   colonyBase: 200,
-  outpostBase: 80,
   freighterFleet: 50,
   android: 50,
   terraformBase: 250,
@@ -279,7 +277,7 @@ export const PROJECT_COSTS = {
 } as const;
 
 /**
- * Share of its cost a finished Colony Base, Outpost Base or Artificial Planet
+ * Share of its cost a finished Colony Base or Artificial Planet
  * pays back when no planet is left to use it on. Our number: the original
  * never lets such a base finish without a target. Half matches its other
  * forced sales (see BANKRUPTCY).

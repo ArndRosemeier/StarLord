@@ -134,7 +134,7 @@ export interface Colony {
   marinesTrained?: number;
   tanksTrained?: number;
   /**
-   * Finished Colony Bases, Outpost Bases and Artificial Planets (project ids)
+   * Finished Colony Bases and Artificial Planets (project ids)
    * waiting for the owner to pick which planet in the system they go to.
    */
   readyBases?: string[];

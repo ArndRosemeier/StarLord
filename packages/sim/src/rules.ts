@@ -40,7 +40,6 @@ export function freePlanetsInSystem(state: GameState, colony: Colony, kind: "hab
 /** Projects that settle or convert another planet in the builder's system, and the planets they can use. */
 export const PLACED_PROJECTS: Record<string, "habitable" | "unsettleable"> = {
   colonyBase: "habitable",
-  outpostBase: "habitable",
   artificialPlanet: "unsettleable",
 };
 
@@ -71,7 +70,7 @@ export function baseClaims(state: GameState, colony: Colony, projectId: string, 
 
 /**
  * The planet a finished base is best put on: a Colony Base takes the room for
- * the most people, an Outpost Base the least (keeping good worlds for colonies),
+ * the most people,
  * an Artificial Planet a gas giant (it becomes a huge planet) before an asteroid belt.
  */
 export function suggestedBaseTarget(state: GameState, colony: Colony, projectId: string, taken?: Set<Id>): Planet | undefined {
@@ -80,7 +79,7 @@ export function suggestedBaseTarget(state: GameState, colony: Colony, projectId:
   const race = getRace(player.raceId);
   const room = (p: Planet) => maxPopulation(p, race, [], player);
   const score = (p: Planet) =>
-    projectId === "colonyBase" ? room(p) : projectId === "outpostBase" ? -room(p) : p.type === "gasGiant" ? 1 : 0;
+    projectId === "colonyBase" ? room(p) : p.type === "gasGiant" ? 1 : 0;
   return [...free].sort((a, b) => score(b) - score(a))[0];
 }
 
@@ -112,7 +111,6 @@ export function availableProjects(state: GameState, playerId: PlayerId, colony: 
     if (p.id in ANDROID_PROJECTS) return colonyRoom(state, colony) > 0;
     switch (p.id) {
       case "colonyBase":
-      case "outpostBase":
       case "artificialPlanet":
         // Only while a free planet is left that no other base here has claimed.
         return baseTargets(state, colony, p.id).length > baseClaims(state, colony, p.id);
@@ -184,7 +182,6 @@ export function itemCost(state: GameState, playerId: PlayerId, item: BuildItem, 
         case "terraform":
           return PROJECT_COSTS.terraformBase * (1 + (colony?.terraformed ?? 0));
         case "colonyBase":
-        case "outpostBase":
         case "gaiaTransform":
         case "artificialPlanet":
         case "dimensionalPortal":
