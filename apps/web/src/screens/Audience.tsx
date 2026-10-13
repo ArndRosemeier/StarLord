@@ -52,6 +52,9 @@ const BREAKABLE: { treaty: TreatyName; label: string }[] = [
   { treaty: "tribute", label: "tribute" },
 ];
 
+/** A demand to give in to or refuse; one that comes with a payment is an offer to accept or decline. */
+const demanded = (p: Proposal) => isDemand(p.kind) && !p.payment;
+
 export function mood(a: number): { text: string; cls: string } {
   if (a >= 50) return { text: "Warm", cls: "good" };
   if (a >= 20) return { text: "Friendly", cls: "good" };
@@ -81,7 +84,7 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
     if (o.kind === "war") return line("war");
     if (o.kind === "proposal") {
       const k = o.proposal.kind;
-      return line(k === "peace" || k === "ceasefire" ? "peace" : isDemand(k) ? "demand" : "offer");
+      return line(k === "peace" || k === "ceasefire" ? "peace" : demanded(o.proposal) ? "demand" : "offer");
     }
     const feel = attitude(view, them.id, me.id);
     if (relation(view, me.id, them.id).status === "war") return line("greetWar");
@@ -169,8 +172,8 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
                 const fx = incomingEffect(view, incoming);
                 return (
                   <ul className="audience-outcomes">
-                    <li><b>{isDemand(incoming.kind) ? "If you give in:" : "If you accept:"}</b> {fx.accept}</li>
-                    <li><b>{isDemand(incoming.kind) ? "If you refuse:" : "If you decline:"}</b> {fx.refuse}</li>
+                    <li><b>{demanded(incoming) ? "If you give in:" : "If you accept:"}</b> {fx.accept}</li>
+                    <li><b>{demanded(incoming) ? "If you refuse:" : "If you decline:"}</b> {fx.refuse}</li>
                   </ul>
                 );
               })()}
@@ -186,13 +189,13 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
                     onClick={() => {
                       session.issue({ type: "respond", proposalId: incoming.id, accept: true });
                       setAnswered(true);
-                      say(isDemand(incoming.kind) ? "obeyed" : "thanks");
-                    }}>{isDemand(incoming.kind) ? "Give in" : "Accept"}</button>
+                      say(demanded(incoming) ? "obeyed" : "thanks");
+                    }}>{demanded(incoming) ? "Give in" : "Accept"}</button>
                   <button onClick={() => {
                     session.issue({ type: "respond", proposalId: incoming.id, accept: false });
                     setAnswered(false);
-                    say(isDemand(incoming.kind) ? "threat" : "spurned");
-                  }}>{isDemand(incoming.kind) ? "Refuse" : "Decline"}</button>
+                    say(demanded(incoming) ? "threat" : "spurned");
+                  }}>{demanded(incoming) ? "Refuse" : "Decline"}</button>
                   <button className="ghost" onClick={counter ? () => setCounter(null) : onClose}>Think it over</button>
                 </>
               ) : <button className="primary" onClick={counter ? () => { setCounter(null); setAnswered(null); } : onClose}>Continue</button>

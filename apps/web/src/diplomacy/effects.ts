@@ -1,6 +1,6 @@
 import {
   NO_WAR_MULT, PATIENCE, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS, TEMPERAMENTS, TREATY_ANSWER, TREATY_WARMTH, TREATY_YIELD,
-  empires, isDemand, peaceTurnsLeft, relation, temperament, treatyAcceptChance, treatyPriceChance, treatyScore, treatyTarget,
+  empires, isCovetDemand, isDemand, peaceTurnsLeft, relation, temperament, treatyAcceptChance, treatyPriceChance, treatyScore, treatyTarget,
   treatyYield, tributeAmount, type PlayerView, type Price, type Proposal, type ProposalKind, type TreatyName,
 } from "@starlord/sim";
 import { fmt, playerName, signed, starName } from "../ui/format";
@@ -41,6 +41,24 @@ export function priceText(view: PlayerView, payer: number, price: Price): string
   if (price.tribute) return `a ${price.tribute}% tribute, about ${fmt(tributeAmount(view, payer, price.tribute), 1)} BC a turn until you stop`;
   if (price.starId) return `the ${starName(view, price.starId)} system`;
   return "nothing";
+}
+
+/** What another empire pays you, in words: "120 BC", "their knowledge of Fusion Drive", "a 5% tribute (about 3 BC a turn)", "their Vega system". */
+export function paymentText(view: PlayerView, payer: number, price: Price): string {
+  if (price.bc) return `${fmt(price.bc)} BC`;
+  if (price.techId) return `their knowledge of ${techName(price.techId)}`;
+  if (price.tribute) return `a ${price.tribute}% tribute, about ${fmt(tributeAmount(view, payer, price.tribute), 1)} BC a turn until they stop`;
+  if (price.starId) return `their ${starName(view, price.starId)} system`;
+  return "nothing";
+}
+
+/** What receiving a payment does, as a sentence. */
+function paymentEffect(view: PlayerView, payer: number, price: Price): string {
+  if (price.bc) return `They give you ${fmt(price.bc)} BC.`;
+  if (price.techId) return `You learn ${techName(price.techId)}.`;
+  if (price.tribute) return `They pay you ${price.tribute}% of their income, about ${fmt(tributeAmount(view, payer, price.tribute), 1)} BC a turn, until they stop.`;
+  if (price.starId) return `Their colonies in the ${starName(view, price.starId)} system become yours.`;
+  return "";
 }
 
 /** A computer ruler's temperament and what it does to treaty answers. */
@@ -115,9 +133,10 @@ function demandWhat(kind: ProposalKind): string {
 export function incomingEffect(view: PlayerView, p: Proposal): { accept: string; refuse: string } {
   const me = p.to;
   const them = p.from;
+  const paid = p.payment ? `${paymentEffect(view, them, p.payment)} ` : "";
   if (!isDemand(p.kind)) {
     return {
-      accept: `${p.price ? `You pay ${priceText(view, me, p.price)}. ` : ""}${treatyEffect(view, me, them, p.kind)}${agreedText(view, them)}`,
+      accept: `${paid}${p.price ? `You pay ${priceText(view, me, p.price)}. ` : ""}${treatyEffect(view, me, them, p.kind)}${agreedText(view, them)}`,
       refuse: p.kind === "compensation" ? "Every treaty you have with them ends." : "Nothing changes.",
     };
   }
@@ -135,8 +154,9 @@ export function incomingEffect(view: PlayerView, p: Proposal): { accept: string;
       default: return "";
     }
   })();
-  const refuse = p.kind === "demandWar" && relation(view, me, them).status === "alliance" ? "Your alliance with them ends." : "Nothing changes at once.";
-  return { accept: give + agreedText(view, them), refuse };
+  const refuse = isCovetDemand(view, p) ? "They declare war on you (letting the demand lapse counts as refusing)."
+    : p.kind === "demandWar" && !p.payment && relation(view, me, them).status === "alliance" ? "Your alliance with them ends." : "Nothing changes at once.";
+  return { accept: paid + give + agreedText(view, them), refuse };
 }
 
 /** Whether the viewer has seen any of their colonies, so their population is known. */

@@ -54,7 +54,7 @@ describe("freighters", () => {
     rock.type = "barren";
     const c: Colony = {
       id: "cx1", planetId: rock.id, ownerId: 0, raceId: s.players[0]!.raceId, name: "Rock", outpost: false,
-      farmers: 0, workers: 3, scientists: 0, growthK: 0, buildings: [], queue: [], progress: 0, founded: 1, terraformed: 0, unrestUntil: 0,
+      farmers: 0, workers: 3, scientists: 0, growthK: 0, buildings: [], queue: [], progress: 0, founded: 1, terraformed: 0,
     };
     rock.colonyId = c.id;
     s.colonies[c.id] = c;

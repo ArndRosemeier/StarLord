@@ -1,5 +1,5 @@
 import {
-  COMMANDO_ADMIN_WEIGHT, COMMANDO_INVASION, HEROES, HERO_SKILLS, LEADER_RULES, LEVEL_XP, MAX_LEVEL, MEGAWEALTH_INCOME, WARLORD_MAX_LEVEL,
+  COMMANDO_ADMIN_WEIGHT, COMMANDO_INVASION, HEROES, HERO_SKILLS, LEADER_RULES, LEVEL_XP, MAX_LEVEL, MEGAWEALTH_INCOME, SPIRITUAL_IMPROVED, WARLORD_MAX_LEVEL,
   heroLeaderId, type HeroSkill,
 } from "./data/leaders.js";
 import { getRace, hasTrait } from "./data/races.js";
@@ -36,6 +36,10 @@ export function levelFromXp(xp: number, warlord: boolean): number {
 /** What one ability is worth at a level. */
 export function abilityValue(a: LeaderAbility, level: number): number {
   if (a.skill === "megawealth") return MEGAWEALTH_INCOME[a.improved ? 1 : 0];
+  if (a.skill === "spiritualLeader" && a.improved) {
+    const S = SPIRITUAL_IMPROVED;
+    return S.stepPct * Math.floor((S.perLevel * level + S.plus) / S.divisor);
+  }
   const def = HERO_SKILLS[a.skill];
   const steps = def.halfLevels ? Math.ceil(level / 2) : level;
   return Math.floor((steps * def.mult[a.improved ? 1 : 0]) / 10);
