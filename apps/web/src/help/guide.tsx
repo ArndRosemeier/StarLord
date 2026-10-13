@@ -7,11 +7,16 @@ import {
   COMBAT_BOMB_RANGE, CRAFT, DAMAGE, PLANET_POPULATION_HP,
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES, EVENT_NUMBERS,
   JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, SCORE, BANKRUPTCY,
-  MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
+  MISSILE_SPEED, NEBULA_SPEED, BLACK_HOLE_RADIUS, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
   SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, STARTING_SHIPS, STARTING_STATION, BUILDINGS, BASE_SCRAP_REFUND, BUILDING_SCRAP, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
-  TRADE_GOODS_RATE, TRAIT_EFFECTS, GOVERNMENTS, RESEARCH_PER_SCIENTIST, AI_PEACE, EVENTS, MAX_WEAPON_SLOTS, COMM_REDIRECT_RANGE, HULLS, TECHS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, COVET, PAID_WAR, abilityValue, type HeroSkill, type HeroSkillGroup,
+  TRADE_GOODS_RATE, TRAIT_EFFECTS, GOVERNMENTS, REFIT, DIFFICULTIES, DIFFICULTY_ORDER, RESEARCH_PER_SCIENTIST, AI_PEACE, EVENTS, MAX_WEAPON_SLOTS, COMM_REDIRECT_RANGE, HULLS, TECHS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, COVET, PAID_WAR, abilityValue, type HeroSkill, type HeroSkillGroup,
 } from "@starlord/sim";
 import { fmt, pct } from "../ui/format";
+import { OTHER_KEYS, SHORTCUTS } from "../ui/shortcuts";
+import { difficultyText, galaxyAgeText, techLevelText } from "../ui/explain";
+import { FLASH_LEGEND } from "../map/flashes";
+import { AUTOSAVES_KEPT } from "../game/saves";
+import { REPLAY_SPEEDS } from "../game/prefs";
 import type { GuideSlug } from "./entries";
 import { HelpLink } from "./HelpDialog";
 
@@ -66,8 +71,14 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li>End the turn with the button at the top right or <Key>Ctrl</Key>+<Key>Enter</Key>.</li>
       </Ul>
       <P>
+        When a new turn starts, anything you need to see opens by itself: your battles, Galactic News, research
+        breakthroughs, leaders offering their services, council sessions and rulers asking for an audience (see{" "}
+        <HelpLink to="guide:turn" />), and stars on the map light up where something happened.
+      </P>
+      <P>
         Anything you'd rather not micromanage can be handed to the advisors on the <b>Empire &amp; automation</b> screen
-        (see <HelpLink to="guide:automation" />).
+        (see <HelpLink to="guide:automation" />). Game options, saving and settings are explained in{" "}
+        <HelpLink to="guide:setup" />, every screen and key in <HelpLink to="guide:controls" />.
       </P>
       <h3>Using this encyclopedia</h3>
       <P>
@@ -78,16 +89,94 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
     </>
   ),
 
+  setup: () => (
+    <>
+      <h3>New game</h3>
+      <P>
+        Pick a race (or build your own in the race builder), then the options below. Every option shows what it does
+        when you point at it.
+      </P>
+      <Ul>
+        <li><b>Galaxy size</b>: {(Object.keys(STAR_COUNTS) as (keyof typeof STAR_COUNTS)[]).map((k) => `${k} ${STAR_COUNTS[k]} stars on ${Math.round(mapSize(k).width)} × ${Math.round(mapSize(k).height)} parsecs`).join(", ")}. See <HelpLink to="page:stars" /> for how the galaxy is laid out.</li>
+        <li><b>Galaxy age</b> sets the mix of star colors, and with it planets and minerals:
+          <Ul>{(["young", "average", "old"] as const).map((a) => <li key={a}>{galaxyAgeText(a)}</li>)}</Ul>
+        </li>
+        <li><b>Opponents</b>: how many computer empires play against you.</li>
+        <li><b>Difficulty</b> changes only what the computer empires get and how they deal with you; your own rules stay the same, and so does the score:
+          <Ul>{DIFFICULTY_ORDER.map((d) => <li key={d}>{difficultyText(d)}</li>)}</Ul>
+          Custom races need {DIFFICULTIES[DIFFICULTY_ORDER.find((d) => DIFFICULTIES[d].customRaces) ?? "average"].name} difficulty or harder.
+        </li>
+        <li><b>Tech level</b> sets how far every empire has come:
+          <Ul>{(["preWarp", "average", "advanced"] as const).map((t) => <li key={t}>{techLevelText(t)}</li>)}</Ul>
+          Whatever the level, every empire starts with {startCount("scout")} scouts, {startCount("colonyShip")} colony ship and a{" "}
+          {BUILDINGS.find((b) => b.id === STARTING_STATION)?.name ?? STARTING_STATION}.
+        </li>
+        <li><b>Turn limit</b>: off by default, as in the original. When on, the highest score wins once it is reached (<HelpLink to="guide:victory" />).</li>
+        <li><b>Seed</b>: the same seed and options make the same galaxy.</li>
+        <li><b>Monsters</b> (lairs and the guardian of Orion), <b>Raiders</b>, the <b>Galactic council</b> and <b>Random events</b> can each be switched off. <b>Ship initiative</b> changes who acts first in battle (<HelpLink to="guide:combat" />).</li>
+        <li><b>Watch an AI game</b> starts a game where every empire is a computer player and you watch.</li>
+      </Ul>
+      <h3>Saving and loading</h3>
+      <P>
+        Save from the <b>Game</b> screen, or download a save file to keep or move to another browser. With autosave on,
+        the game saves itself at the start of every turn and when you leave the page; the newest {AUTOSAVES_KEPT} autosaves
+        are kept, and when the browser's storage is full the oldest autosaves make room first, never your own saves.{" "}
+        <b>Continue</b> on the title screen loads your newest save. A replay file holds every turn's orders from the start;
+        load it from the title screen to watch the game again.
+      </P>
+      <h3>Settings</h3>
+      <P>
+        The settings on the <b>Game</b> screen (and on the title screen) hold for every game in this browser:
+      </P>
+      <Ul>
+        <li><b>Sound</b>: music and effect volume. Each mood of the galaxy map has its own tracks, shuffled without repeats.</li>
+        <li><b>Replay speed</b> of battles: {REPLAY_SPEEDS.map((x) => `${x}×`).join(", ")}.</li>
+        <li><b>Turn flashes</b>: as a turn starts, stars light up where something happened to you, colored by what it was: {FLASH_LEGEND.map((l) => l.text).join(", ")}. Choose bursts, a gentle glow or off; with reduced motion asked for by your system, bursts play as a glow.</li>
+        <li><b>Autosave</b>, on or off.</li>
+      </Ul>
+      <P>
+        Two choices on the <b>Game</b> screen belong to the current game: whether ending a turn warns about colonies that
+        only make Trade Goods, and <b>Let me command my battles</b> (<HelpLink to="guide:combat" />).
+      </P>
+      <h3>Hall of Fame</h3>
+      <P>
+        When a game ends, the final standings show every empire's score, broken down, and your best final scores go to the
+        Hall of Fame in this browser (<HelpLink to="guide:victory" />).
+      </P>
+    </>
+  ),
+
   controls: () => (
     <>
+      <h3>Screens</h3>
+      <P>Every screen has a button at the top and a key:</P>
+      <table className="help-table">
+        <tbody>
+          {[...SHORTCUTS.map((k) => ({ label: k.label, what: k.what })), ...OTHER_KEYS].map((k) => (
+            <tr key={k.label}><td><Key>{k.label}</Key></td><td>{k.what}</td></tr>
+          ))}
+        </tbody>
+      </table>
+      <P>
+        Letters do nothing while you type in a text field. The <b>Planets</b> screen lists every planet you know with what
+        it is, how far it is and whether your ships reach it, and settles it with a ship in orbit or sends your nearest idle
+        colony or outpost ship. The <b>Info</b> screen compares you with the empires you are in contact with, now and over
+        time. Lists such as Colonies, Fleets and Planets sort by any column header.
+      </P>
       <h3>Galaxy map</h3>
       <Ul>
         <li>Drag to pan, mouse wheel to zoom.</li>
         <li>Click a star to open its system in 3D: the star, every planet, colonies, stations and fleets. Drag to turn it, scroll to zoom, click a planet to follow it and double-click to see the whole system. From the panel beside it you colonize, invade, pick fleets and run your own colonies.</li>
-        <li>The <b>Last turn</b> panel in the sidebar lists what happened; click a line to jump there.</li>
+        <li>The <b>Last turn</b> panel in the sidebar lists what happened; click a line to jump there. Random events still in play are pinned to the top left of the map with what they do and when they end; click one to go to its system.</li>
         <li>Click one of your fleets, then click any star to send it there. Stars in fuel range are highlighted and the route is previewed.</li>
         <li><Key>Esc</Key> or a click on empty space deselects the fleet.</li>
         <li>Shift-click fleets to select several; they all take the next star order.</li>
+        <li>Buttons on the map show your fuel range and scanner coverage over the whole map, jump to your next fleet without orders and center on your next colony.</li>
+      </Ul>
+      <h3>Colonies</h3>
+      <Ul>
+        <li>Move people between farmers, workers and scientists with − and +, or drag them between the rows: grabbing an icon takes it and every icon to its right. While you drag, the colony's food, industry and research after the move are shown.</li>
+        <li>Click a building to scrap it (<HelpLink to="guide:colonies" />).</li>
       </Ul>
       <h3>Tablets and touch screens</h3>
       <Ul>
@@ -101,7 +190,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><Key>Ctrl</Key>+<Key>Enter</Key> ends the turn.</li>
         <li><Key>F1</Key> or the <b>?</b> button opens this encyclopedia; <Key>Esc</Key> closes it.</li>
         <li>Orders given this turn can be taken back with <b>Undo</b> next to the turn button until you end the turn.</li>
-        <li>Save and load from the <b>Game</b> screen. The title screen continues your latest save.</li>
+        <li>Saving, autosave and settings: see <HelpLink to="guide:setup" />. Battle keys are listed under <HelpLink to="guide:combat" />.</li>
       </Ul>
     </>
   ),
@@ -111,6 +200,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>When everyone has ended their turn, the galaxy moves in this order:</P>
       <ol className="help-ul">
         <li>Everyone's orders are carried out; who goes first rotates each turn.</li>
+        <li>Ships orbiting your own systems are repaired.</li>
         <li>Raiders may strike.</li>
         <li>Fleets move.</li>
         <li>Space battles are fought wherever hostile fleets or armed planets meet (<HelpLink to="guide:combat" />).</li>
@@ -119,6 +209,25 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li>Spies act, diplomatic relations drift, leaders offer their services, the council may vote.</li>
         <li>Random events, then empires with no populated colonies left are eliminated (outposts and colony ships don't count).</li>
       </ol>
+      <h3>When the turn waits for you</h3>
+      <Ul>
+        <li>At every battle you take part in, if you command your battles: command it or let it resolve (<HelpLink to="guide:combat" />).</li>
+        <li>When your fleets hold the orbit of an enemy colony: bombard, use biological weapons, destroy the planet or hold fire (<HelpLink to="guide:invasion" />).</li>
+        <li>Before it ends: if research points would be lost with no field chosen, and, while that alert is on, if colonies make nothing but Trade Goods.</li>
+        <li>In a council session the turn does not end until you have declared your votes (<HelpLink to="guide:council" />).</li>
+      </Ul>
+      <h3>As the new turn starts</h3>
+      <P>These open by themselves, one after another, so nothing goes unseen:</P>
+      <ol className="help-ul">
+        <li>Every battle you fought, to watch; the turn report keeps them for replay.</li>
+        <li>Galactic News: the random events of the turn (<HelpLink to="guide:events" />).</li>
+        <li>Research breakthroughs, then the Research screen to pick the next field unless research is automated.</li>
+        <li>Leaders offering their services introduce themselves (<HelpLink to="guide:leaders" />).</li>
+        <li>The council, when it is in session or has just voted.</li>
+        <li>Rulers asking for an audience: on first contact, when they declare war and with proposals (<HelpLink to="guide:diplomacy" />).</li>
+        <li>Finished colony bases and artificial planets asking where they go.</li>
+      </ol>
+      <P>Then the stars on the map flash where something happened, unless turn flashes are off (<HelpLink to="guide:setup" />).</P>
     </>
   ),
 
@@ -153,7 +262,12 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         so buying from scratch costs about four times the item. Upgrading a station or planetary shield costs only the
         difference to the one it replaces.
       </P>
-      <P>See <HelpLink to="page:buildings" /> and <HelpLink to="page:projects" />.</P>
+      <P>
+        The build list only offers buildings that would do something at that colony: a Gravity Generator only where the
+        planet's gravity hurts its people or androids, pollution cleanup only where the colony can pollute, morale
+        buildings only under governments with morale, an Alien Management Center only where aliens or natives live. See{" "}
+        <HelpLink to="page:buildings" /> and <HelpLink to="page:projects" />.
+      </P>
       <h3>Growth</h3>
       <P>
         Population grows fastest when a colony is half full and stops at its maximum. Each 1,000k of growth adds one
@@ -274,6 +388,12 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         </li>
         <li>Applications you skipped can still be gained: stolen by spies, captured with a colony, found on a derelict ship, or learned from the guardian of Orion.</li>
       </Ul>
+      <P>
+        The top bar shows the points toward the current field, and once they pass its cost, this turn's chance of the
+        breakthrough. A breakthrough is celebrated as the next turn starts, with what you learned (and anything gained
+        another way that turn), and then the Research screen opens so you pick the next field, unless research is
+        automated.
+      </P>
       <h3>Miniaturization</h3>
       <P>
         Every later level you research in the field that gave a ship component counts as a refinement of it, and so does
@@ -302,6 +422,16 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li>Mark old designs obsolete to hide them from build lists.</li>
         <li>The <b>Style</b> picker changes only how the ship looks. Every race has its own style, new designs start in yours, and any design can use any style.</li>
       </Ul>
+      <h3>Refits</h3>
+      <P>
+        Drives and fuel range follow your best technology on every ship by themselves. Armor, shields, computers, weapons
+        and specials are part of the design: to change them, refit the ship to another design of the same hull from its
+        fleet's panel or the Ship design screen, while it orbits a system with a colony of yours that could build that hull. The refit costs{" "}
+        {REFIT.costDifferenceMult} times what the new design costs more than the old one, but at least the bare hull's cost divided by {REFIT.minHullCostDivisor}, and goes into
+        that colony's build queue ahead of Trade Goods and Housing, paid with its production. Until it is done the ship
+        is in dock and takes part in nothing; it comes back repaired and keeps its crew's experience. Removing the job
+        from the queue scraps the ship. Colony ships, outpost ships and transports can't be refitted.
+      </P>
       <P>
         See <HelpLink to="page:weapons" />, <HelpLink to="page:shields" />, <HelpLink to="page:computers" />,{" "}
         <HelpLink to="page:specials" /> and <HelpLink to="page:modules" />.
@@ -318,7 +448,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <Ul>
         <li><b>Nebulae</b> slow every ship inside them to {NEBULA_SPEED} parsec a turn (not trans-dimensional races or fleets with a Navigator), and no shields work in a battle there.</li>
-        <li><b>Black holes</b> cannot be entered, and ships cannot fly close past them.</li>
+        <li><b>Black holes</b> cannot be entered, and ships cannot fly within {BLACK_HOLE_RADIUS} parsecs past them unless a Navigator leads the fleet.</li>
         <li><b>Wormholes</b> link two distant stars; the trip takes one turn and needs no fuel.</li>
         <li>A <b>Star Gate</b> sends ships between any two of your colonies in one turn; a <b>Jump Gate</b> adds {JUMP_GATE_BONUS} to your speed between your colonies.</li>
         <li>An enemy <b>Warp Interdictor</b> slows your ships near its system to a crawl.</li>
@@ -356,7 +486,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
     <>
       <P>
         Battles happen when hostile armed fleets meet, or when an armed colony sees enemy ships. They are fought on a
-        {" "}{FIELD_WIDTH}×{FIELD_HEIGHT} battlefield for up to {MAX_ROUNDS} rounds and can be replayed from the turn report. A battle ends when one side has nothing left; if both still stand when time runs out, the
+        {" "}{FIELD_WIDTH}×{FIELD_HEIGHT} battlefield for up to {MAX_ROUNDS} rounds. Every battle you fought opens as the next turn starts, and the turn report keeps it for replay. A battle ends when one side has nothing left; if both still stand when time runs out, the
         defender holds the field (when neither side has anything left to shoot with, time runs out at once).
       </P>
       <h3>Commanding a battle</h3>
@@ -663,6 +793,12 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         {" "}{LEADER_RULES.queueTurns} turns. You can employ up to {MAX_LEADERS}, at most {LEADER_RULES.maxPerKind} of each kind.
       </P>
       <P>
+        A leader who offers their services introduces themself as the next turn starts: who they are, what each skill does
+        at their level, their price and upkeep and, for a colony leader, the system where they would do the most. Hire them
+        there, or leave the offer waiting on the Leaders screen until it runs out. With leaders automated, the offers are
+        handled for you.
+      </P>
+      <P>
         <b>Colony leaders</b> govern a star system; <b>ship officers</b> command a fleet. Common skills help the whole empire
         wherever the leader is. Reaching a post in another system takes {LEADER_RULES.travelTurns} turns.
       </P>
@@ -707,9 +843,28 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         A candidate with {pct(COUNCIL_MAJORITY)} of all votes is elected. A session plays out as a turn starts, as in the
         original: every empire's delegation declares in seat order, computer candidates for themselves, and the running count is shown
         against the two thirds needed. When your seat comes up you back a candidate or abstain, even when you stand yourself. Your votes are never cast for you: the
-        turn does not end until you have declared, and the Diplomacy screen takes you back into the chamber. The council counts the votes when the turn ends. Computer empires only back a candidate they clearly like, and lean +{COUNCIL_VOTE.sameAsLastTime}{" "}
-        toward the one they backed last time. Voting for an empire pleases it; voting against it, or abstaining, does
-        not. You may refuse another ruler's election on the next turn: if the winner is a computer empire, every other
+        turn does not end until you have declared, and the Diplomacy screen takes you back into the chamber. The council counts the votes when the turn ends.
+      </P>
+      <h3>How computer empires vote</h3>
+      <P>
+        A computer empire backs a candidate when a d{COUNCIL_VOTE.die} rolls at or under its relation with that candidate,
+        plus its trust, plus twice the candidate's reputation, plus these points: +{COUNCIL_VOTE.atWarWithRival} if it is at
+        war with the other candidate, +{COUNCIL_VOTE.sameAsLastTime} if it backed this candidate last time, +
+        {COUNCIL_VOTE.nonAggression} for a non-aggression pact, +{COUNCIL_VOTE.trade} for a trade and +{COUNCIL_VOTE.research}{" "}
+        for a research treaty, +{COUNCIL_VOTE.holdsOrion} if the candidate holds Orion, +{COUNCIL_VOTE.xenoPsychology} if it
+        knows Xeno Psychology, +{COUNCIL_VOTE.charismatic} for a <HelpLink to="trait:charismatic" /> and{" "}
+        {COUNCIL_VOTE.repulsive} for a <HelpLink to="trait:repulsive" /> candidate. It always backs an ally and never one it
+        is at war with. It rolls for both candidates and votes only when exactly one roll succeeds; otherwise it abstains.
+        Against a human candidate it also counts its temperament's mood toward humans ({COUNCIL_VOTE.mood} points a step),
+        and on Hard and Impossible a human candidate's total shrinks.
+      </P>
+      <P>
+        Every vote moves relations at once: +{RELATION_EVENTS.councilFor} with the candidate backed,{" "}
+        {RELATION_EVENTS.councilAgainst} with the other, and {RELATION_EVENTS.councilAbstain} with both for abstaining.
+      </P>
+      <h3>Refusing the result</h3>
+      <P>
+        You may refuse another ruler's election on the next turn: if the winner is a computer empire, every other
         computer empire joins it and the united empire goes to war with you; if it is a human, you are at war with every
         empire that accepted it.
       </P>
@@ -728,6 +883,12 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
           empires, never the smallest; windfalls go to the smaller ones. Comets don't come before turn {EVENTS.comet.fromTurn} and supernovas not before turn {EVENTS.supernova.fromTurn}, and
           a comet only during hyperspace flux. On Tutor there are no disasters. Random events can be switched off when
           starting a game. <HelpLink to="trait:lucky" /> races are spared the disasters and build up to windfalls of their own.
+        </P>
+        <P>
+          You can't miss them: the events of a turn open as Galactic News when the next turn starts, each with a button to
+          its system; those still in play stay pinned to the top left of the galaxy map with what they do and when they
+          end; and the stars where they happen flash. Fleets held by hyperspace flux say so, and any order an event blocks
+          tells you why.
         </P>
         <Ul>
           <li><b>Windfalls</b>: a donation of {N.donation.base} BC plus {N.donation.step} for every {N.donation.perTurns} turns played; a derelict ship that teaches the beam weapon closest above the strongest any empire has and the best armor any empire has; a breakthrough that completes your current research at once; new mineral deposits ({N.depositSteps} steps richer); a planet's axis shifting to a terran climate; a population boom (+{GROWTH.boomPercent}% growth); a diplomatic marriage (a +{N.relationShift} relation event with an empire you know).</li>
@@ -749,13 +910,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><b>Score</b>: only in games started with a turn limit (off by default; the original has none): when it is reached, the highest score wins. See the score below.</li>
       </Ul>
       <P>
-        Galaxy sizes: {(Object.keys(STAR_COUNTS) as (keyof typeof STAR_COUNTS)[]).map((k) => `${k} ${STAR_COUNTS[k]} stars on ${Math.round(mapSize(k).width)} × ${Math.round(mapSize(k).height)} parsecs`).join(", ")}. Monsters, raiders,
-        random events and the council can each be switched off when starting a game. Difficulty sets how fast computer
-        empires produce and research, how often they come to you with offers and sign treaties among themselves, and
-        (on Hard and Impossible) how jealous they grow of your treaties; galaxy age changes the mix of star colors, which
-        orbits fill up and, in old galaxies, makes middle orbits more fertile;
-        the tech level starts everyone pre-warp, average or advanced.
-
+        Monsters, raiders, random events and the council can each be switched off when starting a game, and difficulty
+        changes only what the computer empires get (<HelpLink to="guide:setup" />).
       </P>
       <P>
         <b>Score</b> follows the original. It is shown on the Empire screen during play, broken down when the game ends, and
