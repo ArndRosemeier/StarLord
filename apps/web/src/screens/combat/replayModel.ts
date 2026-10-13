@@ -3,6 +3,7 @@ import {
   HULLS, MONSTER_DESIGNS, WEAPONS_BY_ID,
   type CombatReport, type CombatShipSnapshot, type HullSize, type PlanetType, type PlayerView,
 } from "@starlord/sim";
+import { getPrefs } from "../../game/prefs";
 
 /**
  * Renderer-independent model of a battle replay: what each unit is, where it
@@ -14,8 +15,13 @@ import {
  * Everything new is optional here and unknown event kinds are ignored.
  */
 
-/** Milliseconds per replayed event. */
+/** Milliseconds per replayed event at normal speed. */
 export const STEP_MS = 160;
+
+/** Milliseconds per replayed event at the replay speed chosen in the settings. */
+export function stepMs(): number {
+  return STEP_MS / getPrefs().replaySpeed;
+}
 
 export type UnitKind ="ship" | "station" | "planet" | "monster";
 export type StationTier = "starBase" | "battlestation" | "starFortress";

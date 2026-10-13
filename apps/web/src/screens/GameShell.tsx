@@ -28,6 +28,9 @@ import { audio } from "../audio/sound";
 import { MuteButton } from "../ui/AudioControls";
 import { useHelp } from "../help/HelpDialog";
 import { AnimatedNumber, Icon, ScreenBackdrop, TurnBanner, type BackdropArt } from "../ui/fx";
+import { useAutosave } from "../game/autosave";
+import { SHORTCUTS, shortcutFor } from "../ui/shortcuts";
+import type { MapCycle } from "./MapScreen";
 
 /** Turn report events loud enough to deserve an alert sound. */
 const ALERT_EVENTS = new Set(["combat", "colonyLost", "invasionFailed", "bombarded", "eliminated", "raid", "starvation"]);
@@ -55,6 +58,12 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "game", label: "Game", icon: "⛁" },
 ];
 
+/** "Colonies (C)": the key that opens a screen, for its button's tooltip. */
+function tabKeyHint(tab: Tab): string | undefined {
+  const s = SHORTCUTS.find((x) => x.action.kind === "tab" && x.action.tab === tab);
+  return s ? `${TABS.find((t) => t.id === tab)?.label} (${s.label})` : undefined;
+}
+
 /** Research points per turn including treaty bonuses, researcher leaders and scout labs. */
 export function researchPerTurn(view: PlayerView): number {
   return empireTotals(view, view.viewer).research + treatyIncome(view, view.viewer).research + extraResearch(view, view.viewer);
@@ -79,6 +88,9 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [audiences, setAudiences] = useState<AudienceRequest[]>([]);
   const debug = !!view.settings.debug && !readOnly;
   const lastTurn = useRef(view.turn);
+  /** A "next idle fleet" or "next colony" request for the map; `n` changes on every press. */
+  const [mapCycle, setMapCycle] = useState<MapCycle | null>(null);
+  useAutosave(session);
 
   const totals = empireTotals(view, me.id);
   const income = empireIncome(view, me.id);
@@ -167,6 +179,33 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // One-letter screen keys and map cycling. Bound in the capture phase so an open window is still seen (and left alone).
+  const shortcutRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  shortcutRef.current = (e: KeyboardEvent) => {
+    if (document.querySelector(".modal-back, .help-back")) return;
+    if (e.key === "Escape") {
+      if (tab !== "map" && !e.ctrlKey && !e.altKey && !e.metaKey) go("map");
+      return;
+    }
+    const s = shortcutFor(e);
+    if (!s) return;
+    const a = s.action;
+    if (a.kind === "tab") {
+      if (!TABS.some((t) => t.id === a.tab)) return;
+      e.preventDefault();
+      go(a.tab as Tab);
+      return;
+    }
+    e.preventDefault();
+    setTab("map");
+    setMapCycle((c) => ({ kind: a.kind === "nextIdleFleet" ? "fleet" : "colony", n: (c?.n ?? 0) + 1 }));
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => shortcutRef.current(e);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
   const go = (t: Tab) => {
     if (t === "events") setSeenTurn(view.turn);
     setColonyFocus(null);
@@ -207,6 +246,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         <div className="spacer" />
         {debug && <button className="small debug-button" onClick={() => setDebugOpen(true)} title="Debug menu (F9)">Debug</button>}
         <button className="help-button" onClick={() => openHelp()} title="Encyclopedia (F1)">?</button>
+        <button className="help-button" onClick={() => go("game")} title="Game menu: save, settings and keyboard shortcuts (G)" aria-label="Settings">⚙</button>
         <MuteButton />
         {view.over && <span className="chip warn">Game over: {view.players[view.winner!]?.name} wins ({view.victory})</span>}
         {readOnly ? (
@@ -229,7 +269,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
       <div className="body">
         <nav className="nav">
           {TABS.map((t) => (
-            <button key={t.id} className={tab === t.id ? "active" : ""} onClick={() => go(t.id)}>
+            <button key={t.id} className={tab === t.id ? "active" : ""} onClick={() => go(t.id)} title={tabKeyHint(t.id)}>
               <span className="nav-icon">{t.icon}</span>
               {t.label}
               {t.id === "events" && reportBadge > 0 && <span className="badge">{reportBadge}</span>}
@@ -245,7 +285,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
                 <div className="panel bad" style={{ marginBottom: 12 }}>Some orders are invalid: {session.rejected.join("; ")}</div>
               )}
               {tab === "map" && <MapScreen focusStar={focusStar} onFocused={() => setFocusStar(null)} onOpenColony={openColony}
-                onOpenResearch={() => go("research")} onOpenReports={() => go("events")} />}
+                onOpenResearch={() => go("research")} onOpenReports={() => go("events")} cycle={mapCycle} onCycled={() => setMapCycle(null)} />}
               {tab === "colonies" && <ColoniesScreen onShowStar={showStar} initialColony={colonyFocus} />}
               {tab === "research" && <ResearchScreen />}
               {tab === "designs" && <DesignScreen />}
