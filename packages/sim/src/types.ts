@@ -278,6 +278,18 @@ export type SpyMission = "steal" | "sabotage" | "idle";
 export type TacticalOrder =
   /** Move toward a square (ships only) and fire at a target; no target holds fire. */
   | { kind: "act"; moveTo?: { x: number; y: number }; target?: string }
+  /** Fly toward a square with the movement left this turn; the unit's turn goes on. */
+  | { kind: "move"; to: { x: number; y: number } }
+  /** Turn to face a unit (turning costs movement); the unit's turn goes on. */
+  | { kind: "face"; target: string }
+  /** Fire these weapon mounts (indexes into the unit's weapons; all when left out) at one target; the turn goes on. */
+  | { kind: "fire"; target: string; mounts?: number[] }
+  /** Send marines across to an enemy ship; the turn goes on. */
+  | { kind: "board"; target: string }
+  /** Put the unit at the back of its side's line for this combat turn; it keeps what it has left. */
+  | { kind: "wait" }
+  /** End the unit's turn. */
+  | { kind: "done" }
   /** Order the ship out; it leaves as its next turn begins. */
   | { kind: "retreat" }
   /** Let the computer play this one turn. */

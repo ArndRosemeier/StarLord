@@ -363,10 +363,16 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <P>
         When you end the turn, it stops at each battle you take part in. Choose <b>Command the battle</b> to give
         orders yourself, or <b>Auto-resolve</b> to let your combat doctrine fight it (you watch the replay after the
-        turn). While you command, each of your ships, stations and armed planets waits for you on its turn: click the
-        field inside the blue ring to move there (turning uses some of the movement), pick an enemy to fire at (orange
-        rings: in reach of a weapon; grey: out of reach), then press <b>Fire</b> or <b>End turn</b>. A ship can also
-        <b> Retreat</b>, let the computer play its turn, or you can <b>Auto-resolve the rest</b> at any time. Turn the
+        turn). While you command, each of your ships, stations and armed planets waits for you on its turn and takes
+        as many orders as it has movement and weapons for, as in the original: click the field inside the blue ring and
+        press <b>Move here</b> (turning uses some of the movement), pick an enemy (orange rings: in reach of a weapon;
+        grey: out of reach) and <b>Fire</b> the weapon groups that can reach it, then pick another target for the rest,
+        or move on and fire later. Each weapon group shows its chance to hit, damage per hit and the damage likely to
+        get through the target's shields. Its switch cycles <b>Fire</b>, <b>Standby</b> (sits out the next volley)
+        and <b>Off</b> (stays off). <b>Turn to face it</b> swings the ship so a weapon's arc covers the target;
+        <b> Board</b> sends marines to a ship they can reach; <b>Wait</b> lets your other units act first; <b>Done</b>
+        ends the unit's turn. A ship can also <b>Retreat</b>, let the computer play its turn, or you can
+        <b> Auto-resolve the rest</b> at any time. Turn the
         question off with <b>Let me command my battles</b> under Game (or on the Fleets screen), and every battle then
         resolves by itself.
       </P>
