@@ -90,8 +90,8 @@ export interface Planet {
 
 export type BuildItem =
   | { kind: "building"; id: string }
-  | { kind: "ship"; designId: string }
-  | { kind: "project"; id: string; planetId?: Id }
+  | { kind: "ship"; designId: string; repeat?: boolean }
+  | { kind: "project"; id: string; planetId?: Id; repeat?: boolean }
   | { kind: "tradeGoods" };
 
 export interface Colony {

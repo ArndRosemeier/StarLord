@@ -104,3 +104,40 @@ describe("finished buildings take effect", () => {
     }
   });
 });
+
+describe("repeat build", () => {
+  it("keeps a repeated ship at the head and builds one every time it finishes", () => {
+    let { s, home } = setup();
+    const scout = s.players[0]!.designs.find((d) => d.name.toLowerCase().includes("scout"))!;
+    const ships = (g: GameState) => Object.values(g.fleets).filter((f) => f.ownerId === 0)
+      .reduce((n, f) => n + f.ships.filter((x) => x.designId === scout.id).reduce((m, x) => m + x.count, 0), 0);
+    const before = ships(s);
+    s = processTurn(s, {
+      0: [{ type: "setQueue", colonyId: home.id, queue: [{ kind: "ship", designId: scout.id, repeat: true }, { kind: "project", id: "spy" }] },
+        { type: "buy", colonyId: home.id }],
+    });
+    s = processTurn(s, { 0: [{ type: "buy", colonyId: home.id }] });
+    expect(ships(s)).toBe(before + 2);
+    expect(s.colonies[home.id]!.queue[0]).toEqual({ kind: "ship", designId: scout.id, repeat: true });
+    expect(s.players[0]!.spies.home).toBe(0);
+  });
+
+  it("drops a repeated project once the rules allow no more of it", () => {
+    let { s, home } = setup();
+    s = processTurn(s, {
+      0: [{ type: "setQueue", colonyId: home.id, queue: [{ kind: "project", id: "dimensionalPortal", repeat: true }] }, { type: "buy", colonyId: home.id }],
+    });
+    expect(s.colonies[home.id]!.portal).toBe(true);
+    expect(s.colonies[home.id]!.queue).toEqual([]);
+  });
+
+  it("repeats a project such as Terraforming until the planet can't improve", () => {
+    let { s, home } = setup();
+    s.planets[home.planetId]!.type = "arid";
+    s = processTurn(s, {
+      0: [{ type: "setQueue", colonyId: home.id, queue: [{ kind: "project", id: "terraform", repeat: true }] }, { type: "buy", colonyId: home.id }],
+    });
+    expect(s.planets[home.planetId]!.type).toBe("terran");
+    expect(s.colonies[home.id]!.queue).toEqual([]);
+  });
+});
