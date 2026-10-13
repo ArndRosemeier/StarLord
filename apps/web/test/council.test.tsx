@@ -48,11 +48,14 @@ describe("galactic council windows", () => {
     expect(result).toMatch(/two thirds\) needed/);
   });
 
-  it("tells a candidate their votes go to themselves", () => {
-    const session = new GameSession(called(), 0);
-    expect(mayCastCouncilVote(session.view, 0)).toBe(false);
+  it("asks a human candidate too, and never votes for them", () => {
+    const state = called();
+    state.players[0]!.isHuman = true;
+    const session = new GameSession(state, 0);
+    expect(mayCastCouncilVote(session.view, 0)).toBe(true);
     const html = render(session, <CouncilSession instant onClose={() => {}} />);
-    expect(html).toContain("vote for yourselves");
-    expect(html).not.toContain("your turn to declare");
+    expect(html).toContain("your turn to declare");
+    expect(html).toContain("Vote for yourselves");
+    expect(html).toContain("Backing your rival moves their relation with you");
   });
 });

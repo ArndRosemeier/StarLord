@@ -421,7 +421,6 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
     case "castCouncilVote": {
       const called = state.council.called;
       if (!called || called.turn !== state.turn) return fail("the council does not meet this turn");
-      if (called.candidates.includes(playerId)) return fail("candidates vote for themselves");
       return cmd.vote === "abstain" || called.candidates.includes(cmd.vote) ? OK : fail("not a candidate");
     }
     case "setAutomation":

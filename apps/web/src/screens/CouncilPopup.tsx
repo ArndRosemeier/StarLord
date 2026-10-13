@@ -11,10 +11,10 @@ export function councilSession(view: PlayerView) {
   return called && called.turn === view.turn ? called : null;
 }
 
-/** Whether this ruler has votes to cast at this turn's session (candidates vote for themselves). */
+/** Whether this ruler has votes to cast at this turn's session; a person declares even as a candidate. */
 export function mayCastCouncilVote(view: PlayerView, me: PlayerId): boolean {
   const called = councilSession(view);
-  return !!called && !!view.players[me]?.alive && !called.candidates.includes(me) && councilVotes(view, me) > 0;
+  return !!called && !!view.players[me]?.alive && councilVotes(view, me) > 0;
 }
 
 /** The ballot cast this turn: a candidate, null for abstain, undefined when none yet. */
@@ -28,7 +28,7 @@ const DECLARE_MS = 1100;
 
 /**
  * The council in session, as the original stages it: every empire's
- * delegation declares in seat order, candidates for themselves, and the
+ * delegation declares in seat order, computer candidates for themselves, and the
  * player declares when their seat comes up. The running count is shown
  * against the two thirds that elect a leader. Computer empires decided when
  * the session was called; the council counts everything at the end of the turn.
@@ -57,10 +57,10 @@ export function CouncilSession({ onClose, instant = false }: { onClose: () => vo
   const name = (id: PlayerId) => (id === me.id ? "You" : playerName(view, id));
   /** What a seat declares: a candidate, null to abstain, "secret" for another person, undefined while undecided. */
   const declaration = (id: PlayerId): PlayerId | null | "secret" | undefined => {
-    if (called.candidates.includes(id)) return id;
     if (weight(id) === 0) return null;
     if (id === me.id) return ballot === undefined ? (readOnly ? "secret" : undefined) : ballot;
     if (view.players[id]?.isHuman) return "secret";
+    if (called.candidates.includes(id)) return id;
     return called.ballots[id] ?? null;
   };
   const revealed = seats.slice(0, Math.min(shown, stop));
@@ -109,7 +109,7 @@ export function CouncilSession({ onClose, instant = false }: { onClose: () => vo
                       : weight(id) === 0 ? "has no votes"
                         : d === null ? "abstains"
                           : d === id ? (id === me.id ? "vote for yourselves" : "votes for itself")
-                            : `${id === me.id ? "vote" : "votes"} for ${name(d!)}`}
+                            : `${id === me.id ? "vote" : "votes"} for ${d === me.id ? "you" : name(d!)}`}
                 </span>
               </li>
             );
@@ -118,9 +118,12 @@ export function CouncilSession({ onClose, instant = false }: { onClose: () => vo
         {atMySeat && (
           <div className="panel col council-my-vote">
             <div>
-              <b>Declare your {weight(me.id)} vote{weight(me.id) === 1 ? "" : "s"}.</b> Backing a candidate moves your relation with them by
-              +{RELATION_EVENTS.councilFor} and with the other by {RELATION_EVENTS.councilAgainst}; abstaining costs{" "}
-              {RELATION_EVENTS.councilAbstain} with both (before the usual modifiers).
+              <b>Declare your {weight(me.id)} vote{weight(me.id) === 1 ? "" : "s"}.</b>{" "}
+              {called.candidates.includes(me.id)
+                ? <>You stand as a candidate. Backing your rival moves their relation with you by +{RELATION_EVENTS.councilFor}, voting for
+                  yourselves by {RELATION_EVENTS.councilAgainst}, abstaining by {RELATION_EVENTS.councilAbstain} (before the usual modifiers).</>
+                : <>Backing a candidate moves your relation with them by +{RELATION_EVENTS.councilFor} and with the other by{" "}
+                  {RELATION_EVENTS.councilAgainst}; abstaining costs {RELATION_EVENTS.councilAbstain} with both (before the usual modifiers).</>}
             </div>
             {undecided.length > 0 && (
               <small className="muted">
@@ -128,7 +131,7 @@ export function CouncilSession({ onClose, instant = false }: { onClose: () => vo
               </small>
             )}
             <div className="row" style={{ flexWrap: "wrap" }}>
-              {[a, b].map((c) => <button key={c} className="primary" onClick={() => cast(c)}>Vote for {playerName(view, c)}</button>)}
+              {[a, b].map((c) => <button key={c} className="primary" onClick={() => cast(c)}>{c === me.id ? "Vote for yourselves" : `Vote for ${playerName(view, c)}`}</button>)}
               <button onClick={() => cast("abstain")}>Abstain</button>
             </div>
           </div>

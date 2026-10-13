@@ -104,20 +104,21 @@ export function voteChance(state: GameState, voter: PlayerId, candidate: PlayerI
 }
 
 /**
- * Who a player's votes go to. Candidates vote for themselves; a ballot cast
- * in the session counts next. A person is always asked and nothing votes for
- * them, so one who cast none abstains. A computer empire rolls a d200 against
+ * Who a player's votes go to. A person is always asked, candidate or not, and
+ * nothing votes for them: their ballot counts, and one who cast none abstains.
+ * Computer candidates vote for themselves. A computer empire rolls a d200 against
  * each candidate's vote score and backs the one that passes, abstaining when
  * both or neither do.
  */
 export function resolveVote(state: GameState, voter: PlayerId, candidates: PlayerId[]): PlayerId | null {
-  if (candidates.includes(voter)) return voter;
+  const human = state.players[voter]!.isHuman;
+  if (candidates.includes(voter) && !human) return voter;
   const ballots = state.council.called?.ballots;
   if (ballots && voter in ballots) {
     const b = ballots[voter]!;
     return b === null || candidates.includes(b) ? b : null;
   }
-  if (state.players[voter]!.isHuman) return null;
+  if (human) return null;
   const [a, b] = candidates;
   if (a === undefined || b === undefined) return null;
   const backs = (c: PlayerId, rival: PlayerId) => fixedRoll(state, `council${state.turn}|${voter}|${c}`, COUNCIL_VOTE.die) <= voteScore(state, voter, c, rival);
@@ -196,8 +197,7 @@ export function councilTick(state: GameState, emit: Emit): { winner: PlayerId } 
       emit({
         kind: "council", playerId: p.id,
         what: `The council is in session: ${a} and ${b} stand, and ${votesToWin(total)} of ${total} votes elect a leader. `
-          + (stand ? `You stand, and your ${votes(mine)} go to you`
-            : mine > 0 ? `Every empire declares its vote, and you cast your ${votes(mine)}` : "Your empire has no population, so no votes"),
+          + (mine > 0 ? `Every empire declares its vote, and you cast your ${votes(mine)}${stand ? " as a candidate" : ""}` : "Your empire has no population, so no votes"),
       });
     }
     return null;
@@ -229,8 +229,10 @@ export function councilTick(state: GameState, emit: Emit): { winner: PlayerId } 
   const lastVotes: Record<string, PlayerId | null> = {};
   for (const [voter, v] of choices) {
     lastVotes[voter] = v;
-    if (candidates.includes(voter)) continue;
+    // As in the original (FUN_000161e4), candidates' votes count too: a candidate voting for itself costs it
+    // standing with its rival, backing the rival wins goodwill, and abstaining cools it a little.
     for (const c of candidates) {
+      if (c === voter) continue;
       if (v === null) relationEvent(state, RELATION_EVENTS.councilAbstain, voter, c);
       else if (v === c) relationEvent(state, RELATION_EVENTS.councilFor, voter, c, REASON.councilFor);
       else relationEvent(state, RELATION_EVENTS.councilAgainst, voter, c, REASON.councilAgainst);
