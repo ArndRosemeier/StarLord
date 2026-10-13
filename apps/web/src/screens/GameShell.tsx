@@ -7,6 +7,7 @@ import { useGame } from "../ui/hooks";
 import { fmt, signed } from "../ui/format";
 import { MapScreen } from "./MapScreen";
 import { ColoniesScreen } from "./ColoniesScreen";
+import { PlanetsScreen } from "./PlanetsScreen";
 import { ResearchScreen } from "./ResearchScreen";
 import { DesignScreen } from "./DesignScreen";
 import { FleetsScreen } from "./FleetsScreen";
@@ -33,17 +34,18 @@ import { AnimatedNumber, Icon, ScreenBackdrop, TurnBanner, type BackdropArt } fr
 const ALERT_EVENTS = new Set(["combat", "colonyLost", "invasionFailed", "bombarded", "eliminated", "raid", "starvation"]);
 
 export type Tab =
-  | "map" | "colonies" | "research" | "designs" | "fleets" | "diplomacy" | "espionage" | "leaders" | "empire" | "events" | "game";
+  | "map" | "colonies" | "planets" | "research" | "designs" | "fleets" | "diplomacy" | "espionage" | "leaders" | "empire" | "events" | "game";
 
 /** The painted backdrop behind each screen; the galaxy map draws its own sky. */
 const BACKDROPS: Record<Exclude<Tab, "map">, BackdropArt> = {
-  colonies: "colonies", research: "research", designs: "shipyard", fleets: "fleets", diplomacy: "diplomacy",
+  colonies: "colonies", planets: "galaxy", research: "research", designs: "shipyard", fleets: "fleets", diplomacy: "diplomacy",
   espionage: "espionage", leaders: "leaders", empire: "empire", events: "reports", game: "galaxy",
 };
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "map", label: "Galaxy", icon: "✦" },
   { id: "colonies", label: "Colonies", icon: "◉" },
+  { id: "planets", label: "Planets", icon: "◍" },
   { id: "research", label: "Research", icon: "⚗" },
   { id: "designs", label: "Ship design", icon: "⛭" },
   { id: "fleets", label: "Fleets", icon: "➤" },
@@ -247,6 +249,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
               {tab === "map" && <MapScreen focusStar={focusStar} onFocused={() => setFocusStar(null)} onOpenColony={openColony}
                 onOpenResearch={() => go("research")} onOpenReports={() => go("events")} />}
               {tab === "colonies" && <ColoniesScreen onShowStar={showStar} initialColony={colonyFocus} />}
+              {tab === "planets" && <PlanetsScreen onShowStar={showStar} />}
               {tab === "research" && <ResearchScreen />}
               {tab === "designs" && <DesignScreen />}
               {tab === "fleets" && <FleetsScreen onShowStar={showStar} />}

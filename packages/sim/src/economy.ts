@@ -41,7 +41,16 @@ export function totalPopulation(c: Colony): number {
   return population(c) + androidCount(c);
 }
 
+/** Whether a colony ship can found a populated colony on this climate. */
 export function canColonize(type: PlanetType): boolean {
+  return CLIMATES[type].habitable;
+}
+
+/**
+ * Whether an outpost ship can claim a planet of this climate. Meant to be shared by the
+ * colonize order's check and the Planets screen, so both follow one rule.
+ */
+export function canOutpost(type: PlanetType): boolean {
   return CLIMATES[type].habitable;
 }
 

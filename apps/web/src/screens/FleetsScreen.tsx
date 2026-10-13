@@ -5,6 +5,9 @@ import { FREIGHTERS, PROJECT_COSTS, designStats, distance, findDesign, fleetSpee
 import { useGame } from "../ui/hooks";
 import { fmt, pct, words } from "../ui/format";
 import { FleetPanel, fleetShips } from "../ui/panels";
+import { SortTh, sortRows, useSort, type SortValue } from "../ui/sort";
+
+type FleetSortKey = "name" | "where" | "ships" | "strength" | "stance";
 
 export function FleetsScreen({ onShowStar }: { onShowStar: (starId: string) => void }) {
   const { session, view, me, readOnly } = useGame();
@@ -15,6 +18,16 @@ export function FleetsScreen({ onShowStar }: { onShowStar: (starId: string) => v
     const d = findDesign(me, s.designId);
     return n + (d ? designStats(me, d).strength * s.count : 0);
   }, 0);
+  const { sort, toggle } = useSort<FleetSortKey>("name", "asc", (k) => (k === "ships" || k === "strength" ? "desc" : "asc"));
+  const sorted = sortRows(fleets, sort, (f, k): SortValue => {
+    switch (k) {
+      case "name": return f.name;
+      case "where": return f.starId ? starName(f.starId) : `~${starName(f.destStarId)}`;
+      case "ships": return fleetShips(f);
+      case "strength": return strength(f);
+      case "stance": return f.stance;
+    }
+  });
   const doctrine = me.doctrine;
   const food = foodPlan(view, me.id);
   const starving = Object.keys(food.shortfall).length;
@@ -41,9 +54,16 @@ export function FleetsScreen({ onShowStar }: { onShowStar: (starId: string) => v
         <div className="panel scroll">
           <h2>Fleets</h2>
           <table>
-            <thead><tr><th>Fleet</th><th>Where</th><th>Ships</th><th>Strength</th><th>Stance</th><th /></tr></thead>
+            <thead><tr>
+              <SortTh k="name" sort={sort} onSort={toggle}>Fleet</SortTh>
+              <SortTh k="where" sort={sort} onSort={toggle}>Where</SortTh>
+              <SortTh k="ships" sort={sort} onSort={toggle}>Ships</SortTh>
+              <SortTh k="strength" sort={sort} onSort={toggle}>Strength</SortTh>
+              <SortTh k="stance" sort={sort} onSort={toggle}>Stance</SortTh>
+              <th />
+            </tr></thead>
             <tbody>
-              {fleets.map((f) => {
+              {sorted.map((f) => {
                 const dest = f.destStarId ? view.galaxy.stars.find((s) => s.id === f.destStarId) : undefined;
                 const eta = dest ? Math.ceil(distance(f, dest) / fleetSpeed(me)) : 0;
                 const at = f.starId ?? f.destStarId;
