@@ -91,11 +91,12 @@ export function rangeOverlays(view: PlayerView, overlays: MapOverlays): Pick<Map
 /** Whether a fleet can be sent to a star, and how long it would take or why not. */
 export type Route = { ok: true; turns: number; held?: boolean } | { ok: false; reason: string };
 
-export function routeTo(view: PlayerView, fleet: Fleet, starId: string): Route {
+/** `alsoSent`: other fleets ordered there at the same time; those leaving from the same spot travel with it. */
+export function routeTo(view: PlayerView, fleet: Fleet, starId: string, alsoSent: Fleet[] = []): Route {
   const dest = view.galaxy.stars.find((s) => s.id === starId)!;
   if (canReach(view, fleet.ownerId, fleet, starId)) {
     // Hyperspace flux holds the fleet where it is: the trip only starts once the flux ends.
-    return { ok: true, turns: travelTurns(view, fleet, starId), ...(movementHalted(view, fleet) ? { held: true } : {}) };
+    return { ok: true, turns: travelTurns(view, fleet, starId, alsoSent), ...(movementHalted(view, fleet) ? { held: true } : {}) };
   }
   const here = fleet.starId ? view.galaxy.stars.find((s) => s.id === fleet.starId) : undefined;
   if (dest.special === "raiderHome") return { ok: false, reason: `Only fleets in a system with one of your Dimensional Portals can cross over to ${dest.name}.` };
@@ -256,7 +257,7 @@ export function buildScene(
     ? [...selected].map((id) => view.fleets[id]).filter((f): f is Fleet => !!f && f.ownerId === view.viewer)
     : [];
   for (const f of orderable) {
-    fleetRoutes.set(f.id, new Map(view.galaxy.stars.map((s) => [s.id, routeTo(view, f, s.id)])));
+    fleetRoutes.set(f.id, new Map(view.galaxy.stars.map((s) => [s.id, routeTo(view, f, s.id, orderable)])));
   }
   if (orderable.length > 0) {
     for (const s of view.galaxy.stars) {

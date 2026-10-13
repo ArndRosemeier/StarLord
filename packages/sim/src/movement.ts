@@ -179,7 +179,7 @@ function interdictorFields(state: GameState, ownerId: PlayerId): Field[] {
   return out;
 }
 
-interface Leg {
+export interface Leg {
   speed: number;
   nebulae: Nebula[];
   interdictors: Field[];
@@ -202,7 +202,52 @@ function legFor(state: GameState, fleet: Fleet, dest: Star): Leg {
   // Navigators and trans-dimensional races are not slowed by nebulae.
   const hazardFree = navigator > 0 || ignoresSpaceHazards(getRace(owner.raceId));
   return { speed, nebulae: hazardFree ? [] : (state.nebulae ?? []), interdictors: interdictorFields(state, fleet.ownerId), instant };
+}
 
+/**
+ * Fleets of one empire at the same spot heading for the same star travel as
+ * one group, like a MoO2 fleet: the fleet itself and every other such fleet
+ * that is free to move. `alsoSent` are fleets being ordered there along with it.
+ * Monsters and raiders always go alone.
+ */
+export function travelGroup(state: GameState, fleet: Fleet, destStarId: Id | null = fleet.destStarId, alsoSent: Fleet[] = []): Fleet[] {
+  if (!destStarId || state.players[fleet.ownerId]?.kind !== "empire") return [fleet];
+  const sameSpot = (f: Fleet) => f.ownerId === fleet.ownerId &&
+    (fleet.starId ? f.starId === fleet.starId : !f.starId && f.x === fleet.x && f.y === fleet.y);
+  const sent = new Set(alsoSent.map((f) => f.id));
+  const others = Object.values(state.fleets).filter((f) =>
+    f.id !== fleet.id && sameSpot(f) && (f.destStarId === destStarId || sent.has(f.id)) && !movementHalted(state, f));
+  return [fleet, ...others];
+}
+
+/**
+ * The trip for a whole travel group. Every empire ship has the same base speed,
+ * so only captains differ: as in MoO2, the group's best Navigator speeds up and
+ * steers every ship in it (nebulae and black holes included), so all arrive together.
+ */
+function groupLeg(state: GameState, group: Fleet[], dest: Star): Leg {
+  const legs = group.map((f) => legFor(state, f, dest));
+  const best = legs.reduce((a, b) => (b.speed > a.speed || (b.speed === a.speed && b.nebulae.length < a.nebulae.length) ? b : a));
+  return { ...best, instant: legs.every((l) => l.instant) };
+}
+
+/** Parsecs per turn a fleet makes toward a star outside nebulae and interdictor fields, shared by its whole travel group. */
+export function travelSpeed(state: GameState, fleet: Fleet, destStarId: Id): number {
+  const dest = starById(state, destStarId);
+  return dest ? groupLeg(state, travelGroup(state, fleet, destStarId), dest).speed : 0;
+}
+
+/**
+ * Each moving fleet's trip this turn, worked out before anyone moves so that
+ * fleets travelling together keep the same pace and arrive together.
+ */
+export function plannedLegs(state: GameState): Map<Id, Leg> {
+  const out = new Map<Id, Leg>();
+  for (const f of Object.values(state.fleets)) {
+    const dest = starById(state, f.destStarId);
+    if (dest) out.set(f.id, groupLeg(state, travelGroup(state, f), dest));
+  }
+  return out;
 }
 
 /**
@@ -237,12 +282,15 @@ function advance(leg: Leg, pos: Point, dest: Point): Point {
   return { x, y };
 }
 
-/** Moves one fleet for one turn. Returns true when it arrived. */
-export function moveFleet(state: GameState, fleet: Fleet): boolean {
+/**
+ * Moves one fleet for one turn. Returns true when it arrived. Pass the legs from
+ * plannedLegs when moving every fleet, so groups keep together.
+ */
+export function moveFleet(state: GameState, fleet: Fleet, legs?: Map<Id, Leg>): boolean {
   const dest = starById(state, fleet.destStarId);
   if (!dest) return false;
   if (movementHalted(state, fleet)) return false;
-  const leg = legFor(state, fleet, dest);
+  const leg = legs?.get(fleet.id) ?? groupLeg(state, travelGroup(state, fleet), dest);
   if (fleet.starId) fleet.fromStarId = fleet.starId;
   const next = leg.instant ? { x: dest.x, y: dest.y } : advance(leg, fleet, dest);
   if (next.x === dest.x && next.y === dest.y) {
@@ -271,12 +319,15 @@ export function movementHalted(state: GameState, fleet: Fleet): boolean {
   );
 }
 
-/** Whole turns a fleet needs to reach a star, matching movement in processTurn. */
-export function travelTurns(state: GameState, fleet: Fleet, destStarId: Id): number {
+/**
+ * Whole turns a fleet needs to reach a star, matching movement in processTurn:
+ * fleets bound there from the same spot (or `alsoSent` with it) travel with it at one shared pace.
+ */
+export function travelTurns(state: GameState, fleet: Fleet, destStarId: Id, alsoSent: Fleet[] = []): number {
   const dest = starById(state, destStarId);
   if (!dest) return 0;
   if (distance(fleet, dest) === 0) return 0;
-  const leg = legFor(state, fleet, dest);
+  const leg = groupLeg(state, travelGroup(state, fleet, destStarId, alsoSent), dest);
   if (leg.instant) return 1;
   let pos: Point = { x: fleet.x, y: fleet.y };
   for (let turns = 1; turns < 500; turns++) {

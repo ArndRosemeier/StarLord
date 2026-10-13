@@ -31,7 +31,7 @@ import { assignDefaultJobs, newColonistJob, removeAndroids, removePopulation, st
 import {
   assignLeader, captainLost, captainOf, combatXp, dismissLeader, heroJoins, hireLeader, leaderResearch, leaderTick, salaries,
 } from "./leaders.js";
-import { moveFleet } from "./movement.js";
+import { moveFleet, plannedLegs } from "./movement.js";
 import { ignoresSpaceHazards, tradeGoodsMult } from "./raceEffects.js";
 import { PASSIVE_MONSTERS } from "./data/monsters.js";
 import { guardianSlain, refreshMonsterDesigns } from "./npc.js";
@@ -431,10 +431,12 @@ function foundColony(ctx: TurnContext, playerId: PlayerId, planetId: Id, pop: nu
 /** Movement rules (gates, nebulae, interdictors, black holes) live in movement.ts. */
 function moveFleets(ctx: TurnContext): void {
   const { state } = ctx;
+  // Fleets sent to one star from the same spot move together and arrive together.
+  const legs = plannedLegs(state);
   for (const f of Object.values(state.fleets).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const owner = state.players[f.ownerId]!;
     if (f.destStarId) {
-      moveFleet(state, f);
+      moveFleet(state, f, legs);
       if (f.invadeTarget && f.starId !== state.planets[state.colonies[f.invadeTarget]?.planetId ?? ""]?.starId) delete f.invadeTarget;
     }
     if (f.starId && owner.kind === "empire") explore(ctx, f.ownerId, f.starId);

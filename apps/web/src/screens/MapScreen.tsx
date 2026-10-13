@@ -112,7 +112,7 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
           const star = view.galaxy.stars.find((s) => s.id === id)!;
           // Idle fleets already there simply stay.
           const going = action === "order" ? mine : mine.filter((f) => id !== f.starId || f.destStarId);
-          const routes = going.map((f) => ({ f, route: routeTo(view, f, id) }));
+          const routes = going.map((f) => ({ f, route: routeTo(view, f, id, going) }));
           const ok = routes.filter((r) => r.route.ok);
           const failed = routes.filter((r) => !r.route.ok);
           if (ok.length === 0) {
@@ -125,7 +125,12 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
           const only = ok.length === 1 ? ok[0]!.f : null;
           let text = only && id === only.starId
             ? `${only.name} will stay at ${star.name}.`
-            : `${only ? only.name : `${ok.length} fleets`} heading to ${star.name}, ${only ? "arriving" : "all there"} in ${most} turn${most === 1 ? "" : "s"}. Orders take effect when you end the turn.`;
+            : only
+              ? `${only.name} heading to ${star.name}, arriving in ${most} turn${most === 1 ? "" : "s"}. Orders take effect when you end the turn.`
+              : `${ok.length} fleets heading to ${star.name}, all there in ${most} turn${most === 1 ? "" : "s"}.${
+                ok.some((a) => ok.some((b) => b !== a && a.f.starId && b.f.starId === a.f.starId))
+                  ? " Fleets leaving from the same star travel together and arrive together."
+                  : ""} Orders take effect when you end the turn.`;
           if (ok.some((r) => r.route.ok && r.route.held)) {
             text += " Hyperspace flux holds every ship for now: the trip starts once it subsides.";
           }
