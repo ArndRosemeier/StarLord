@@ -329,6 +329,22 @@ export interface Player {
   transfers?: ColonistTransfer[];
   /** Whether the empire still holds its Capitol. Unset for empires that never had one. */
   capitol?: "held" | "lost";
+  /** Population units this empire has taken by invasion or mind control; they earn a score premium. */
+  capturedPop?: number;
+  /** The empire that last attacked one of this empire's colonies; it is credited if this empire is eliminated. */
+  lastAttackedBy?: PlayerId;
+  /** Empires this one is credited with eliminating (score). */
+  eliminated?: PlayerId[];
+}
+
+/**
+ * One turn of the history record: per empire (indexed by player id) its
+ * HISTORY_STATS values (score.ts), or null for non-empires, eliminated empires and, in a
+ * player's view, empires that player has not met.
+ */
+export interface HistoryPoint {
+  turn: number;
+  rows: (number[] | null)[];
 }
 
 export type AdvancedGovernment = "confederation" | "imperium" | "federation" | "galacticUnification";
@@ -681,6 +697,9 @@ export interface GameState {
   eventClock?: { last: number; luck: Record<string, number>; used?: string[] };
   /** Empires that ordered a surrender this turn, mapped to who receives them. */
   surrenders?: Record<string, PlayerId>;
+
+  /** Per-turn statistics of every empire, for the info screen's history graphs. Missing in old saves. */
+  history?: HistoryPoint[];
 
   /** Combats from the most recent turn, kept for replay. */
   combats: CombatReport[];

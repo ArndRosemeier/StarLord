@@ -6,6 +6,7 @@ import { designStats, findDesign } from "./designs.js";
 import { hasStealthyShips, seesAllFleets } from "./raceEffects.js";
 import { colonyScanBonus, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
+import { knowsStats } from "./score.js";
 import type { Fleet, GameState, PlayerId } from "./types.js";
 
 /** What an empire calls a system it has not explored yet. */
@@ -118,8 +119,11 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
     knownPopulation[p.id] = empireTotals(state, p.id).population;
     knownTreatyPop[p.id] = { trade: treatyPopulation(state, p.id, "trade"), research: treatyPopulation(state, p.id, "research") };
   }
+  // The history record shows the viewer and the empires they are in contact with, as the original's graphs do.
+  const history = state.history?.map((h) => ({ turn: h.turn, rows: h.rows.map((r, id) => (r && knowsStats(state, viewer, id) ? r : null)) }));
   return structuredClone({
     ...state,
+    ...(history ? { history } : {}),
     knownPopulation,
     knownTreatyPop,
     players,

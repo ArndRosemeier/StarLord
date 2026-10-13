@@ -22,6 +22,7 @@ import { destructibleBuildings, population } from "./economy.js";
 import { empireBonus, grantTech, knows } from "./empire.js";
 import { removeShips } from "./fleetOps.js";
 import { removePopulation } from "./jobs.js";
+import { noteAttack } from "./score.js";
 import type { Colony, Fleet, GameState, Id, PlayerId } from "./types.js";
 
 export interface GroundForces {
@@ -196,6 +197,7 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
         delete f.invadeTarget;
 
         ctx.emit({ kind: "colonyLost", playerId: target.ownerId, colonyId: target.id, to: f.ownerId, how: "invaded" });
+        noteAttack(state, target.ownerId, f.ownerId);
         captureColony(ctx, target, f.ownerId);
       } else invade(ctx, f, target);
       continue;
@@ -205,6 +207,7 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
     for (const c of targets) {
       const { bombs, spores } = bombardment(state, f, planetDefense(c).shield);
       if (bombs <= 0 && spores <= 0) continue;
+      noteAttack(state, c.ownerId, f.ownerId);
       let kills = 0;
       if (bombs > 0) kills += bombHits(ctx, c, Math.floor(bombs / BOMB_DAMAGE_PER_HIT + rng.next()));
       // Biological weapons can't get through a barrier shield.
@@ -241,6 +244,7 @@ export function destroyColony(state: GameState, colony: Colony): void {
 export function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
   const { state, rng } = ctx;
   const attacker = state.players[f.ownerId]!;
+  noteAttack(state, colony.ownerId, attacker.id);
   let landed = 0;
   for (const s of [...f.ships]) {
     const d = findDesign(attacker, s.designId);
@@ -350,6 +354,8 @@ export function captureColony(ctx: TurnContext, colony: Colony, newOwner: Player
     if (l.ownerId === loser && l.assignedTo === state.planets[colony.planetId]!.starId) l.assignedTo = null;
   }
   if (opts.revolt) return;
+  // Conquered people earn the conqueror a score premium.
+  if (!colony.outpost) attacker.capturedPop = (attacker.capturedPop ?? 0) + population(colony);
   // The conqueror studies the colony's buildings, then questions its people (see CAPTURE_TECH).
   const C = CAPTURE_TECH;
   const level = DIFFICULTY_ORDER.indexOf(state.settings.difficulty ?? "average");

@@ -2,7 +2,7 @@ import {
   ARTIFACTS_RESEARCH, ARTIFACTS_SECOND_TECH_CHANCE, CLIMATES, INDUSTRY_PER_WORKER, NATIVE_FOOD_BONUS, NATIVES_POP, POLLUTION_TOLERANCE, SIZE_POP_BASE,
   SPECIAL_INCOME, SPLINTER_POP, TERRAFORM_STEP, climatePopulation, colonyMoraleParts, colonyOutput, getRace, government,
   gravityMultiplier, ADVANCED_START, CLIMATE_TABLE_BY_AGE, CREW, FIRST_FIELDS, TIERS_BY_ID, bodyMix, meanPlanets, DIFFICULTIES, DIFFICULTY_ORDER, JEALOUSY, GOVERNMENTS, PICK_OPTIONS, STAR_COLORS_BY_AGE, TAX_BC_PER_INDUSTRY,
-  BUILDINGS_BY_ID, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
+  BUILDINGS_BY_ID, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, SCORE, type ScoreBreakdown, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
 } from "@starlord/sim";
 import { Tip, type TipCard } from "./Tip";
 import { techSummary, unlockSummary } from "../help/articles";
@@ -303,4 +303,37 @@ export function projectTip(id: string, colony: Colony, planet: Planet, industry:
       : "When it is finished it goes to the only free planet. If none is left by then, it is scrapped for half its cost.");
   }
   return { title: p.name, kind: "Project", rows, text };
+}
+
+/** The terms of an empire's score, each with what it counts, from the sim's SCORE numbers. */
+export function scoreParts(b: ScoreBreakdown): { label: string; value: number; why: string }[] {
+  const c = b.counts;
+  const parts = [
+    { label: "Turns played", value: b.turns, why: b.turns === 0 && c.turns > 0 ? "none: no population left" : `−${SCORE.perTurn} for each of ${c.turns} turns` },
+    { label: "Galaxy and rivals", value: b.galaxy, why: b.galaxy > 0 ? `${c.empires} empires × ${b.galaxy / c.empires} for this galaxy size` : "none: no population left" },
+    { label: "Research", value: b.research, why: `${c.fields} fields × ${SCORE.perField}` },
+    { label: "Hyper-advanced", value: b.hyper, why: `${c.hyperCategories} categories × ${SCORE.perHyperCategory}` },
+    { label: "Population", value: b.population, why: `${c.population} units × ${SCORE.perPop}` },
+    { label: "Captured population", value: b.captured, why: `${c.capturedPop} units taken by invasion × ${SCORE.capturedPremium}, divided by galaxy size` },
+    { label: "Empires eliminated", value: b.eliminations, why: `${c.eliminated} × ${SCORE.perEliminated}` },
+    { label: "Guardian of Orion", value: b.orion, why: `${SCORE.orion} for slaying it` },
+    { label: "Council victory", value: b.council, why: `${SCORE.council} for being elected` },
+    { label: "Raiders destroyed", value: b.antares, why: `${SCORE.antares} for beating them at home` },
+  ];
+  return parts.filter((p) => p.value !== 0 || p.label === "Turns played" || p.label === "Population" || p.label === "Research");
+}
+
+/** Tip card for a score: its terms and the race pick multiplier. */
+export function scoreTip(b: ScoreBreakdown): TipCard {
+  return {
+    title: `Score ${b.total}`, kind: "As in the original",
+    rows: [
+      ...scoreParts(b).map((p) => [p.label, signed(p.value)] as [string, string]),
+      ["Subtotal", String(b.subtotal)],
+      ["Race pick bonus", `×${b.multiplier / 100}`],
+    ],
+    text: [
+      `The sum is multiplied by 100% plus ${SCORE.perUnspentPick}% for each race pick left unspent (${b.counts.unspentPicks} here). Quicker wins score higher: every turn costs a point.`,
+    ],
+  };
 }

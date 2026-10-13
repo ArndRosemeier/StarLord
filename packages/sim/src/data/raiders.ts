@@ -1,3 +1,4 @@
+import { SCORE } from "./score.js";
 import type { Difficulty, TechLevel } from "../types.js";
 import type { FiringArc, HullSize, WeaponModId } from "./components.js";
 
@@ -179,4 +180,4 @@ export const RAIDER_CITADEL = {
 export const SCRAP_TECH_CHANCE = 0.5;
 
 /** Score for the empire that destroys the raiders at home: the biggest bonus in the game. */
-export const RAIDERS_DEFEATED_SCORE = 2000;
+export const RAIDERS_DEFEATED_SCORE = SCORE.antares;

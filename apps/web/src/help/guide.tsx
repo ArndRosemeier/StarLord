@@ -6,7 +6,7 @@ import {
   BOARDING, DEPLOY, EXPLOSION, HULLS_BY_ID, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE, STATION_ARMS, ANTI_MISSILE, BOMBARD_ROUNDS,
   COMBAT_BOMB_RANGE, CRAFT, DAMAGE, PLANET_POPULATION_HP,
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES, EVENT_NUMBERS,
-  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, GUARDIAN_SCORE, BANKRUPTCY,
+  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, SCORE, BANKRUPTCY,
   MISSILE_SPEED, NEBULA_SPEED, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
   SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, STARTING_SHIPS, STARTING_STATION, BUILDINGS, BASE_SCRAP_REFUND, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
   TRADE_GOODS_RATE, TRAIT_EFFECTS, GOVERNMENTS, RESEARCH_PER_SCIENTIST, AI_PEACE, EVENTS, MAX_WEAPON_SLOTS, COMM_REDIRECT_RANGE, HULLS, TECHS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, abilityValue, type HeroSkill, type HeroSkillGroup,
@@ -262,7 +262,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         </li>
         <li>
           When a category is finished, its hyper-advanced field ({fmt(RESEARCH.hyperCost)} RP, {fmt(RESEARCH.hyperCostStep)} more for each further level) can be researched again
-          and again: each level makes that category's components smaller and adds {RESEARCH.hyperScore} to the score.
+          and again: each level makes that category's components smaller, and the first adds {RESEARCH.hyperScore} to the score.
         </li>
         <li>Applications you skipped can still be gained: stolen by spies, captured with a colony, found on a derelict ship, or learned from the guardian of Orion.</li>
       </Ul>
@@ -691,7 +691,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><b>Conquest</b>: be the last empire standing. An empire is out when it has no populated colonies left; outposts and colony ships don't keep it alive.</li>
         <li><b>Council</b>: be elected by the <HelpLink to="guide:council">galactic council</HelpLink>.</li>
         <li><b>Raiders</b>: build a Dimensional Portal and send a fleet from that system to destroy the raiders' home fleet and citadel. Every other empire then capitulates (<HelpLink to="page:monsters" />).</li>
-        <li><b>Score</b>: only in games started with a turn limit (off by default; the original has none): when it is reached, the highest score wins. Score counts population, colonies, outposts, techs, industry, research and ships, plus {GUARDIAN_SCORE} for slaying the guardian of Orion.</li>
+        <li><b>Score</b>: only in games started with a turn limit (off by default; the original has none): when it is reached, the highest score wins. See the score below.</li>
       </Ul>
       <P>
         Galaxy sizes: {(Object.keys(STAR_COUNTS) as (keyof typeof STAR_COUNTS)[]).map((k) => `${k} ${STAR_COUNTS[k]} stars on ${Math.round(mapSize(k).width)} × ${Math.round(mapSize(k).height)} parsecs`).join(", ")}. Monsters, raiders,
@@ -702,6 +702,20 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         the tech level starts everyone pre-warp, average or advanced.
 
       </P>
+      <P>
+        <b>Score</b> follows the original. It is shown on the Empire screen during play, broken down when the game ends, and
+        your best final scores go to the Hall of Fame:
+      </P>
+      <Ul>
+        <li>−{SCORE.perTurn} for every turn played: the quicker you win, the better.</li>
+        <li>{SCORE.perRace.base} for every empire that started the game, plus {SCORE.perRace.perSize} for each galaxy size above small. An empire with no population left gets neither this nor the turn penalty.</li>
+        <li>{SCORE.perField} for each researched field, and {SCORE.perHyperCategory} for each category with a hyper-advanced level.</li>
+        <li>{SCORE.perPop} for each population unit, androids and conquered people included.</li>
+        <li>{SCORE.capturedPremium} for each unit taken by invasion, divided by the galaxy size (small 1, medium 2, large 3, huge 4).</li>
+        <li>{SCORE.perEliminated} for each empire eliminated; the credit goes to the last empire that attacked one of its colonies.</li>
+        <li>{SCORE.orion} for slaying the guardian of Orion, {SCORE.council} for a council victory, {SCORE.antares} for destroying the raiders at home.</li>
+        <li>The sum is multiplied by the race pick bonus: 100%, plus {SCORE.perUnspentPick}% for each race pick a custom race left unspent (200% with none spent). Difficulty does not change the score.</li>
+      </Ul>
     </>
   ),
 

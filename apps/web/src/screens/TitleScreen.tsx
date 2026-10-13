@@ -9,6 +9,7 @@ import { RaceShowcase } from "../title/RaceShowcase";
 import { NewsTicker } from "../title/NewsTicker";
 import { VERSION } from "../changelog/changelog";
 import { WhatsNew } from "../changelog/WhatsNew";
+import { HallOfFame } from "./HallOfFame";
 import { openContactMail } from "../title/contact";
 
 const KONAMI = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
@@ -31,6 +32,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState(false);
   const [whatsNew, setWhatsNew] = useState(false);
+  const [hall, setHall] = useState(false);
   const [toast, setToast] = useState<{ text: string; id: number } | null>(null);
   const [leaving, setLeaving] = useState(false);
   const openHelp = useHelp();
@@ -121,6 +123,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
             }} />
           </label>
           <button className="title-button" onClick={() => openHelp()}>Encyclopedia</button>
+          <button className="title-button" onClick={() => setHall(true)}>Hall of Fame</button>
           <button className="title-button" onClick={() => setWhatsNew(true)}>What's new <small>v{VERSION}</small></button>
           <button className="title-button" onClick={() => setSettings(!settings)}>Sound</button>
           <button className="title-button" onClick={() => openContactMail(VERSION)} title="Write an email to the developer: feedback, bugs, ideas">Contact</button>
@@ -133,6 +136,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
       <div className="title-version">v{VERSION}</div>
       <NewsTicker reduced={reduced} />
       {whatsNew && <WhatsNew onClose={() => setWhatsNew(false)} />}
+      {hall && <HallOfFame onClose={() => setHall(false)} />}
     </div>
   );
 }
