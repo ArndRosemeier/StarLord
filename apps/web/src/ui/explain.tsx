@@ -5,12 +5,12 @@ import {
   BATTLE_SCANNER_RANGE, FUEL_RANGES, ORBITAL_BASES, SPECIALS_BY_ID, TRANSIT_DETECTION_PER_SIZE, canColonize, fleetRange, maxPopulation, raceMaxPopulation, scanRange, type Player,
   BUILDINGS_BY_ID, BUILDING_SCRAP, buildingScrapRefund, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
   HULLS_BY_ID, REFIT, designStats, refitCost, type ShipDesign,
-  SCORE, type ScoreBreakdown,
+  SCORE, type ScoreBreakdown, FIELD_NAMES, RESEARCH, type TechField,
 } from "@starlord/sim";
 import { Tip, type TipCard } from "./Tip";
 import { techSummary, unlockSummary } from "../help/articles";
 import { buildingEffects } from "../help/effects";
-import { climateName, pct, signed, words } from "./format";
+import { climateName, fmt, pct, signed, words } from "./format";
 
 /**
  * Tip cards that say what a thing on screen does, from the sim's own numbers.
@@ -313,6 +313,14 @@ export function techTip(id: string): TipCard {
     title: t.name, kind: TIER_OF_TECH[id]?.name,
     text: [techSummary(id), ...unlocks.map((u) => `${u.name}: ${unlockSummary(u)}`)],
   };
+}
+
+/** What one more hyper-advanced level in a field does. */
+export function hyperAdvanceText(field: TechField): string[] {
+  return [
+    `Counts as one more refinement for every ${FIELD_NAMES[field]} component: each shrinks and gets cheaper by the next miniaturization step, and enough refinement unlocks weapon modifications.`,
+    `Each level costs ${fmt(RESEARCH.hyperCostStep)} RP more than the last. The category's first level adds ${RESEARCH.hyperScore} score.`,
+  ];
 }
 
 export function buildingTip(id: string): TipCard {

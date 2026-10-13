@@ -111,6 +111,14 @@
     { "id": "music-victory", "out": "audio/victory.mp3", "model": "google/lyria-3-clip-preview",
       "prompt": "Triumphant victory fanfare for a space strategy game: heroic brass, choir and timpani building to a glorious major-key finale. Instrumental." },
     { "id": "music-defeat", "out": "audio/defeat.mp3", "model": "google/lyria-3-clip-preview",
-      "prompt": "Somber defeat theme for a space strategy game: slow mournful solo horn over low strings and a distant choir, minor key, fading out. Instrumental." }
+      "prompt": "Somber defeat theme for a space strategy game: slow mournful solo horn over low strings and a distant choir, minor key, fading out. Instrumental." },
+    { "id": "sting-breakthrough-1", "out": "audio/breakthrough-1.mp3", "model": "google/lyria-3-clip-preview", "trim": 7,
+      "prompt": "Very short celebratory music sting for a space strategy game when a scientific breakthrough is achieved, about 5 seconds long, then it ends on a sustained final chord and silence. Heroic orchestral brass fanfare with timpani roll and cymbal swell, bright major key, triumphant. Instrumental, no vocals." },
+    { "id": "sting-breakthrough-2", "out": "audio/breakthrough-2.mp3", "model": "google/lyria-3-clip-preview", "trim": 8.5,
+      "prompt": "Very short celebratory music sting for a space strategy game when a scientific breakthrough is achieved, about 5 seconds long, then it ends on a sustained final chord and silence. Shimmering sci-fi synth arpeggio rising into a glowing major chord with choir pad and sparkling bells, wondrous discovery. Instrumental, no vocals." },
+    { "id": "sting-breakthrough-3", "out": "audio/breakthrough-3.mp3", "model": "google/lyria-3-clip-preview", "trim": 7,
+      "prompt": "Very short celebratory music sting for a space strategy game when a scientific breakthrough is achieved, about 5 seconds long, then it ends on a sustained final chord and silence. Bold retro 90s game fanfare: punchy synth brass and orchestra hits, upbeat, joyful flourish. Instrumental, no vocals." },
+    { "id": "sting-breakthrough-4", "out": "audio/breakthrough-4.mp3", "model": "google/lyria-3-clip-preview", "trim": 7,
+      "prompt": "Very short celebratory music sting for a space strategy game when a scientific breakthrough is achieved, about 5 seconds long, then it ends on a sustained final chord and silence. Majestic strings and french horns swelling with harp glissando and celesta, elegant and awe-inspiring revelation. Instrumental, no vocals." }
   ]
 }

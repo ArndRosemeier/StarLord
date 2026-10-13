@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
  * key press, so playback starts (or resumes) on the first gesture.
  */
 export type Mood = "menu" | "galaxy" | "combat" | "victory" | "defeat" | "none";
-export type Effect = "click" | "select" | "turn" | "alert" | "fanfare" | "boom" | "zap" | "warp";
+export type Effect = "click" | "select" | "turn" | "alert" | "fanfare" | "boom" | "zap" | "warp" | "sparkle";
 
 const PLAYLISTS: Record<Exclude<Mood, "none">, { tracks: string[]; loop: boolean }> = {
   menu: { tracks: ["audio/menu.mp3"], loop: true },
@@ -17,6 +17,8 @@ const PLAYLISTS: Record<Exclude<Mood, "none">, { tracks: string[]; loop: boolean
   defeat: { tracks: ["audio/defeat.mp3"], loop: false },
 };
 const FADE_MS = 1200;
+/** Share of the music volume the background keeps while a sting plays over it. */
+const STING_DUCK = 0.2;
 
 export interface AudioSettings {
   music: number;
@@ -85,6 +87,8 @@ export class AudioDirector {
   private failures = 0;
   private fades = new WeakMap<MusicTrack, number>();
   private ctx: AudioContext | null = null;
+  /** A short piece of music played over the background (a breakthrough fanfare), which ducks the music meanwhile. */
+  private stingTrack: MusicTrack | null = null;
 
   constructor(private env: AudioEnv = browserEnv()) {
     // Browsers refuse play() until a click or key press, and some (Safari, tablets) refuse it again for a
@@ -119,8 +123,9 @@ export class AudioDirector {
     }
     if (this.current) {
       this.fades.delete(this.current);
-      this.current.volume = this.musicVolume();
+      this.current.volume = this.musicVolume() * (this.stingTrack ? STING_DUCK : 1);
     }
+    if (this.stingTrack) this.stingTrack.volume = this.musicVolume();
     for (const fn of this.listeners) fn();
   }
 
@@ -218,6 +223,30 @@ export class AudioDirector {
     });
   }
 
+  /**
+   * Play a short piece of music once, at the music volume, with the background
+   * music turned down beneath it and faded back up when it ends.
+   */
+  sting(src: string): void {
+    const volume = this.musicVolume();
+    if (volume <= 0) return;
+    this.stingTrack?.pause();
+    const track = this.env.createTrack(src);
+    track.loop = false;
+    track.volume = volume;
+    this.stingTrack = track;
+    const done = () => {
+      if (track !== this.stingTrack) return;
+      this.stingTrack = null;
+      if (this.current) this.fade(this.current, this.musicVolume());
+    };
+    track.addEventListener("ended", done);
+    track.addEventListener("error", done);
+    if (this.current) this.fade(this.current, volume * STING_DUCK);
+    // Refused before the first gesture: then the music just stays as it was.
+    void track.play().catch(done);
+  }
+
   /** A short synthesised effect. */
   play(effect: Effect): void {
     const volume = this.settings.muted ? 0 : this.settings.effects;
@@ -289,6 +318,10 @@ export class AudioDirector {
       case "zap":
         tone(320, 0, 0.35, "sine", 0.2, 1400);
         tone(1400, 0.05, 0.2, "triangle", 0.08, 500);
+        break;
+      case "sparkle":
+        // A cascade of high bell tones, for a celebration.
+        [1568, 2093, 1760, 2637, 2349, 3136].forEach((f, i) => tone(f, 0.05 + i * 0.07, 0.6, "sine", 0.08));
         break;
       case "warp":
         noise(1.4, "bandpass", 120, 5000, 0.35);
