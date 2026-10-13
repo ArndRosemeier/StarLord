@@ -10,12 +10,20 @@ import type { ColonizeOption } from "../game/colonize";
 import { additive, isTouchDevice, useMultiSelect } from "../ui/touch";
 import { LastTurnPanel } from "../ui/LastTurnPanel";
 
-export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, onOpenReports }: {
+/** A request from the keyboard to jump to the next idle fleet or the next colony. */
+export interface MapCycle {
+  kind: "fleet" | "colony";
+  n: number;
+}
+
+export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, onOpenReports, cycle, onCycled }: {
   focusStar: string | null;
   onFocused: () => void;
   onOpenColony: (colonyId: string) => void;
   onOpenResearch: () => void;
   onOpenReports: () => void;
+  cycle?: MapCycle | null;
+  onCycled?: () => void;
 }) {
   const { session, view, me, readOnly } = useGame();
   const host = useRef<HTMLDivElement>(null);
@@ -149,6 +157,45 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
     renderer.current?.focus(s.x, s.y);
   };
 
+  // "Next idle fleet" (N) and "Next colony" (.) step through your fleets with no orders and your colonies.
+  const lastColony = useRef<string | null>(null);
+  const idleFleets = readOnly ? [] : Object.values(view.fleets)
+    .filter((f) => f.ownerId === me.id && f.starId && !f.destStarId)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const myColonies = readOnly ? [] : Object.values(view.colonies)
+    .filter((c) => c.ownerId === me.id)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const after = <T extends { id: string }>(list: T[], current: string | null | undefined): T | undefined =>
+    list[(list.findIndex((x) => x.id === current) + 1) % list.length];
+  const focusOn = (starId: string) => {
+    const s = view.galaxy.stars.find((x) => x.id === starId);
+    if (s) requestAnimationFrame(() => renderer.current?.focus(s.x, s.y));
+  };
+  const nextIdleFleet = () => {
+    const f = after(idleFleets, fleetId);
+    if (!f) return setNotice({ text: "No idle fleets: every fleet has orders.", bad: false, at: Date.now() });
+    setFleetIds([f.id]);
+    setStarId(f.starId!);
+    focusOn(f.starId!);
+  };
+  const nextColony = () => {
+    const c = after(myColonies, lastColony.current ?? myColonies.find((x) => view.planets[x.planetId]?.starId === starId)?.id);
+    if (!c) return;
+    lastColony.current = c.id;
+    const star = view.planets[c.planetId]?.starId;
+    if (!star) return;
+    setStarId(star);
+    setFleetIds([]);
+    focusOn(star);
+    setNotice({ text: `${c.name}${c.outpost ? " (outpost)" : ""}`, bad: false, at: Date.now() });
+  };
+  useEffect(() => {
+    if (!cycle) return;
+    if (cycle.kind === "fleet") nextIdleFleet();
+    else nextColony();
+    onCycled?.();
+  }, [cycle]);
+
   const ordering = readOnly ? [] : fleetIds.map((id) => view.fleets[id]).filter((f): f is Fleet => !!f && f.ownerId === me.id);
 
   return (
@@ -178,6 +225,14 @@ export function MapScreen({ focusStar, onFocused, onOpenColony, onOpenResearch, 
         {notice && <div key={notice.at} className={`map-notice${notice.bad ? " bad" : ""}`}>{notice.text}</div>}
       </div>
       <aside className="side">
+        {!readOnly && (
+          <div className="row map-cycle" style={{ gap: 4 }}>
+            <button className="small" onClick={nextIdleFleet} disabled={idleFleets.length === 0}
+              title="Select your next fleet that has no orders (N)">Next idle fleet ({idleFleets.length})</button>
+            <button className="small" onClick={nextColony} disabled={myColonies.length === 0}
+              title="Center the map on your next colony (.)">Next colony</button>
+          </div>
+        )}
         <LastTurnPanel onTarget={(t) => {
           if (t.kind === "colony") onOpenColony(t.colonyId);
           else if (t.kind === "star") showStar(t.starId);

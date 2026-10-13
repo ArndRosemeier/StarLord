@@ -12,7 +12,7 @@ import { buildMonster } from "../../three/models/monster";
 import { monsterSpecies } from "../../game/monsters";
 import { buildPlanet } from "../../three/models/planet";
 import {
-  STEP_MS, starPlanetType, systemName, weaponLook,
+  stepMs, starPlanetType, systemName, weaponLook,
   type CombatEvent, type CommandOverlay, type Frames, type UnitInfo, type UnitState,
 } from "./replayModel";
 
@@ -356,7 +356,7 @@ export class BattleScene {
     const count = (c: number) => Math.max(2, Math.round(c * n));
     const src = this.anchor(e.ship, 1);
     const dst = this.anchor(e.target, 1);
-    const step = STEP_MS / 1000;
+    const step = stepMs() / 1000;
     switch (e.kind) {
       case "fire": {
         if (!src || !dst) break;
@@ -451,7 +451,7 @@ export class BattleScene {
   }
 
   private frame(dt: number, t: number): void {
-    const k = this.reduced ? 1 : Math.min(1, (performance.now() - this.stepAt) / STEP_MS);
+    const k = this.reduced ? 1 : Math.min(1, (performance.now() - this.stepAt) / stepMs());
     const frames = this.frames;
     const ev = this.event;
     const mat = this.starfield.material as THREE.ShaderMaterial;
