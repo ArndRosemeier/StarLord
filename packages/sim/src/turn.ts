@@ -43,7 +43,7 @@ import { PLACED_PROJECTS, availableDesigns, availableProjects, baseTargets, canB
 import { applyMutation } from "./mutation.js";
 import { cancelRefit, completeRefit, startRefit } from "./refit.js";
 import { applyDebug } from "./debug.js";
-import { score } from "./score.js";
+import { creditElimination, noteAttack, recordHistory, score } from "./score.js";
 import type { BuildItem, Colony, Fleet, GameState, Id, Planet, Player, PlayerId } from "./types.js";
 
 export type TurnOrders = Partial<Record<PlayerId, Command[]>>;
@@ -97,6 +97,7 @@ export function processTurn(
     const best = alive.reduce((b, p) => (score(state, p.id) > score(state, b.id) ? p : b), alive[0]!);
     endGame(ctx, best.id, "score");
   }
+  recordHistory(state);
   return state;
 }
 
@@ -530,6 +531,12 @@ function combatPhase(ctx: TurnContext): Silenced {
       if (ctx.pauseAt?.(battle, key)) throw new BattlePause(battle, key, starId, reportId);
       const outcome = battle.run(starId, reportId);
       state.combats.push(outcome.report);
+      // A side that started a fight where the other holds a colony has attacked that colony (elimination credit).
+      for (const [x, y] of [[a, b], [b, a]] as const) {
+        if (x.initiates && Object.values(state.colonies).some((c) => c.ownerId === y.ownerId && state.planets[c.planetId]!.starId === starId)) {
+          noteAttack(state, y.ownerId, x.ownerId);
+        }
+      }
       applyCombat(ctx, starId, [a, b], outcome);
       for (const [owner, down] of outcome.planetSilenced) {
         const side = owner === a.ownerId ? a : b;
@@ -1342,6 +1349,7 @@ function checkElimination(ctx: TurnContext): void {
     if (Object.values(state.colonies).some((c) => c.ownerId === p.id && !c.outpost)) continue;
     p.alive = false;
     p.eliminatedTurn = state.turn;
+    creditElimination(state, p.id);
     for (const f of Object.values(state.fleets)) if (f.ownerId === p.id) deleteFleet(state, f.id);
     for (const c of Object.values(state.colonies)) if (c.ownerId === p.id) destroyColony(state, c);
     // Their leaders go back to the pool of free heroes.

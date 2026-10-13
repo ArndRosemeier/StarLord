@@ -1,3 +1,4 @@
+import { recordHistory } from "./score.js";
 import {
   ADVANCED_START, FIRST_FIELDS, HOME_GALAXY_TRIES, STARTING_SHIPS, STARTING_STATION, TECH_LEVELS,
 } from "./data/galaxy.js";
@@ -231,6 +232,7 @@ export function newGame(opts: NewGameOptions): GameState {
       p.explored = state.galaxy.stars.filter((s) => s.special !== "raiderHome").map((s) => s.id);
     }
   }
+  recordHistory(state);
   return state;
 }
 

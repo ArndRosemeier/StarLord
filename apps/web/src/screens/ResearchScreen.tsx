@@ -104,7 +104,7 @@ export function ResearchScreen() {
                         <Tip card={t.hyper
                           ? { title: `${t.name} ${hyper + 1}`, kind: "Hyper-advanced", text: [
                               `Counts as one more refinement for every ${FIELD_NAMES[t.field]} component: each shrinks and gets cheaper by the next miniaturization step, and enough refinement unlocks weapon modifications.`,
-                              `Each level costs ${fmt(RESEARCH.hyperCostStep)} RP more than the last and adds ${RESEARCH.hyperScore} score.`] }
+                              `Each level costs ${fmt(RESEARCH.hyperCostStep)} RP more than the last. The category's first level adds ${RESEARCH.hyperScore} score.`] }
                           : { title: t.name, kind: "Every application is learned", text: options.map((id) => `${TECHS[id]!.name}: ${techSummary(id)}`) }}>
                           <button className={`small tech${researching ? " active" : ""}`} disabled={readOnly}
                             onClick={() => session.issue({ type: "setResearch", tierId: t.id })}>

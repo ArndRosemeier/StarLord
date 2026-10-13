@@ -1,7 +1,7 @@
 import { Tip } from "../ui/Tip";
-import { governmentTip, taxPreview, traitTip } from "../ui/explain";
+import { governmentTip, scoreTip, taxPreview, traitTip } from "../ui/explain";
 import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES, type AutomationDomain } from "@starlord/ai";
-import { TAX_STEPS, empireIncome, empireTotals, empires, foodPlan, getRace, government, score } from "@starlord/sim";
+import { TAX_STEPS, empireIncome, empireTotals, empires, foodPlan, getRace, government, score, scoreBreakdown } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, pct, signed } from "../ui/format";
 import { Envoy } from "../ui/panels";
@@ -35,7 +35,7 @@ export function EmpireScreen() {
                   {race.picks.traits.map((t) => <Tip key={t} card={traitTip(t)}><span className="chip">{traitTip(t).title}</span></Tip>)}
                 </div>
               )}
-              <div><small className="muted" style={{ letterSpacing: "0.12em" }}>SCORE</small><div className="score-big"><AnimatedNumber value={score(view, me.id)} format={fmt} /></div></div>
+              <Tip card={() => scoreTip(scoreBreakdown(view, me.id))}><div><small className="muted" style={{ letterSpacing: "0.12em" }}>SCORE</small><div className="score-big explained"><AnimatedNumber value={score(view, me.id)} format={fmt} /></div></div></Tip>
             </div>
           </div>
           <table>

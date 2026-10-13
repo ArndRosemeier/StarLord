@@ -1,3 +1,4 @@
+import { SCORE } from "./score.js";
 import type { ShipDesign, WeaponMount } from "../types.js";
 import { DEFENSE_PER_SPEED } from "./combat.js";
 import { COMPUTERS_BY_ID, HULLS_BY_ID, type HullSize, type WeaponDef } from "./components.js";
@@ -142,12 +143,8 @@ export const AVENGER_DESIGN: ShipDesign = {
   specials: ["damperField", "quantumDetonator", "subspaceTeleporter"], module: null, obsolete: true,
 };
 
-/**
- * Score for the empire that slew the Guardian. The original adds 100 to a
- * score in which wiping out the raiders is worth 250; ours scales that to our
- * raider bonus (our reading of how the two scores compare).
- */
-export const GUARDIAN_SCORE = 800;
+/** Score for the empire that slew the Guardian (see SCORE). */
+export const GUARDIAN_SCORE = SCORE.orion;
 
 /**
  * Monsters that invade the galaxy from outside (random events). Each picks an
