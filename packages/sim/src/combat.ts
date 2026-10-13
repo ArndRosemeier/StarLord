@@ -18,7 +18,7 @@ import { ARMORS, DRIVES } from "./data/components.js";
 import { crewLevel } from "./crew.js";
 import {
   ALL_WEAPONS, bestArmor, bestBeam, bestComputer, bestDrive, bestShield, designStats, findDesign, groundBatteryWeapons,
-  mergeEffects, missileBaseWeapons, mountFirepower, noEffects, rackShots, stationWeapons, strengthOf, supportDesign, weaponHP,
+  mergeEffects, missileBaseWeapons, mountFirepower, noEffects, rackShots, stationWeapons, strengthOf, weaponHP,
   weaponUnitCost, type MergedEffects,
 } from "./designs.js";
 import { empireBonus, knows } from "./empire.js";
@@ -427,9 +427,10 @@ function shipUnits(state: GameState, side: CombatSide, sideIdx: 0 | 1): Unit[] {
     const cyber = raceCombatRepair(getRace(player.raceId));
     let first = true;
     for (const stack of f.ships) {
-      const stored = findDesign(player, stack.designId);
-      if (!stored) continue;
-      const design = stored.module ? supportDesign(player, stored) : stored;
+      const design = findDesign(player, stack.designId);
+      // Colony ships, outpost ships and transports never take part in a space battle (the original loads only
+      // combat ships); what becomes of them depends on how the battle ends (see the turn's applyCombat).
+      if (!design || design.module) continue;
       const s = designStats(player, design);
       const monster = !!design.fixed;
       // A fixed design that never moves (the raiders' citadel) fights like an orbital station.
@@ -1050,10 +1051,15 @@ export class Battle {
           if (lost > 0 && u.kind === "ship" && !repairs && u.fx.repair <= 0) c.damage.push(Math.round(lost));
           counts.set(u.designId, c);
         }
-        survivors.set(f.id, [...counts].map(([designId, { count, damage }]) => {
-          const xp = f.ships.find((x) => x.designId === designId)?.xp;
-          return { designId, count, ...(xp ? { xp } : {}), ...(damage.length > 0 ? { damage } : {}) };
-        }));
+        const owner = state.players[s.ownerId]!;
+        survivors.set(f.id, [
+          ...[...counts].map(([designId, { count, damage }]) => {
+            const xp = f.ships.find((x) => x.designId === designId)?.xp;
+            return { designId, count, ...(xp ? { xp } : {}), ...(damage.length > 0 ? { damage } : {}) };
+          }),
+          // Ships that sat the battle out come through it as they were.
+          ...f.ships.filter((x) => x.count > 0 && findDesign(owner, x.designId)?.module).map((x) => structuredClone(x)),
+        ]);
         const gone = mine.filter((u) => u.retreated);
         if (gone.length > 0) retreated.add(s.ownerId);
         if (gone.length > 0 && gone.length === mine.length) fled.add(f.id);

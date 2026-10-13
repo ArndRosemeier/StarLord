@@ -594,6 +594,26 @@ export interface CombatReport {
   rounds: CombatRoundEvent[][];
   winner: PlayerId | null;
   losses: Record<string, number>;
+  /** What became of each beaten empire's ships left at the star once the battle was over. */
+  aftermath?: CombatAftermath[];
+}
+
+/**
+ * After a battle every empire that did not win gives up the system, as in the
+ * original: its ships still there, colony ships, outpost ships and transports
+ * included (they never fight), withdraw to its nearest colony. They stay when
+ * it has another colony in the system, and are lost when they had no warship
+ * with them and no colony fought for them, when it has no colony to go to, or
+ * when a hyperspace flux traps them (Trans-dimensional races excepted).
+ */
+export interface CombatAftermath {
+  ownerId: PlayerId;
+  fate: "withdrew" | "stayed" | "lost";
+  /** Why the ships were lost. */
+  why?: "unescorted" | "flux" | "noColony";
+  /** The star they withdrew to. */
+  toStarId?: Id;
+  ships: { designId: string; count: number }[];
 }
 
 export type VictoryKind = "conquest" | "council" | "raiders" | "score";
