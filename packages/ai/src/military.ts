@@ -163,6 +163,6 @@ function invadeOrStay(view: PlayerView, f: Fleet, out: Command[]): boolean {
   );
   if (!enemyColony) return false;
   // Telepaths take the colony by mind control with any cruiser or larger in orbit.
-  if (!blocksInvasion(enemyColony) && (fleetRoles(view, f).has("transport") || canMindControl(view, f, enemyColony))) out.push({ type: "invade", fleetId: f.id, colonyId: enemyColony.id });
+  if ((!blocksInvasion(enemyColony) && fleetRoles(view, f).has("transport")) || canMindControl(view, f, enemyColony)) out.push({ type: "invade", fleetId: f.id, colonyId: enemyColony.id });
   return true;
 }

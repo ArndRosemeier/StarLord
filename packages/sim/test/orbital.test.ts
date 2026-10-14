@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ASTEROID_BELT_SIZE, RELATION_EVENTS, Rng, attitude, groundPhase, newGame, orbitalPrompt, pendingOrbital, population, processTurn,
+  ASTEROID_BELT_SIZE, RELATION_EVENTS, Rng, attitude, groundPhase, mindControlProblem, newGame, orbitalPrompt, pendingOrbital, population, processTurn,
   validateCommand, type Colony, type Fleet, type GameEvent, type GameState, type OrbitalChoice, type TurnContext,
 } from "@starlord/sim";
 
@@ -211,5 +211,62 @@ describe("the turn asks a human what to do from orbit", () => {
     // Without the prompt (auto play, the command line) the turn bombards.
     const next = processTurn(s, {});
     expect(next.events.some((e) => e.kind === "orbitalStrike" && e.colonyName === c.name)).toBe(true);
+  });
+});
+
+describe("telepathic mind control from orbit", () => {
+  /** Player 0 as telepaths with a cruiser (`bomber` design) over the enemy home colony. */
+  function telepaths(stance: Fleet["stance"] = "attack") {
+    const g = game();
+    g.s.players[0]!.raceId = "lysari";
+    const c = target(g.s, 10);
+    const f = addFleet(g.s, starOf(g.s, c), [{ designId: design(g.s, "bomber"), count: 1 }], stance);
+    return { ...g, c, f };
+  }
+
+  it("is offered to telepaths only, and takes the colony whole when chosen", () => {
+    const { s, ctx, c, events } = telepaths();
+    const mind = orbitalPrompt(s, 0, c.id).options.find((o) => o.choice === "mind");
+    expect(mind?.available).toBe(true);
+    order(ctx, c.id, "mind");
+    groundPhase(ctx, new Set([c.id]));
+    expect(c.ownerId).toBe(0);
+    expect(population(c)).toBe(10);
+    expect(c.aliens).toBe(0);
+    expect(events.some((e) => e.kind === "colonyLost" && e.how === "mindControlled")).toBe(true);
+    expect(events.some((e) => e.kind === "colonyCaptured" && e.mindControl)).toBe(true);
+
+    const other = game();
+    const oc = target(other.s);
+    addFleet(other.s, starOf(other.s, oc), [{ designId: design(other.s, "bomber"), count: 1 }]);
+    expect(orbitalPrompt(other.s, 0, oc.id).options.some((o) => o.choice === "mind")).toBe(false);
+  });
+
+  it("needs a cruiser or larger warship in orbit", () => {
+    const { s, ctx, c, f } = telepaths();
+    f.ships = [{ designId: "frigate", count: 3 }];
+    expect(mindControlProblem(s, 0, c)).toMatch(/cruiser/);
+    order(ctx, c.id, "mind");
+    groundPhase(ctx, new Set([c.id]));
+    expect(c.ownerId).toBe(1);
+  });
+
+  it("goes through a barrier shield but not past a Telepath officer of the owner in the system", () => {
+    const { s, ctx, c } = telepaths();
+    c.buildings.push("barrierShield");
+    expect(mindControlProblem(s, 0, c)).toBeNull();
+    const guard = Object.values(s.leaders).find((l) => l.kind === "administrator")!;
+    Object.assign(guard, { ownerId: 1, status: "hired", assignedTo: starOf(s, c), travel: null });
+    guard.abilities = [{ skill: "telepath", improved: false }];
+    expect(mindControlProblem(s, 0, c)).toMatch(/Telepath officer/);
+    order(ctx, c.id, "mind");
+    groundPhase(ctx, new Set([c.id]));
+    expect(c.ownerId).toBe(1);
+  });
+
+  it("asks a telepath even when the fleet is not set to attack", () => {
+    const { s, c } = telepaths("defend");
+    s.players[0]!.isHuman = true;
+    expect(pendingOrbital(s, {}, 0)?.colonyId).toBe(c.id);
   });
 });

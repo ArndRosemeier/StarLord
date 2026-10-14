@@ -1,5 +1,5 @@
 import {
-  ALL_WEAPONS, blocksInvasion, canMindControl, defendingTroops, findDesign, isHostile, relation,
+  ALL_WEAPONS, blocksInvasion, defendingTroops, mindControlProblem, findDesign, isHostile, relation,
   type Colony, type Command, type Fleet, type OrbitalChoice, type PlayerView,
 } from "@starlord/sim";
 import { me, myFleets, personality, shipStats } from "./util.js";
@@ -22,9 +22,10 @@ const troopsIn = (view: PlayerView, f: Fleet) =>
  * What the empire's fleets do from orbit this turn to each enemy colony at a
  * star they are at or bound for, by intent, as the original's computer
  * players decide after a won battle:
- * - a colony we mean to take (troops or mind control in the fleets, no
- *   barrier shield) is bombed only while our troops can't yet beat its
- *   garrison, and never with biological weapons, so its people are kept;
+ * - a telepathic empire with a cruiser or larger there mind-controls it;
+ * - a colony we mean to take (troops in the fleets, no barrier shield) is
+ *   bombed only while our troops can't yet beat its garrison, and never with
+ *   biological weapons, so its people are kept;
  * - with a Stellar Converter in orbit, a colony we can't take is destroyed
  *   when it is behind a barrier shield or its owner's last system (the
  *   original's rule for finishing an empire off);
@@ -51,10 +52,12 @@ export function orbitalOrders(view: PlayerView): Command[] {
 }
 
 function decide(view: PlayerView, c: Colony, fleets: Fleet[], aggression: number): OrbitalChoice {
+  // Telepaths take the colony whole by mind control (a barrier shield doesn't stop it).
+  const arrived = { ...view, fleets: { ...view.fleets, ...Object.fromEntries(fleets.map((f) => [f.id, { ...f, starId: f.destStarId ?? f.starId }])) } };
+  if (mindControlProblem(arrived, view.viewer, c) === null) return "mind";
   const barrier = blocksInvasion(c);
   const troops = fleets.reduce((n, f) => n + troopsIn(view, f), 0);
-  const takeable = !barrier && (troops > 0 || fleets.some((f) => canMindControl(view, f, c)));
-  if (takeable) return troops > defendingTroops(view, c) || fleets.some((f) => canMindControl(view, f, c)) ? "none" : "bomb";
+  if (!barrier && troops > 0) return troops > defendingTroops(view, c) ? "none" : "bomb";
   if (fleets.some((f) => carries(view, f, "stellarConverter"))) {
     const theirSystems = new Set(
       Object.values(view.colonies).filter((o) => o.ownerId === c.ownerId).map((o) => view.planets[o.planetId]?.starId),
