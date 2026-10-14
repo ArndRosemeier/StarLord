@@ -36,7 +36,7 @@ export interface HelpEntry {
 
 export const GUIDE_TOPICS = [
   { slug: "start", title: "Getting started", keywords: "begin first turn tutorial basics goal" },
-  { slug: "setup", title: "New game, saves & settings", keywords: "new game options difficulty galaxy size age tech level opponents seed turn limit save load autosave continue settings sound music replay speed flashes hall of fame spectator" },
+  { slug: "setup", title: "New game, saves & settings", keywords: "new game options difficulty galaxy size age tech level opponents seed turn limit save load autosave continue load game settings sound music replay speed flashes hall of fame spectator" },
   { slug: "controls", title: "Screens, controls & shortcuts", keywords: "keyboard mouse keys hotkeys shortcuts screens map pan zoom undo end turn f1 overlay fuel scanner flashes planets info idle fleet" },
   { slug: "turn", title: "How a turn plays out", keywords: "order phase sequence end turn popup news breakthrough audience battle orbit" },
   { slug: "colonies", title: "Colonies, jobs & output", keywords: "farmers workers scientists drag jobs food industry research production queue repeat build buy morale gravity pollution growth housing trade goods outpost scrap" },

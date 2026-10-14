@@ -121,8 +121,9 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Save from the <b>Game</b> screen, or download a save file to keep or move to another browser. With autosave on,
         the game saves itself at the start of every turn and when you leave the page; the newest {AUTOSAVES_KEPT} autosaves
         are kept, and when the browser's storage is full the oldest autosaves make room first, never your own saves.{" "}
-        <b>Continue</b> on the title screen loads your newest save. A replay file holds every turn's orders from the start;
-        load it from the title screen to watch the game again.
+        <b>Load game</b> on the title screen lists every save in this browser, newest first, to load or delete, and
+        loads save files too. A replay file holds every turn's orders from the start; load it there to watch the game
+        again. <b>Title</b> on the new game screen takes you back to the title screen.
       </P>
       <h3>Settings</h3>
       <P>
