@@ -1,11 +1,11 @@
-import { AI_AI_PEACE, AI_TREATIES, AI_WAR } from "./data/diplomacy.js";
+import { AI_AI_PEACE, AI_SURRENDER, AI_TREATIES, AI_WAR } from "./data/diplomacy.js";
 import { getRace, hasTrait } from "./data/races.js";
 import type { Emit } from "./context.js";
-import { attitude, breakTreaty, declareWar, makePeace, patience, relation, signPact, signTreaty, temperament, trustIn } from "./diplomacy.js";
+import { attitude, breakTreaty, declareWar, makePeace, patience, relation, signPact, signTreaty, sizeOf, temperament, trustIn } from "./diplomacy.js";
 import { empireTotals } from "./economy.js";
 import { empires } from "./empire.js";
 import {
-  REASON, difficultyLevel, fleetPower, noWarTurns, persOf, relationEvent, rngRoll, strengthRatio, strikesOf, type Roll,
+  REASON, difficultyLevel, fleetPower, noWarTurns, persOf, popLossesOf, relationEvent, rngRoll, strengthRatio, strikesOf, type Roll,
 } from "./relations.js";
 import type { Rng } from "./rng.js";
 import type { GameState, PlayerId } from "./types.js";
@@ -28,7 +28,7 @@ export function aiDiplomacyTick(state: GameState, rng: Rng, emit?: Emit): void {
   aiTreaties(state, ais.map((p) => p.id), roll, powers, emit);
   allyConflicts(state, ais.map((p) => p.id), emit);
   aiWars(state, ais.map((p) => p.id), roll, powers, emit);
-  aiPeace(state, ais.map((p) => p.id), emit);
+  aiPeace(state, ais.map((p) => p.id), roll, powers, emit);
 }
 
 const repulsive = (state: GameState, id: PlayerId) => hasTrait(getRace(state.players[id]!.raceId), "repulsive");
@@ -147,23 +147,87 @@ function allianceDuty(state: GameState, a: PlayerId, b: PlayerId, emit?: Emit): 
 }
 
 /**
- * The original's FUN_00026705: two computer empires make peace once their war
- * has lasted more than 90 - 15 x difficulty turns, 20 fewer for each human
- * empire the first one is also at war with (see AI_AI_PEACE).
+ * The original's FUN_00026705: once a war between two computer empires has
+ * lasted more than 90 - 15 x difficulty turns, 20 fewer for each human empire
+ * the first one is also at war with (see AI_AI_PEACE), the first one may give
+ * up and join another empire (surrenderTarget); otherwise they make peace.
+ * The surrender itself takes effect at the end of the turn.
  */
-function aiPeace(state: GameState, ais: PlayerId[], emit?: Emit): void {
+function aiPeace(state: GameState, ais: PlayerId[], roll: Roll, powers: Map<PlayerId, number>, emit?: Emit): void {
   const P = AI_AI_PEACE;
   const d = difficultyLevel(state);
+  const surrenders = (state.surrenders ??= {});
   for (const a of ais) {
     for (const b of ais) {
       if (a === b || !state.players[a]!.alive || !state.players[b]!.alive || !atWar(state, a, b)) continue;
+      if (surrenders[a] !== undefined || surrenders[b] !== undefined) continue;
       if (!state.players[a]!.contacts.includes(b)) continue;
       const limit = P.baseTurns - P.perDifficulty * d - P.perHumanWar * humanWarCount(state, a);
       if (state.turn - relation(state, a, b).since <= limit) continue;
+      const to = surrenderTarget(state, a, roll, powers);
+      if (to !== null) {
+        surrenders[a] = to;
+        break;
+      }
       makePeace(state, b, a);
       tell(emit, a, b, "made peace with you");
     }
   }
+  if (Object.keys(surrenders).length === 0) delete state.surrenders;
+}
+
+/**
+ * The original's FUN_00027a38: whether computer empire `a`, worn down by a
+ * long war, gives up, and to whom (null: it fights on). See AI_SURRENDER.
+ * Its fleet strength is the same against every empire here (the original
+ * rates it per opponent and averages over the empires it knows).
+ */
+export function surrenderTarget(state: GameState, a: PlayerId, roll: Roll, powers?: Map<PlayerId, number>): PlayerId | null {
+  const chance = surrenderChance(state, a, powers);
+  if (chance === null || roll(100) > chance) return null;
+  const pending = state.surrenders ?? {};
+  const known = empires(state).filter((p) => p.id !== a && p.alive && state.players[a]!.contacts.includes(p.id) && pending[p.id] !== a);
+  // The most populous computer empire it is not at war with; on a tie the later one.
+  let best: PlayerId | null = null;
+  let bestPop = 0;
+  for (const p of known) {
+    if (p.isHuman || atWar(state, a, p.id)) continue;
+    const pop = sizeOf(state, p.id);
+    if (pop >= bestPop) [best, bestPop] = [p.id, pop];
+  }
+  // (The original then looks for the least populous, starting from 0, which never finds anyone.)
+  // On the easier levels, anyone it knows, the largest first.
+  if (best === null && difficultyLevel(state) < AI_SURRENDER.anyoneBelowDifficulty) {
+    for (const p of known) {
+      const pop = sizeOf(state, p.id);
+      if (pop > bestPop) [best, bestPop] = [p.id, pop];
+    }
+  }
+  return best;
+}
+
+/** The chance in percent that `a` gives up this turn, or null before it may (see AI_SURRENDER). */
+export function surrenderChance(state: GameState, a: PlayerId, powers?: Map<PlayerId, number>): number | null {
+  const S = AI_SURRENDER;
+  const me = state.players[a]!;
+  if (me.isHuman || state.turn < S.minTurn) return null;
+  const others = empires(state).filter((p) => p.id !== a && p.alive);
+  const maxPop = Math.max(1, ...others.map((p) => sizeOf(state, p.id)));
+  const known = others.filter((p) => me.contacts.includes(p.id));
+  const strength = known.length > 0 ? powers?.get(a) ?? fleetPower(state, a) : 0;
+  const pop = sizeOf(state, a);
+  const popPct = Math.trunc((pop * 100) / maxPop);
+  const strPct = Math.trunc((strength * 100) / maxPop);
+  let chance = 0;
+  if (popPct < S.weakPct || strPct < S.weakPct) {
+    chance = S.weakBase;
+    if (popPct < S.weakPct) chance = Math.trunc(((S.weakPct - popPct) * chance) / S.weakDiv);
+    if (strPct < S.weakPct) chance = Math.trunc(((S.weakPct - strPct) * chance) / S.weakDiv);
+  }
+  let lost = 0;
+  for (const p of empires(state)) if (p.id !== a) lost += popLossesOf(state, a, p.id);
+  const whole = Math.max(1, pop) + lost;
+  return Math.max(chance, Math.trunc(Math.trunc((lost * lost * 100) / whole) / whole));
 }
 
 /**

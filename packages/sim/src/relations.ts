@@ -79,7 +79,7 @@ export function raceRelation(state: GameState, a: PlayerId, b: PlayerId): number
 }
 
 const pairGet = (m: Record<string, Record<string, number>> | undefined, a: PlayerId, b: PlayerId) => m?.[a]?.[b];
-function pairSet(state: GameState, field: "baseline" | "noWar" | "strikes" | "shipLosses", a: PlayerId, b: PlayerId, v: number): void {
+function pairSet(state: GameState, field: "baseline" | "noWar" | "strikes" | "shipLosses" | "popLosses", a: PlayerId, b: PlayerId, v: number): void {
   const m = (state[field] ??= {});
   (m[a] ??= {})[b] = v;
 }
@@ -127,9 +127,25 @@ export function recordShipLosses(state: GameState, a: PlayerId, b: PlayerId, los
   if (n > 0) pairSet(state, "shipLosses", a, b, shipLossesOf(state, a, b) + n);
 }
 
+/** Population a lost to b in the current war. */
+export function popLossesOf(state: GameState, a: PlayerId, b: PlayerId): number {
+  return pairGet(state.popLosses, a, b) ?? 0;
+}
+
+/** Records population a lost to b (see POP_LOSS_TALLY); only between empires. */
+export function recordPopLosses(state: GameState, a: PlayerId, b: PlayerId, n: number): void {
+  if (n <= 0 || a === b || state.players[a]?.kind !== "empire" || state.players[b]?.kind !== "empire") return;
+  pairSet(state, "popLosses", a, b, popLossesOf(state, a, b) + n);
+}
+
+/** Forgets both sides' war losses (ships and population), as a war starts or ends. */
 export function clearShipLosses(state: GameState, a: PlayerId, b: PlayerId): void {
   pairSet(state, "shipLosses", a, b, 0);
   pairSet(state, "shipLosses", b, a, 0);
+  if (state.popLosses) {
+    pairSet(state, "popLosses", a, b, 0);
+    pairSet(state, "popLosses", b, a, 0);
+  }
 }
 
 const clampRel = (v: number) => Math.max(RELATION.min, Math.min(RELATION.max, Math.trunc(v)));

@@ -103,12 +103,13 @@ export function noteAttack(state: GameState, victim: PlayerId, attacker: PlayerI
   if (v?.kind === "empire" && a?.kind === "empire") v.lastAttackedBy = attacker;
 }
 
-/** Credits the elimination of `victim` to the last empire that attacked it, as the original does. */
-export function creditElimination(state: GameState, victim: PlayerId): void {
+/** Credits the elimination of `victim` to the last empire that attacked it, as the original does; returns that empire, if any. */
+export function creditElimination(state: GameState, victim: PlayerId): PlayerId | undefined {
   const by = state.players[victim]?.lastAttackedBy;
   const killer = by === undefined ? undefined : state.players[by];
-  if (!killer || killer.kind !== "empire" || killer.id === victim) return;
+  if (!killer || killer.kind !== "empire" || killer.id === victim) return undefined;
   killer.eliminated = [...(killer.eliminated ?? []), victim];
+  return killer.id;
 }
 
 /** One turn's history row for an empire, in HISTORY_STATS order. */

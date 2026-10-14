@@ -157,7 +157,7 @@ export function InfoScreen() {
                     {HISTORY_STATS.map((s, i) => (
                       <td key={s} className="num">
                         {!seen ? <span className="muted">unknown</span>
-                          : !p.alive ? <span className="muted">eliminated</span>
+                          : !p.alive ? <span className="muted">{p.surrenderedTo !== undefined ? "surrendered" : "eliminated"}</span>
                           : s === "score" && p.id === me.id ? <Tip card={scoreTip(mine)}><span className="explained">{fmt(mine.total)}</span></Tip>
                           : row ? fmt(row[i]!) : "—"}
                       </td>

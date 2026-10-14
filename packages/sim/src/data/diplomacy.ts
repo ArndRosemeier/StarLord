@@ -320,10 +320,41 @@ export const AI_TREATIES = {
  * How a war between two computer empires ends, after the original
  * (FUN_00026705): once it has lasted more than `baseTurns` - `perDifficulty` x
  * difficulty - `perHumanWar` x the human empires the first side also fights,
- * they make peace. (The original may instead have a collapsing empire join a
- * stronger one; StarLord leaves that out.)
+ * the first side either gives up and joins another empire (AI_SURRENDER) or
+ * they make peace.
  */
 export const AI_AI_PEACE = { baseTurns: 90, perDifficulty: 15, perHumanWar: 20 } as const;
+
+/**
+ * Whether a computer empire stuck in a long war gives up, after the original
+ * (FUN_00027a38). Never before turn `minTurn`. Its population and its fleet
+ * strength are taken in percent of the largest other empire's population (the
+ * original divides the strength by population too). Below `weakPct` either
+ * one makes it consider giving up: chance `weakBase`%, or (`weakPct` - pop%)
+ * x `weakBase` / `weakDiv` when the population is the weak one, then that
+ * times (`weakPct` - strength%) / `weakDiv` when the fleet is weak too.
+ * Population lost in its wars counts as well: losses² x 100 / (population +
+ * losses)²% if that is higher. On a d100 at most the chance it surrenders to
+ * the most populous computer empire it knows and is not at war with; on
+ * Tutor, Easy and Average (difficulty below `anyoneBelowDifficulty`), failing
+ * that, to the most populous empire it knows, human or not, at war or not.
+ */
+export const AI_SURRENDER = { minTurn: 150, weakPct: 26, weakBase: 5, weakDiv: 12, anyoneBelowDifficulty: 3 } as const;
+
+/**
+ * What an empire that surrenders hands over, after the original (FUN_000e4b43):
+ * its ships, the technologies the receiver can use, its colonies, treasury
+ * and freighters, and every spy it had (at home and abroad) joins the
+ * receiver's home spies, up to `spyCap`. Its leaders leave its service.
+ */
+export const SURRENDER = { spyCap: 63 } as const;
+
+/**
+ * The original's tally of population an empire lost to another in their war
+ * (player+0x6ff): 1 per colonist killed, plus `colonyDestroyed` for a colony
+ * wiped out, or `colonyTaken` + its population for a colony captured.
+ */
+export const POP_LOSS_TALLY = { colonyDestroyed: 10, colonyTaken: 10 } as const;
 
 /**
  * When a computer empire goes to war with another computer empire, after the
