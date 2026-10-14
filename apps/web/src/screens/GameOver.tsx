@@ -7,6 +7,9 @@ import { Tip } from "../ui/Tip";
 import { scoreParts, scoreTip } from "../ui/explain";
 import { enterHallOfFame, hallEntryFor } from "../game/hallOfFame";
 import { HallOfFame } from "./HallOfFame";
+import { webglAvailable } from "../three/webgl";
+import { EndFilm } from "../ending/EndFilm";
+import { endingFor } from "../ending/endings";
 
 const HOW: Record<string, string> = {
   conquest: "by conquest",
@@ -15,8 +18,12 @@ const HOW: Record<string, string> = {
   score: "on score when time ran out",
 };
 
-/** Full-screen victory or defeat card shown once when the game ends, with every empire's final score. */
-export function GameOver({ won, spectating, onClose, onQuit }: { won: boolean; spectating: boolean; onClose: () => void; onQuit: () => void }) {
+/**
+ * Shown once when the game ends, or when the player's own empire falls while
+ * others play on: a 3D end sequence for the way the game ended (skippable),
+ * then the victory or defeat card with every empire's final score over it.
+ */
+export function GameOver({ won, spectating, fallen = false, onClose, onQuit }: { won: boolean; spectating: boolean; fallen?: boolean; onClose: () => void; onQuit: () => void }) {
   const { session, view } = useGame();
   // The game is over: the final tally shows every empire, not just the ones the player met.
   const state = session.state;
@@ -31,6 +38,19 @@ export function GameOver({ won, spectating, onClose, onQuit }: { won: boolean; s
   const mine = me !== null ? ranking.find((r) => r.p.id === me) : undefined;
   const [hall, setHall] = useState<{ id: string; place: number | null } | null>(null);
   const [showHall, setShowHall] = useState(false);
+  const ending = useMemo(() => endingFor(state, me), [state, me]);
+  const [film, setFilm] = useState(() => ending !== null && webglAvailable());
+  const [playing, setPlaying] = useState(film);
+  // Any click or key during the sequence skips to the card.
+  useEffect(() => {
+    if (!playing) return;
+    const skip = (e: Event) => {
+      if (e instanceof KeyboardEvent && ["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
+      setPlaying(false);
+    };
+    window.addEventListener("keydown", skip);
+    return () => window.removeEventListener("keydown", skip);
+  }, [playing]);
   useEffect(() => {
     if (me === null) return;
     const entry = hallEntryFor(state, me, new Date());
@@ -40,12 +60,21 @@ export function GameOver({ won, spectating, onClose, onQuit }: { won: boolean; s
   }, [state, me]);
 
   return (
-    <div className={`game-over ${bright ? "won" : "lost"}`} style={{ backgroundImage: `url(art/${bright ? "victory" : "defeat"}.webp)` }}>
-      <Celebration mood={bright ? "victory" : "defeat"} />
-      <div className="card game-over-card">
-        <h1>{spectating ? "Game over" : won ? "Victory" : "Defeat"}</h1>
+    <div className={`game-over ${bright ? "won" : "lost"} ${film ? "film" : ""} ${playing ? "playing" : ""}`}
+      style={film ? undefined : { backgroundImage: `url(art/${bright ? "victory" : "defeat"}.webp)` }}
+      onClick={playing ? () => setPlaying(false) : undefined}>
+      {film && ending ? (
+        <EndFilm ending={ending} playing={playing} onFinished={() => setPlaying(false)} onFailed={() => { setFilm(false); setPlaying(false); }} />
+      ) : (
+        <Celebration mood={bright ? "victory" : "defeat"} />
+      )}
+      {playing && <button className="end-skip" onClick={(e) => { e.stopPropagation(); setPlaying(false); }}>Skip</button>}
+      {!playing && <div className="card game-over-card">
+        <h1>{fallen ? "Defeat" : spectating ? "Game over" : won ? "Victory" : "Defeat"}</h1>
+        {ending && <div className="end-kind">{ending.text.title}</div>}
         <div style={{ fontSize: 18, textShadow: "0 2px 8px #000" }}>
-          {winner ? <>The {winner.name} rule the galaxy {how}, turn {view.turn}.</> : <>The game has ended on turn {view.turn}.</>}
+          {ending ? ending.text.lines.map((l, i) => <div key={i}>{l}</div>)
+            : winner ? <>The {winner.name} rule the galaxy {how}, turn {view.turn - 1}.</> : <>The game has ended on turn {view.turn - 1}.</>}
         </div>
         {mine && (
           <div className="panel final-score">
@@ -87,11 +116,11 @@ export function GameOver({ won, spectating, onClose, onQuit }: { won: boolean; s
           </table>
         </div>
         <div className="row" style={{ justifyContent: "center" }}>
-          <button onClick={onClose}>Look around</button>
+          <button onClick={onClose}>{fallen ? "Watch on" : "Look around"}</button>
           <button onClick={() => setShowHall(true)}>Hall of Fame</button>
           <button className="primary" onClick={onQuit}>Back to title</button>
         </div>
-      </div>
+      </div>}
       {showHall && <HallOfFame onClose={() => setShowHall(false)} highlight={hall?.id} />}
     </div>
   );
