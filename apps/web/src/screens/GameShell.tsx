@@ -86,7 +86,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [focusStar, setFocusStar] = useState<string | null>(null);
   const [autoplay, setAutoplay] = useState(false);
   const [seenTurn, setSeenTurn] = useState(view.turn);
-  const [overSeen, setOverSeen] = useState(view.over);
+  // The end card shows once when the game ends, and once when the player's own empire falls while others play on.
+  const [endSeen, setEndSeen] = useState<"over" | "fallen" | null>(view.over ? "over" : !readOnly && !me.alive ? "fallen" : null);
   const [colonyFocus, setColonyFocus] = useState<string | null>(null);
   /** The end-turn check being shown: research points that would be lost and colonies making only Trade Goods. */
   const [endCheck, setEndCheck] = useState<{ points: number | null; idle: string[] } | null>(null);
@@ -140,10 +141,12 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const debugRef = useRef(debug);
   debugRef.current = debug;
   const won = view.over && view.winner === me.id && !readOnly;
+  const fallen = !readOnly && !view.over && !me.alive;
+  const endShowing = view.over ? endSeen !== "over" : fallen && endSeen !== "fallen";
 
   useEffect(() => {
-    audio.setMood(!view.over ? "galaxy" : readOnly || won ? "victory" : "defeat");
-  }, [view.over, won, readOnly]);
+    audio.setMood(fallen ? "defeat" : !view.over ? "galaxy" : readOnly || won ? "victory" : "defeat");
+  }, [view.over, won, readOnly, fallen]);
   useEffect(() => () => { audio.setMood("none"); }, []);
 
   // Sound for a new turn, plus an alert when something bad or big happened to us.
@@ -323,7 +326,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
               {tab === "map" && <MapScreen focusStar={focusStar} onFocused={() => setFocusStar(null)} onOpenColony={openColony}
                 onOpenResearch={() => go("research")} onOpenReports={() => go("events")} cycle={mapCycle} onCycled={() => setMapCycle(null)}
                 flashReady={!autoplay && !battles.length && !news.length && !celebration && !leaderOffers.length && !councilPopup && !audiences.length
-                  && !basePrompt && !session.battle && !session.orbital && !session.target && !(view.over && !overSeen)} />}
+                  && !basePrompt && !session.battle && !session.orbital && !session.target && !endShowing} />}
               {tab === "colonies" && <ColoniesScreen onShowStar={showStar} initialColony={colonyFocus} />}
               {tab === "planets" && <PlanetsScreen onShowStar={showStar} />}
               {tab === "research" && <ResearchScreen />}
@@ -339,7 +342,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
             </div>
           </main>
         </div>
-        {view.over && !overSeen && <GameOver won={won} spectating={readOnly} onClose={() => setOverSeen(true)} onQuit={onQuit} />}
+        {endShowing && <GameOver won={won} spectating={readOnly} fallen={fallen} onClose={() => setEndSeen(view.over ? "over" : "fallen")} onQuit={onQuit} />}
       </div>
       {endCheck && (
         <EndTurnPrompt points={endCheck.points} idle={endCheck.idle.flatMap((id) => (view.colonies[id] ? [view.colonies[id]!] : []))}
@@ -348,21 +351,21 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
           onOpenResearch={() => { setEndCheck(null); go("research"); }}
           onOpenColony={(id) => { setEndCheck(null); openColony(id); }} />
       )}
-      {battles.length > 0 && !(view.over && !overSeen) && <BattlePopup battles={battles} onClose={() => setBattles([])} />}
-      {news.length > 0 && !battles.length && !(view.over && !overSeen) && (
+      {battles.length > 0 && !endShowing && <BattlePopup battles={battles} onClose={() => setBattles([])} />}
+      {news.length > 0 && !battles.length && !endShowing && (
         <NewsPopup news={news} onClose={() => setNews([])} onShowStar={showStar} />
       )}
-      {celebration && !battles.length && !news.length && !(view.over && !overSeen) && (
+      {celebration && !battles.length && !news.length && !endShowing && (
         <BreakthroughPopup news={celebration} onClose={closeBreakthrough} nextLabel={pickNextResearch ? "Choose the next research" : "Continue"} />
       )}
-      {leaderOffers[0] && !battles.length && !news.length && !celebration && !(view.over && !overSeen) && (
+      {leaderOffers[0] && !battles.length && !news.length && !celebration && !endShowing && (
         <LeaderOfferPopup key={leaderOffers[0]} leaderId={leaderOffers[0]} onClose={() => setLeaderOffers((q) => q.slice(1))} onLeaders={() => go("leaders")} />
       )}
-      {councilPopup && !battles.length && !news.length && !celebration && !leaderOffers.length && !(view.over && !overSeen) && (
+      {councilPopup && !battles.length && !news.length && !celebration && !leaderOffers.length && !endShowing && (
         councilPopup === "vote" ? <CouncilSession onClose={() => setCouncilPopup(null)} /> : <CouncilResultPopup onClose={() => setCouncilPopup(null)} />
       )}
       {basePrompt && !endCheck && !audiences[0] && !battles.length && !celebration && !leaderOffers.length && !councilPopup && <BasePrompt onClose={() => setBasePrompt(false)} />}
-      {audiences[0] && !battles.length && !news.length && !celebration && !leaderOffers.length && !councilPopup && !(view.over && !overSeen) && (
+      {audiences[0] && !battles.length && !news.length && !celebration && !leaderOffers.length && !councilPopup && !endShowing && (
         <Audience key={`${view.turn}:${audiences.length}:${audiences[0].themId}:${audiences[0].opening.kind}`} request={audiences[0]}
           onClose={() => setAudiences((q) => q.slice(1))} />
       )}

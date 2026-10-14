@@ -817,3 +817,34 @@ body:has(.job-drag-card) { cursor: grabbing; }
   .cb-actions { flex-wrap: nowrap; overflow-x: auto; }
   .cb-actions button { flex: none; }
 }
+
+/* ---- 3D end sequences behind the game-over card */
+.game-over.film { background: #000; align-items: flex-end; }
+.game-over.film::after { display: none; }
+.game-over.film::before { z-index: 0; opacity: 1; transition: opacity 1.2s; }
+.game-over.film.playing::before { opacity: 0; }
+.game-over.film.playing { cursor: pointer; }
+.end-film { position: absolute; inset: 0; z-index: 0; }
+.end-stage { position: absolute; inset: 0; opacity: 0; transition: opacity 1.4s ease-out; }
+.end-film.ready .end-stage { opacity: 1; }
+.game-over .end-stage canvas { pointer-events: none; }
+.end-bar { position: absolute; left: 0; right: 0; height: 11vh; background: #000; transition: transform 1.2s cubic-bezier(0.6, 0, 0.3, 1); pointer-events: none; }
+.end-bar.top { top: 0; }
+.end-bar.bottom { bottom: 0; }
+.end-film.done .end-bar.top { transform: translateY(-100%); }
+.end-film.done .end-bar.bottom { transform: translateY(100%); }
+.end-captions { position: absolute; left: 0; right: 0; top: 16vh; text-align: center; padding: 0 16px; pointer-events: none; }
+.end-captions h1 { font-family: Orbitron, Inter, sans-serif; font-size: clamp(28px, 5.5vw, 68px); letter-spacing: 0.14em; margin: 0 0 14px;
+  color: #ffe39a; text-shadow: 0 0 24px rgba(255, 190, 80, 0.7), 0 2px 10px #000; animation: over-title 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) 0.4s both; }
+.game-over.lost .end-captions h1 { color: #ffb0a0; text-shadow: 0 0 24px rgba(255, 90, 60, 0.6), 0 2px 10px #000; }
+.end-captions p { margin: 6px auto; max-width: 760px; font-size: clamp(15px, 2vw, 20px); text-shadow: 0 2px 8px #000, 0 0 2px #000;
+  animation: end-line 1.2s ease-out both; }
+@keyframes end-line { from { opacity: 0; transform: translateY(8px); filter: blur(4px); } }
+.end-skip { position: absolute; right: 16px; bottom: calc(11vh + 12px); z-index: 2; opacity: 0.75; }
+.end-skip:hover { opacity: 1; }
+.game-over .end-kind { font-family: Orbitron, Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; font-size: 14px; opacity: 0.85; }
+.game-over.film .card.game-over-card { animation: fade-in 1s both; }
+@media (prefers-reduced-motion: reduce) {
+  .end-bar, .end-stage { transition: none; }
+  .end-captions h1, .end-captions p { animation: none; }
+}

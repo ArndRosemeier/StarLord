@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DEBUG, EVENTS, population, type DebugAction, type EventId } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt } from "../ui/format";
 import { Simulator } from "./Simulator";
 import { CombatLab } from "./CombatLab";
+import { EndPreview } from "../ending/EndPreview";
+import { previewEnding, type EndingKind } from "../ending/endings";
+import { webglAvailable } from "../three/webgl";
+
+const ENDINGS: [EndingKind, string][] = [["conquest", "Conquest"], ["council", "Council"], ["raiders", "Vex Prime"], ["score", "Score"], ["defeat", "Defeat"]];
 
 const words = (id: string) => id.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 
@@ -27,6 +32,8 @@ export function DebugMenu({ onClose }: { onClose: () => void }) {
   const [event, setEvent] = useState<EventId>(events[0]!);
   const [simulator, setSimulator] = useState(false);
   const [lab, setLab] = useState(false);
+  const [ending, setEnding] = useState<EndingKind | null>(null);
+  const preview = useMemo(() => (ending ? previewEnding(session.state, me.id, ending) : null), [ending]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -36,6 +43,8 @@ export function DebugMenu({ onClose }: { onClose: () => void }) {
 
   const run = (action: DebugAction) => session.issue({ type: "debug", action });
   const colony = view.colonies[colonyId];
+
+  if (preview) return <EndPreview ending={preview} onClose={() => setEnding(null)} />;
 
   if (lab) {
     return (
@@ -157,6 +166,14 @@ export function DebugMenu({ onClose }: { onClose: () => void }) {
             </select>
             <button onClick={() => run({ kind: "event", event })}>Trigger event</button>
           </div>
+        </section>
+
+        <section>
+          <h3>Endings</h3>
+          <div className="row debug-row">
+            {ENDINGS.map(([kind, label]) => <button key={kind} onClick={() => setEnding(kind)} disabled={!webglAvailable()}>{label}</button>)}
+          </div>
+          <small className="muted">Plays the end sequence starring your empire; nothing in the game changes.</small>
         </section>
       </div>
     </div>
