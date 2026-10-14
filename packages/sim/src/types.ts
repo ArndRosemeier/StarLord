@@ -686,8 +686,26 @@ export type GameEvent =
   | { turn: number; kind: "explored"; playerId: PlayerId; starId: Id }
   | { turn: number; kind: "commandRejected"; playerId: PlayerId; reason: string }
   | { turn: number; kind: "combat"; playerId: PlayerId; reportId: Id; starId: Id; won: boolean }
-  | { turn: number; kind: "colonyLost"; playerId: PlayerId; colonyId: Id; to: PlayerId | null; how: "invaded" | "destroyed" | "revolted" | "mindControlled" }
-  | { turn: number; kind: "colonyCaptured"; playerId: PlayerId; colonyId: Id; from: PlayerId; /** Taken by telepathic mind control. */ mindControl?: true }
+  | {
+    turn: number; kind: "colonyLost"; playerId: PlayerId; colonyId: Id; to: PlayerId | null; how: "invaded" | "destroyed" | "revolted" | "mindControlled";
+    /** Building ids torn down when the colony changed hands. */
+    lostBuildings?: string[];
+  }
+  | {
+    turn: number; kind: "colonyCaptured"; playerId: PlayerId; colonyId: Id; from: PlayerId;
+    /** Taken by telepathic mind control. */
+    mindControl?: true;
+    /** Taken back by its own people in a revolt. */
+    revolt?: true;
+    /** Building ids torn down on the takeover. */
+    lostBuildings?: string[];
+    /** BC the new owner got back for torn-down buildings (Unification). */
+    refund?: number;
+    /** Marines left on the planet as its new garrison. */
+    garrison?: number;
+    /** Troop ships the surviving invaders re-boarded. */
+    reboarded?: number;
+  }
   | { turn: number; kind: "invasionFailed"; playerId: PlayerId; colonyId: Id }
   | { turn: number; kind: "bombarded"; playerId: PlayerId; colonyId: Id; popLost: number }
   /**

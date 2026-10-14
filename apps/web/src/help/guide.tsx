@@ -7,7 +7,7 @@ import {
   BOARDING, DEPLOY, EXPLOSION, HULLS_BY_ID, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE, STATION_ARMS, ANTI_MISSILE, BOMBARD_ROUNDS,
   COMBAT_BOMB_RANGE, CRAFT, DAMAGE, PLANET_POPULATION_HP,
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES, EVENT_NUMBERS,
-  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, SCORE, BANKRUPTCY,
+  JUMP_GATE_BONUS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, MAX_QUEUE, MAX_ROUNDS, MILITIA_PER_POP, BASE_EQUIPMENT, SPECIAL_UNIT_RATING, COMMANDO_INVASION, SCORE, BANKRUPTCY, CAPTURE_LOSSES, MARINES_PER_TRANSPORT, REBEL_GARRISON_MAX, BUILDINGS_BY_ID,
   MISSILE_SPEED, NEBULA_SPEED, BLACK_HOLE_RADIUS, PEACE_TREATY_TURNS, PICK_VALUES, PLANET_INSTALLATION_HP, PROJECT_COSTS, PROPOSAL_LIFETIME, RESEARCH,
   SPORE_KILL_CHANCE_PER_POINT, STAR_COUNTS, STARTING_SHIPS, STARTING_STATION, BUILDINGS, BASE_SCRAP_REFUND, BUILDING_SCRAP, mapSize, SUCCESS_THRESHOLD, TAX_BC_PER_INDUSTRY, TAX_PER_POP, TAX_STEPS,
   TRADE_GOODS_RATE, TRAIT_EFFECTS, GOVERNMENTS, REFIT, DIFFICULTIES, DIFFICULTY_ORDER, RESEARCH_PER_SCIENTIST, AI_PEACE, EVENTS, MAX_WEAPON_SLOTS, COMM_REDIRECT_RANGE, HULLS, TECHS, TREATY_YIELD, TROOPS, RELATION, RELATION_EVENTS, TREATY_WARMTH, COUNCIL_VOTE, COVET, PAID_WAR, abilityValue, type HeroSkill, type HeroSkillGroup,
@@ -672,8 +672,14 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         {PICK_VALUES.groundCombatPerLevel}. <HelpLink to="trait:lowG" /> troops fight at −10,{" "}
         <HelpLink to="trait:subterranean" /> defenders at +10, <HelpLink to="trait:highG" /> troops take one more hit,
         and Commando leaders add their skill: the system's colony leader for the defenders, and the best ship officer at
-        the star for troops landing from orbit, at {COMMANDO_INVASION.perLevel} per level ({COMMANDO_INVASION.improvedPerLevel / COMMANDO_INVASION.improvedDivisor} improved). A captured colony keeps its buildings and its people, who
-        must be assimilated (see Colonies). It may also yield up to {CAPTURE_TECH.maxTechs} of the loser's techs: each
+        the star for troops landing from orbit, at {COMMANDO_INVASION.perLevel} per level ({COMMANDO_INVASION.improvedPerLevel / COMMANDO_INVASION.improvedDivisor} improved). A captured colony keeps its people, who
+        must be assimilated (see Colonies). Its {CAPTURE_LOSSES.buildings.map((b) => BUILDINGS_BY_ID[b]?.name ?? b).join(", ")} are
+        torn down, and its build queue and every trained marine and tank are lost; stations, missile bases, ground
+        batteries, shields, fighter garrisons and all other buildings pass to you. A Unification captor also tears down
+        the {CAPTURE_LOSSES.unificationRefunds.map((b) => BUILDINGS_BY_ID[b]?.name ?? b).join(" and ")} for{" "}
+        {CAPTURE_LOSSES.refundShare * 100}% of their cost. The surviving invaders re-board full troop ships
+        ({MARINES_PER_TRANSPORT} marines each) keeping at least one marine on the planet; ships they can't fill are
+        dismantled and the rest stay as its garrison, up to half the planet size's population base (warlords the whole). It may also yield up to {CAPTURE_TECH.maxTechs} of the loser's techs: each
         building whose tech you lack gives it with a {CAPTURE_TECH.perBuilding.human / 10}% chance, then each colonist one
         of the loser's techs with a {CAPTURE_TECH.perColonist.human / 10}% chance, both divided by one more than the techs
         taken so far (computer players' odds are a little lower, rising with the difficulty level).
@@ -683,7 +689,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <HelpLink to="trait:telepathic" /> empires can take a colony whose orbit they won by mind control instead: pick
         Mind control in the orbit window (or Mind control in the system panel). It needs a cruiser or larger warship in
         orbit, works through a barrier shield and turns the colony over whole, every colonist assimilated at once and
-        no ground battle fought. It fails when the owner's race is telepathic too, or when the owner has a Telepath
+        no ground battle fought. The same buildings are torn down as in an invasion, and the colony starts without
+        a garrison. Rebels who win a revolt keep up to {REBEL_GARRISON_MAX} of their own as marines. It fails when the owner's race is telepathic too, or when the owner has a Telepath
         officer in that system (a captain there or its administrator). Conquerors outside democracies and federations may
         exterminate a conquered population, which every other empire resents.
       </P>

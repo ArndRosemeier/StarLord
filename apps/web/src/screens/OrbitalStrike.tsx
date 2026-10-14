@@ -1,5 +1,5 @@
 import {
-  BOMB_DAMAGE_PER_HIT, SPORE_KILL_CHANCE_PER_POINT, type OrbitalChoice, type OrbitalOption, type OrbitalPrompt, type PlayerView,
+  BUILDINGS_BY_ID, BOMB_DAMAGE_PER_HIT, SPORE_KILL_CHANCE_PER_POINT, type OrbitalChoice, type OrbitalOption, type OrbitalPrompt, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, playerName, starName } from "../ui/format";
@@ -20,6 +20,14 @@ export function outrageText(view: PlayerView, prompt: OrbitalPrompt): string {
   return `Diplomatic penalty: every computer empire in contact and not at war with you is appalled: ${each} relations.`;
 }
 
+/** What a takeover of this colony tears down, as one sentence. */
+export function takeoverText(prompt: OrbitalPrompt): string {
+  const { buildings, refund } = prompt.captureLosses;
+  const names = buildings.map((b) => BUILDINGS_BY_ID[b]?.name ?? b).join(", ");
+  const torn = buildings.length ? `${names} ${buildings.length === 1 ? "is" : "are"} torn down${refund ? ` (${fmt(refund)} BC back)` : ""}` : "no building is torn down";
+  return `On takeover ${torn}; the build queue and every trained marine and tank are lost; stations, missile bases, batteries, shields and other buildings pass to you.`;
+}
+
 /** One line on what a choice does, with the expected numbers the sim gives for it. */
 export function optionText(view: PlayerView, prompt: OrbitalPrompt, o: OrbitalOption): string {
   const losses = `about ${fmt(o.popKilled, 1)} of ${fmt(prompt.population)} colonists and ${fmt(o.buildingsLost, 1)} of ${fmt(prompt.buildings)} buildings`;
@@ -31,7 +39,7 @@ export function optionText(view: PlayerView, prompt: OrbitalPrompt, o: OrbitalOp
     case "destroy":
       return `A Stellar Converter fired from orbit turns the planet into an asteroid belt: all ${fmt(prompt.population)} colonists and ${fmt(o.buildingsLost)} buildings are lost, and so is any special of the planet. ${outrageText(view, prompt)}`;
     case "mind":
-      return `Your telepaths seize the colony with their minds: it becomes yours with all ${fmt(prompt.population)} colonists assimilated at once and ${fmt(prompt.buildings)} buildings intact, its ${fmt(prompt.troops.militia + prompt.troops.marines + prompt.troops.armor)} defending troops never fight and your troops stay aboard. Needs a cruiser or larger in orbit; fails against telepathic races and where the owner has a Telepath officer. No diplomatic penalty.`;
+      return `Your telepaths seize the colony with their minds: it becomes yours with all ${fmt(prompt.population)} colonists assimilated at once, its ${fmt(prompt.troops.militia + prompt.troops.marines + prompt.troops.armor)} defending troops never fight and your troops stay aboard, so it starts without a garrison. ${takeoverText(prompt)} Needs a cruiser or larger in orbit; fails against telepathic races and where the owner has a Telepath officer. No diplomatic penalty.`;
     case "none":
       return "Your fleets stay in orbit and leave the colony be this turn.";
   }
@@ -74,7 +82,7 @@ export function OrbitalStrike({ prompt }: { prompt: OrbitalPrompt }) {
             </div>
           ))}
         </div>
-        <p className="muted small">To take the colony {prompt.options.some((o) => o.choice === "mind") ? "with troops " : ""}instead, order a fleet with troop ships to invade it (Fleets screen) before ending the turn.</p>
+        <p className="muted small">To take the colony {prompt.options.some((o) => o.choice === "mind") ? "with troops " : ""}instead, order a fleet with troop ships to invade it (Fleets screen) before ending the turn. {takeoverText(prompt)}</p>
       </div>
     </div>
   );

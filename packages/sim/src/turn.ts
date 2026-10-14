@@ -26,6 +26,7 @@ import { distance } from "./galaxy.js";
 import { repairTick } from "./repair.js";
 import { addShips, deleteFleet, removeShips, takeShips } from "./fleetOps.js";
 import { builtCrewXp, crewTick } from "./crew.js";
+import { REBEL_GARRISON_MAX } from "./data/ground.js";
 import { OrbitalPause, bombColony, captureColony, destroyColony, exterminate, groundPhase, revoltFight, type OrbitalPrompt, type Silenced } from "./ground.js";
 import { assignDefaultJobs, newColonistJob, removeAndroids, removePopulation, starveOne } from "./jobs.js";
 import {
@@ -1055,11 +1056,12 @@ function assimilate(ctx: TurnContext, c: Colony): void {
 function revolt(ctx: TurnContext, c: Colony, formerId: PlayerId): void {
   const { state, rng } = ctx;
   // Some of the aliens take up arms.
-  const { won, killed } = revoltFight(ctx, c, rng.int(1, Math.max(1, c.aliens ?? 0)));
+  const rebels = rng.int(1, Math.max(1, c.aliens ?? 0));
+  const { won, killed } = revoltFight(ctx, c, rebels);
   const owner = c.ownerId;
   if (won) {
-    ctx.emit({ kind: "colonyLost", playerId: owner, colonyId: c.id, to: formerId, how: "revolted" });
-    captureColony(ctx, c, formerId, { revolt: true });
+    // Up to a few of the surviving rebels stay on as the colony's marines.
+    captureColony(ctx, c, formerId, { revolt: true, garrison: Math.min(REBEL_GARRISON_MAX, rebels - killed) });
     return;
   }
   // Fallen rebels are dead; the survivors give up for now.

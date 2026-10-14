@@ -63,6 +63,18 @@ export const colonyName = (view: PlayerView, id: string) => view.colonies[id]?.n
 export const climateName = (t: string) => words(t);
 
 /** Player-facing text for a turn event, plus the star it happened at if any. */
+const buildingList = (ids: readonly string[]) => ids.map((b) => BUILDINGS_BY_ID[b]?.name ?? b).join(", ");
+
+/** What a takeover cost and left behind, for the captor's report. */
+function captureDetail(e: Extract<GameEvent, { kind: "colonyCaptured" }>): string {
+  const parts: string[] = [];
+  if (e.lostBuildings?.length) parts.push(`Torn down: ${buildingList(e.lostBuildings)}${e.refund ? ` (${fmt(e.refund)} BC back)` : ""}.`);
+  if (e.garrison !== undefined) parts.push(`Garrison: ${fmt(e.garrison)} marine${e.garrison === 1 ? "" : "s"}.`);
+  if (e.reboarded) parts.push(`${fmt(e.reboarded)} troop ship${e.reboarded === 1 ? "" : "s"} re-boarded by the survivors.`);
+  parts.push("Build queue and trained tanks lost.");
+  return ` ${parts.join(" ")}`;
+}
+
 export function describeEvent(view: PlayerView, e: GameEvent): { text: string; starId?: string; tone: "good" | "bad" | "info" } {
   const colonyStar = (colonyId: string) => {
     const c = view.colonies[colonyId];
@@ -94,18 +106,25 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
       return { text: `Battle at ${starName(view, e.starId)}: ${e.won ? "victory" : "defeat"}.`, starId: e.starId, tone: e.won ? "good" : "bad" };
     case "colonyLost":
       return {
-        text: e.how === "invaded"
+        text: (e.how === "invaded"
           ? `${colonyName(view, e.colonyId)} was invaded by ${e.to === null ? "an enemy" : playerName(view, e.to)}.`
           : e.how === "mindControlled"
             ? `${colonyName(view, e.colonyId)} fell under the mind control of ${e.to === null ? "an enemy" : playerName(view, e.to)}.`
           : e.how === "revolted"
             ? `${colonyName(view, e.colonyId)} revolted and went back to ${e.to === null ? "its old rulers" : playerName(view, e.to)}.`
-            : `${colonyName(view, e.colonyId)} was destroyed.`,
+            : `${colonyName(view, e.colonyId)} was destroyed.`) +
+          (e.lostBuildings?.length ? ` Torn down in the takeover: ${buildingList(e.lostBuildings)}.` : ""),
         starId: colonyStar(e.colonyId),
         tone: "bad",
       };
-    case "colonyCaptured":
-      return { text: e.mindControl ? `Our telepaths took ${colonyName(view, e.colonyId)} from ${playerName(view, e.from)} by mind control; its people are ours at once.` : `We captured ${colonyName(view, e.colonyId)} from ${playerName(view, e.from)}.`, starId: colonyStar(e.colonyId), tone: "good" };
+    case "colonyCaptured": {
+      const head = e.mindControl
+        ? `Our telepaths took ${colonyName(view, e.colonyId)} from ${playerName(view, e.from)} by mind control; its people are ours at once.`
+        : e.revolt
+          ? `${colonyName(view, e.colonyId)} rose against ${playerName(view, e.from)} and is ours again.`
+          : `We captured ${colonyName(view, e.colonyId)} from ${playerName(view, e.from)}.`;
+      return { text: `${head}${captureDetail(e)}`, starId: colonyStar(e.colonyId), tone: "good" };
+    }
     case "invasionFailed":
       return { text: `Our invasion of ${colonyName(view, e.colonyId)} was repelled.`, starId: colonyStar(e.colonyId), tone: "bad" };
     case "bombarded":

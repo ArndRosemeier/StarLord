@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   attitude, RELATION_EVENTS,
-  BATTLEOID_HITS, BOMB_DAMAGE_PER_HIT, MILITIA_PER_POP, POWERED_ARMOR_HITS, Rng, SPECIAL_UNIT_RATING, TROOPS,
-  canMindControl, captureColony, defendingTroops, exterminate, exterminateProblem, garrisonOf, groundPhase, invade, newGame, population, raze,
+  BATTLEOID_HITS, BOMB_DAMAGE_PER_HIT, MILITIA_PER_POP, POWERED_ARMOR_HITS, Rng, CAPTURE_LOSSES, MARINES_PER_TRANSPORT, REBEL_GARRISON_MAX, SPECIAL_UNIT_RATING, TROOPS,
+  canMindControl, captureColony, marineCap, defendingTroops, exterminate, exterminateProblem, garrisonOf, groundPhase, invade, newGame, population, raze,
   troopUnit, type Colony, type Fleet, type GameEvent, type GameState,
 } from "@starlord/sim";
 
@@ -95,7 +95,13 @@ describe("invasion", () => {
     victim.queue = [{ kind: "building", id: "marineBarracks" } as Colony["queue"][number]];
     const f = addFleet(s, 0, starOf(s, victim), [{ designId: "transport", count: 10 }]);
     invade(ctx, f, victim);
-    expect(f.ships).toEqual([]);
+    // Survivors re-board full ships (4 each) keeping one on the planet; the rest stay as the garrison.
+    const cap = events.find((e) => e.kind === "colonyCaptured");
+    const kept = cap?.kind === "colonyCaptured" ? cap.reboarded ?? 0 : -1;
+    expect(kept).toBeGreaterThan(0);
+    expect(f.ships).toEqual([{ designId: "transport", count: kept }]);
+    expect(victim.marinesTrained).toBeGreaterThanOrEqual(1);
+    expect(victim.marinesTrained).toBeLessThanOrEqual(MARINES_PER_TRANSPORT);
     expect(victim.ownerId).toBe(0);
     expect(victim.formerOwnerId).toBe(1);
     expect(victim.buildings).toEqual(["starBase"]);
@@ -166,6 +172,43 @@ describe("conquest", () => {
     const before = s.players[0]!.techs.length;
     captureColony(ctx, homeColony(s, 1), 0, { revolt: true });
     expect(s.players[0]!.techs.length).toBe(before);
+  });
+
+  it("tears down the Capitol, barracks and Alien Management Center; defenses and the rest pass to the new owner", () => {
+    const { s, ctx, events } = game();
+    const c = homeColony(s, 1);
+    const kept = ["starBase", "missileBase", "groundBatteries", "fluxShield", "fighterGarrison", "holoSimulator", "pleasureDome", "automatedFactory"];
+    c.buildings = [...CAPTURE_LOSSES.buildings, ...kept];
+    c.marinesTrained = 5;
+    c.tanksTrained = 3;
+    c.readyBases = ["colonyBase"];
+    captureColony(ctx, c, 0, { mindControl: true });
+    expect(c.buildings).toEqual(kept);
+    expect(garrisonOf(s, c).marines).toBe(0);
+    expect(garrisonOf(s, c).armor).toBe(0);
+    expect(c.readyBases).toBeUndefined();
+    const lost = events.find((e) => e.kind === "colonyLost");
+    expect(lost?.kind === "colonyLost" && lost.how).toBe("mindControlled");
+    expect(lost?.kind === "colonyLost" && lost.lostBuildings).toEqual([...CAPTURE_LOSSES.buildings]);
+  });
+
+  it("lets a Unification captor tear down the Holo Simulator and Pleasure Dome for half their cost", () => {
+    const { s, ctx } = game();
+    s.players[0]!.government = "unification";
+    const c = homeColony(s, 1);
+    c.buildings = ["holoSimulator", "pleasureDome", "starBase"];
+    const bc = s.players[0]!.bc;
+    captureColony(ctx, c, 0);
+    expect(c.buildings).toEqual(["starBase"]);
+    expect(s.players[0]!.bc).toBe(bc + 60 + 125);
+  });
+
+  it("keeps the new garrison within the planet's marine cap", () => {
+    const { s, ctx } = game();
+    const c = homeColony(s, 1);
+    captureColony(ctx, c, 0, { garrison: 99 });
+    expect(c.marinesTrained).toBe(marineCap(s, c));
+    expect(marineCap(s, c)).toBeGreaterThan(REBEL_GARRISON_MAX);
   });
 
   it("recalls the loser's leaders from the lost system", () => {
