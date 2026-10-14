@@ -1,8 +1,12 @@
 import {
-  NO_WAR_MULT, PATIENCE, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS, TEMPERAMENTS, TREATY_ANSWER, TREATY_WARMTH, TREATY_YIELD,
+  LEAN_RESEARCH_WEIGHT, NO_WAR_MULT, OBJECTIVES, PATIENCE, RESEARCH_GROUP_NAMES, SHIP_SPECIALTIES, SPECIALS_BY_ID, WEAPON_LEANS, aiLeanings,
+  type ResearchGroup, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS, TEMPERAMENTS, TREATY_ANSWER, TREATY_WARMTH, TREATY_YIELD,
   empires, isCovetDemand, isDemand, peaceTurnsLeft, relation, temperament, treatyAcceptChance, treatyPriceChance, treatyScore, treatyTarget,
   treatyYield, tributeAmount, type PlayerView, type Price, type Proposal, type ProposalKind, type TreatyName,
 } from "@starlord/sim";
+import {
+  BIO_AGGRESSION, BOLD_AGGRESSION, BOLD_RETREAT, CAUTIOUS_RETREAT, DOCTRINE_MARGIN, LEAN_PULL, MILITARIST_AGGRESSION, personalityOf,
+} from "@starlord/ai";
 import { fmt, playerName, signed, starName } from "../ui/format";
 import { techName } from "./terms";
 
@@ -66,7 +70,42 @@ export function temperamentText(view: PlayerView, them: number): { name: string;
   const t = temperament(view, them);
   if (!t) return null;
   const d = TEMPERAMENTS[t];
-  return { name: d.name, text: `${d.name}: ${signed(d.treaty)} to every treaty answer. Signing a treaty adds to the turns in which they will not start a war with you: ${d.noWar} (trade or research), ${Math.trunc(d.noWar * NO_WAR_MULT.nonAggression)} (non-aggression pact) or ${d.noWar * NO_WAR_MULT.alliance} (alliance).` };
+  return { name: d.name, text: `${d.name} (rolled from their race's temperaments at the start; harder games roll more hostile ones): ${signed(d.treaty)} to every treaty answer. Signing a treaty adds to the turns in which they will not start a war with you: ${d.noWar} (trade or research), ${Math.trunc(d.noWar * NO_WAR_MULT.nonAggression)} (non-aggression pact) or ${d.noWar * NO_WAR_MULT.alliance} (alliance).` };
+}
+
+/** How a research leaning reads: the groups and how far they move up. */
+function researchLine(groups: Partial<Record<ResearchGroup, number>>): string {
+  const parts = Object.entries(groups).map(([g, w]) => `${RESEARCH_GROUP_NAMES[g as ResearchGroup]}${w === LEAN_RESEARCH_WEIGHT ? "" : ` (a little, weight ${w})`}`);
+  return `Researches ${parts.join(", ")} early: each such application moves to ${LEAN_PULL}/(${LEAN_PULL} + weight) of its usual place in line, about half for weight ${LEAN_RESEARCH_WEIGHT}.`;
+}
+
+/**
+ * A computer ruler's objective and ship doctrine (the original's objective,
+ * weapon preference and ship specialty), with what each does in play.
+ */
+export function leaningsText(view: PlayerView, them: number): { objective: { name: string; text: string }; doctrine: { name: string; text: string } } | null {
+  const l = aiLeanings(view, them);
+  if (!l) return null;
+  const o = OBJECTIVES[l.objective];
+  const pers = personalityOf(view, them);
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const fights = pers.aggression > BOLD_AGGRESSION
+    ? `Its fleets fight on until ${pct(BOLD_RETREAT)} of their strength is left${pers.aggression >= BIO_AGGRESSION ? " and it uses biological weapons from orbit" : ""}.`
+    : `Its fleets retreat once they are down to ${pct(CAUTIOUS_RETREAT)} of their strength.`;
+  const objective = {
+    name: o.name,
+    text: `${o.name}: ${o.text} ${researchLine(o.research)} About ${pct(pers.science)} of its colonists who don't farm do research. ${fights}`
+      + (l.objective === "militarist" ? ` Militarists are ${MILITARIST_AGGRESSION * 100} points more aggressive.` : ""),
+  };
+  const w = WEAPON_LEANS[l.weapon];
+  const sp = SHIP_SPECIALTIES[l.specialty];
+  const specials = sp.specials.map((id) => SPECIALS_BY_ID[id]?.name ?? id).join(", ");
+  const doctrine = {
+    name: `${w.name.replace(" doctrine", "")}, ${sp.name.toLowerCase()}`,
+    text: `${w.name}: ${w.text} ${w.design.replace("half again", `${Math.round((DOCTRINE_MARGIN - 1) * 100)}%`)} ${researchLine(w.research)}`
+      + ` Ship specialty ${sp.name}: ${sp.text} Its warships fit ${specials} before other specials. ${researchLine(sp.research)}`,
+  };
+  return { objective, doctrine };
 }
 
 /** Why they will hear no more, and when they will again. */

@@ -10,6 +10,8 @@ export * from "./combat.js";
 export * from "./crew.js";
 export * from "./repair.js";
 export * from "./diplomacy.js";
+export * from "./aiPersonality.js";
+export * from "./data/aiPersonality.js";
 export * from "./relations.js";
 export * from "./espionage.js";
 export * from "./leaders.js";

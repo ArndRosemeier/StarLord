@@ -1,6 +1,6 @@
 import {
-  PICK_OPTIONS, TIERS_BY_ID, TRAIT_COSTS, availableTiers, getRace, learnsWholeField, mutationCost, researchOptions,
-  type Command, type NumericPick, type PlayerView, type RacePicks,
+  OBJECTIVES, PICK_OPTIONS, RESEARCH_GROUPS, SHIP_SPECIALTIES, TIERS_BY_ID, TRAIT_COSTS, WEAPON_LEANS, availableTiers, getRace,
+  leanings, learnsWholeField, mutationCost, researchOptions, type Command, type ResearchGroup, type NumericPick, type PlayerView, type RacePicks,
 } from "@starlord/sim";
 import { strategyOf } from "./strategies.js";
 import { me } from "./util.js";
@@ -40,13 +40,36 @@ export const RESEARCH_FOCUS: Record<string, string[]> = {
   ],
 };
 
+/**
+ * How far a leaning pulls an application forward: its place in the usual
+ * order is scaled by LEAN_PULL / (LEAN_PULL + weight), so the original's
+ * weight of 100 halves it and 20 takes a sixth off.
+ */
+export const LEAN_PULL = 100;
+
+/** Research weight per application from the empire's objective, weapon lean and ship specialty. */
+export function leanResearchWeights(view: PlayerView): Map<string, number> {
+  const l = leanings(view, view.viewer);
+  const out = new Map<string, number>();
+  for (const def of [OBJECTIVES[l.objective], WEAPON_LEANS[l.weapon], SHIP_SPECIALTIES[l.specialty]]) {
+    for (const [group, weight] of Object.entries(def.research) as [ResearchGroup, number][]) {
+      for (const tech of RESEARCH_GROUPS[group]) out.set(tech, Math.max(out.get(tech) ?? 0, weight));
+    }
+  }
+  return out;
+}
+
 function ranker(view: PlayerView): (tech: string) => number {
-  const focus = RESEARCH_FOCUS[strategyOf(view, "research")] ?? [];
+  const strategy = strategyOf(view, "research");
+  const focus = RESEARCH_FOCUS[strategy] ?? [];
+  // Balanced play researches like the computer empires: toward their leanings.
+  const lean = strategy === "balanced" ? leanResearchWeights(view) : new Map<string, number>();
   return (tech) => {
     const f = focus.indexOf(tech);
     if (f !== -1) return f;
     const i = PRIORITY.indexOf(tech);
-    return focus.length + (i === -1 ? PRIORITY.length : i);
+    const place = i === -1 ? PRIORITY.length : i;
+    return focus.length + (place * LEAN_PULL) / (LEAN_PULL + (lean.get(tech) ?? 0));
   };
 }
 

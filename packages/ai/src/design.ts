@@ -1,6 +1,6 @@
 import {
-  HULLS, SPECIALS, STATION_DOCK_HULLS, WEAPONS, WEAPON_MODS_BY_ID, bestArmor, bestComputer, bestShield, colonyOutput, designStats, empireTotals, hasStarDock,
-  knows, mountFirepower, refinement, validateDesign, weaponUnitCost,
+  HULLS, SHIP_SPECIALTIES, SPECIALS, STATION_DOCK_HULLS, WEAPONS, WEAPON_MODS_BY_ID, bestArmor, bestComputer, bestShield, colonyOutput, designStats, empireTotals, hasStarDock,
+  knows, leanings, mountFirepower, refinement, validateDesign, weaponUnitCost,
   type Colony, type Command, type HullSize, type PlayerView, type ShipDesign, type WeaponDef, type WeaponModId,
   type WeaponMount,
 } from "@starlord/sim";
@@ -80,6 +80,21 @@ function pointDefenseMount(view: PlayerView): WeaponMount | null {
   return w ? { weaponId: w.id, count: 1, mods: ["pointDefense"], arc: "full" } : null;
 }
 
+/** Specials in the order this empire fits them: its ship specialty's own list first (balanced play only), then SPECIAL_PRIORITY. */
+function specialOrder(view: PlayerView): string[] {
+  if (strategyOf(view, "design") !== "balanced") return SPECIAL_PRIORITY;
+  const own = SHIP_SPECIALTIES[leanings(view, view.viewer).specialty].specials;
+  return [...own, ...SPECIAL_PRIORITY.filter((s) => !own.includes(s))];
+}
+
+/**
+ * How much stronger the other weapon must be before a design leaves the
+ * preferred one. Beam and missile doctrines stick to their weapon unless the
+ * other is half again as strong; others take missiles at 10% better.
+ */
+export const DOCTRINE_MARGIN = 1.5;
+const BALANCED_MISSILE_MARGIN = 1.1;
+
 export function bestWarship(view: PlayerView, hull: HullSize, kind: "beam" | "missile" | "bomb", id: string): ShipDesign | null {
   const player = me(view);
   const design: ShipDesign = {
@@ -97,7 +112,7 @@ export function bestWarship(view: PlayerView, hull: HullSize, kind: "beam" | "mi
   const space = () => designStats(player, design);
   const fits = () => space().spaceUsed <= space().spaceTotal;
   // Up to three specials, keeping most of the hull for weapons.
-  for (const s of SPECIAL_PRIORITY) {
+  for (const s of specialOrder(view)) {
     if (design.specials.length >= (hull === "frigate" ? 0 : hull === "destroyer" ? 1 : 3)) break;
     const def = SPECIALS.find((x) => x.id === s);
     if (!def || !knows(player, def.requires) || def.excludes?.some((x) => design.specials.includes(x))) continue;
@@ -167,7 +182,13 @@ export function designOrders(view: PlayerView): Command[] {
     const beam = bestWarship(view, hull, "beam", id);
     const missile = hull === "frigate" || strategy === "beams" ? null : bestWarship(view, hull, "missile", id);
     const strength = (d: ShipDesign | null) => (d ? designStats(player, d).strength / Math.max(1, designStats(player, d).cost) : 0);
-    return strategy === "missiles" ? missile ?? beam : strength(missile) > strength(beam) * 1.1 ? missile : beam;
+    if (strategy === "missiles") return missile ?? beam;
+    if (strategy !== "balanced") return strength(missile) > strength(beam) * BALANCED_MISSILE_MARGIN ? missile : beam;
+    // Balanced play designs like the computer empires: by the empire's weapon lean.
+    const lean = leanings(view, view.viewer).weapon;
+    if (lean === "beams") return strength(missile) > strength(beam) * DOCTRINE_MARGIN ? missile : beam;
+    if (lean === "missiles") return missile && strength(missile) * DOCTRINE_MARGIN >= strength(beam) ? missile : beam;
+    return strength(missile) > strength(beam) * BALANCED_MISSILE_MARGIN ? missile : beam;
   };
   // The fitted ship costs more than its hull: step down until the best dock builds it in BUILD_TURNS x 1.5 turns.
   const budget = Math.max(10, docked) * (BUILD_TURNS[strategy] ?? BUILD_TURNS.balanced!) * 1.5;
