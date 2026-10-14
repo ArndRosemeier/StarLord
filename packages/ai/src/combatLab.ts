@@ -294,7 +294,9 @@ function outcomeProblems(setup: LabSetup, after: GameState, reports: CombatRepor
   } else {
     const has = (id: PlayerId) => Object.values(setup.state.fleets).some((f) => f.ownerId === id);
     const colony = Object.values(setup.state.colonies).find((c) => c.ownerId === setup.defenderId && setup.state.planets[c.planetId]!.starId === setup.starId);
-    if (has(setup.attackerId) && (has(setup.defenderId) || hasArmedDefenses(colony))) out.push("no battle took place");
+    // Stations and armed planets never start a fight: without defending ships, only a fleet on attack stance does.
+    const attacking = Object.values(setup.state.fleets).some((f) => f.ownerId === setup.attackerId && f.stance === "attack");
+    if (has(setup.attackerId) && (has(setup.defenderId) || (attacking && hasArmedDefenses(colony)))) out.push("no battle took place");
   }
   return out;
 }

@@ -39,16 +39,27 @@ describe("combat lab", () => {
     expect(res.problems).toEqual([]);
   });
 
-  it("ships off attack stance shoot back at an armed planet", () => {
+  it("ships off attack stance shoot back at an armed planet once a fight breaks out", () => {
     const setup = setupCombatLab({
       seed: "return-fire",
       attacker: { raceId: "terran", techLevel: 6, ships: [{ hull: "cruiser", arms: "beam", count: 3 }], attacksPlanet: false },
-      defender: { raceId: "lysari", techLevel: 6, ships: [], station: null, defenses: ["groundBatteries"], planetShield: null },
+      defender: { raceId: "lysari", techLevel: 6, ships: [{ hull: "frigate", arms: "beam", count: 1 }], station: null, defenses: ["groundBatteries"], planetShield: null },
     });
     const res = runCombatLab(setup, 0);
     expect(res.problems).toEqual([]);
     const r = res.reports[0]!;
     const planet = r.ships.find((s) => s.kind === "planet")!;
     expect(r.rounds.flat().some((e) => e.kind === "fire" && e.target === planet.key)).toBe(true);
+  });
+
+  it("never lets a station or armed planet start a fight", () => {
+    const setup = setupCombatLab({
+      seed: "no-start",
+      attacker: { raceId: "terran", techLevel: 6, ships: [{ hull: "cruiser", arms: "beam", count: 3 }], attacksPlanet: false },
+      defender: { raceId: "lysari", techLevel: 6, ships: [], station: "starBase", defenses: ["groundBatteries"], planetShield: null },
+    });
+    const res = runCombatLab(setup, 0);
+    expect(res.problems).toEqual([]);
+    expect(res.reports).toEqual([]);
   });
 });

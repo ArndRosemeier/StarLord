@@ -635,7 +635,7 @@ function passesBy(state: GameState, starId: Id, me: CombatSide, them: CombatSide
 /**
  * How clearly `me` is the side being attacked, to pick whose colony a battle is fought over: 3 when armed enemy
  * ships came for its planet, 2 when the enemy started the fight with ships and `me` did not, 1 when its own
- * defenses open fire on enemy ships in orbit, 0 otherwise. Ties go to the first side.
+ * armed defenses face enemy ships in orbit, 0 otherwise. Ties go to the first side.
  */
 function defenderScore(state: GameState, me: CombatSide, them: CombatSide): number {
   const theirArmed = them.fleets.some((f) => isArmed(state, f));
@@ -649,8 +649,7 @@ function wantsFight(state: GameState, me: CombatSide, them: CombatSide): boolean
   const armedFleets = me.fleets.some((f) => isArmed(state, f));
   if (armedFleets && them.fleets.length > 0) return true;
   if (armedFleets && me.attacksPlanet && hasDefenses(them.colony)) return true;
-  // Armed planets fire on any enemy ships in orbit.
-  if (hasDefenses(me.colony) && them.fleets.length > 0) return true;
+  // Stations and armed planets never start a fight (they cannot move); they only defend once one breaks out.
   return false;
 }
 
