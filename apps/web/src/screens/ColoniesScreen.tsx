@@ -262,7 +262,12 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
                       : "Repeat build: build this again every time it finishes, until you remove it or the rules allow no more of it. Items below wait while it repeats."}
                     onClick={() => setQueue(colony.queue.map((q, j) => (j === i && (q.kind === "ship" || q.kind === "project") ? { ...q, repeat: !q.repeat } : q)))}>⟳</button>
                 )}
-                <button className="small" disabled={readOnly || i === 0} onClick={() => {
+                <button className="small" disabled={readOnly || i === 0} aria-label="Move to top"
+                  title="Move to top: build this next. The production already stored carries over to it, and everything else moves down one place."
+                  onClick={() => setQueue([item, ...colony.queue.filter((_, j) => j !== i)])}>⤒</button>
+                <button className="small" disabled={readOnly || i === 0} aria-label="Move up"
+                  title="Move up one place. If this becomes the first item, the production already stored carries over to it."
+                  onClick={() => {
                   const q = [...colony.queue];
                   [q[i - 1], q[i]] = [q[i]!, q[i - 1]!];
                   setQueue(q);
