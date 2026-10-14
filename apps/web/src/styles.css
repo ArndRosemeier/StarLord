@@ -402,3 +402,9 @@ tr.mine td { font-weight: 600; }
 .build-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .build-chips button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 6px; text-align: left; }
 .build-chips button .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal.load-game { max-width: 720px; }
+.load-table { width: 100%; }
+.load-table td { padding: 8px 6px; vertical-align: middle; }
+.load-actions { text-align: right; white-space: nowrap; }
+.load-actions button { min-height: 40px; min-width: 72px; margin-left: 6px; }
+.load-file { margin-top: 12px; align-items: center; flex-wrap: wrap; }

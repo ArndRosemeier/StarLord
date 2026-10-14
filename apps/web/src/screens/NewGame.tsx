@@ -10,7 +10,6 @@ import { customRaceDefs, loadCustomRaces, saveCustomRaces } from "../game/custom
 import { RaceBuilder, blankRace } from "./RaceBuilder";
 import { GameSession } from "../game/session";
 import { savedAutomationOrders } from "../game/automationPrefs";
-import { deleteSave, listSaves, readSave, readSaveFile } from "../game/saves";
 import { useHold } from "../ui/touch";
 import { words } from "../ui/format";
 
@@ -44,8 +43,6 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
   const [techLevel, setTechLevel] = useState<TechLevel>("average");
   const [randomEvents, setRandomEvents] = useState(true);
   const [shipInitiative, setShipInitiative] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saves, setSaves] = useState(listSaves);
   const [customSpecs, setCustomSpecs] = useState<CustomRaceSpec[]>(loadCustomRaces);
   const [editing, setEditing] = useState<{ spec: CustomRaceSpec; index: number | null } | null>(null);
   const custom = useMemo(() => customRaceDefs(customSpecs), [customSpecs]);
@@ -75,14 +72,6 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
     const automation = spectate ? [] : savedAutomationOrders();
     if (automation.length > 0) session.issue(...automation);
     onStart(session);
-  };
-
-  const load = (data: unknown) => {
-    try {
-      onStart(GameSession.fromJSON(data));
-    } catch (e) {
-      setError((e as Error).message);
-    }
   };
 
   if (editing) {
@@ -115,7 +104,7 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
   return (
     <div className="title-screen setup">
       <div className="row">
-        <button onClick={onBack}>← Back</button>
+        <button onClick={onBack} title="Back to the title screen, where you can also load a saved game">← Title</button>
         <div className="logo">STARLORD</div>
         <div className="spacer" />
         <span className="muted">Choose your people</span>
@@ -175,39 +164,10 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
             {customBlocked && <div className="bad">Custom races need Average difficulty or harder.</div>}
             <div className="row">
               <button className="primary" disabled={customBlocked} onClick={(e) => start(false, e.ctrlKey && e.altKey)} {...debugHold}>Play as the {race.plural}</button>
-
               <button onClick={() => start(true)} title="All empires are run by the computer; you watch.">Watch an AI game</button>
-              <label className="row" style={{ gap: 6 }}>
-                <span className="muted">or load a save or replay file</span>
-                <input type="file" accept="application/json,.json" onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (f) load(await readSaveFile(f).catch((err: Error) => setError(err.message)));
-                }} />
-              </label>
+              <button onClick={onBack} title="Back to the title screen, where you can also load a saved game">Back to title</button>
             </div>
-            {error && <div className="bad">{error}</div>}
           </div>
-
-          {saves.length > 0 && (
-            <div className="panel">
-              <h4>Saved games</h4>
-              <table>
-                <tbody>
-                  {[...saves].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).map((s) => (
-                    <tr key={s.name}>
-                      <td>{s.auto && <span className="chip" title="Saved automatically at the start of a turn; only the newest few are kept">Auto</span>} {s.name}</td>
-                      <td className="muted">{s.empire}, turn {s.turn}</td>
-                      <td className="muted">{new Date(s.savedAt).toLocaleString()}</td>
-                      <td style={{ textAlign: "right" }}>
-                        <button className="small" onClick={() => load(readSave(s.name))}>Load</button>{" "}
-                        <button className="small danger" onClick={() => { deleteSave(s.name); setSaves(listSaves()); }}>Delete</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       </div>
 

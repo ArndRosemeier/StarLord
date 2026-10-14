@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { audio } from "../audio/sound";
 import { GameSession } from "../game/session";
-import { latestSave, readSave, readSaveFile } from "../game/saves";
+import { latestSave } from "../game/saves";
+import { LoadGame } from "./LoadGame";
 import { SettingsPanel } from "./SettingsPanel";
 import { useHelp } from "../help/HelpDialog";
 import { HeroScene } from "../title/heroScene";
@@ -29,10 +30,10 @@ function usePrefersReducedMotion(): boolean {
 
 /** The game's front door: living key art, theme music, the races and the main menu. */
 export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: string) => void; onStart: (s: GameSession) => void }) {
-  const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState(false);
   const [whatsNew, setWhatsNew] = useState(false);
   const [hall, setHall] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ text: string; id: number } | null>(null);
   const [leaving, setLeaving] = useState(false);
   const openHelp = useHelp();
@@ -86,14 +87,6 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
     else go();
   };
 
-  const load = (data: unknown) => {
-    try {
-      onStart(GameSession.fromJSON(data));
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
   return (
     <div className={`title-hero${leaving ? " leaving" : ""}${reduced ? " still" : ""}`}>
       <div className="title-art" ref={artRef} />
@@ -110,25 +103,15 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
         {toast && <div className="title-toast" key={toast.id}>{toast.text}</div>}
         <div className="title-menu">
           <button className="title-button primary" onClick={() => newGame()}>New game</button>
-          {latest && (
-            <button className="title-button" onClick={() => load(readSave(latest.name))} title={`Loads your newest save: ${latest.name}`}>
-              Continue <small>{latest.empire}, turn {latest.turn}</small>
-            </button>
-          )}
-          <label className="title-button">
-            Load file
-            <input type="file" accept="application/json,.json" hidden onChange={async (e) => {
-              const f = e.target.files?.[0];
-              if (f) load(await readSaveFile(f).catch((err: Error) => setError(err.message)));
-            }} />
-          </label>
+          <button className="title-button" onClick={() => setLoading(true)} title="Pick one of your saves, or load a save or replay file">
+            Load game {latest && <small>newest: {latest.empire}, turn {latest.turn}</small>}
+          </button>
           <button className="title-button" onClick={() => openHelp()}>Encyclopedia</button>
           <button className="title-button" onClick={() => setHall(true)}>Hall of Fame</button>
           <button className="title-button" onClick={() => setWhatsNew(true)}>What's new <small>v{VERSION}</small></button>
           <button className="title-button" onClick={() => setSettings(!settings)}>Settings</button>
           <button className="title-button" onClick={() => openContactMail(VERSION)} title="Write an email to the developer: feedback, bugs, ideas">Contact</button>
           {settings && <div className="panel title-settings"><SettingsPanel shortcuts={false} /></div>}
-          {error && <div className="bad">{error}</div>}
         </div>
         <RaceShowcase onPick={newGame} reduced={reduced} />
         {!reduced && <div className="title-hint">Psst: the ships can be clicked. So can empty space.</div>}
@@ -137,6 +120,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
       <NewsTicker reduced={reduced} />
       {whatsNew && <WhatsNew onClose={() => setWhatsNew(false)} />}
       {hall && <HallOfFame onClose={() => setHall(false)} />}
+      {loading && <LoadGame onLoad={(data) => onStart(GameSession.fromJSON(data))} onClose={() => setLoading(false)} />}
     </div>
   );
 }
