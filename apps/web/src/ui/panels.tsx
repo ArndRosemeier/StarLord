@@ -2,7 +2,7 @@ import { STANCE_TIPS, climateTip, crewTip, gravityTip, mineralsTip, sizeTip, spe
 import { Tip } from "./Tip";
 import { useState, type ReactNode } from "react";
 import {
-  CLIMATES, canReach, crewLevel, crewName, designStats, findDesign, getRace, isHostile, maxPopulation, movementHalted, population, relation, travelGroup, travelSpeed, travelTurns,
+  CLIMATES, canReach, crewLevel, crewName, designStats, findDesign, getRace, outdatedBy, refitCost, isHostile, maxPopulation, movementHalted, population, relation, travelGroup, travelSpeed, travelTurns,
   type Fleet, type Planet, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "./hooks";
@@ -183,9 +183,22 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
           {fleet.ships.map((s) => {
             const d = findDesign(owner, s.designId);
             const stats = d ? designStats(owner, d) : null;
+            const newer = owner.id === me.id && d ? outdatedBy(owner, s.designId) : undefined;
             return (
               <tr key={s.designId}>
-                <td>{d?.name ?? s.designId} <small className="muted">{d && !d.fixed ? words(d.hull) : ""}</small></td>
+                <td>
+                  {d?.name ?? s.designId} <small className="muted">{d && !d.fixed ? words(d.hull) : ""}</small>
+                  {newer && d && (
+                    <Tip card={{ title: "Outdated", text: [
+                      `These ships were built before you edited ${d.name} and still carry the old equipment (strength ${fmt(designStats(owner, d).strength)} against ${fmt(designStats(owner, newer).strength)} for the new version).`,
+                      newer.hull === d.hull
+                        ? `Refit them to the new version at one of your colonies that can build ships, for ${fmt(refitCost(owner, d, newer))} production each.`
+                        : `The new version uses a ${words(newer.hull)} hull, so they cannot be refitted to it; refit them to another ${words(d.hull)} design or keep them as they are.`,
+                    ] }}>
+                      {" "}<span className="chip bad">outdated</span>
+                    </Tip>
+                  )}
+                </td>
                 <td>
                   {s.count}
                   {s.damage?.length ? (

@@ -236,6 +236,11 @@ export interface ShipDesign {
   module: DesignModule | null;
   /** Hidden from build lists but kept for existing ships. */
   obsolete: boolean;
+  /**
+   * Set when the design was edited after ships were built to it: the id of
+   * the edited version. Ships of this design are outdated until refitted.
+   */
+  supersededBy?: Id;
   /** Monster designs and the raiders' citadel set their stats directly. */
   fixed?: FixedStats;
   /** Owner of the ship this design was copied from when boarders took it; scrapping one can teach its technology. */
