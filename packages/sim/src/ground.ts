@@ -111,7 +111,7 @@ export function troopUnit(
 function bombHits(ctx: TurnContext, colony: Colony, hits: number): number {
   const { state, rng } = ctx;
   const starId = state.planets[colony.planetId]!.starId;
-  const cost = (kind: "marines" | "armor") => troopUnit(state, colony.ownerId, colony.raceId, kind, true, starId).hits;
+  const cost = (kind: "marines" | "armor") => troopUnit(state, colony.ownerId, state.players[colony.ownerId]!.raceId, kind, true, starId).hits;
   let left = hits;
   let kills = 0;
   while (left > 0) {
@@ -511,7 +511,7 @@ export function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
   const g = garrisonOf(state, colony);
   const defenders: { unit: Unit; hp: number; kind: TroopKind }[] = [];
   for (const kind of ["armor", "marines", "militia"] as const) {
-    const unit = troopUnit(state, colony.ownerId, colony.raceId, kind, true, starId);
+    const unit = troopUnit(state, colony.ownerId, state.players[colony.ownerId]!.raceId, kind, true, starId);
     for (let i = 0; i < g[kind]; i++) defenders.push({ unit, hp: unit.hits, kind });
   }
   // The defenders fight tanks first, then marines, then militia. Each clash pits the next unit of each side:

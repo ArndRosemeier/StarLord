@@ -391,7 +391,8 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
       units(nativeFarmers, 0, nativeFood, nativeFoodPct, farmable ? aiFlat / 2 : 0) +
       units(andr.farmers, 0, androidFood, androidFoodPct, androidFood > 0 ? aiFlat / 2 : 0))) / 2 +
     sumEffect(b, "foodFlat");
-  const foodEaten = lithovore ? 0 : (cyber ? CYBERNETIC_FOOD : FOOD_PER_POP) * pop;
+  // Cybernetic colonists eat half a unit each, rounded up per colony as in the original.
+  const foodEaten = lithovore ? 0 : Math.ceil((cyber ? CYBERNETIC_FOOD : FOOD_PER_POP) * pop - 1e-9);
 
   // Industry
   const landIndustry = INDUSTRY_PER_WORKER[planet.minerals] + bonus.industryPerWorker + sumEffect(b, "industryPerWorker");
@@ -581,7 +582,9 @@ export function foodPlan(state: GameState, playerId: PlayerId, outputs?: { colon
     if (need - got > 1e-9) shortfall[colony.id] = need - got;
   }
   const carryingFood = Math.ceil(delivered / FREIGHTERS.foodPerShip - 1e-9);
-  const sold = Math.max(0, supply);
+  // As in the original, the empire sells its net food surplus (all food made minus all eaten on colonies that
+  // aren't blockaded, hungry ones included): ½ BC per food rounded down, 1 BC for fantastic traders.
+  const sold = Math.max(0, list.reduce((n, { out }) => n + (out.blockaded ? 0 : out.foodNet), 0));
   return {
     freighters,
     movingColonists,
@@ -591,7 +594,7 @@ export function foodPlan(state: GameState, playerId: PlayerId, outputs?: { colon
     delivered,
     shortfall,
     sold,
-    saleBC: sold * surplusFoodBc(getRace(player.raceId)),
+    saleBC: Math.floor(sold * surplusFoodBc(getRace(player.raceId)) + 1e-9),
     upkeep: Math.floor(Math.min(freighters, carryingFood + movingColonists) * FREIGHTERS.upkeepInUse),
   };
 }

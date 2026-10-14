@@ -122,6 +122,8 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
   const feel = mood(attitude(view, them.id, me.id));
   const tired = audienceTired(view, me.id, them.id);
   const atWar = r.status === "war";
+  // Repulsive races (either side) can only declare war or sue for peace, as in the original.
+  const repulsive = [me, them].some((p) => getRace(p.raceId).picks.traits.includes("repulsive"));
 
   const propose = (cmd: Extract<Command, { type: "propose" }>) => {
     audio.play("click");
@@ -205,10 +207,11 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
               <button onClick={onClose}>Close</button>
             ) : leaving ? null : menu === "main" ? (
               <>
-                <button disabled={tired} onClick={() => setMenu("treaty")}>{atWar ? "Offer peace" : "Propose a treaty"}</button>
-                <button disabled={tired || atWar} onClick={() => setMenu("exchange")}>Exchange technology</button>
-                <button disabled={tired} onClick={() => setMenu("demand")}>Make a demand</button>
-                <button onClick={() => setMenu("gift")}>Offer a gift</button>
+                {(!repulsive || atWar) && <button disabled={tired} onClick={() => setMenu("treaty")}>{atWar ? "Offer peace" : "Propose a treaty"}</button>}
+                {!repulsive && <button disabled={tired || atWar} onClick={() => setMenu("exchange")}>Exchange technology</button>}
+                {!repulsive && <button disabled={tired} onClick={() => setMenu("demand")}>Make a demand</button>}
+                {!repulsive && <button onClick={() => setMenu("gift")}>Offer a gift</button>}
+                {repulsive && <div className="muted">{REPULSIVE_TEXT}</div>}
                 {BREAKABLE.some((b) => hasTreaty(view, me.id, them.id, b.treaty)) && <button onClick={() => setMenu("end")}>End a treaty</button>}
                 {!atWar && (
                   <button className="danger" onClick={() => {
@@ -236,6 +239,8 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
     </div>
   );
 }
+
+const REPULSIVE_TEXT = "A repulsive race is part of this audience: the only diplomacy possible is declaring war or suing for peace. No treaties, trades, demands or gifts.";
 
 function SubMenu({ menu, them, onPropose, onSay, onBack }: {
   menu: Menu; them: Player; onPropose: (c: Extract<Command, { type: "propose" }>) => void; onSay: (m: Moment) => void; onBack: () => void;

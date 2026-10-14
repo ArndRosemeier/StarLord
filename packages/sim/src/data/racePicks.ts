@@ -1,4 +1,8 @@
 import type { Government, RacePicks, RaceTrait } from "./races.js";
+import { COUNCIL_VOTE, RELATION, TREATY_YIELD } from "./diplomacy.js";
+import { LEADER_RULES } from "./leaders.js";
+import { INDUSTRY_PER_WORKER } from "./planets.js";
+import { RAID_LUCKY_POP_MULT } from "./raiders.js";
 
 /**
  * Point costs for building a custom race, MoO2-style: every race gets
@@ -61,32 +65,6 @@ export const GOVERNMENT_COSTS: Record<Government, number> = {
   unification: 6,
 };
 
-/** Every special ability with its original cost. All of them are pickable. */
-export const TRAIT_COSTS: Record<RaceTrait, { cost: number; text: string; name?: string }> = {
-  lowG: { name: "Low-G world", cost: -5, text: "Weaker on normal and heavy planets; troops fight at -10." },
-  highG: { name: "High-G world", cost: 6, text: "Full output on normal and heavy planets; troops take one extra hit." },
-  aquatic: { cost: 5, text: "Tundra and swamp count as terran, ocean and terran as gaia, for food and population. Ocean homeworld." },
-  subterranean: { cost: 6, text: "Max population +2 per planet size class; troops +10 when defending their colonies." },
-  tolerant: { cost: 10, text: "+25% max population on every climate (at most Gaia level); no pollution." },
-  largeHomeworld: { cost: 1, text: "Starts on a large homeworld." },
-  richHomeworld: { cost: 2, text: "Homeworld has rich minerals." },
-  poorHomeworld: { cost: -1, text: "Homeworld has poor minerals." },
-  artifactsHomeworld: { cost: 3, text: "Ancient artifacts on the homeworld: +2 research per scientist there." },
-  cybernetic: { cost: 4, text: "Eats half food, half industry. Ships repair in battle and fully after it." },
-  lithovore: { cost: 10, text: "Eats no food at all." },
-  charismatic: { cost: 3, text: "Good diplomacy counts double, bad half; leaders cost half and come more often." },
-  repulsive: { cost: -6, text: "Only war and peace with others; leaders cost more and come less often." },
-  creative: { cost: 8, text: "Learns every application in a researched field." },
-  uncreative: { cost: -4, text: "Learns one random application per field." },
-  fantasticTraders: { cost: 4, text: "+25% trade treaty income, 1 BC per surplus food, double trade goods." },
-  telepathic: { cost: 6, text: "+25 on diplomacy, +10 on all spy rolls; with a cruiser or larger in orbit, takes beaten colonies by mind control, all colonists assimilated." },
-  lucky: { cost: 3, text: "No random disasters, more good events; raiders and monsters tend to pass you by." },
-  omniscient: { cost: 3, text: "Knows every star system from the start and sees every fleet, stealthy or not." },
-  stealthy: { name: "Stealthy ships", cost: 4, text: "Your fleets can't be seen on the galaxy map outside your rivals' own systems." },
-  transDimensional: { name: "Trans-dimensional", cost: 5, text: "Fleets move +2 parsecs per turn and +4 combat speed; ignores nebulae." },
-  warlord: { cost: 4, text: "Crews start a rank higher, leaders reach their top level, +2 command points per colony." },
-};
-
 /** Numbers behind the special abilities that aren't plain pick values. */
 export const TRAIT_EFFECTS = {
   lowGGround: -10,
@@ -110,6 +88,8 @@ export const TRAIT_EFFECTS = {
   /** Diplomatic points added to deals by telepaths and charismatic races (+25% / +50% acceptance in the original). */
   telepathicDiplomacy: 25,
   charismaticDiplomacy: 50,
+  /** Diplomatic points a repulsive proposer loses on every ask (it can only ask for peace). */
+  repulsiveDiplomacy: -50,
   /** Smallest hull (index, frigate 0) a telepathic fleet needs in orbit to mind-control a colony: cruiser. */
   telepathicMindControlSize: 2,
   /** Cybernetic repair per combat round: armor/structure and internal systems. */
@@ -120,6 +100,32 @@ export const TRAIT_EFFECTS = {
   normalFoodBc: 0.5,
   traderGoodsMult: 2,
 } as const;
+
+/** Every special ability with its original cost. All of them are pickable. */
+export const TRAIT_COSTS: Record<RaceTrait, { cost: number; text: string; name?: string }> = {
+  lowG: { name: "Low-G world", cost: -5, text: `Output -25% on normal-G and -50% on heavy-G planets; troops fight at ${TRAIT_EFFECTS.lowGGround}.` },
+  highG: { name: "High-G world", cost: 6, text: "Full output on normal and heavy planets; troops take one extra hit." },
+  aquatic: { cost: 5, text: "Tundra and swamp count as terran, ocean and terran as gaia, for food and population. Ocean homeworld." },
+  subterranean: { cost: 6, text: "Max population +2 per planet size class; troops +10 when defending their colonies." },
+  tolerant: { cost: 10, text: "+25% max population on every climate (at most Gaia level); no pollution." },
+  largeHomeworld: { cost: 1, text: "Starts on a large homeworld." },
+  richHomeworld: { cost: 2, text: `Homeworld has rich minerals: ${INDUSTRY_PER_WORKER.rich} production per worker instead of ${INDUSTRY_PER_WORKER.abundant}.` },
+  poorHomeworld: { cost: -1, text: `Homeworld has poor minerals: ${INDUSTRY_PER_WORKER.poor} production per worker instead of ${INDUSTRY_PER_WORKER.abundant}.` },
+  artifactsHomeworld: { cost: 3, text: "Ancient artifacts on the homeworld: +2 research per scientist there." },
+  cybernetic: { cost: 4, text: `Each colonist eats ½ food and ½ production. Ships repair ${Math.round(TRAIT_EFFECTS.cyberneticRepair * 100)}% of armor and structure and ${Math.round(TRAIT_EFFECTS.cyberneticSystemsRepair * 100)}% of systems each combat round, and all damage after battle.` },
+  lithovore: { cost: 10, text: "Eats no food at all." },
+  charismatic: { cost: 3, text: `Good relation changes count ×${RELATION.charismaticGainMult}, bad ×${RELATION.charismaticLossMult}; +${TRAIT_EFFECTS.charismaticDiplomacy} on every deal you ask for; conquered people assimilate twice as fast; +${COUNCIL_VOTE.charismatic} with council voters; leaders cost ×${LEADER_RULES.charismaticCostMult}, +${LEADER_RULES.charismaticOfferBonus}% offer chance per turn and come from a wider pool.` },
+  repulsive: { cost: -6, text: `Only war and peace with others (no treaties, trades, demands or gifts); ${TRAIT_EFFECTS.repulsiveDiplomacy} on peace offers; conquered people assimilate at half speed; ${COUNCIL_VOTE.repulsive} with council voters; leaders cost ×${LEADER_RULES.repulsiveCostMult}, ${LEADER_RULES.repulsiveOfferBonus}% offer chance per turn and come from half the pool.` },
+  creative: { cost: 8, text: "Learns every application in a researched field." },
+  uncreative: { cost: -4, text: "Learns one random application per field." },
+  fantasticTraders: { cost: 4, text: `+${TREATY_YIELD.traderPoints}% trade treaty income, ${TRAIT_EFFECTS.traderFoodBc} BC per surplus food instead of ${TRAIT_EFFECTS.normalFoodBc}, trade goods 1 BC per production instead of ½.` },
+  telepathic: { cost: 6, text: "+25 on diplomacy, +10 on all spy rolls; with a cruiser or larger in orbit, takes beaten colonies by mind control, all colonists assimilated." },
+  lucky: { cost: 3, text: `Never picked for random disasters (galaxy-wide hyperspace flux and supernovas still hit); extra lucky windfalls; Vexari raiders count your population at ${Math.round(RAID_LUCKY_POP_MULT * 100)}%; monsters and raiders attack others at the same star first.` },
+  omniscient: { cost: 3, text: "Knows every star system from the start and sees every fleet, stealthy or not." },
+  stealthy: { name: "Stealthy ships", cost: 4, text: "Your fleets can't be seen on the galaxy map outside your rivals' own systems." },
+  transDimensional: { name: "Trans-dimensional", cost: 5, text: "Fleets move +2 parsecs per turn, ships and fighters +4 combat speed; immune to hyperspace flux." },
+  warlord: { cost: 4, text: `Crews fight one rank higher and can reach ultra-elite; barracks train and hold ×${TRAIT_EFFECTS.warlordTroopMult} marines and tanks; leaders can reach their top level; +${TRAIT_EFFECTS.warlordCommandPerColony} command points per colony.` },
+};
 
 /** Traits that can't be taken together. */
 export const EXCLUSIVE_TRAITS: RaceTrait[][] = [
