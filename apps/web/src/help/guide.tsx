@@ -680,8 +680,11 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
 
       </P>
       <P>
-        <HelpLink to="trait:telepathic" /> empires take a colony whose defenses are down without troops, with a cruiser
-        or larger in orbit, unless its people are telepathic too. Conquerors outside democracies and federations may
+        <HelpLink to="trait:telepathic" /> empires can take a colony whose orbit they won by mind control instead: pick
+        Mind control in the orbit window (or Mind control in the system panel). It needs a cruiser or larger warship in
+        orbit, works through a barrier shield and turns the colony over whole, every colonist assimilated at once and
+        no ground battle fought. It fails when the owner's race is telepathic too, or when the owner has a Telepath
+        officer in that system (a captain there or its administrator). Conquerors outside democracies and federations may
         exterminate a conquered population, which every other empire resents.
       </P>
     </>

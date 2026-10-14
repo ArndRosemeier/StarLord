@@ -88,6 +88,11 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
         f.floaters.push({ x: p.x, y: p.y - 10, text: `-${event.damage ?? 0}`, life: 50 - delay, color: "#ffd0a0" });
       }
     }
+    if (event.kind === "intercept" && event.downed && event.x !== undefined && event.y !== undefined) {
+      const p = { x: (event.x + 0.5) * CELL, y: (event.y + 0.5) * CELL };
+      burst(f.particles, p.x, p.y, 6 + event.downed * 2, ["#ffffff", "#ffe7a3"], 1.2, 0);
+      f.floaters.push({ x: p.x, y: p.y - 10, text: `${event.downed} shot down`, life: 50, color: "#ffe7a3" });
+    }
     if (event.kind === "destroyed") {
       const p = pos(event.ship);
       if (p) {
@@ -222,6 +227,7 @@ export function Combat2D({ report, view, units, frames, event, step, reduced, re
           const chosen = t.key === cmd.target;
           ring((st.x + 0.5) * CELL, (st.y + 0.5) * CELL, CELL * 0.8, chosen ? "#ff3b3b" : t.inRange ? "rgba(255,160,64,0.7)" : "rgba(138,143,156,0.5)", chosen ? 3 : 1.5);
         }
+        if (cmd.flightTarget) ring((cmd.flightTarget.x + 0.5) * CELL, (cmd.flightTarget.y + 0.5) * CELL, CELL * 0.45, "#ff3b3b", 3);
         if (cmd.moveTo) {
           const d = { x: (cmd.moveTo.x + 0.5) * CELL, y: (cmd.moveTo.y + 0.5) * CELL };
           ctx.strokeStyle = "rgba(125,255,176,0.8)";

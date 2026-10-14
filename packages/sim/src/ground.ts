@@ -9,7 +9,7 @@ import {
 import { hullIndex } from "./data/components.js";
 import { TRAIT_EFFECTS } from "./data/racePicks.js";
 import { getRace, hasTrait } from "./data/races.js";
-import { commandoBonusAt } from "./leaders.js";
+import { commandoBonusAt, leaderStar } from "./leaders.js";
 import { raceGroundBonus, troopHits } from "./raceEffects.js";
 import { TIER_OF_TECH } from "./data/techs.js";
 import { bombardment, planetDefense } from "./combat.js";
@@ -168,19 +168,50 @@ export function isArmedFleet(state: GameState, f: Fleet): boolean {
   });
 }
 
-/** Whether a fleet can mind-control colonies: a telepathic owner and a cruiser or larger. */
+/**
+ * Why a player can't take a colony by mind control now, or null when they can.
+ * The original's rule (FUN_000c620e): the player's race is telepathic, one of
+ * their warships at the colony's star is a cruiser or larger, the colony's owner
+ * is not telepathic too, and no Telepath officer of the owner is at that star
+ * (a captain with a fleet there or the system's administrator). The orbit must
+ * have been won first; a Planetary Barrier Shield does not stop it.
+ */
+export function mindControlProblem(state: GameState, playerId: PlayerId, colony: Colony): string | null {
+  const player = state.players[playerId];
+  if (!player || !telepathic(state, playerId)) return "only telepathic races can mind-control colonies";
+  const starId = state.planets[colony.planetId]?.starId;
+  const big = Object.values(state.fleets).some((f) => f.ownerId === playerId && f.starId === starId && f.ships.some((s) => {
+    const d = findDesign(player, s.designId);
+    return s.count > 0 && !!d && !d.fixed && hullIndex(d.hull) >= TRAIT_EFFECTS.telepathicMindControlSize;
+  }));
+  if (!big) return "needs a cruiser or larger warship in orbit";
+  const owner = state.players[colony.ownerId];
+  if (owner?.kind === "empire" && hasTrait(getRace(owner.raceId), "telepathic")) return `the ${owner.name} are telepathic too and shrug off the attempt`;
+  const guard = Object.values(state.leaders ?? {}).find((l) => l.ownerId === colony.ownerId && l.status !== "pool" && l.status !== "offered"
+    && l.assignedTo && leaderStar(state, l) === starId && l.abilities.some((a) => a.skill === "telepath"));
+  if (guard) return `${guard.name}, a Telepath officer of the ${owner?.name ?? "defender"}, guards this system`;
+  return null;
+}
+
+const telepathic = (state: GameState, playerId: PlayerId) => {
+  const p = state.players[playerId];
+  return p?.kind === "empire" && hasTrait(getRace(p.raceId), "telepathic");
+};
+
+/** Whether a fleet's owner can mind-control a colony at the fleet's star (see `mindControlProblem`). */
 export function canMindControl(state: GameState, fleet: Fleet, colony: Colony): boolean {
-  const owner = state.players[fleet.ownerId]!;
-  if (owner.kind !== "empire" || !hasTrait(getRace(owner.raceId), "telepathic")) return false;
-  if (hasTrait(getRace(colony.raceId), "telepathic")) return false;
-  return fleet.ships.some((s) => {
-    const d = findDesign(owner, s.designId);
-    return !!d && !d.fixed && hullIndex(d.hull) >= TRAIT_EFFECTS.telepathicMindControlSize;
-  });
+  return fleet.starId === state.planets[colony.planetId]?.starId && mindControlProblem(state, fleet.ownerId, colony) === null;
+}
+
+/** Takes a beaten colony by mind control: it changes hands with every colonist assimilated at once. */
+export function mindControl(ctx: TurnContext, by: PlayerId, colony: Colony): void {
+  ctx.emit({ kind: "colonyLost", playerId: colony.ownerId, colonyId: colony.id, to: by, how: "mindControlled" });
+  noteAttack(ctx.state, colony.ownerId, by);
+  captureColony(ctx, colony, by, { mindControl: true });
 }
 
 /** Every orbital choice, in the order the prompt offers them. */
-export const ORBITAL_CHOICES: readonly OrbitalChoice[] = ["bomb", "bio", "destroy", "none"];
+export const ORBITAL_CHOICES: readonly OrbitalChoice[] = ["mind", "bomb", "bio", "destroy", "none"];
 
 /** Whether a ship of the design carries a Stellar Converter. */
 function hasConverter(d: ShipDesign | undefined): boolean {
@@ -224,23 +255,26 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
     const targets = orbitTargets(state, f, silenced);
     if (targets.length === 0) continue;
 
+    const invadeTarget = f.invadeTarget ? targets.find((c) => c.id === f.invadeTarget) : undefined;
+    // Telepaths take a beaten colony by will alone, barrier shield or not; their troops stay aboard.
+    if (invadeTarget && canMindControl(state, f, invadeTarget)) {
+      delete f.invadeTarget;
+      mindControl(ctx, f.ownerId, invadeTarget);
+      continue;
+    }
     // A Planetary Barrier Shield keeps every troop out.
-    if (f.invadeTarget && targets.some((c) => c.id === f.invadeTarget) && !blocksInvasion(state.colonies[f.invadeTarget]!)) {
-      const target = state.colonies[f.invadeTarget]!;
-      // Telepaths take a beaten colony by will alone; their troops stay aboard.
-      if (canMindControl(state, f, target)) {
-        delete f.invadeTarget;
-
-        ctx.emit({ kind: "colonyLost", playerId: target.ownerId, colonyId: target.id, to: f.ownerId, how: "invaded" });
-        noteAttack(state, target.ownerId, f.ownerId);
-        captureColony(ctx, target, f.ownerId);
-      } else invade(ctx, f, target);
+    if (invadeTarget && !blocksInvasion(invadeTarget)) {
+      invade(ctx, f, invadeTarget);
       continue;
     }
     for (const c of targets) {
       if (!state.colonies[c.id] || !state.fleets[f.id]) continue;
       const choice = orbitalChoiceFor(ctx, f, c);
       if (choice === "none") continue;
+      if (choice === "mind") {
+        if (mindControlProblem(state, f.ownerId, c) === null) mindControl(ctx, f.ownerId, c);
+        continue;
+      }
       if (choice === "destroy" && converterInOrbit(state, f.ownerId, f.starId)) {
         destroyPlanet(ctx, f.ownerId, c);
         outraged.add(f.ownerId);
@@ -287,7 +321,9 @@ function orbitalChoiceFor(ctx: TurnContext, f: Fleet, c: Colony): OrbitalChoice 
   const ordered = ctx.orbitalOrders?.get(c.id)?.get(f.ownerId);
   if (ordered) return ordered;
   const choice = defaultOrbitalChoice(ctx.state, f);
-  if (choice !== "none" && ctx.pauseAtOrbit?.(f.ownerId, c.id)) throw new OrbitalPause(orbitalPrompt(ctx.state, f.ownerId, c.id));
+  // A telepath who could take the colony is always asked, whatever the fleet's stance.
+  const ask = choice !== "none" || mindControlProblem(ctx.state, f.ownerId, c) === null;
+  if (ask && ctx.pauseAtOrbit?.(f.ownerId, c.id)) throw new OrbitalPause(orbitalPrompt(ctx.state, f.ownerId, c.id));
   return choice;
 }
 
@@ -400,7 +436,12 @@ export function orbitalPrompt(state: GameState, playerId: PlayerId, colonyId: Id
   const bombKills = share(t.pop);
   const bioKills = barrier ? 0 : Math.max(0, Math.min(t.pop - bombKills, spores * SPORE_KILL_CHANCE_PER_POINT * bioDefense(state, c)));
   const converter = converterInOrbit(state, playerId, starId);
-  const options: OrbitalOption[] = [
+  const mind = mindControlProblem(state, playerId, c);
+  const all: OrbitalOption[] = [
+    {
+      choice: "mind", available: mind === null, why: mind ?? undefined,
+      hits: 0, popKilled: 0, buildingsLost: 0, outrage: false,
+    },
     {
       choice: "bomb", available: bombs > 0, why: bombs > 0 ? undefined : "no weapon in orbit gets through the planetary shield",
       hits, popKilled: bombKills, buildingsLost: share(t.buildings), outrage: false,
@@ -416,6 +457,8 @@ export function orbitalPrompt(state: GameState, playerId: PlayerId, colonyId: Id
     },
     { choice: "none", available: true, hits: 0, popKilled: 0, buildingsLost: 0, outrage: false },
   ];
+  // Only telepaths are offered mind control.
+  const options = all.filter((o) => o.choice !== "mind" || telepathic(state, playerId));
   // Computer empires in contact and not at war take it (scaled by their feelings and temperament).
   const appalled = state.players.flatMap((p) => {
     const worst = scaleRelationEvent(state, -RELATION_EVENTS.destruction, playerId, p.id);
@@ -538,7 +581,7 @@ export function revoltFight(ctx: TurnContext, colony: Colony, rebels: number): {
  * their own race. A captured Capitol is lost. Conquerors (not rebels) may
  * learn a technology from captured scientists.
  */
-export function captureColony(ctx: TurnContext, colony: Colony, newOwner: PlayerId, opts: { revolt?: boolean } = {}): void {
+export function captureColony(ctx: TurnContext, colony: Colony, newOwner: PlayerId, opts: { revolt?: boolean; mindControl?: boolean } = {}): void {
   const { state, rng } = ctx;
   const loser = colony.ownerId;
   const loserPlayer = state.players[loser]!;
@@ -555,7 +598,7 @@ export function captureColony(ctx: TurnContext, colony: Colony, newOwner: Player
   colony.buildings = colony.buildings.filter((b) => !BUILDINGS_BY_ID[b]?.effects.capitol);
   if (colony.outpost) colony.raceId = attacker.raceId;
   colony.aliens = colony.outpost || instantly || colony.raceId === attacker.raceId ? 0 : population(colony);
-  ctx.emit({ kind: "colonyCaptured", playerId: newOwner, colonyId: colony.id, from: loser });
+  ctx.emit({ kind: "colonyCaptured", playerId: newOwner, colonyId: colony.id, from: loser, ...(opts.mindControl ? { mindControl: true as const } : {}) });
   for (const l of Object.values(state.leaders)) {
     if (l.ownerId === loser && l.assignedTo === state.planets[colony.planetId]!.starId) l.assignedTo = null;
   }

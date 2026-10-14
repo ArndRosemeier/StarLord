@@ -2,7 +2,7 @@ import { STANCE_TIPS, climateTip, crewTip, gravityTip, mineralsTip, sizeTip, spe
 import { Tip } from "./Tip";
 import { useState, type ReactNode } from "react";
 import {
-  CLIMATES, canReach, crewLevel, crewName, designStats, findDesign, getRace, outdatedBy, refitCost, isHostile, maxPopulation, movementHalted, population, relation, travelGroup, travelSpeed, travelTurns,
+  CLIMATES, canReach, crewLevel, crewName, designStats, findDesign, getRace, hasTrait, mindControlProblem, outdatedBy, refitCost, isHostile, maxPopulation, movementHalted, population, relation, travelGroup, travelSpeed, travelTurns,
   type Fleet, type Planet, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "./hooks";
@@ -54,6 +54,7 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
   const fleets = Object.values(view.fleets).filter((f) => f.starId === star.id);
   const fleet = fleetId ? view.fleets[fleetId] : undefined;
   const myFleetHere = fleet && fleet.ownerId === me.id && fleet.starId === star.id ? fleet : undefined;
+  const telepath = hasTrait(race, "telepathic");
   const troops = myFleetHere?.ships.reduce((n, s) => {
     const d = findDesign(me, s.designId);
     return n + (d ? designStats(me, d).troops * s.count : 0);
@@ -77,7 +78,10 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
         const habitable = CLIMATES[p.type].habitable;
         // Any of your colony or outpost ships in the system will do; the selected fleet goes first.
         const settle = readOnly ? null : colonizeOption(view, pid, fleetId);
-        const canInvade = !readOnly && myFleetHere && colony && troops > 0 && isHostile(view, me.id, colony.ownerId);
+        const hostile = !readOnly && myFleetHere && colony && isHostile(view, me.id, colony.ownerId);
+        // Telepaths take the colony with their minds once its orbit is won (the system's other leaders are hidden from us).
+        const mind = hostile && telepath ? mindControlProblem(view, me.id, colony) : undefined;
+        const canInvade = hostile && troops > 0 && mind !== null;
         return (
           <div
             className={`planet${pid === selectedPlanetId ? " selected" : ""}${onSelectPlanet ? " pickable" : ""}`}
@@ -113,6 +117,11 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
                 >
                   {settle.outpost ? "Outpost" : "Colonize"}
                 </button>
+              )}
+              {mind !== undefined && (
+                <button className="small danger" disabled={mind !== null}
+                  title={mind ? `Can't mind-control: ${mind}.` : `${myFleetHere!.name} seizes ${colony!.name} by mind control once its orbit is won: the colony and all its colonists become yours at once, no ground battle. Fails if the owner has a Telepath officer in this system.`}
+                  onClick={() => session.issue({ type: "invade", fleetId: myFleetHere!.id, colonyId: colony!.id })}>Mind control</button>
               )}
               {canInvade && <button className="small danger" onClick={() => session.issue({ type: "invade", fleetId: myFleetHere!.id, colonyId: colony!.id })}>Invade ({troops})</button>}
             </div>

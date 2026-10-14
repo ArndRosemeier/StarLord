@@ -287,7 +287,10 @@ export type TacticalOrder =
   | { kind: "move"; to: { x: number; y: number } }
   /** Turn to face a unit (turning costs movement); the unit's turn goes on. */
   | { kind: "face"; target: string }
-  /** Fire these weapon mounts (indexes into the unit's weapons; all when left out) at one target; the turn goes on. */
+  /**
+   * Fire these weapon mounts (indexes into the unit's weapons; all when left out) at one target, an enemy unit or
+   * a volley of missiles or craft in flight (its id); the turn goes on.
+   */
   | { kind: "fire"; target: string; mounts?: number[] }
   /** Send marines across to an enemy ship; the turn goes on. */
   | { kind: "board"; target: string }
@@ -308,9 +311,10 @@ export type TacticalOrder =
  * What a fleet that holds orbit over an enemy colony does to it, as the
  * original's Orbital Combat Selection window asks: bombard with every weapon
  * but biological ones, bombard and also release biological weapons, destroy
- * the planet with a Stellar Converter, or hold fire.
+ * the planet with a Stellar Converter, take it by mind control (telepathic
+ * races with a cruiser or larger in orbit), or hold fire.
  */
-export type OrbitalChoice = "bomb" | "bio" | "destroy" | "none";
+export type OrbitalChoice = "bomb" | "bio" | "destroy" | "mind" | "none";
 
 export interface CombatDoctrine {
   /** Retreat when the fleet's strength falls below this fraction of the enemy's. */
@@ -588,7 +592,11 @@ export interface CombatRoundEvent {
    * "captured": boarders took `ship` for the owner of `target`; `hit` is true when the prize fights on for its
    * captor (a telepathic captor), otherwise it sits out the rest of the battle.
    */
-  kind: "move" | "fire" | "destroyed" | "retreat" | "launch" | "board" | "repair" | "captured" | "flights";
+  /**
+   * "intercept": `ship` fired `weapon` at the missiles or craft `projectile` (at x, y); `downed` of them were
+   * destroyed (`hit` when any were).
+   */
+  kind: "move" | "fire" | "destroyed" | "retreat" | "launch" | "board" | "repair" | "captured" | "flights" | "intercept";
   ship: string;
   target?: string;
   x?: number;
@@ -602,8 +610,11 @@ export interface CombatRoundEvent {
   structureDamage?: number;
   /** Internal system knocked out by the hit (drive, computer, shield, weapon id, special id). */
   systemHit?: string;
-  /** "launch": the missile, torpedo or squadron it sends off (x, y: where from). */
+  /** "launch": the missile, torpedo or squadron it sends off (x, y: where from). "intercept": the volley shot at. */
   projectile?: string;
+  /** "intercept": missiles or craft destroyed, and those left in the volley. */
+  downed?: number;
+  left?: number;
   /** "flights": everything in flight after a side's missiles and craft moved (`ship` is empty). */
   flights?: CombatFlight[];
 }
@@ -668,8 +679,8 @@ export type GameEvent =
   | { turn: number; kind: "explored"; playerId: PlayerId; starId: Id }
   | { turn: number; kind: "commandRejected"; playerId: PlayerId; reason: string }
   | { turn: number; kind: "combat"; playerId: PlayerId; reportId: Id; starId: Id; won: boolean }
-  | { turn: number; kind: "colonyLost"; playerId: PlayerId; colonyId: Id; to: PlayerId | null; how: "invaded" | "destroyed" | "revolted" }
-  | { turn: number; kind: "colonyCaptured"; playerId: PlayerId; colonyId: Id; from: PlayerId }
+  | { turn: number; kind: "colonyLost"; playerId: PlayerId; colonyId: Id; to: PlayerId | null; how: "invaded" | "destroyed" | "revolted" | "mindControlled" }
+  | { turn: number; kind: "colonyCaptured"; playerId: PlayerId; colonyId: Id; from: PlayerId; /** Taken by telepathic mind control. */ mindControl?: true }
   | { turn: number; kind: "invasionFailed"; playerId: PlayerId; colonyId: Id }
   | { turn: number; kind: "bombarded"; playerId: PlayerId; colonyId: Id; popLost: number }
   /**
@@ -678,7 +689,7 @@ export type GameEvent =
    */
   | {
     turn: number; kind: "orbitalStrike"; playerId: PlayerId; by: PlayerId; victim: PlayerId; starId: Id; colonyName: string;
-    choice: Exclude<OrbitalChoice, "none">; popKilled: number; buildingsLost: number; colonyGone: boolean; planetDestroyed: boolean;
+    choice: Exclude<OrbitalChoice, "none" | "mind">; popKilled: number; buildingsLost: number; colonyGone: boolean; planetDestroyed: boolean;
   }
   | { turn: number; kind: "diplomacy"; playerId: PlayerId; other: PlayerId; what: string }
   | { turn: number; kind: "spy"; playerId: PlayerId; other: PlayerId; what: string }

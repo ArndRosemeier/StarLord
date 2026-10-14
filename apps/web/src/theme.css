@@ -790,6 +790,7 @@ body:has(.job-drag-card) { cursor: grabbing; }
 .cb-log > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cb-alerts { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 4px; z-index: 2; pointer-events: none; width: max-content; max-width: calc(100% - 24px); }
 .cb-alert { padding: 4px 12px; border-radius: 16px; font-size: 12px; background: rgba(40, 24, 6, 0.85); border: 1px solid #d99a2b; color: #ffd38a; }
+.cb-alert button { pointer-events: auto; margin-left: 8px; }
 .cb-alert.bad { background: rgba(50, 10, 10, 0.88); border-color: #e2554a; color: #ffb3ab; animation: cb-pulse 1.2s ease-in-out infinite; }
 @keyframes cb-pulse { 50% { box-shadow: 0 0 14px rgba(255, 80, 60, 0.6); } }
 .cb-field .command-ask { z-index: 3; }

@@ -119,7 +119,7 @@ export const TRAIT_COSTS: Record<RaceTrait, { cost: number; text: string; name?:
   creative: { cost: 8, text: "Learns every application in a researched field." },
   uncreative: { cost: -4, text: "Learns one random application per field." },
   fantasticTraders: { cost: 4, text: `+${TREATY_YIELD.traderPoints}% trade treaty income, ${TRAIT_EFFECTS.traderFoodBc} BC per surplus food instead of ${TRAIT_EFFECTS.normalFoodBc}, trade goods 1 BC per production instead of ½.` },
-  telepathic: { cost: 6, text: "+25 on diplomacy, +10 on all spy rolls; mind-controls undefended colonies." },
+  telepathic: { cost: 6, text: "+25 on diplomacy, +10 on all spy rolls; with a cruiser or larger in orbit, takes beaten colonies by mind control, all colonists assimilated." },
   lucky: { cost: 3, text: `Never picked for random disasters (galaxy-wide hyperspace flux and supernovas still hit); extra lucky windfalls; Vexari raiders count your population at ${Math.round(RAID_LUCKY_POP_MULT * 100)}%; monsters and raiders attack others at the same star first.` },
   omniscient: { cost: 3, text: "Knows every star system from the start and sees every fleet, stealthy or not." },
   stealthy: { name: "Stealthy ships", cost: 4, text: "Your fleets can't be seen on the galaxy map outside your rivals' own systems." },

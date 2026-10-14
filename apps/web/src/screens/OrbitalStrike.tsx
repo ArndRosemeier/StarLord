@@ -5,6 +5,7 @@ import { useGame } from "../ui/hooks";
 import { fmt, playerName, starName } from "../ui/format";
 
 const LABELS: Record<OrbitalChoice, string> = {
+  mind: "Mind control",
   bomb: "Bombard",
   bio: "Bombard with biological weapons",
   destroy: "Destroy the planet",
@@ -29,6 +30,8 @@ export function optionText(view: PlayerView, prompt: OrbitalPrompt, o: OrbitalOp
       return `Bombard as above and release biological weapons: each launch has a ${Math.round(SPORE_KILL_CHANCE_PER_POINT * 100)}% chance per point of damage to kill a colonist (less against Microbiotics and Universal Antidote). Expected: ${losses}. ${outrageText(view, prompt)}`;
     case "destroy":
       return `A Stellar Converter fired from orbit turns the planet into an asteroid belt: all ${fmt(prompt.population)} colonists and ${fmt(o.buildingsLost)} buildings are lost, and so is any special of the planet. ${outrageText(view, prompt)}`;
+    case "mind":
+      return `Your telepaths seize the colony with their minds: it becomes yours with all ${fmt(prompt.population)} colonists assimilated at once and ${fmt(prompt.buildings)} buildings intact, its ${fmt(prompt.troops.militia + prompt.troops.marines + prompt.troops.armor)} defending troops never fight and your troops stay aboard. Needs a cruiser or larger in orbit; fails against telepathic races and where the owner has a Telepath officer. No diplomatic penalty.`;
     case "none":
       return "Your fleets stay in orbit and leave the colony be this turn.";
   }
@@ -71,7 +74,7 @@ export function OrbitalStrike({ prompt }: { prompt: OrbitalPrompt }) {
             </div>
           ))}
         </div>
-        <p className="muted small">To take the colony instead, order a fleet with troop ships to invade it (Fleets screen) before ending the turn.</p>
+        <p className="muted small">To take the colony {prompt.options.some((o) => o.choice === "mind") ? "with troops " : ""}instead, order a fleet with troop ships to invade it (Fleets screen) before ending the turn.</p>
       </div>
     </div>
   );

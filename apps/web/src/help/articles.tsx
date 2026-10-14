@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import {
-  CREW, DEFENSE_CREW_LEVEL, SIDE_ATTACK_BY_IMMOBILE_SIZE, hullIndex,
+  CREW, DEFENSE_CREW_LEVEL, MISSILE_DEFENSE_PER_SPEED, SIDE_ATTACK_BY_IMMOBILE_SIZE, hullIndex,
   ALL_WEAPONS, ARMORS, ARMORS_BY_ID, BUILDINGS, BUILDINGS_BY_ID, CLIMATES, COMPUTERS, COMPUTERS_BY_ID, CUSTOM_RACE_POINTS,
   DRIVES, EXCLUSIVE_TRAITS, FIELD_NAMES, FUEL_RANGES, GOVERNMENTS, GOVERNMENT_COSTS, HULLS, HULLS_BY_ID, INDUSTRY_PER_WORKER,
   AVENGER_DESIGN, GUARDIAN_SCORE, LAIR_MONSTERS, LAIR_PLANET_UPGRADE, LAIR_SPECIALS, MAX_NEGATIVE_POINTS, MINERAL_WEIGHTS_BY_STAR, MODULES, SUPPORT_HULL, MONSTER_DESIGNS, NPC_WEAPONS, PICK_OPTIONS,
@@ -531,6 +531,14 @@ function WeaponsPage() {
       </table>
       <h3>Firing arcs</h3>
       <p>Beams fire forward by default. Wider arcs cost extra space: {(Object.values(ARCS)).map((a) => `${a.name} ${signed(a.pct)}%`).join(", ")}. A point-defense mount only shoots down missiles and craft coming in inside its arc, so All round covers every side.</p>
+      <h3>Shooting down missiles</h3>
+      <p>
+        Every beam except a heavy mount can be fired at a missile volley or a squadron in flight, and anti-missile
+        rockets at missiles: in a battle you command, pick the volley from the incoming warning or the list under the
+        target. Each shot rolls against the volley's beam defense ({MISSILE_DEFENSE_PER_SPEED} × its speed plus its type's bonus) and a
+        hit downs at most one missile; weaker hits add up on the same one. Torpedoes cannot be shot down.
+        Point-defense mounts that have not fired yet also shoot on their own just before missiles and craft strike.
+      </p>
       <h3>Missile racks</h3>
       <p>A missile mount picks how many shots it carries: {MISSILE_RACKS.map((r) => `${r.shots} shots for ${r.space} space`).join(", ")}.</p>
     </div>
