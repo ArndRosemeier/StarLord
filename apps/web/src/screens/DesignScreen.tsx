@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  ARCS, ARMORS, COMPUTERS, bestOf, HULLS, HULLS_BY_ID, MISSILE_RACKS, SHIELDS, SPECIALS, WEAPONS, WEAPON_MODS,
+  ARCS, ARMORS, COMPUTERS, bestOf, defaultDesignName, HULLS, HULLS_BY_ID, MISSILE_RACKS, SHIELDS, SPECIALS, WEAPONS, WEAPON_MODS,
   DEFAULT_MISSILE_SHOTS, SHIP_STYLES, designStats, designStyle, raceShipStyle, knows, refinement, swapMountWeapon, validateDesign, weaponUnitCost,
   type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponDef, type WeaponModId, type WeaponMount,
 } from "@starlord/sim";
@@ -17,11 +17,13 @@ export function DesignScreen() {
   const { session, view, me, readOnly } = useGame();
   // Like the original's design template: a new design starts with the best armor, shield and computer known.
   const blank = (): ShipDesign => ({
-    id: "", name: "New design", hull: "frigate", armor: (bestOf(me, ARMORS) ?? ARMORS[0]!).id,
+    id: "", name: defaultDesignName(me, "frigate"), hull: "frigate", armor: (bestOf(me, ARMORS) ?? ARMORS[0]!).id,
     shield: bestOf(me, SHIELDS)?.id ?? null, computer: bestOf(me, COMPUTERS)?.id ?? null,
     weapons: [], specials: [], module: null, obsolete: false,
   });
   const [draft, setDraft] = useState<ShipDesign>(blank);
+  // While the name is still the generated one it follows the hull (escort or capital names).
+  const [autoName, setAutoName] = useState(true);
   const [addWeapon, setAddWeapon] = useState("");
   const [refitTo, setRefitTo] = useState<string | null>(null);
 
@@ -40,7 +42,11 @@ export function DesignScreen() {
     update({ style: SHIP_STYLES[(i + dir + SHIP_STYLES.length) % SHIP_STYLES.length]!.id });
   };
   const error = validateDesign(me, draft);
-  const update = (patch: Partial<ShipDesign>) => setDraft({ ...draft, ...patch });
+  const update = (patch: Partial<ShipDesign>) => {
+    const next = { ...draft, ...patch };
+    if (autoName && patch.hull && patch.hull !== draft.hull) next.name = defaultDesignName(me, patch.hull);
+    setDraft(next);
+  };
   // Mounts are edited by position: the same weapon may sit in several mounts with different mods or arcs.
   const editMount = (i: number, patch: Partial<WeaponMount>) => {
     const list = draft.weapons.map((w, j) => (j === i ? { ...w, ...patch } : { ...w }));
@@ -53,8 +59,12 @@ export function DesignScreen() {
   const save = () => {
     let n = 1;
     while (me.designs.some((d) => d.id === `u${view.turn}-${n}`)) n++;
-    session.issue({ type: "saveDesign", design: { ...draft, id: `u${view.turn}-${n}`, obsolete: false } });
-    setDraft({ ...draft, name: `${draft.name.replace(/ Mk \d+$/, "")} Mk ${n + 1}` });
+    const saved = { ...draft, id: `u${view.turn}-${n}`, obsolete: false };
+    session.issue({ type: "saveDesign", design: saved });
+    const next = autoName
+      ? defaultDesignName({ ...me, designs: [...me.designs, saved] }, draft.hull)
+      : `${draft.name.replace(/ Mk \d+$/, "")} Mk ${n + 1}`;
+    setDraft({ ...draft, name: next });
   };
 
   // Colony ships, outpost ships and transports are fixed designs built straight from the build list.
@@ -67,8 +77,8 @@ export function DesignScreen() {
         <div className="row">
           <h2 style={{ margin: 0 }}>Ship designer</h2>
           <span className="spacer" />
-          <Tip card={{ title: "New design", text: ["Start over with an empty frigate fitted with your best armor, shield and computer."] }}>
-            <button className="small" onClick={() => setDraft(blank())}>New</button>
+          <Tip card={{ title: "New design", text: ["Start over with an empty frigate fitted with your best armor, shield and computer, named in your race's style."] }}>
+            <button className="small" onClick={() => { setDraft(blank()); setAutoName(true); }}>New</button>
           </Tip>
         </div>
         <div className="blueprint">
@@ -84,7 +94,7 @@ export function DesignScreen() {
           <span className="blueprint-hull">{HULLS_BY_ID[draft.hull]?.name} · {words(stats.role)}</span>
         </div>
         <Tip block card={{ title: "Design name", text: ["Shown in build lists and fleets. Saving again adds a new Mk number, so older ships keep their design."] }}>
-          <input type="text" value={draft.name} onChange={(e) => update({ name: e.target.value })} style={{ width: "100%" }} />
+          <input type="text" value={draft.name} onChange={(e) => { setAutoName(false); update({ name: e.target.value }); }} style={{ width: "100%" }} />
         </Tip>
         <div className="row">
           {hulls.map((h) => (
@@ -190,7 +200,7 @@ export function DesignScreen() {
               </div>
               </Tip>
               <Tip card={{ title: "Copy", text: ["Loads this design into the designer so you can change it and save it as a new design."] }}>
-                <button className="small" onClick={() => setDraft({ ...structuredClone(d), id: "", name: `${d.name}`, obsolete: false })}>Copy</button>
+                <button className="small" onClick={() => { setDraft({ ...structuredClone(d), id: "", name: `${d.name}`, obsolete: false }); setAutoName(false); }}>Copy</button>
               </Tip>
               <Tip card={d.obsolete
                 ? { title: "Restore", text: ["Puts this design back in build lists."] }

@@ -8,7 +8,8 @@ import {
 import { BEAM_HIT, DEFENSE_PER_SPEED, GROUND_BATTERY_SPACE, MISSILE_BASE, RANGE_BANDS, STATION_ARMS } from "./data/combat.js";
 import { NPC_WEAPONS } from "./data/monsters.js";
 import { getRace } from "./data/races.js";
-import { isShipStyle } from "./data/shipStyles.js";
+import { DESIGN_NAMES } from "./data/designNames.js";
+import { isShipStyle, raceShipStyle } from "./data/shipStyles.js";
 import { raceCombatSpeedBonus, shipAttackPickBonus, shipDefensePickBonus } from "./raceEffects.js";
 import { TIER_OF_TECH, TIERS_BY_ID } from "./data/techs.js";
 import { empireBonus, government, hyperLevel, knows } from "./empire.js";
@@ -399,6 +400,24 @@ export function validateDesign(player: Player, design: ShipDesign): string | nul
   if (stats.spaceUsed > stats.spaceTotal + 1e-9) return "not enough space";
   if (!design.name.trim()) return "design needs a name";
   return null;
+}
+
+const ROMAN = ["", "", " II", " III", " IV", " V", " VI", " VII", " VIII", " IX", " X"];
+
+/**
+ * A default name for a new design: the first name from the race's pool
+ * (escort names for frigates and destroyers, capital names above) that none of
+ * the player's designs uses yet, then the pool again with II, III, … after it.
+ */
+export function defaultDesignName(player: Player, hull: string): string {
+  const pool = DESIGN_NAMES[raceShipStyle(player.raceId)];
+  const names = hull === "frigate" || hull === "destroyer" ? pool.escort : pool.capital;
+  const taken = new Set(player.designs.map((d) => d.name));
+  for (let round = 1; ; round++) {
+    const suffix = ROMAN[round] ?? ` ${round}`;
+    const free = names.find((n) => !taken.has(n + suffix));
+    if (free) return free + suffix;
+  }
 }
 
 export function bestOf<T extends { requires: string }>(player: Player, items: T[]): T | undefined {
