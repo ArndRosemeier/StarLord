@@ -38,7 +38,7 @@ export { FIELD_HEIGHT, FIELD_WIDTH, MAX_ROUNDS, MISSILE_SPEED, PLANET_INSTALLATI
 export {
   ANTI_MISSILE, AREA_BLAST_RADIUS, BLACK_HOLE_TURNS, BOARDING, BOMBARD_ROUNDS, COMBAT_BOMB_RANGE, CRAFT, DAMAGE, DEFENSE_CREW_LEVEL, DEPLOY,
   EXPLOSION, FOOTPRINT, GROUND_BATTERY_SPACE, MISSILE_BASE, PHASING_TURNS, PLANET_POPULATION_HP, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE,
-  STATION_ARMS,
+  MISSILE_DEFENSE_PER_SPEED, STATION_ARMS,
 } from "./data/combat.js";
 
 /** Squares per combat turn of a missile or torpedo an empire fires (before the Fast mod). */
@@ -813,6 +813,32 @@ export interface WeaponPreview {
   expected?: number;
   /** Missiles and torpedoes: combat turns until they reach the target (0: at once). */
   arrives?: number;
+  /** Against missiles or craft in flight: how many of them the volley is likely to destroy. */
+  downed?: number;
+}
+
+/** An enemy volley of missiles, torpedoes or craft in flight that a commanded unit may shoot at. */
+export interface FlightTarget {
+  id: string;
+  weapon: string;
+  /** The unit that launched it and the one it flies at. */
+  owner: string;
+  target: string;
+  /** Missiles or craft left in the volley, the damage of each missile (0 for craft) and the hit points of each. */
+  count: number;
+  damage: number;
+  hp: number;
+  /** What beams roll against to hit one (5 x its speed plus its type's bonus). */
+  defense: number;
+  craft: boolean;
+  /** Torpedoes cannot be shot down. */
+  torpedo: boolean;
+  x: number;
+  y: number;
+  /** Squares from the unit's nearest square. */
+  distance: number;
+  /** Some weapon that can still fire this turn reaches it. */
+  inRange: boolean;
 }
 
 /** What a commanded unit may do on its turn, for the battle screen. */
@@ -842,6 +868,11 @@ export interface UnitOptions {
   canSelfDestruct: boolean;
   /** Enemy missiles, torpedoes and squadrons flying at it. */
   incoming: IncomingFlight[];
+  /**
+   * Every enemy volley in flight, at whichever unit it flies: like in the original, beams (not heavy mounts) and
+   * anti-missile rockets may be fired at missiles and craft; weapon previews (`vs`) are keyed by its id too.
+   */
+  flights: FlightTarget[];
 }
 
 /** A volley flying at a unit, for the battle screen's missile warning. */
@@ -1640,8 +1671,10 @@ export class Battle {
           }
           case "fire": {
             const t = this.targets(u).find((x) => x.key === order.target);
+            const p = t ? undefined : this.projectiles.find((x) => x.id === order.target && x.owner.side !== u.side);
             this.stationStep(u);
             if (t && this.fireOrdered(u, t, order.mounts)) did = true;
+            if (p && this.fireAtFlight(u, p, order.mounts)) did = true;
             continue;
           }
           case "board": {
@@ -1791,6 +1824,7 @@ export class Battle {
     if (!u || !active(u)) return null;
     // In reach: some weapon that can still fire this turn reaches it from here (arc, range, ammunition).
     const reaches = (t: Unit) => u.mounts.some((m) => !this.mountBlocked(u, m, t));
+    const flying = this.projectiles.filter((p) => p.owner.side !== u.side && p.count > 0);
     return {
       targets: this.targets(u).map((t) => ({ key: t.key, inRange: reaches(t) })),
       reach: u.immobile || u.moved ? 0 : Math.max(0, this.currentSpeed(u) - u.mpUsed),
@@ -1800,8 +1834,16 @@ export class Battle {
         mount: mi, id: m.def.id, name: m.def.name, count: m.count, shots: Number.isFinite(m.shots) ? m.shots : null,
         ready: m.shots > 0 && m.cooldown <= 0 && !m.firedThisRound && !(m.def.kind === "bay" && (m.out || m.rearm > 0)), arc: m.arc,
         second: m.halfFired, mods: [...m.mods],
-        vs: Object.fromEntries(this.targets(u).map((t) => [t.key, this.preview(u, mi, t)])),
+        vs: Object.fromEntries([
+          ...this.targets(u).map((t) => [t.key, this.preview(u, mi, t)] as const),
+          ...flying.map((p) => [p.id, this.previewFlight(u, mi, p)] as const),
+        ]),
       }]),
+      flights: flying.map((p) => ({
+        id: p.id, weapon: p.weapon.id, owner: p.owner.key, target: p.target.key, count: p.count, damage: p.craft ? 0 : p.damage,
+        hp: p.hp, defense: p.defense, craft: !!p.craft, torpedo: p.weapon.kind === "torpedo", x: round1(p.x), y: round1(p.y),
+        distance: round1(this.edgeTo(u, p)), inRange: u.mounts.some((m) => !this.flightBlocked(u, m, p)),
+      })),
       canSelfDestruct: u.kind === "ship",
       incoming: this.projectiles.filter((p) => p.target === u && p.owner.side !== u.side).map((p) => ({
         id: p.id, weapon: p.weapon.id, count: p.count, damage: p.craft ? 0 : p.damage, craft: !!p.craft,
@@ -1962,6 +2004,12 @@ export class Battle {
       if (kind === "beam") {
         // Point-defense mounts hold their fire for incoming missiles and fighters.
         if (m.mods.has("pointDefense") && incoming) return;
+        // A volley about to wreck one of ours may be worth more than the target (as the original AI weighs it).
+        const flight = this.flightWorthShooting(u, mi, m, primary);
+        if (flight) {
+          if (this.fireAtFlight(u, flight, [mi])) did = true;
+          return;
+        }
         const volleys = hyper && m.double && !m.halfFired ? 2 : 1;
         let fired = false;
         for (let v = 0; v < volleys; v++) if (this.fireBeams(u, m, primary)) did = fired = true;
@@ -2107,12 +2155,16 @@ export class Battle {
 
   /** The roll a beam shot needs, the attack it adds to the roll, and its damage range at this distance. */
   beamOdds(u: Unit, m: Mount, t: Unit): { threshold: number; diff: number; lo: number; hi: number } {
-    const bands = this.beamBands(u, m, t)!;
+    return this.beamRoll(u, m, this.beamBands(u, m, t)!, this.defenseOf(t), t);
+  }
+
+  /** The beam roll at these range bands against this defense (`vs` is the unit whose owner it fights, for bonuses). */
+  beamRoll(u: Unit, m: Mount, bands: { hit: number; damage: number }, defense: number, vs: Unit): { threshold: number; diff: number; lo: number; hi: number } {
     const traits = m.traits;
     let penalty = RANGE_BANDS.toHit[bands.hit]!;
     if (traits.has("doubleRangePenalty")) penalty *= 2;
     const threshold = Math.min(BEAM_HIT.maxThreshold, BEAM_HIT.threshold - penalty);
-    let diff = this.attackOf(u, t) - this.defenseOf(t);
+    let diff = this.attackOf(u, vs) - defense;
     if (traits.has("continuous") || m.mods.has("continuous")) diff += MOD_EFFECTS.continuousToHit;
     if (m.mods.has("pointDefense")) diff += MOD_EFFECTS.pointDefenseToHit;
     if (m.mods.has("autoFire")) diff += MOD_EFFECTS.autoFireToHit;
@@ -2175,6 +2227,157 @@ export class Battle {
       return { mount: mi, ok: true, shots: m.count, min: damage, max: damage, arrives: turns };
     }
     return { mount: mi, ok: true, shots: m.count };
+  }
+
+  // ------------------------------------------------------------ shooting at missiles and craft in flight
+
+  /** Squares from a unit's nearest square to a point, such as a missile in flight. */
+  edgeTo(a: Unit, p: { x: number; y: number }): number {
+    const reach = this.radius(a);
+    const dx = Math.max(0, Math.abs(a.x - p.x) - reach);
+    const dy = Math.max(0, Math.abs(a.y - p.y) - reach);
+    return Math.max(dx, dy) + Math.min(dx, dy) / 2;
+  }
+
+  /** Range bands of a beam mount against a volley in flight, or null when it is out of range. */
+  flightBands(u: Unit, m: Mount, p: Projectile): { hit: number; damage: number } | null {
+    let band = Math.floor((this.edgeTo(u, p) + 2) / 3);
+    if (band > MAX_BAND) return null;
+    if (m.mods.has("pointDefense")) band = Math.min(MAX_BAND, band * 2);
+    const hit = u.fx.rangeDivisor > 1 && this.specialWorks(u, "rangemasterUnit") ? Math.floor(band / u.fx.rangeDivisor) : band;
+    return { hit, damage: band };
+  }
+
+  /**
+   * Why a mount cannot fire at a volley in flight right now, or null when it can. As in the original
+   * (FUN_0003a7a5), every beam but a heavy mount may aim at missiles and craft, anti-missile rockets at missiles
+   * only, and nothing at torpedoes.
+   */
+  flightBlocked(u: Unit, m: Mount, p: Projectile): string | null {
+    if (m.count <= 0) return "destroyed";
+    if (m.shots <= 0) return "out of ammunition";
+    if (m.cooldown > 0) return "reloading";
+    if (m.firedThisRound) return "already fired";
+    if (p.owner.side === u.side) return "one of ours";
+    if (p.count <= 0) return "already destroyed";
+    if (p.weapon.kind === "torpedo") return "torpedoes cannot be shot down";
+    if (m.def.effect === "antiMissile") {
+      if (p.craft) return "rockets hit missiles only";
+      return this.edgeTo(u, p) <= (m.def.range ?? Infinity) ? null : "out of range";
+    }
+    if (m.def.kind !== "beam") return "cannot hit missiles";
+    if (m.mods.has("heavyMount")) return "heavy mounts cannot track missiles";
+    if (!this.inArc(u, m, p)) return "out of arc";
+    if (!this.flightBands(u, m, p)) return "out of range";
+    return null;
+  }
+
+  /** An anti-missile rocket downs a missile at this distance when rand(100) rolls below this, as in the original. */
+  rocketBelow(u: Unit, p: { x: number; y: number }): number {
+    const band = Math.floor((this.edgeTo(u, p) + 2) / 3);
+    return ANTI_MISSILE.base - Math.floor((band + 2) * ANTI_MISSILE.perBandStep);
+  }
+
+  /** What a mount's volley at missiles or craft in flight would likely do, for the battle screen and the computer. */
+  previewFlight(u: Unit, mi: number, p: Projectile): WeaponPreview {
+    const m = u.mounts[mi]!;
+    const blocked = this.flightBlocked(u, m, p);
+    if (blocked) return { mount: mi, ok: false, why: blocked };
+    if (m.def.effect === "antiMissile") {
+      const chance = Math.max(0, this.rocketBelow(u, p) - 1) / DIE;
+      const shots = Math.min(m.count, m.shots);
+      return { mount: mi, ok: true, shots, hitPct: Math.round(chance * 100), downed: round1(Math.min(p.count, shots * chance)) };
+    }
+    const { threshold, diff, lo, hi } = this.beamRoll(u, m, this.flightBands(u, m, p)!, p.defense, p.owner);
+    let hits = 0;
+    let kills = 0;
+    for (let roll = 1; roll <= DIE; roll++) {
+      let r = roll;
+      if (m.traits.has("alwaysHits")) r = DIE;
+      else if (r <= BEAM_HIT.unmodifiedAbove) r = Math.min(100, r + diff);
+      if (r < threshold) continue;
+      const dmg = Math.min(hi, lo + Math.floor(((hi - lo + 1) * (r - threshold)) / Math.max(1, DIE - threshold)));
+      hits++;
+      // One hit downs at most one missile; weaker hits add up on the same one.
+      kills += Math.min(1, dmg / p.hp);
+    }
+    const shots = m.count * (m.mods.has("autoFire") ? MOD_EFFECTS.autoFireShots : 1);
+    return { mount: mi, ok: true, shots, hitPct: Math.round((hits / DIE) * 100), min: lo, max: hi, downed: round1(Math.min(p.count, (kills / DIE) * shots)) };
+  }
+
+  /**
+   * A unit fires the chosen mounts (all when none are named) at a volley of missiles or craft in flight. Each
+   * beam shot rolls against the volley's defense like a normal beam; a hit downs one missile when its damage
+   * (with what earlier hits left on it) reaches the missile's hit points. Rockets roll their own chance.
+   */
+  fireAtFlight(u: Unit, p: Projectile, mounts?: number[]): boolean {
+    const picked = mounts ? [...new Set(mounts)].filter((i) => Number.isInteger(i) && i >= 0 && i < u.mounts.length).sort((a, b) => a - b) : u.mounts.map((_, i) => i);
+    const hyper = u.fx.hyperX && this.specialWorks(u, "hyperXCapacitors");
+    let did = false;
+    for (const mi of picked) {
+      const m = u.mounts[mi]!;
+      if (p.count <= 0 || this.flightBlocked(u, m, p)) continue;
+      const before = p.count;
+      if (m.def.effect === "antiMissile") {
+        const below = this.rocketBelow(u, p);
+        for (let i = 0; i < m.count && p.count > 0 && m.shots > 0; i++) {
+          m.shots--;
+          if (this.rng.int(1, DIE) < below) p.count--;
+        }
+      } else {
+        const { threshold, diff, lo, hi } = this.beamRoll(u, m, this.flightBands(u, m, p)!, p.defense, p.owner);
+        const shots = m.count * (m.mods.has("autoFire") ? MOD_EFFECTS.autoFireShots : 1);
+        for (let s = 0; s < shots && p.count > 0; s++) this.flightShot(m, p, threshold, diff, lo, hi);
+      }
+      this.log.push({ kind: "intercept", ship: u.key, weapon: m.def.id, projectile: p.id, x: round1(p.x), y: round1(p.y), hit: p.count < before, downed: before - p.count, left: p.count });
+      did = true;
+      if (m.def.kind === "beam" && hyper && m.double && !m.halfFired) m.halfFired = true;
+      else {
+        m.firedThisRound = true;
+        m.double = false;
+      }
+    }
+    if (did) u.firedThisRound = true;
+    if (p.count <= 0) this.removeProjectile(p);
+    return did;
+  }
+
+  /** One beam shot at a volley in flight. */
+  flightShot(m: Mount, p: Projectile, threshold: number, diff: number, lo: number, hi: number): void {
+    let r = this.rng.int(1, DIE);
+    if (m.traits.has("alwaysHits")) r = DIE;
+    else if (r <= BEAM_HIT.unmodifiedAbove) r = Math.min(100, r + diff);
+    if (r < threshold) return;
+    p.frontDamage += Math.min(hi, lo + Math.floor(((hi - lo + 1) * (r - threshold)) / Math.max(1, DIE - threshold)));
+    if (p.frontDamage >= p.hp) {
+      // One hit downs at most one missile; what is left over carries to the next.
+      p.count--;
+      p.frontDamage = Math.min(p.frontDamage - p.hp, p.hp - 1);
+    }
+  }
+
+  /**
+   * The computer's choice for a beam mount: an enemy volley flying at one of its side's units when shooting it
+   * down saves more than the mount would do to its target. Like the original AI (0x29f16) it values a volley by
+   * the missiles it would down times what each would get past its target's shield class, halved for missiles.
+   */
+  flightWorthShooting(u: Unit, mi: number, m: Mount, primary: Unit): Projectile | undefined {
+    if (this.projectiles.length === 0) return undefined;
+    const aim = active(primary) ? this.preview(u, mi, primary) : null;
+    let best = aim?.ok ? aim.expected ?? 0 : 0;
+    let pick: Projectile | undefined;
+    for (const p of this.projectiles) {
+      if (p.owner.side === u.side || !active(p.target) || this.flightBlocked(u, m, p)) continue;
+      const shield = this.shieldWorks(p.target) ? p.target.shieldClass : 0;
+      const threat = p.craft ? Math.max(p.owner.craftBeam.damageMax, p.owner.craftBomb?.damageMax ?? 0) : p.damage;
+      const each = Math.max(0, threat - shield) * (p.mods.has("mirv") ? MOD_EFFECTS.mirvWarheads : 1);
+      const value = (this.previewFlight(u, mi, p).downed ?? 0) * (p.craft ? each : each / 2);
+      if (value > best) {
+        best = value;
+        pick = p;
+      }
+    }
+    return pick;
   }
 
   tally(ev: CombatRoundEvent, h: Hit): void {
@@ -2323,7 +2526,7 @@ export class Battle {
         if (m.count <= 0) continue;
         if (m.def.kind === "beam" && m.mods.has("pointDefense") && !m.firedThisRound && this.inArc(t, m, from)) {
           m.firedThisRound = true;
-          const ev: CombatRoundEvent = { kind: "fire", ship: t.key, target: p.owner.key, weapon: m.def.id, hit: false, damage: 0 };
+          const before = p.count;
           for (let i = 0; i < m.count && p.count > 0; i++) {
             const r = this.rng.int(1, DIE);
             const roll = r <= BEAM_HIT.unmodifiedAbove ? r + this.attackOf(t, p.owner) + MOD_EFFECTS.pointDefenseToHit - defense : DIE;
@@ -2335,19 +2538,20 @@ export class Battle {
               // One hit downs at most one missile; what is left over carries to the next.
               p.count--;
               p.frontDamage = Math.min(p.frontDamage - p.hp, p.hp - 1);
-              ev.hit = true;
             }
           }
-          this.log.push(ev);
+          this.log.push({ kind: "intercept", ship: t.key, weapon: m.def.id, projectile: p.id, x: round1(p.x), y: round1(p.y), hit: p.count < before, downed: before - p.count, left: p.count });
         }
         if (m.def.effect === "antiMissile" && !p.craft && m.shots > 0) {
           // Missiles are met as they strike, at range band 0.
           const band = 0;
           const below = ANTI_MISSILE.base - Math.floor((band + 2) * ANTI_MISSILE.perBandStep);
+          const before = p.count;
           for (let i = 0; i < m.count && p.count > 0 && m.shots > 0; i++) {
             m.shots--;
             if (this.rng.int(1, DIE) < below) p.count--;
           }
+          this.log.push({ kind: "intercept", ship: t.key, weapon: m.def.id, projectile: p.id, x: round1(p.x), y: round1(p.y), hit: p.count < before, downed: before - p.count, left: p.count });
         }
       }
     }

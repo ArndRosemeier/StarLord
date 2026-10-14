@@ -287,7 +287,10 @@ export type TacticalOrder =
   | { kind: "move"; to: { x: number; y: number } }
   /** Turn to face a unit (turning costs movement); the unit's turn goes on. */
   | { kind: "face"; target: string }
-  /** Fire these weapon mounts (indexes into the unit's weapons; all when left out) at one target; the turn goes on. */
+  /**
+   * Fire these weapon mounts (indexes into the unit's weapons; all when left out) at one target, an enemy unit or
+   * a volley of missiles or craft in flight (its id); the turn goes on.
+   */
   | { kind: "fire"; target: string; mounts?: number[] }
   /** Send marines across to an enemy ship; the turn goes on. */
   | { kind: "board"; target: string }
@@ -588,7 +591,11 @@ export interface CombatRoundEvent {
    * "captured": boarders took `ship` for the owner of `target`; `hit` is true when the prize fights on for its
    * captor (a telepathic captor), otherwise it sits out the rest of the battle.
    */
-  kind: "move" | "fire" | "destroyed" | "retreat" | "launch" | "board" | "repair" | "captured" | "flights";
+  /**
+   * "intercept": `ship` fired `weapon` at the missiles or craft `projectile` (at x, y); `downed` of them were
+   * destroyed (`hit` when any were).
+   */
+  kind: "move" | "fire" | "destroyed" | "retreat" | "launch" | "board" | "repair" | "captured" | "flights" | "intercept";
   ship: string;
   target?: string;
   x?: number;
@@ -602,8 +609,11 @@ export interface CombatRoundEvent {
   structureDamage?: number;
   /** Internal system knocked out by the hit (drive, computer, shield, weapon id, special id). */
   systemHit?: string;
-  /** "launch": the missile, torpedo or squadron it sends off (x, y: where from). */
+  /** "launch": the missile, torpedo or squadron it sends off (x, y: where from). "intercept": the volley shot at. */
   projectile?: string;
+  /** "intercept": missiles or craft destroyed, and those left in the volley. */
+  downed?: number;
+  left?: number;
   /** "flights": everything in flight after a side's missiles and craft moved (`ship` is empty). */
   flights?: CombatFlight[];
 }

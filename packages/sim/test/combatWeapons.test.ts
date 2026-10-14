@@ -196,7 +196,7 @@ describe("point defense firing arcs", () => {
     Object.assign(y, { x: 30, y: 30, heading });
     battle.launch(x, 0, x.mounts[0]!, y);
     for (let i = 0; i < 20 && battle.projectiles.length > 0; i++) battle.moveProjectiles(0);
-    return battle.log.filter((e) => e.kind === "fire" && e.ship === y.key && e.weapon === "laserCannon").length;
+    return battle.log.filter((e) => e.kind === "intercept" && e.ship === y.key && e.weapon === "laserCannon").length;
   };
 
   it("fires a forward point-defense mount only at missiles coming in inside its arc", () => {
@@ -207,5 +207,74 @@ describe("point defense firing arcs", () => {
   it("covers every side with a 360 degree arc", () => {
     expect(pdShots(0, "full")).toBe(1);
     expect(pdShots(Math.PI / 2, "full")).toBe(1);
+  });
+});
+
+describe("shooting at missiles in flight", () => {
+  /** A missile frigate's volley flying at a cruiser, and a defender armed with the given weapons nearby. */
+  const salvo = (weapons: ShipDesign["weapons"], count = 6, seed = 1) => {
+    const { battle, x, y } = duel(
+      design("m", "cruiser", [{ weaponId: "nuclearMissile", count }]),
+      design("d", "cruiser", weapons),
+      seed,
+    );
+    Object.assign(x, { x: 4, y: 30, heading: 0 });
+    Object.assign(y, { x: 40, y: 30, heading: Math.PI });
+    battle.launch(x, 0, x.mounts[0]!, y);
+    const p = battle.projectiles[0]!;
+    Object.assign(p, { x: 34, y: 30 });
+    return { battle, x, y, p };
+  };
+
+  it("lets beams and anti-missile rockets fire at missiles, but not heavy mounts, and nothing hits torpedoes", () => {
+    const { battle, y, p } = salvo([
+      { weaponId: "laserCannon", count: 2, arc: "forward" },
+      { weaponId: "laserCannon", count: 1, mods: ["heavyMount"], arc: "forward" },
+      { weaponId: "antiMissileRockets", count: 1 },
+      { weaponId: "nuclearMissile", count: 1 },
+    ]);
+    expect(battle.flightBlocked(y, y.mounts[0]!, p)).toBeNull();
+    expect(battle.flightBlocked(y, y.mounts[1]!, p)).toMatch(/heavy/);
+    expect(battle.flightBlocked(y, y.mounts[2]!, p)).toBeNull();
+    expect(battle.flightBlocked(y, y.mounts[3]!, p)).toMatch(/cannot hit missiles/);
+    p.weapon = { ...p.weapon, kind: "torpedo" };
+    expect(battle.flightBlocked(y, y.mounts[0]!, p)).toMatch(/torpedoes/);
+  });
+
+  it("shows the commanded unit every enemy volley with its odds, and fires at it on order", () => {
+    const { battle, y, p } = salvo([{ weaponId: "laserCannon", count: 4, arc: "forward" }]);
+    const o = battle.options(y.key)!;
+    expect(o.flights.map((f) => f.id)).toEqual([p.id]);
+    expect(o.flights[0]!.inRange).toBe(true);
+    const v = o.weapons[0]!.vs[p.id]!;
+    expect(v.ok).toBe(true);
+    expect(v.hitPct).toBeGreaterThan(0);
+    expect(v.downed).toBeGreaterThan(0);
+    const before = p.count;
+    expect(battle.fireAtFlight(y, p, [0])).toBe(true);
+    const ev = battle.log.find((e) => e.kind === "intercept" && e.projectile === p.id)!;
+    expect(ev.ship).toBe(y.key);
+    expect(ev.downed).toBe(before - p.count);
+    expect(y.mounts[0]!.firedThisRound).toBe(true);
+  });
+
+  it("downs about as many missiles as the preview says", () => {
+    let downed = 0;
+    let expected = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const { battle, y, p } = salvo([{ weaponId: "laserCannon", count: 4, arc: "forward" }], 6, seed);
+      expected += battle.previewFlight(y, 0, p).downed!;
+      const before = p.count;
+      battle.fireAtFlight(y, p, [0]);
+      downed += before - p.count;
+    }
+    expect(downed).toBeGreaterThan(expected * 0.7);
+    expect(downed).toBeLessThan(expected * 1.3);
+  });
+
+  it("has the computer shoot down a volley worth more than its target", () => {
+    const { battle, x, y, p } = salvo([{ weaponId: "laserCannon", count: 6, arc: "full" }], 10);
+    // Out of beam range of the launcher, the volley is the only thing worth a shot.
+    expect(battle.flightWorthShooting(y, 0, y.mounts[0]!, x)).toBe(p);
   });
 });

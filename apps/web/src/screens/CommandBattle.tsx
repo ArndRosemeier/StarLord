@@ -66,6 +66,7 @@ const MODE_LABEL: Record<WeaponMode, string> = { on: "Fire", standby: "Standby",
 function previewText(p: WeaponPreview | undefined, kind: "beam" | "other"): string {
   if (!p) return "";
   if (!p.ok) return p.why ?? "cannot fire";
+  if (p.downed !== undefined) return `${p.shots} shot${p.shots === 1 ? "" : "s"}, ${p.hitPct}% to hit, about ${p.downed} shot down`;
   if (p.hitPct !== undefined) {
     const dmg = p.min === p.max ? `${p.min}` : `${p.min}-${p.max}`;
     return `${p.shots} shot${p.shots === 1 ? "" : "s"}, ${p.hitPct}% to hit, ${dmg} per hit, about ${p.expected} through shields`;
@@ -129,7 +130,7 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
     setConfirmBlast(false);
     const same = decision?.unit === lastUnit.current;
     lastUnit.current = decision?.unit ?? null;
-    if (same && target && options?.targets.some((t) => t.key === target)) return;
+    if (same && target && (options?.targets.some((t) => t.key === target) || options?.flights.some((f) => f.id === target))) return;
     setTarget(options?.suggested ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decision]);
@@ -233,6 +234,7 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
       active: decision.unit,
       targets: options.targets,
       target,
+      flightTarget: options.flights.find((f) => f.id === target) ?? null,
       reach: options.reach,
       moveTo,
       onField: (x, y) => {
@@ -277,11 +279,18 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
   const here = decision ? frames.now.get(decision.unit) : undefined;
   const there = target ? frames.now.get(target) : undefined;
   const range = here && there ? Math.round(Math.hypot(there.x - here.x, there.y - here.y)) : null;
+  // The target may be a volley of missiles or craft in flight instead of a unit.
+  const flight = options?.flights.find((f) => f.id === target);
+  const flightName = (f: { count: number; weapon: string }) => `${f.count}× ${WEAPONS_BY_ID[f.weapon]?.name ?? f.weapon}`;
+  const targetName = flight ? flightName(flight) : snap(target)?.name;
+  // The best odds any ready weapon has against a volley, for the list of volleys in flight.
+  const bestVs = (id: string) => Math.max(-1, ...(options?.weapons ?? []).map((w) => (w.ready && w.vs[id]?.ok ? w.vs[id]?.hitPct ?? -1 : -1)));
   const moveLen = here && moveTo ? Math.round(Math.hypot(moveTo.x - here.x, moveTo.y - here.y) * 10) / 10 : null;
   const groups = firing(options, decision?.unit, target);
   const volley = target ? groups.map((w) => w.vs[target]!) : [];
   const beamDamage = Math.round(volley.reduce((n, p) => n + (p.expected ?? 0), 0));
   const missiles = volley.filter((p) => p.hitPct === undefined).reduce((n, p) => n + (p.shots ?? 0), 0);
+  const downed = Math.round(volley.reduce((n, p) => n + (p.downed ?? 0), 0) * 10) / 10;
   const boardTarget = options?.board.find((b) => b.key === target);
   const log = steps.slice(0, shown).map((s) => describe(base, s.e)).filter(Boolean).slice(-4);
   const strength = (id: number) => {
@@ -366,10 +375,16 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
                   ? Math.max(1, Math.ceil(Math.max(0, Math.hypot(moveTo.x - f.x, moveTo.y - f.y) - f.radius) / f.speed))
                   : f.turns;
                 const what = `${f.count}× ${WEAPONS_BY_ID[f.weapon]?.name ?? f.weapon}${f.craft ? "" : ` (${f.damage} damage each)`}`;
+                const odds = bestVs(f.id);
                 return (
                   <div key={f.id} className={`cb-alert ${soon < f.turns ? "bad" : "warn"}`}>
                     <b>Incoming</b> {what}, hits in {f.turns} turn{f.turns === 1 ? "" : "s"}
                     {soon < f.turns ? `; moving there it hits in ${soon}` : ""}
+                    {odds >= 0 && target !== f.id && (
+                      <button className="small" onClick={() => setTarget(f.id)} title="Target this volley: beams (not heavy mounts) and anti-missile rockets can shoot missiles and fighters down">
+                        Shoot it down ({odds}%)
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -467,6 +482,11 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
                             <span className="cb-wnote">{p?.why ?? "not ready this turn"}</span>
                           ) : !target ? (
                             <span className="cb-wnote">Pick a target to see its odds</span>
+                          ) : p?.ok && p.downed !== undefined ? (
+                            <span className="cb-odds">
+                              <Bar value={p.hitPct ?? 0} max={100} tone="hit" />
+                              <span>{p.hitPct}% · ≈{p.downed} shot down</span>
+                            </span>
                           ) : p?.ok && p.hitPct !== undefined ? (
                             <span className="cb-odds">
                               <Bar value={p.hitPct} max={100} tone="hit" />
@@ -483,8 +503,8 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
                     title="Enter. Groups that cannot reach this target keep their shot for another.">
                     {groups.length === 0
                       ? (!options.weapons.some((w) => w.ready) ? "All weapons have fired this turn" : target ? "No switched-on group can hit it" : "Pick a target")
-                      : <>Fire {groups.length} group{groups.length === 1 ? "" : "s"} at {snap(target)?.name}
-                        <small>{[beamDamage > 0 ? `about ${beamDamage} damage through shields` : "", missiles > 0 ? `${missiles} missiles or craft` : ""].filter(Boolean).join(", ")}</small>
+                      : <>Fire {groups.length} group{groups.length === 1 ? "" : "s"} at {targetName}
+                        <small>{[beamDamage > 0 ? `about ${beamDamage} damage through shields` : "", missiles > 0 ? `${missiles} missiles or craft` : "", flight ? `about ${Math.min(flight.count, downed)} of ${flight.count} shot down` : ""].filter(Boolean).join(", ")}</small>
                         {kbd("F")}</>}
                   </button>
                 </section>
@@ -495,8 +515,22 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
                     <button className="small" onClick={() => cycleTarget(-1)} disabled={options.targets.length === 0} title="Previous target (Shift+Tab)">‹</button>
                     <button className="small" onClick={() => cycleTarget(1)} disabled={options.targets.length === 0} title="Next target (Tab)">›</button>
                     {aim && <b style={{ color: color(snap(target)?.ownerId) }}>{aim.name}</b>}
+                    {flight && <b style={{ color: color(snap(flight.owner)?.ownerId) }}>{flightName(flight)}</b>}
                   </div>
-                  {aim && targetInfo ? (
+                  {flight ? (
+                    <>
+                      <div className="cb-target-sub">
+                        {flight.craft ? "Squadron" : flight.torpedo ? "Torpedo volley" : "Missile volley"} from {snap(flight.owner)?.name ?? "?"} at {snap(flight.target)?.name ?? "?"}
+                        <span> · {flight.distance} squares away</span>
+                        <span className={flight.inRange ? "good" : "warn"}> · {flight.inRange ? "in reach" : flight.torpedo ? "torpedoes cannot be shot down" : "no ready weapon reaches it"}</span>
+                      </div>
+                      <div className="cb-hint">
+                        {flight.craft ? `${flight.count} craft` : `${flight.count} missiles, ${flight.damage} damage each`}, {flight.hp} hit points each
+                        {flight.torpedo ? "" : `, beam defense ${flight.defense}`}. Each beam hit downs at most one; weaker hits add up on the same one.
+                        Heavy mounts cannot track missiles; anti-missile rockets hit missiles only.
+                      </div>
+                    </>
+                  ) : aim && targetInfo ? (
                     <>
                       <div className="cb-target-sub">
                         {aim.hullId ? label(aim.hullId) : aim.kind}
@@ -522,6 +556,20 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
                     </>
                   ) : (
                     <div className="cb-hint">{touch ? "Tap" : "Click"} an enemy on the field or in the list to target it.</div>
+                  )}
+                  {options.flights.some((f) => !f.torpedo && f.id !== target) && (
+                    <div className="row wrap cb-flights">
+                      <span className="muted">In flight:</span>
+                      {options.flights.filter((f) => !f.torpedo && f.id !== target).map((f) => {
+                        const odds = bestVs(f.id);
+                        return (
+                          <button key={f.id} className="small" onClick={() => setTarget(f.id)}
+                            title={`Target this volley flying at ${snap(f.target)?.name ?? "?"}: ${f.craft ? "craft" : `${f.damage} damage each`}, ${f.hp} hit points each`}>
+                            {flightName(f)} → {snap(f.target)?.name ?? "?"}{odds >= 0 ? ` (${odds}%)` : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                   {options.board.filter((b) => b.key !== target).map((b) => (
                     <button key={b.key} className="small" onClick={() => send({ kind: "board", target: b.key })}>
