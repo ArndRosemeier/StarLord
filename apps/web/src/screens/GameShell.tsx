@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   availableTiers, commandPointsAvailable, commandPointsUsed, empireIncome, empireTotals, empires, treatyIncome,
-  TIERS_BY_ID, extraResearch, isTradeGoodsOnly, nextBreakthroughChance, researchCost, type CombatReport, type GameEvent, type PlayerView,
+  TIERS_BY_ID, extraResearch, isTradeGoodsOnly, nextBreakthroughChance, researchCost, type CombatReport, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { fmt, signed } from "../ui/format";
@@ -24,7 +24,7 @@ import { GameOver } from "./GameOver";
 import { EndTurnPrompt } from "./EndTurnPrompt";
 import { BasePrompt, coloniesWithReadyBases } from "./BasePrompt";
 import { BattlePopup } from "./BattlePopup";
-import { NewsPopup } from "./NewsPopup";
+import { NewsPopup, newsOf, type News } from "./NewsPopup";
 import { BreakthroughPopup, breakthroughNews, type BreakthroughNews } from "./BreakthroughPopup";
 import { LeaderOfferPopup, newLeaderOffers } from "./LeaderOfferPopup";
 import { CouncilResultPopup, CouncilSession, castBallot, councilSession, mayCastCouncilVote } from "./CouncilPopup";
@@ -41,7 +41,7 @@ import { SHORTCUTS, shortcutFor } from "../ui/shortcuts";
 import type { MapCycle } from "./MapScreen";
 
 /** Turn report events loud enough to deserve an alert sound. */
-const ALERT_EVENTS = new Set(["combat", "colonyLost", "invasionFailed", "bombarded", "eliminated", "raid", "starvation"]);
+const ALERT_EVENTS = new Set(["combat", "colonyLost", "invasionFailed", "bombarded", "eliminated", "empireFell", "raid", "starvation"]);
 
 export type Tab =
   | "map" | "colonies" | "planets" | "research" | "designs" | "fleets" | "diplomacy" | "espionage" | "leaders" | "empire" | "info" | "events" | "game";
@@ -94,8 +94,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   const [debugOpen, setDebugOpen] = useState(false);
   /** Last turn's battles, opened by themselves as the new turn starts. */
   const [battles, setBattles] = useState<CombatReport[]>([]);
-  /** Last turn's Galactic News (random events), shown after the battles. */
-  const [news, setNews] = useState<Extract<GameEvent, { kind: "random" }>[]>([]);
+  /** Last turn's Galactic News (empires destroyed or surrendering, random events), shown after the battles. */
+  const [news, setNews] = useState<News[]>([]);
   /** Last turn's research breakthroughs, celebrated after the news; closing them opens the research screen. */
   const [celebration, setCelebration] = useState<BreakthroughNews | null>(null);
   /** Heroes who offered their services last turn, introducing themselves one at a time after the breakthroughs. */
@@ -160,7 +160,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     if (readOnly || autoplay) return;
     // Battles the player commanded were watched as they were fought.
     setBattles(battlesOfLastTurn(session.history, me.id, view.turn).filter((b) => !session.commandedBattles.has(b.id)));
-    setNews(session.lastTurnEvents(me.id).flatMap((e) => (e.kind === "random" ? [e] : [])));
+    setNews(newsOf(session.lastTurnEvents(me.id)));
     setCelebration(breakthroughNews(session.lastTurnEvents(me.id), me.id));
     setLeaderOffers(me.automation.includes("leaders") ? [] : newLeaderOffers(session.lastTurnEvents(me.id), view, me.id));
     // The result window follows a session whose verdict the player may refuse.

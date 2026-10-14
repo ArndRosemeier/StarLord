@@ -20,7 +20,7 @@ const SECTION_OF: Record<GameEvent["kind"], ReportSection> = {
   combat: "military", orbitalStrike: "military", raid: "military", raidersDefeated: "military",
   diplomacy: "diplomacy", spy: "diplomacy", leader: "diplomacy", council: "diplomacy",
   explored: "exploration",
-  random: "other", eliminated: "other", victory: "other", commandRejected: "other",
+  random: "other", eliminated: "other", empireFell: "other", victory: "other", commandRejected: "other",
 };
 
 const ORDER: ReportSection[] = ["military", "colonies", "production", "research", "diplomacy", "exploration", "other"];

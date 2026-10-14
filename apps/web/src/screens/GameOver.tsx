@@ -79,7 +79,7 @@ export function GameOver({ won, spectating, onClose, onQuit }: { won: boolean; s
                 <tr key={p.id} className={p.id === me ? "mine" : ""}>
                   <td>{i + 1}</td>
                   <td><span className="dot" style={{ background: p.color, marginRight: 6 }} />{p.name} <small className="muted">{getRace(p.raceId).plural}</small></td>
-                  <td>{p.id === state.winner ? <span className="good">Winner</span> : p.alive ? "Survived" : <span className="muted">Eliminated{p.eliminatedTurn !== null ? `, turn ${p.eliminatedTurn}` : ""}</span>}</td>
+                  <td>{p.id === state.winner ? <span className="good">Winner</span> : p.alive ? "Survived" : <span className="muted">{p.surrenderedTo !== undefined ? `Surrendered to the ${state.players[p.surrenderedTo]?.name ?? "?"}` : "Eliminated"}{p.eliminatedTurn !== null ? `, turn ${p.eliminatedTurn}` : ""}</span>}</td>
                   <td className="num"><Tip card={scoreTip(b)}><span className="explained">{fmt(b.total)}</span></Tip></td>
                 </tr>
               ))}

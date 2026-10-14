@@ -153,6 +153,13 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
       return { text: `Raiders strike at ${starName(view, e.starId)}!`, starId: e.starId, tone: "bad" };
     case "eliminated":
       return { text: `${playerName(view, e.playerId)} has been eliminated.`, tone: "bad" };
+    case "empireFell":
+      return e.how === "destroyed"
+        ? { text: `Galactic News: the ${playerName(view, e.fallen)} have been destroyed.`, tone: e.fallen === view.viewer ? "bad" : "info" }
+        : {
+          text: `Galactic News: the ${playerName(view, e.fallen)} surrendered to the ${playerName(view, e.to ?? e.fallen)}.`,
+          tone: e.to === view.viewer ? "good" : e.fallen === view.viewer ? "bad" : "info",
+        };
     case "raidersDefeated":
       return {
         text: e.by === view.viewer

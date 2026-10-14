@@ -3,7 +3,7 @@ import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES } from "@starlord/ai";
 import {
   OBJECTIVES, RACES, RESEARCH_GROUP_NAMES, SHIP_SPECIALTIES, SPECIALS_BY_ID, TEMPERAMENT_ORDER, TEMPERAMENT_ROLL, TEMPERAMENT_ROWS, WEAPON_LEANS,
   type ResearchGroup, ANDROIDS, ASSIMILATION, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_HIT,
-  CAPTURE_TECH, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST,
+  CAPTURE_TECH, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST, AI_SURRENDER, SURRENDER,
   BOARDING, DEPLOY, EXPLOSION, HULLS_BY_ID, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE, STATION_ARMS, ANTI_MISSILE, BOMBARD_ROUNDS,
   COMBAT_BOMB_RANGE, CRAFT, DAMAGE, PLANET_POPULATION_HP,
   COUNCIL_INTERVAL, COUNCIL_MAJORITY, CREW, EVENT_START, FIGHTER_GARRISON, EVENT_TIMING, FIELD_HEIGHT, FIELD_WIDTH, FREIGHTERS, HERO_SKILLS, HEROES, EVENT_NUMBERS,
@@ -209,7 +209,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li>Bombing and invasions of colonies whose defenses are down (<HelpLink to="guide:invasion" />).</li>
         <li>Colonies produce food, industry, research and BC; queues advance, populations grow, research completes.</li>
         <li>Spies act, diplomatic relations drift, leaders offer their services, the council may vote.</li>
-        <li>Random events, then empires with no populated colonies left are eliminated (outposts and colony ships don't count).</li>
+        <li>Random events, then surrenders take effect, then empires with no populated colonies left are eliminated (outposts and colony ships don't count).</li>
       </ol>
       <h3>When the turn waits for you</h3>
       <Ul>
@@ -714,7 +714,15 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><b>Research treaty</b>: each side gains research equal to half the smaller partner's population, times its government's research rate.</li>
         <li><b>Technology exchange</b>, <b>gifts</b> of BC, techs or systems, and a standing <b>tribute</b> of 5% or 10% of your income.</li>
         <li><b>Demands</b>: tribute, a tech, a system, war on or peace with a third empire, breaking an alliance, recalling spies or fleets. A computer ruler rolls a d200 plus how your fleets, size and technology compare to its own, plus its patience and temperament, minus what the demand costs it: high, it gives in; lower, it refuses, warns you, ends your treaties or declares war.</li>
-        <li><b>Surrender</b>: hand your whole empire to another ruler.</li>
+        <li>
+          <b>Surrender</b>: hand your whole empire to another ruler: its colonies, ships, the technologies they can use, your treasury
+          and freighters; all your spies join theirs at home (up to {SURRENDER.spyCap}), and your leaders leave. Computer rulers do it
+          too, rarely: from turn {AI_SURRENDER.minTurn}, when a war with another computer empire has dragged on past the point where
+          they would make peace, one that is small (under {AI_SURRENDER.weakPct}% of the largest empire's population, or its fleet
+          under that share) or has lost much of its people may give up instead. It joins the most populous computer empire it
+          knows and is not at war with; on Tutor, Easy and Average, failing that, the most populous empire it knows, which can be you.
+          Every surrender and every empire destroyed makes the front page of the Galactic News.
+        </li>
       </Ul>
       <P>
         A new treaty starts at minus half the smaller population and climbs by 1/{TREATY_YIELD.rampSteps} of its full value each

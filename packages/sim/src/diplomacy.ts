@@ -1,10 +1,10 @@
 import {
   AI_PEACE, COUNTER_PRICE, COVET, DEMAND_ANSWER, NO_WAR_MULT, PATIENCE, PEACE_ANSWER, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS,
-  TEMPERAMENTS, TREATY_ANSWER, TREATY_YIELD, TRIBUTE_PERCENTS, TRUST, type Temperament, PROPOSAL_LIFETIME,
+  SURRENDER, TEMPERAMENTS, TREATY_ANSWER, TREATY_YIELD, TRIBUTE_PERCENTS, TRUST, type Temperament, PROPOSAL_LIFETIME,
 } from "./data/diplomacy.js";
 import { TEMPERAMENT_ORDER, TEMPERAMENT_ROLL, TEMPERAMENT_ROWS } from "./data/aiPersonality.js";
 import { GOVERNMENTS } from "./data/governments.js";
-import { leaderTradeBonus } from "./leaders.js";
+import { dismissLeader, leaderTradeBonus } from "./leaders.js";
 import { raceDiplomacyPoints } from "./raceEffects.js";
 import { TRAIT_EFFECTS } from "./data/racePicks.js";
 import { getRace, hasTrait } from "./data/races.js";
@@ -14,7 +14,7 @@ import { androids, empireTotals, population } from "./economy.js";
 import { empireBonus, empireIncome, empires, fleetRange, grantTech, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
 import { piratesActive } from "./randomEvents.js";
-import type { DiplomaticStatus, GameState, Id, Player, PlayerId, Price, Proposal, ProposalKind, Relation } from "./types.js";
+import type { DiplomaticStatus, GameState, Id, Player, PlayerId, Price, Proposal, ProposalKind, Relation, SurrenderTally } from "./types.js";
 import type { Rng } from "./rng.js";
 import {
   REASON, addTreatyNoWar, baselineOf, clearShipLosses, difficultyLevel, firstContact, fleetPower, keyedRoll, persOf,
@@ -1156,7 +1156,8 @@ function compare(a: number, b: number): number {
   return Math.max(-DEMAND_ANSWER.ratioCap, Math.min(DEMAND_ANSWER.ratioCap, v));
 }
 
-function sizeOf(state: GameState, playerId: PlayerId): number {
+/** An empire's population, androids and natives included (the original's player+0xa6). */
+export function sizeOf(state: GameState, playerId: PlayerId): number {
   let n = 0;
   for (const c of Object.values(state.colonies)) if (c.ownerId === playerId) n += population(c) + androids(c).farmers + androids(c).workers + androids(c).scientists;
   return n;
@@ -1293,23 +1294,33 @@ export function peacePriceLevel(score: number): number {
 // ---------------------------------------------------------------- surrender and outrage
 
 /**
- * Surrender: everything the empire has (colonies, ships, technology, treasury,
- * leaders) passes to the chosen empire and the surrendering empire leaves the game.
+ * Surrender, after the original (FUN_000e4b43): the empire joins the chosen
+ * one, which takes its colonies, ships, the technologies it can use, treasury
+ * and freighters; every spy it had joins the receiver's home spies (see
+ * SURRENDER). Its leaders leave its service, and the empire leaves the game.
+ * Every empire hears of it in the Galactic News (unless `emit` is left out,
+ * as for the council's absorptions). Returns what was handed over.
  */
-export function surrenderEmpire(state: GameState, from: PlayerId, to: PlayerId, emit?: Emit): void {
+export function surrenderEmpire(state: GameState, from: PlayerId, to: PlayerId, emit?: Emit): SurrenderTally {
   const loser = state.players[from]!;
   const winner = state.players[to]!;
+  const handed: SurrenderTally = { colonies: 0, population: 0, ships: 0, techs: 0, bc: loser.bc, freighters: loser.freighters ?? 0, spies: 0 };
   for (const c of Object.values(state.colonies)) {
     if (c.ownerId !== from) continue;
+    handed.colonies++;
+    handed.population += population(c);
+    // The receiver now knows the systems it rules, as the original marks them explored.
+    const starId = state.planets[c.planetId]!.starId;
+    if (!winner.explored.includes(starId)) winner.explored.push(starId);
     c.ownerId = to;
     c.queue = [];
     c.progress = 0;
-    emit?.({ kind: "colonyCaptured", playerId: to, colonyId: c.id, from });
   }
   for (const f of Object.values(state.fleets)) {
     if (f.ownerId !== from) continue;
     f.ownerId = to;
     f.ships = f.ships.map((s) => {
+      handed.ships += s.count;
       const design = loser.designs.find((d) => d.id === s.designId);
       if (!design) return s;
       const id = `sur${from}-${design.id}`;
@@ -1319,18 +1330,26 @@ export function surrenderEmpire(state: GameState, from: PlayerId, to: PlayerId, 
     delete f.invadeTarget;
     f.destStarId = f.starId ? null : nearestColonyStar(state, to, f);
   }
-  for (const l of Object.values(state.leaders)) {
-    if (l.ownerId === from) {
-      l.ownerId = to;
-      l.assignedTo = l.kind === "captain" ? l.assignedTo : null;
-    }
-  }
-  winner.bc += Math.max(0, loser.bc);
+  for (const t of loser.techs) if (canReceiveTech(winner, t) && grantTech(winner, t)) handed.techs++;
+  for (const l of Object.values(state.leaders)) if (l.ownerId === from || l.offeredTo === from) dismissLeader(state, l.id);
+  winner.bc += loser.bc;
   loser.bc = 0;
+  winner.freighters = (winner.freighters ?? 0) + handed.freighters;
+  loser.freighters = 0;
+  const spies = loser.spies.home + Object.values(loser.spies.abroad).reduce((n, a) => n + a.count, 0);
+  const before = winner.spies.home;
+  winner.spies.home = Math.max(before, Math.min(SURRENDER.spyCap, before + spies));
+  handed.spies = winner.spies.home - before;
+  loser.spies = { home: 0, abroad: {} };
   state.tributes = (state.tributes ?? []).filter((t) => t.from !== from && t.to !== from);
+  state.proposals = state.proposals.filter((p) => p.from !== from && p.to !== from);
+  loser.alive = false;
+  loser.eliminatedTurn = state.turn;
+  loser.surrenderedTo = to;
   for (const p of empires(state)) {
-    if (p.id !== from && p.alive) emit?.({ kind: "diplomacy", playerId: p.id, other: from, what: `surrendered to ${winner.name}` });
+    if (p.alive || p.id === from) emit?.({ kind: "empireFell", playerId: p.id, fallen: from, how: "surrendered", to, handed });
   }
+  return handed;
 }
 
 /** Population that votes at the council: everyone, androids and natives included. */

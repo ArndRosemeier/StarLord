@@ -387,6 +387,8 @@ export interface Player {
   lastAttackedBy?: PlayerId;
   /** Empires this one is credited with eliminating (score). */
   eliminated?: PlayerId[];
+  /** The empire this one surrendered to, joining it. */
+  surrenderedTo?: PlayerId;
 }
 
 /**
@@ -725,7 +727,28 @@ export type GameEvent =
   /** Everyone hears when an empire destroys the raiders at home and the galaxy capitulates. */
   | { turn: number; kind: "raidersDefeated"; playerId: PlayerId; by: PlayerId }
   | { turn: number; kind: "eliminated"; playerId: PlayerId }
+  /**
+   * Galactic News told to every empire: `fallen` was destroyed (its last
+   * colony gone; `by` is credited) or surrendered and joined `to`, handing
+   * over what `handed` counts.
+   */
+  | {
+    turn: number; kind: "empireFell"; playerId: PlayerId; fallen: PlayerId; how: "destroyed" | "surrendered"; by?: PlayerId; to?: PlayerId;
+    handed?: SurrenderTally;
+  }
   | { turn: number; kind: "victory"; playerId: PlayerId; how: VictoryKind };
+
+/** What a surrendering empire handed to the empire it joined. */
+export interface SurrenderTally {
+  colonies: number;
+  population: number;
+  ships: number;
+  /** Technologies the receiver did not know yet. */
+  techs: number;
+  bc: number;
+  freighters: number;
+  spies: number;
+}
 
 export interface CouncilState {
   nextTurn: number;
@@ -803,6 +826,8 @@ export interface GameState {
   strikes?: Record<string, Record<string, number>>;
   /** shipLosses[a][b]: what a lost to b's ships in the current war (2 to the power of hull size + 1 per ship). */
   shipLosses?: Record<string, Record<string, number>>;
+  /** popLosses[a][b]: population a lost to b in the current war (1 per colonist killed, 10 per colony destroyed, 10 + its population per colony taken). */
+  popLosses?: Record<string, Record<string, number>>;
   /** relationEvents[observer][actor]: the biggest relation event since the last diplomacy tick (it holds drift back and can earn a strike). */
   relationEvents?: Record<string, Record<string, { reason: number; size: number }>>;
   /** treatyYields[a][b]: what a's trade (BC) and research treaties with b yield a this turn; they ramp toward the full value. */

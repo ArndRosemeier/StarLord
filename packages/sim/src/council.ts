@@ -2,7 +2,7 @@ import { COUNCIL, COUNCIL_VOTE, RELATION_EVENTS, TEMPERAMENTS } from "./data/dip
 import { DIFFICULTIES } from "./data/galaxy.js";
 import { getRace, hasTrait } from "./data/races.js";
 import { attitude, declareWar, fixedRoll, relation, reputationOf, setStatus, surrenderEmpire, temperament, trustIn, votingPopulation } from "./diplomacy.js";
-import { empires, grantTech } from "./empire.js";
+import { empires } from "./empire.js";
 import { REASON, relationEvent, setRelation } from "./relations.js";
 import type { GameState, PlayerId } from "./types.js";
 import type { PlayerView } from "./view.js";
@@ -276,9 +276,7 @@ function finalWar(state: GameState, winner: PlayerId, refusers: PlayerId[], emit
   const w = state.players[winner]!;
   for (const p of empires(state)) {
     if (p.id === winner || !p.alive || p.isHuman) continue;
-    for (const t of p.techs) grantTech(w, t);
     surrenderEmpire(state, p.id, winner);
-    state.proposals = state.proposals.filter((x) => x.from !== p.id && x.to !== p.id);
     for (const q of empires(state)) {
       if (q.alive) emit({ kind: "council", playerId: q.id, what: `The ${p.name} joined the ${w.name}, the council's choice.` });
     }

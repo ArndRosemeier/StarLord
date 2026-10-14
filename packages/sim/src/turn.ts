@@ -731,7 +731,7 @@ function applyCombat(
   // Bombs and fire that fell on a planet whose installations were already gone hit the colony itself.
   for (const [colonyId, hits] of outcome.colonyHits) {
     const c = state.colonies[colonyId];
-    if (c) bombColony(ctx, c, hits);
+    if (c) bombColony(ctx, c, hits, sides.find((s) => s.ownerId !== c.ownerId)?.ownerId);
   }
   // A destroyed orbital station is gone for good.
   for (const colonyId of outcome.stationsLost) {
@@ -1488,12 +1488,16 @@ function checkElimination(ctx: TurnContext): void {
     if (Object.values(state.colonies).some((c) => c.ownerId === p.id && !c.outpost)) continue;
     p.alive = false;
     p.eliminatedTurn = state.turn;
-    creditElimination(state, p.id);
+    const by = creditElimination(state, p.id);
     for (const f of Object.values(state.fleets)) if (f.ownerId === p.id) deleteFleet(state, f.id);
     for (const c of Object.values(state.colonies)) if (c.ownerId === p.id) destroyColony(state, c);
     // Their leaders go back to the pool of free heroes.
     for (const l of Object.values(state.leaders)) if (l.ownerId === p.id || l.offeredTo === p.id) dismissLeader(state, l.id);
     ctx.emit({ kind: "eliminated", playerId: p.id });
+    // The whole galaxy hears it in the Galactic News, as in the original.
+    for (const o of state.players) {
+      if (o.kind === "empire" && (o.alive || o.id === p.id)) ctx.emit({ kind: "empireFell", playerId: o.id, fallen: p.id, how: "destroyed", ...(by !== undefined ? { by } : {}) });
+    }
   }
   const alive = state.players.filter((p) => p.alive && p.kind === "empire");
   if (alive.length === 1 && state.players.filter((p) => p.kind === "empire").length > 1) endGame(ctx, alive[0]!.id, "conquest");

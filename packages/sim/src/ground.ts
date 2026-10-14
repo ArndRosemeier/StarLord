@@ -15,12 +15,12 @@ import { raceGroundBonus, troopHits } from "./raceEffects.js";
 import { TIER_OF_TECH } from "./data/techs.js";
 import { bombardment, planetDefense } from "./combat.js";
 
-import { RELATION_EVENTS } from "./data/diplomacy.js";
+import { POP_LOSS_TALLY, RELATION_EVENTS } from "./data/diplomacy.js";
 import { SIZE_POP_BASE, gravityOf } from "./data/planets.js";
 import type { TurnContext } from "./context.js";
 import { ALL_WEAPONS, designStats, findDesign } from "./designs.js";
 import { isHostile } from "./diplomacy.js";
-import { destructionOutrage, rngRoll, scaleRelationEvent } from "./relations.js";
+import { destructionOutrage, recordPopLosses, rngRoll, scaleRelationEvent } from "./relations.js";
 import { blocksInvasion } from "./commands.js";
 import { destructibleBuildings, population } from "./economy.js";
 import { empireBonus, grantTech, knows } from "./empire.js";
@@ -149,9 +149,9 @@ function bombHits(ctx: TurnContext, colony: Colony, hits: number): number {
 }
 
 /** Lands bombing hits from a battle on a colony: buildings, troops and colonists, as after-battle bombing does. */
-export function bombColony(ctx: TurnContext, colony: Colony, hits: number): void {
+export function bombColony(ctx: TurnContext, colony: Colony, hits: number, by?: PlayerId): void {
   if (hits <= 0 || !ctx.state.colonies[colony.id]) return;
-  raze(ctx, colony, bombHits(ctx, colony, hits));
+  raze(ctx, colony, bombHits(ctx, colony, hits), by);
 }
 
 /** Colonies whose orbital defenses are down this turn. */
@@ -300,7 +300,7 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced, targets?: Targ
       }
       const victim = c.ownerId;
       const name = c.name;
-      raze(ctx, c, kills);
+      raze(ctx, c, kills, f.ownerId);
       if (owner.kind === "empire") {
         ctx.emit({
           kind: "orbitalStrike", playerId: f.ownerId, by: f.ownerId, victim, starId: f.starId, colonyName: name,
@@ -342,6 +342,7 @@ export function destroyPlanet(ctx: TurnContext, by: PlayerId, c: Colony): void {
   const buildings = c.buildings.length;
   const victim = c.ownerId;
   noteAttack(state, victim, by);
+  recordPopLosses(state, victim, by, pop + POP_LOSS_TALLY.colonyDestroyed);
   if (pop > 0) ctx.emit({ kind: "bombarded", playerId: victim, colonyId: c.id, popLost: pop });
   ctx.emit({ kind: "colonyLost", playerId: victim, colonyId: c.id, to: null, how: "destroyed" });
   for (const p of new Set([by, victim])) {
@@ -479,13 +480,15 @@ export function orbitalPrompt(state: GameState, playerId: PlayerId, colonyId: Id
   };
 }
 
-/** Kills colonists; a colony with nobody left is gone and the planet is free again. */
-export function raze(ctx: TurnContext, c: Colony, kills: number): void {
+/** Kills colonists (`by` an empire's weapons, when given); a colony with nobody left is gone and the planet is free again. */
+export function raze(ctx: TurnContext, c: Colony, kills: number, by?: PlayerId): void {
   const { state } = ctx;
   if (!state.colonies[c.id] || kills <= 0) return;
   const lost = removePopulation(c, kills);
   if (lost > 0) ctx.emit({ kind: "bombarded", playerId: c.ownerId, colonyId: c.id, popLost: lost });
-  if (!c.outpost && population(c) === 0) {
+  const gone = !c.outpost && population(c) === 0;
+  if (by !== undefined) recordPopLosses(state, c.ownerId, by, lost + (gone ? POP_LOSS_TALLY.colonyDestroyed : 0));
+  if (gone) {
     ctx.emit({ kind: "colonyLost", playerId: c.ownerId, colonyId: c.id, to: null, how: "destroyed" });
     destroyColony(state, c);
   }
@@ -631,6 +634,7 @@ export function captureColony(
     hasTrait(getRace(attacker.raceId), "telepathic");
   const { buildings: lost, refund } = captureLosses(state, colony, newOwner);
   const how = opts.revolt ? "revolted" : opts.mindControl ? "mindControlled" : "invaded";
+  recordPopLosses(state, loser, newOwner, POP_LOSS_TALLY.colonyTaken + population(colony));
   ctx.emit({ kind: "colonyLost", playerId: loser, colonyId: colony.id, to: newOwner, how, lostBuildings: lost });
   colony.formerOwnerId = loser;
   colony.ownerId = newOwner;
