@@ -22,6 +22,8 @@ export interface TurnContext {
    * the turn there (see `pendingOrbital`).
    */
   pauseAtOrbit?: (playerId: PlayerId, colonyId: Id) => boolean;
+  /** Asked when a player's fleets at a star could attack more than one enemy planet and none was picked; true stops the turn there (see `pendingTarget`). */
+  pauseAtTarget?: (playerId: PlayerId, starId: Id) => boolean;
 }
 
 export function newId(state: GameState, prefix: string): string {

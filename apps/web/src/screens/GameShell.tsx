@@ -30,6 +30,7 @@ import { LeaderOfferPopup, newLeaderOffers } from "./LeaderOfferPopup";
 import { CouncilResultPopup, CouncilSession, castBallot, councilSession, mayCastCouncilVote } from "./CouncilPopup";
 import { CommandBattle } from "./CommandBattle";
 import { OrbitalStrike } from "./OrbitalStrike";
+import { AttackTarget } from "./AttackTarget";
 import { battlesOfLastTurn } from "../game/battles";
 import { audio } from "../audio/sound";
 import { MuteButton } from "../ui/AudioControls";
@@ -322,7 +323,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
               {tab === "map" && <MapScreen focusStar={focusStar} onFocused={() => setFocusStar(null)} onOpenColony={openColony}
                 onOpenResearch={() => go("research")} onOpenReports={() => go("events")} cycle={mapCycle} onCycled={() => setMapCycle(null)}
                 flashReady={!autoplay && !battles.length && !news.length && !celebration && !leaderOffers.length && !councilPopup && !audiences.length
-                  && !basePrompt && !session.battle && !session.orbital && !(view.over && !overSeen)} />}
+                  && !basePrompt && !session.battle && !session.orbital && !session.target && !(view.over && !overSeen)} />}
               {tab === "colonies" && <ColoniesScreen onShowStar={showStar} initialColony={colonyFocus} />}
               {tab === "planets" && <PlanetsScreen onShowStar={showStar} />}
               {tab === "research" && <ResearchScreen />}
@@ -366,6 +367,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
           onClose={() => setAudiences((q) => q.slice(1))} />
       )}
       {session.battle && <CommandBattle key={session.battle.pending.key} pending={session.battle.pending} />}
+      {session.target && <AttackTarget key={session.target.prompt.starId} prompt={session.target.prompt} />}
       {session.orbital && <OrbitalStrike key={session.orbital.prompt.colonyId} prompt={session.orbital.prompt} />}
       {debug && debugOpen && <DebugMenu onClose={() => setDebugOpen(false)} />}
       <TurnBanner turn={view.turn} quiet={autoplay} />

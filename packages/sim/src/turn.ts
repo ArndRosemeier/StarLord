@@ -43,6 +43,7 @@ import { PLACED_PROJECTS, availableDesigns, availableProjects, baseTargets, canB
 import { applyMutation } from "./mutation.js";
 import { cancelRefit, completeRefit, replaceDesign, startRefit } from "./refit.js";
 import { applyDebug } from "./debug.js";
+import { TargetPause, attackTargetAt, attackableColonies, chosenTarget, targetKey, targetPrompt, type TargetPrompt, type Targets } from "./targets.js";
 import { creditElimination, noteAttack, recordHistory, score } from "./score.js";
 import type { BuildItem, Colony, CombatAftermath, Fleet, GameState, Id, Planet, Player, PlayerId } from "./types.js";
 
@@ -64,6 +65,7 @@ export function seatOrder(state: Pick<GameState, "players" | "turn">): PlayerId[
  */
 export function processTurn(
   prev: GameState, orders: TurnOrders, pauseAt?: TurnContext["pauseAt"], pauseAtOrbit?: TurnContext["pauseAtOrbit"],
+  pauseAtTarget?: TurnContext["pauseAtTarget"],
 ): GameState {
   registerRaces(prev.settings.customRaces);
   const state = structuredClone(prev);
@@ -71,7 +73,7 @@ export function processTurn(
   state.events = [];
   state.combats = [];
   const rng = new Rng(state.rng);
-  const ctx: TurnContext = { state, rng, emit: (e) => state.events.push({ turn: state.turn, ...e }), pauseAt, pauseAtOrbit };
+  const ctx: TurnContext = { state, rng, emit: (e) => state.events.push({ turn: state.turn, ...e }), pauseAt, pauseAtOrbit, pauseAtTarget };
 
   // Answers to proposals come after everything else, so an empire can answer
   // in the same turn a proposal put to it in an audience.
@@ -84,8 +86,8 @@ export function processTurn(
   refreshMonsterDesigns(state);
   raidTick(ctx);
   moveFleets(ctx);
-  const silenced = combatPhase(ctx);
-  groundPhase(ctx, silenced);
+  const { silenced, targets } = combatPhase(ctx);
+  groundPhase(ctx, silenced, targets);
   raidersReturn(state);
   syncPortals(state);
   runEconomy(ctx);
@@ -246,6 +248,15 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "invade":
       state.fleets[cmd.fleetId]!.invadeTarget = cmd.colonyId;
       break;
+    case "attackPlanet": {
+      const f = state.fleets[cmd.fleetId]!;
+      if (cmd.colonyId === null) delete f.attackTarget;
+      else {
+        f.attackTarget = cmd.colonyId;
+        f.stance = "attack";
+      }
+      break;
+    }
     case "splitFleet": {
       const f = state.fleets[cmd.fleetId]!;
       // The split-off ships keep their crews' experience.
@@ -270,6 +281,8 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     }
     case "setStance":
       state.fleets[cmd.fleetId]!.stance = cmd.stance;
+      // A defending fleet attacks no planet.
+      if (cmd.stance === "defend") delete state.fleets[cmd.fleetId]!.attackTarget;
       break;
     case "renameFleet":
       state.fleets[cmd.fleetId]!.name = cmd.name.trim().slice(0, 40);
@@ -444,6 +457,8 @@ function moveFleets(ctx: TurnContext): void {
       moveFleet(state, f, legs);
       if (f.invadeTarget && f.starId !== state.planets[state.colonies[f.invadeTarget]?.planetId ?? ""]?.starId) delete f.invadeTarget;
     }
+    // A fleet that was sent elsewhere gives up the planet it was to attack.
+    if (f.attackTarget && (f.destStarId ?? f.starId) !== state.planets[state.colonies[f.attackTarget]?.planetId ?? ""]?.starId) delete f.attackTarget;
     if (f.starId && owner.kind === "empire") explore(ctx, f.ownerId, f.starId);
   }
 }
@@ -503,6 +518,24 @@ export function pendingBattle(prev: GameState, orders: TurnOrders, playerId: Pla
 }
 
 /**
+ * The first star where `playerId`'s fleets could attack more than one enemy
+ * planet this turn and they have picked none (no `attackPlanet` order), with
+ * what defends each, as the turn will see it after movement. Ask this before
+ * battles: each battle is fought over the picked planet. Null when nothing is
+ * left to decide.
+ */
+export function pendingTarget(prev: GameState, orders: TurnOrders, playerId: PlayerId): TargetPrompt | null {
+  if (!prev.players[playerId]?.isHuman) return null;
+  try {
+    processTurn(prev, orders, undefined, undefined, (p) => p === playerId);
+  } catch (e) {
+    if (e instanceof TargetPause) return e.prompt;
+    throw e;
+  }
+  return null;
+}
+
+/**
  * The first enemy colony whose orbit `playerId`'s attack-stance fleets will
  * hold after this turn's battles and that they have given no `orbitalStrike`
  * order for, with what each choice would do there (as the original's Orbital
@@ -521,11 +554,26 @@ export function pendingOrbital(prev: GameState, orders: TurnOrders, playerId: Pl
   return null;
 }
 
-function combatPhase(ctx: TurnContext): Silenced {
+function combatPhase(ctx: TurnContext): { silenced: Silenced; targets: Targets } {
   const { state, rng } = ctx;
   const silenced: Silenced = new Set();
   const stars = new Set<Id>();
   for (const f of Object.values(state.fleets)) if (f.starId) stars.add(f.starId);
+
+  // Combat always has planet scale: each empire attacks one planet per system a turn, the one it picked (asking a
+  // human who has a choice to make) or the default, and every battle there is fought over that planet.
+  const targets: Targets = new Map();
+  for (const starId of [...stars].sort()) {
+    const here = new Set(Object.values(state.fleets).filter((f) => f.starId === starId).map((f) => f.ownerId));
+    for (const playerId of [...here].sort((x, y) => x - y)) {
+      if (state.players[playerId]!.kind === "monsters") continue;
+      if (ctx.pauseAtTarget?.(playerId, starId) && targetChoiceNeeded(state, playerId, starId)) {
+        throw new TargetPause(targetPrompt(state, playerId, starId));
+      }
+      const t = attackTargetAt(state, playerId, starId);
+      if (t) targets.set(targetKey(playerId, starId), t.id);
+    }
+  }
 
   for (const starId of [...stars].sort()) {
     // Nobody can fight inside a time-space anomaly.
@@ -533,7 +581,7 @@ function combatPhase(ctx: TurnContext): Silenced {
     // Each pair of enemies fights once a turn; a battle that runs out of time goes on next turn.
     const fought = new Set<string>();
     for (let guard = 0; guard < 6; guard++) {
-      const pair = nextBattle(state, starId, silenced, fought);
+      const pair = nextBattle(state, starId, silenced, fought, targets);
       if (!pair) break;
       const [a, b] = pair;
       fought.add(`${a.ownerId}:${b.ownerId}`);
@@ -547,6 +595,8 @@ function combatPhase(ctx: TurnContext): Silenced {
       }
       if (ctx.pauseAt?.(battle, key)) throw new BattlePause(battle, key, starId, reportId);
       const outcome = battle.run(starId, reportId);
+      const over = a.colony ?? b.colony;
+      if (over) outcome.report.colonyId = over.id;
       state.combats.push(outcome.report);
       // A side that started a fight where the other holds a colony has attacked that colony (elimination credit).
       for (const [x, y] of [[a, b], [b, a]] as const) {
@@ -565,30 +615,46 @@ function combatPhase(ctx: TurnContext): Silenced {
   for (const c of Object.values(state.colonies)) {
     if (!hasArmedDefenses(c)) silenced.add(c.id);
   }
-  return silenced;
+  return { silenced, targets };
 }
 
-function sideAt(state: GameState, starId: Id, ownerId: PlayerId, silenced: Silenced): CombatSide {
+/**
+ * Whether a player's fleets arriving at (or holding) a star have to be told
+ * which planet to attack: more than one enemy colony is there, they picked
+ * none, and an armed fleet of theirs there is set to attack.
+ */
+function targetChoiceNeeded(state: GameState, playerId: PlayerId, starId: Id): boolean {
+  if (attackableColonies(state, playerId, starId).length < 2 || chosenTarget(state, playerId, starId)) return false;
+  return Object.values(state.fleets).some((f) => f.ownerId === playerId && f.starId === starId && f.stance === "attack" && isArmed(state, f));
+}
+
+function sideAt(state: GameState, starId: Id, ownerId: PlayerId, silenced: Silenced, targets: Targets, enemy: PlayerId): CombatSide {
   const fleets = Object.values(state.fleets).filter((f) => f.starId === starId && f.ownerId === ownerId);
   const colonies = Object.values(state.colonies).filter(
     (c) => c.ownerId === ownerId && state.planets[c.planetId]!.starId === starId,
   );
-  // A colony whose defenses were beaten this turn does not rise again until next turn.
-  const colony = colonies
-    .filter((c) => !silenced.has(c.id))
-    .map((c) => ({ c, s: colonyDefenseStrength(state, c) }))
-    .sort((x, y) => y.s - x.s || (x.c.id < y.c.id ? -1 : 1))[0]?.c;
+  // The battle is over the planet the enemy attacks; otherwise this side stands at its best defended colony. A
+  // colony whose defenses were beaten this turn does not rise again until next turn.
+  const attacked = state.colonies[targets.get(targetKey(enemy, starId)) ?? ""];
+  const colony = attacked?.ownerId === ownerId
+    ? (silenced.has(attacked.id) ? undefined : attacked)
+    : colonies
+      .filter((c) => !silenced.has(c.id))
+      .map((c) => ({ c, s: colonyDefenseStrength(state, c) }))
+      .sort((x, y) => y.s - x.s || (x.c.id < y.c.id ? -1 : 1))[0]?.c;
   const owner = state.players[ownerId]!;
+  // A fleet set to attack goes for the enemy planet only when that enemy holds the planet it attacks here.
+  const mine = state.colonies[targets.get(targetKey(ownerId, starId)) ?? ""];
   return {
     ownerId,
     fleets,
     colony,
-    attacksPlanet: owner.kind === "raiders" || fleets.some((f) => f.stance === "attack"),
+    attacksPlanet: (owner.kind === "raiders" || fleets.some((f) => f.stance === "attack")) && (!mine || mine.ownerId === enemy),
   };
 }
 
 /** Finds the next pair of hostile parties at a star that will fight, if any. */
-function nextBattle(state: GameState, starId: Id, silenced: Silenced, fought: Set<string>): [CombatSide, CombatSide] | null {
+function nextBattle(state: GameState, starId: Id, silenced: Silenced, fought: Set<string>, targets: Targets): [CombatSide, CombatSide] | null {
   const owners = new Set<PlayerId>();
   for (const f of Object.values(state.fleets)) if (f.starId === starId) owners.add(f.ownerId);
   for (const c of Object.values(state.colonies)) if (state.planets[c.planetId]!.starId === starId) owners.add(c.ownerId);
@@ -596,8 +662,8 @@ function nextBattle(state: GameState, starId: Id, silenced: Silenced, fought: Se
   for (let i = 0; i < list.length; i++) {
     for (let j = i + 1; j < list.length; j++) {
       if (!isHostile(state, list[i]!, list[j]!) || fought.has(`${list[i]}:${list[j]}`)) continue;
-      const a = sideAt(state, starId, list[i]!, silenced);
-      const b = sideAt(state, starId, list[j]!, silenced);
+      const a = sideAt(state, starId, list[i]!, silenced, targets, list[j]!);
+      const b = sideAt(state, starId, list[j]!, silenced, targets, list[i]!);
       a.initiates = wantsFight(state, a, b) && !passesBy(state, starId, a, b, list);
       b.initiates = wantsFight(state, b, a) && !passesBy(state, starId, b, a, list);
       if (!a.initiates && !b.initiates) continue;
