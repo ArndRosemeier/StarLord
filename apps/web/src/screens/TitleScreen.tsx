@@ -14,6 +14,9 @@ import { WhatsNew } from "../changelog/WhatsNew";
 import { HallOfFame } from "./HallOfFame";
 import { openContactMail } from "../title/contact";
 
+/** Painted nebulae behind the title scene; each start picks one, maybe mirrored and slightly re-tinted. */
+const NEBULAE = ["art/title-nebula.webp", "art/title-nebula-2.webp", "art/title-nebula-3.webp"];
+
 const KONAMI = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
 
 function usePrefersReducedMotion(): boolean {
@@ -43,6 +46,11 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
   const artRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<TitleScene3D | null>(null);
   const [sceneReady, setSceneReady] = useState(false);
+  const [nebula] = useState(() => ({
+    backgroundImage: `url(${NEBULAE[Math.floor(Math.random() * NEBULAE.length)]})`,
+    scale: Math.random() < 0.5 ? "-1 1" : undefined,
+    filter: `hue-rotate(${Math.round(Math.random() * 50 - 25)}deg)`,
+  }));
   const latest = latestSave();
 
   useEffect(() => { audio.setMood("menu"); }, []);
@@ -103,7 +111,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
 
   return (
     <div className={`title-hero${leaving ? " leaving" : ""}${reduced ? " still" : ""}`}>
-      <div className="title-art" ref={artRef} />
+      <div className="title-art" ref={artRef} style={nebula} />
       <div className="title-vignette" />
       <div className={`title-canvas${sceneReady ? " ready" : ""}`} ref={stageRef} onClick={(e) => sceneRef.current?.click(e.clientX, e.clientY)} />
       <div className="title-content">

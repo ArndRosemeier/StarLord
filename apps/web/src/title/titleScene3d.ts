@@ -71,8 +71,15 @@ const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 /** Where the camera sits and looks; ships fly around this space. */
 const CAMERA = v3(0, 3, 42);
 const LOOK = v3(0, 1, 0);
-const PLANET_AT = v3(-40, -24, -26);
-const PLANET_R = 24;
+
+/** Worlds a homeworld (or a far-off planet) can be, and what moons look like. */
+const HOMEWORLDS = ["terran", "ocean", "gaia", "arid", "desert", "tundra", "swamp", "toxic", "inferno", "radiated"];
+const MOONS = ["barren", "tundra", "desert", "radiated", "inferno", "asteroids"];
+/** Sun colours (see the galaxy map's star colours) and how strongly each one glows. */
+const SUNS = [
+  { color: 0xffd28a, glow: 1 }, { color: 0xffe27a, glow: 1 }, { color: 0xf2f4ff, glow: 1.1 },
+  { color: 0xffad5c, glow: 0.9 }, { color: 0xff6b5a, glow: 0.8 }, { color: 0x8fb8ff, glow: 1.1 },
+];
 
 export class TitleScene3D {
   private stage: Stage;
@@ -82,7 +89,11 @@ export class TitleScene3D {
   private flyers: Flyer[] = [];
   private props: UnitModel[] = [];
   private station: UnitModel;
-  private moon: UnitModel;
+  private stationOrbit = { r: 30, a: 0, y: 14 };
+  private moons: { model: UnitModel; r: number; a: number; speed: number; y: number }[] = [];
+  private planetAt = new THREE.Vector3();
+  /** The races whose fleets are about this time; most ships come from them. */
+  private featured: number[] = [];
   private t = 0;
   private nextSpawn = 0.6;
   private pointer = new THREE.Vector2();
@@ -109,47 +120,71 @@ export class TitleScene3D {
     this.starfield = createStarfield(this.touch ? 500 : 1000, 700, 11);
     scene.add(this.starfield);
 
-    // The sun far away in the upper left lights everything, like the painted planets.
-    const sunAt = v3(-400, 175, -560);
-    const sun = buildStar(this.kit, 0xffd28a, 22);
+    // Every start is laid out anew: which side the homeworld is on, what kind of world it is, its moons and
+    // station, the sun's colour and place, the far-off planet, and the races whose fleets are about.
+    const side = Math.random() < 0.5 ? -1 : 1;
+    this.featured = Array.from({ length: 3 }, () => Math.floor(Math.random() * RACES.length));
+    const owner = RACES[this.featured[0]!]!.color;
+
+    const star = pick(SUNS);
+    const sunAt = v3((Math.random() < 0.65 ? side : -side) * rand(240, 420), rand(110, 210), rand(-620, -500));
+    const sun = buildStar(this.kit, star.color, rand(14, 26));
     sun.root.position.copy(sunAt);
     this.addProp(sun);
     // A wide corona so the far-off sun reads as a sun, not a ball.
-    for (const [size, opacity, color] of [[150, 0.9, 0xffe2b0], [420, 0.4, 0xffb070], [900, 0.16, 0xff8a50]] as const) {
-      const glow = new THREE.Sprite(glowSpriteMaterial(this.kit.glow, color, opacity));
+    const corona = new THREE.Color(star.color);
+    for (const [size, opacity, mix] of [[150, 0.9, 0.6], [420, 0.4, 0.2], [900, 0.16, 0]] as const) {
+      const glow = new THREE.Sprite(glowSpriteMaterial(this.kit.glow, corona.clone().lerp(new THREE.Color(0xffffff), mix), opacity * star.glow));
       glow.scale.setScalar(size);
       glow.position.copy(sunAt);
       scene.add(glow);
     }
     scene.add(new THREE.HemisphereLight(0x8fa4d0, 0x120a1c, 0.55));
-    const light = new THREE.DirectionalLight(0xfff1e0, 2.8);
+    const light = new THREE.DirectionalLight(corona.clone().lerp(new THREE.Color(0xffffff), 0.65), 2.8);
     light.position.copy(sunAt);
     scene.add(light);
-    const rim = new THREE.DirectionalLight(0x7a5cff, 0.6);
-    rim.position.set(120, -40, -200);
+    const rim = new THREE.DirectionalLight(new THREE.Color().setHSL(Math.random(), 0.7, 0.6), 0.6);
+    rim.position.set(-side * 120, -40, -200);
     scene.add(rim);
 
-    // A homeworld low on the left with its moon and star fortress, and a ringed gas giant far to the right.
-    const home = buildPlanet(this.kit, "terran", PLANET_R, null);
-    home.root.position.copy(PLANET_AT);
+    // The homeworld low on one side, with moons and a station in orbit.
+    this.planetAt = v3(side * rand(34, 46), rand(-28, -18), rand(-34, -18));
+    const homeR = rand(18, 28);
+    const home = buildPlanet(this.kit, pick(HOMEWORLDS), homeR, null);
+    home.root.position.copy(this.planetAt);
+    home.root.rotation.set(rand(-0.3, 0.3), rand(0, TAU), rand(-0.3, 0.3));
     this.addProp(home);
-    this.moon = buildPlanet(this.kit, "barren", 2.6, null);
-    this.addProp(this.moon);
-    const giant = buildPlanet(this.kit, "gasGiant", 26, null);
-    giant.root.position.set(215, 20, -360);
-    const rings = buildPlanetRings(this.kit, 26, 0xd8b890, 5);
-    rings.rotation.set(-Math.PI / 2 + 0.35, 0.2, 0.3);
-    giant.root.add(rings);
-    this.addProp(giant);
-    this.station = buildStation(this.kit, "starFortress", "#4a8cff");
-    this.station.root.scale.setScalar(3.2);
-    this.station.root.rotation.set(0.35, 0, -0.25);
+    const moons = Math.floor(rand(0, 2.6));
+    for (let i = 0; i < moons; i++) {
+      const moon = buildPlanet(this.kit, pick(MOONS), rand(1.8, 3.6), null);
+      this.addProp(moon);
+      this.moons.push({ model: moon, r: homeR + rand(18, 34), a: rand(0, TAU), speed: rand(0.01, 0.03) * (Math.random() < 0.5 ? -1 : 1), y: rand(-4, 30) });
+    }
+    const tier = pick(["starBase", "battlestation", "starFortress"] as const);
+    this.station = buildStation(this.kit, tier, owner);
+    this.station.root.scale.setScalar({ starBase: 4.4, battlestation: 3.8, starFortress: 3.2 }[tier]);
+    this.station.root.rotation.set(rand(0.1, 0.5), 0, rand(-0.4, 0.4));
     this.addProp(this.station);
-    const outpost = buildStation(this.kit, "starBase", "#d9b44a");
-    outpost.root.scale.setScalar(5);
-    outpost.root.position.set(120, -22, -230);
-    outpost.root.rotation.set(0.5, 0, 0.3);
-    this.addProp(outpost);
+    this.stationOrbit = { r: homeR + rand(4, 10), a: rand(0, TAU), y: rand(10, 18) };
+
+    // Something far away on the other side: a ringed gas giant or another world, now and then with an outpost.
+    const farR = rand(14, 30);
+    const giantType = Math.random() < 0.55 ? "gasGiant" : pick(HOMEWORLDS);
+    const far = buildPlanet(this.kit, giantType, farR, null);
+    far.root.position.set(-side * rand(160, 230), rand(-10, 45), rand(-400, -300));
+    if (giantType === "gasGiant" || Math.random() < 0.2) {
+      const rings = buildPlanetRings(this.kit, farR, new THREE.Color().setHSL(rand(0.05, 0.15), rand(0.2, 0.5), rand(0.55, 0.75)), Math.floor(rand(1, 99)));
+      rings.rotation.set(-Math.PI / 2 + rand(0.2, 0.5), rand(-0.3, 0.3), rand(-0.4, 0.4) * side);
+      far.root.add(rings);
+    }
+    this.addProp(far);
+    if (Math.random() < 0.6) {
+      const outpost = buildStation(this.kit, "starBase", RACES[this.featured[1]!]!.color);
+      outpost.root.scale.setScalar(5);
+      outpost.root.position.copy(far.root.position).add(v3(side * (farR + rand(10, 25)), rand(-30, -10), rand(60, 110)));
+      outpost.root.rotation.set(0.5, 0, 0.3);
+      this.addProp(outpost);
+    }
 
     this.stage.useStudioEnvironment(0.45);
     this.stage.camera.position.copy(CAMERA);
@@ -287,7 +322,12 @@ export class TitleScene3D {
     return this.flyers.filter((f) => !f.dead).length;
   }
 
-  private randomShip(cls: ShipClass, raceIndex = Math.floor(Math.random() * RACES.length)): UnitModel {
+  /** Mostly one of this start's featured races, sometimes anyone. */
+  private randomRace(): number {
+    return Math.random() < 0.75 ? pick(this.featured) : Math.floor(Math.random() * RACES.length);
+  }
+
+  private randomShip(cls: ShipClass, raceIndex = this.randomRace()): UnitModel {
     const race = RACES[raceIndex % RACES.length]!;
     return buildShip(this.kit, cls, race.color, raceShipStyle(race.id));
   }
@@ -361,7 +401,7 @@ export class TitleScene3D {
     }
     const curve = new THREE.CatmullRomCurve3(pts);
     const raider = this.addFlyer(buildShip(this.kit, "destroyer", "#a8322a", "fang"), "raider", curve, 20, { engine: 0xff9a50 });
-    const race = Math.floor(Math.random() * RACES.length);
+    const race = this.randomRace();
     for (let i = 1; i <= 2; i++) {
       const f = this.addFlyer(this.randomShip("frigate", race), "fighter", curve, 20, { offset: new THREE.Vector2((i === 1 ? -1 : 1) * 3.5, (i - 1.5) * 3) });
       f.s = -8 - i * 6;
@@ -371,7 +411,7 @@ export class TitleScene3D {
 
   /** A wing of one race drops out of warp and cruises past in formation. */
   private spawnFormation(warp = true): void {
-    const race = Math.floor(Math.random() * RACES.length);
+    const race = this.randomRace();
     const dir = Math.random() < 0.5 ? -1 : 1;
     const z = rand(-55, -25);
     const a = v3(-dir * rand(40, 60), rand(4, 16), z + rand(-20, 20));
@@ -467,10 +507,14 @@ export class TitleScene3D {
   }
 
   private placeOrbiters(t: number): void {
-    const a = t * 0.05 + 0.6;
-    this.station.root.position.set(PLANET_AT.x - 4 + Math.cos(a) * 30, PLANET_AT.y + 16 + Math.sin(a) * 4, PLANET_AT.z + Math.sin(a) * 30);
-    const m = t * 0.02 + 2.2;
-    this.moon.root.position.set(PLANET_AT.x + Math.cos(m) * 52, PLANET_AT.y + 26, PLANET_AT.z + Math.sin(m) * 40 - 20);
+    const c = this.planetAt;
+    const o = this.stationOrbit;
+    const a = t * 0.05 + o.a;
+    this.station.root.position.set(c.x + Math.cos(a) * o.r, c.y + o.y + Math.sin(a) * 4, c.z + Math.sin(a) * o.r);
+    for (const m of this.moons) {
+      const b = t * m.speed + m.a;
+      m.model.root.position.set(c.x + Math.cos(b) * m.r, c.y + m.y, c.z + Math.sin(b) * m.r * 0.8 - 10);
+    }
   }
 
   private updateFlyer(f: Flyer, dt: number): void {
