@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  ARCS, ARMORS, COMPUTERS, HULLS, HULLS_BY_ID, MISSILE_RACKS, SHIELDS, SPECIALS, WEAPONS, WEAPON_MODS,
+  ARCS, ARMORS, COMPUTERS, bestOf, HULLS, HULLS_BY_ID, MISSILE_RACKS, SHIELDS, SPECIALS, WEAPONS, WEAPON_MODS,
   DEFAULT_MISSILE_SHOTS, SHIP_STYLES, designStats, designStyle, raceShipStyle, knows, refinement, swapMountWeapon, validateDesign, weaponUnitCost,
   type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponDef, type WeaponModId, type WeaponMount,
 } from "@starlord/sim";
@@ -15,9 +15,10 @@ import {
 
 export function DesignScreen() {
   const { session, view, me, readOnly } = useGame();
-  const bestArmor = [...ARMORS].reverse().find((a) => knows(me, a.requires)) ?? ARMORS[0]!;
+  // Like the original's design template: a new design starts with the best armor, shield and computer known.
   const blank = (): ShipDesign => ({
-    id: "", name: "New design", hull: "frigate", armor: bestArmor.id, shield: null, computer: null,
+    id: "", name: "New design", hull: "frigate", armor: (bestOf(me, ARMORS) ?? ARMORS[0]!).id,
+    shield: bestOf(me, SHIELDS)?.id ?? null, computer: bestOf(me, COMPUTERS)?.id ?? null,
     weapons: [], specials: [], module: null, obsolete: false,
   });
   const [draft, setDraft] = useState<ShipDesign>(blank);
@@ -66,7 +67,7 @@ export function DesignScreen() {
         <div className="row">
           <h2 style={{ margin: 0 }}>Ship designer</h2>
           <span className="spacer" />
-          <Tip card={{ title: "New design", text: ["Start over with an empty frigate and your best armor."] }}>
+          <Tip card={{ title: "New design", text: ["Start over with an empty frigate fitted with your best armor, shield and computer."] }}>
             <button className="small" onClick={() => setDraft(blank())}>New</button>
           </Tip>
         </div>
