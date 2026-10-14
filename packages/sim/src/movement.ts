@@ -199,9 +199,8 @@ function legFor(state: GameState, fleet: Fleet, dest: Star): Leg {
   if (origin && knows(owner, "jumpGate") && hasColonyAt(state, fleet.ownerId, origin) && hasColonyAt(state, fleet.ownerId, dest.id)) {
     speed += JUMP_GATE_BONUS;
   }
-  // Navigators and trans-dimensional races are not slowed by nebulae.
-  const hazardFree = navigator > 0 || ignoresSpaceHazards(getRace(owner.raceId));
-  return { speed, nebulae: hazardFree ? [] : (state.nebulae ?? []), interdictors: interdictorFields(state, fleet.ownerId), instant };
+  // Only Navigators are not slowed by nebulae (trans-dimensional races just ignore hyperspace flux).
+  return { speed, nebulae: navigator > 0 ? [] : (state.nebulae ?? []), interdictors: interdictorFields(state, fleet.ownerId), instant };
 }
 
 /**

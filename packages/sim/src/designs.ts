@@ -275,7 +275,8 @@ export function designStats(player: Player, design: ShipDesign): DesignStats {
     attack,
     defense,
     combatSpeed: speed,
-    missileEvasion: fx.missileEvasion,
+    // The race's ship defense pick helps dodge missiles too, as in the original.
+    missileEvasion: fx.missileEvasion + shipDefensePickBonus(race),
     weapons: design.weapons,
     marines: Math.round(hull.marines * fx.marinesMult),
     troops,

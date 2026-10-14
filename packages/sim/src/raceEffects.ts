@@ -129,7 +129,7 @@ export function seesAllFleets(race: RaceDef): boolean {
   return hasTrait(race, "omniscient");
 }
 
-/** Whether a race ignores nebula and hyperspace-flux movement limits. */
+/** Whether a race ignores hyperspace flux (trans-dimensional; nebulae still slow it). */
 export function ignoresSpaceHazards(race: RaceDef): boolean {
   return hasTrait(race, "transDimensional");
 }

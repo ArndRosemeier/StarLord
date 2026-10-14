@@ -495,6 +495,8 @@ function grievances(state: GameState, last: NonNullable<GameState["relationEvent
       const p = Number(actKey);
       const human = state.players[p];
       if (!human?.alive || !human.isHuman || relation(state, ai, p).status === "war") continue;
+      // The original skips grievances entirely when either side is repulsive (they can only make war or peace).
+      if (isRepulsive(state, ai) || isRepulsive(state, p)) continue;
       if (isGrievance(ev.reason) && ev.size < 0) {
         strike(state, ai, p, ev, roll, emit);
       } else if (ev.size > 0 && thanks(ev.reason, roll)) {
@@ -562,4 +564,9 @@ function strike(state: GameState, ai: PlayerId, p: PlayerId, ev: { reason: numbe
 function strikeWar(state: GameState, ai: PlayerId, p: PlayerId, roll: Roll, emit?: Emit): void {
   declareWar(state, ai, p, { blame: p, roll });
   emit?.({ kind: "diplomacy", playerId: p, other: ai, what: "has had enough of your offences and declared war on you" });
+}
+
+function isRepulsive(state: GameState, id: PlayerId): boolean {
+  const p = state.players[id];
+  return !!p && p.kind === "empire" && hasTrait(getRace(p.raceId), "repulsive");
 }

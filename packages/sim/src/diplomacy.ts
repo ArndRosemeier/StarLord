@@ -6,6 +6,7 @@ import { TEMPERAMENT_ORDER, TEMPERAMENT_ROLL, TEMPERAMENT_ROWS } from "./data/ai
 import { GOVERNMENTS } from "./data/governments.js";
 import { leaderTradeBonus } from "./leaders.js";
 import { raceDiplomacyPoints } from "./raceEffects.js";
+import { TRAIT_EFFECTS } from "./data/racePicks.js";
 import { getRace, hasTrait } from "./data/races.js";
 import { TECHS, TIER_OF_TECH } from "./data/techs.js";
 import type { Emit } from "./context.js";
@@ -393,6 +394,8 @@ export function treatyScore(
   // Charismatic and telepathic proposers, Xeno Psychology and the best diplomat leader.
   const racial = raceDiplomacyPoints(race);
   if (racial) parts.push({ why: hasTrait(race, "charismatic") ? (hasTrait(race, "telepathic") ? "you are charismatic and telepathic" : "you are charismatic") : "you are telepathic", value: racial });
+  // Repulsive proposers (who can only ask for peace) are 50 points worse off, as in the original.
+  if (hasTrait(race, "repulsive")) parts.push({ why: "you are repulsive", value: TRAIT_EFFECTS.repulsiveDiplomacy });
   add("Xeno Psychology", empireBonus(proposer).diplomacy);
   add("your diplomat leader", Math.max(0, (proposer.diplomacyBonus ?? 0) - racial));
   if (roll !== null) parts.push({ why: "their mood today (d100)", value: roll });
@@ -921,6 +924,7 @@ export function giftProblem(state: GameState, from: PlayerId, to: PlayerId, gift
   const pt = state.players[to];
   if (!pt || pt.kind !== "empire" || !pt.alive || to === from) return "no such empire";
   if (!pf.contacts.includes(to)) return "no contact";
+  if (repulsivePair(state, from, to)) return "repulsive races can only declare war or sue for peace";
   if (gift.bc !== undefined && (!(gift.bc > 0) || gift.bc > pf.bc)) return "not enough BC";
   if (gift.techId !== undefined && (!pf.techs.includes(gift.techId) || !canReceiveTech(pt, gift.techId))) {
     return pf.techs.includes(gift.techId) && TIER_OF_TECH[gift.techId] && !pt.techs.includes(gift.techId) ? "they cannot use that technology" : "cannot give that technology";

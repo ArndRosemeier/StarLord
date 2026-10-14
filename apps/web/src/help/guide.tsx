@@ -355,8 +355,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Each population eats 1 food (cybernetic races half, lithovores and androids none). Food doesn't move by itself:
         a Freighter Fleet ({PROJECT_COSTS.freighterFleet} production) adds {FREIGHTERS.perFleet} freighters, and each
         carries {FREIGHTERS.foodPerShip} food a turn from colonies with a surplus to hungry ones. A colony whose need is not
-        met loses {GROWTH.starvationK}k population a turn for each food it lacks; a random worker or scientist dies first, farmers only when nobody else is left. Food nobody needs is sold for {fmt(TRAIT_EFFECTS.normalFoodBc, 1)}{" "}
-        BC a unit ({fmt(TRAIT_EFFECTS.traderFoodBc, 1)} for fantastic traders). A blockaded system can neither send nor receive.
+        met loses {GROWTH.starvationK}k population a turn for each food it lacks; a random worker or scientist dies first, farmers only when nobody else is left. The empire's net surplus (all food grown outside blockades minus all eaten there, hungry colonies included) is sold for {fmt(TRAIT_EFFECTS.normalFoodBc, 1)}{" "}
+        BC a unit, rounded down ({fmt(TRAIT_EFFECTS.traderFoodBc, 1)} for fantastic traders). A blockaded system can neither send nor receive.
       </P>
       <P>
         Freighters also move colonists to another colony of the same race: each colonist needs {FREIGHTERS.perColonist} idle
