@@ -71,7 +71,7 @@ function hitOf(view: PlayerView, e: GameEvent): { starId: string | undefined; hi
     case "colonyCaptured":
       return { starId: colonyStar(e.colonyId), hit: { kind: "captured", label: "Colony captured" } };
     case "colonyLost":
-      return { starId: colonyStar(e.colonyId), hit: { kind: "loss", label: e.how === "destroyed" ? "Colony destroyed" : e.how === "revolted" ? "Colony revolted" : "Colony lost" } };
+      return { starId: colonyStar(e.colonyId), hit: { kind: "loss", label: e.how === "destroyed" ? "Colony destroyed" : e.how === "revolted" ? "Colony revolted" : e.how === "mindControlled" ? "Mind controlled" : "Colony lost" } };
     case "invasionFailed":
       return { starId: colonyStar(e.colonyId), hit: { kind: "loss", label: "Invasion repelled" } };
     case "bombarded":

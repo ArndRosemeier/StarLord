@@ -79,7 +79,7 @@ export const TRAIT_COSTS: Record<RaceTrait, { cost: number; text: string; name?:
   creative: { cost: 8, text: "Learns every application in a researched field." },
   uncreative: { cost: -4, text: "Learns one random application per field." },
   fantasticTraders: { cost: 4, text: "+25% trade treaty income, 1 BC per surplus food, double trade goods." },
-  telepathic: { cost: 6, text: "+25 on diplomacy, +10 on all spy rolls; mind-controls undefended colonies." },
+  telepathic: { cost: 6, text: "+25 on diplomacy, +10 on all spy rolls; with a cruiser or larger in orbit, takes beaten colonies by mind control, all colonists assimilated." },
   lucky: { cost: 3, text: "No random disasters, more good events; raiders and monsters tend to pass you by." },
   omniscient: { cost: 3, text: "Knows every star system from the start and sees every fleet, stealthy or not." },
   stealthy: { name: "Stealthy ships", cost: 4, text: "Your fleets can't be seen on the galaxy map outside your rivals' own systems." },

@@ -12,7 +12,7 @@ import {
 import { designStats, findDesign, validateDesign } from "./designs.js";
 import { foodPlan, population } from "./economy.js";
 import { MAX_LEADERS } from "./data/leaders.js";
-import { ORBITAL_CHOICES, canMindControl, exterminateProblem } from "./ground.js";
+import { ORBITAL_CHOICES, canMindControl, exterminateProblem, mindControlProblem } from "./ground.js";
 import { moveProblem } from "./movement.js";
 import { bribeProblem } from "./randomEvents.js";
 import {
@@ -267,12 +267,14 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const c = state.colonies[cmd.colonyId];
       if (!c || state.planets[c.planetId]!.starId !== f.starId) return fail("no such colony here");
       if (!isHostile(state, playerId, c.ownerId)) return fail("not at war with that colony's owner");
+      // Telepaths take the colony by mind control instead, barrier shield or not.
+      if (canMindControl(state, f, c)) return OK;
       if (blocksInvasion(c)) return fail("a planetary barrier shield keeps troops out");
       const troops = f.ships.reduce((n, s) => {
         const d = findDesign(player, s.designId);
         return n + (d ? designStats(player, d).troops * s.count : 0);
       }, 0);
-      if (troops <= 0 && !canMindControl(state, f, c)) return fail("fleet carries no troops");
+      if (troops <= 0) return fail(hasTrait(getRace(player.raceId), "telepathic") ? `fleet carries no troops and can't mind-control: ${mindControlProblem(state, playerId, c)}` : "fleet carries no troops");
       return OK;
     }
     case "splitFleet": {

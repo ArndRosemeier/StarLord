@@ -46,6 +46,15 @@ describe("computer orbital strikes", () => {
     expect(choiceFor(s, colonyId)).toBe("none");
   });
 
+  it("take the colony by mind control when they are telepaths with a cruiser or larger there", () => {
+    const { s, colonyId, starId } = setup();
+    s.players[0]!.raceId = "lysari";
+    fleet(s, starId, [{ designId: "conv", count: 1 }]);
+    expect(choiceFor(s, colonyId)).toBe("mind");
+    s.players[1]!.raceId = "lysari";
+    expect(choiceFor(s, colonyId)).toBe("destroy");
+  });
+
   it("give no orders where they have no fleet or are not at war", () => {
     const { s, colonyId, starId } = setup();
     expect(choiceFor(s, colonyId)).toBeNull();

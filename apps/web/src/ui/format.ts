@@ -96,6 +96,8 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
       return {
         text: e.how === "invaded"
           ? `${colonyName(view, e.colonyId)} was invaded by ${e.to === null ? "an enemy" : playerName(view, e.to)}.`
+          : e.how === "mindControlled"
+            ? `${colonyName(view, e.colonyId)} fell under the mind control of ${e.to === null ? "an enemy" : playerName(view, e.to)}.`
           : e.how === "revolted"
             ? `${colonyName(view, e.colonyId)} revolted and went back to ${e.to === null ? "its old rulers" : playerName(view, e.to)}.`
             : `${colonyName(view, e.colonyId)} was destroyed.`,
@@ -103,7 +105,7 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
         tone: "bad",
       };
     case "colonyCaptured":
-      return { text: `We captured ${colonyName(view, e.colonyId)} from ${playerName(view, e.from)}.`, starId: colonyStar(e.colonyId), tone: "good" };
+      return { text: e.mindControl ? `Our telepaths took ${colonyName(view, e.colonyId)} from ${playerName(view, e.from)} by mind control; its people are ours at once.` : `We captured ${colonyName(view, e.colonyId)} from ${playerName(view, e.from)}.`, starId: colonyStar(e.colonyId), tone: "good" };
     case "invasionFailed":
       return { text: `Our invasion of ${colonyName(view, e.colonyId)} was repelled.`, starId: colonyStar(e.colonyId), tone: "bad" };
     case "bombarded":
