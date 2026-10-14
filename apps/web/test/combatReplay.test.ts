@@ -1,6 +1,6 @@
 import { describe as group, expect, it } from "vitest";
 import { newGame, playerView, processTurn, raiderDesignId, type CombatReport, type Fleet } from "@starlord/sim";
-import { describe, framesAt, replaySteps, unitInfo, type CombatEvent, type UnitSnapshot } from "../src/screens/combat/replayModel";
+import { applyFlights, describe, framesAt, replaySteps, unitInfo, type CombatEvent, type UnitSnapshot } from "../src/screens/combat/replayModel";
 
 const state = newGame({ seed: "replay-model", playerCount: 2, monsters: true });
 const view = playerView(state, 0);
@@ -96,5 +96,20 @@ group("combat replay model", () => {
     const f = framesAt(r, replaySteps(r), 1);
     expect(f.prev.get("a")!.heading).toBe(0);
     expect(f.now.get("a")!.heading).toBeCloseTo(Math.PI / 2);
+  });
+});
+
+group("missiles shot down in flight", () => {
+  it("thins out a volley and drops it once none are left", () => {
+    let flights = applyFlights(new Map(), { kind: "flights", ship: "", flights: [{ id: "p1", owner: "a", target: "b", weapon: "nuclearMissile", x: 3, y: 4, count: 5 }] });
+    flights = applyFlights(flights, { kind: "intercept", ship: "b", weapon: "laserCannon", projectile: "p1", x: 3, y: 4, hit: true, downed: 2, left: 3 });
+    expect(flights.get("p1")?.count).toBe(3);
+    flights = applyFlights(flights, { kind: "intercept", ship: "b", weapon: "laserCannon", projectile: "p1", x: 3, y: 4, hit: true, downed: 3, left: 0 });
+    expect(flights.has("p1")).toBe(false);
+  });
+
+  it("says who shot how many down", () => {
+    const r = report([ship("a", 0), ship("b", 1)], []);
+    expect(describe(r, { kind: "intercept", ship: "b", weapon: "laserCannon", projectile: "p1", hit: true, downed: 2, left: 3 })).toBe("b shoots down 2 with Laser Cannon");
   });
 });

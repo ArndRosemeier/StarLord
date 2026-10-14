@@ -50,8 +50,11 @@ export interface CombatEvent {
   armorDamage?: number;
   structureDamage?: number;
   systemHit?: string | boolean;
-  /** "launch": the missile, torpedo or squadron sent off. */
+  /** "launch": the missile, torpedo or squadron sent off. "intercept": the volley shot at. */
   projectile?: string;
+  /** "intercept": missiles or craft destroyed, and those left in the volley. */
+  downed?: number;
+  left?: number;
   /** "flights": everything in flight after a side's missiles and craft moved. */
   flights?: Flight[];
 }
@@ -96,6 +99,8 @@ export interface CommandOverlay {
   /** Enemies the unit may fire at, and whether any of its weapons reach each from where it stands. */
   targets: { key: string; inRange: boolean }[];
   target: string | null;
+  /** Where the chosen target is when it is a volley of missiles or craft in flight. */
+  flightTarget?: { x: number; y: number } | null;
   /** Squares it can still move this turn (0: it cannot move). */
   reach: number;
   moveTo: { x: number; y: number } | null;
@@ -287,6 +292,14 @@ export function applyFlights(flights: Flights, e: CombatEvent): Flights {
     next.set(e.projectile, { id: e.projectile, owner: e.ship, target: e.target, weapon: e.weapon ?? "", x: e.x, y: e.y, count: 1 });
     return next;
   }
+  if (e.kind === "intercept" && e.projectile && e.left !== undefined) {
+    const f = flights.get(e.projectile);
+    if (!f) return flights;
+    const next = new Map(flights);
+    if (e.left > 0) next.set(f.id, { ...f, count: e.left });
+    else next.delete(f.id);
+    return next;
+  }
   return flights;
 }
 
@@ -360,6 +373,10 @@ export function describe(report: CombatReport, e: CombatEvent | undefined): stri
     case "board": return `${n(e.ship)} boards ${n(e.target)}${e.hit === false ? ", and is beaten back" : ""}`;
     case "captured": return `${n(e.ship)} is captured by ${n(e.target)}'s marines${e.hit ? " and turns on its old side" : ""}`;
     case "repair": return `${n(e.ship)} repairs${e.damage ? ` ${e.damage}` : ""}`;
+    case "intercept": {
+      const what = WEAPONS_BY_ID[e.weapon ?? ""]?.name ?? "weapons";
+      return e.downed ? `${n(e.ship)} shoots down ${e.downed} with ${what}` : `${n(e.ship)} fires ${what} at incoming missiles and misses`;
+    }
     case "flights": {
       const volleys = e.flights?.length ?? 0;
       return volleys === 0 ? "" : `${volleys} volley${volleys === 1 ? "" : "s"} of missiles or craft in flight`;

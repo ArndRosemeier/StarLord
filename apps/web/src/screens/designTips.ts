@@ -56,8 +56,8 @@ const EFFECT_TEXT: Record<WeaponEffect, string> = {
 };
 
 const MOD_TEXT: Record<WeaponModId, string> = {
-  heavyMount: `Bigger gun: ${signed(MOD_EFFECTS.heavyMountDamagePct)}% damage and longer range bands. Doubles the base size and cost.`,
-  pointDefense: `Small rapid mount that can also shoot down missiles and craft: +${MOD_EFFECTS.pointDefenseToHit} to hit, ${MOD_EFFECTS.pointDefenseDamagePct}% damage, shorter range. Halves the base size and cost. It only shoots down missiles and craft coming in inside its firing arc; pick All round to cover every side.`,
+  heavyMount: `Bigger gun: ${signed(MOD_EFFECTS.heavyMountDamagePct)}% damage and longer range bands. Doubles the base size and cost. Too slow to aim at missiles or craft.`,
+  pointDefense: `Small rapid mount that fires on its own at missiles and craft just before they strike: +${MOD_EFFECTS.pointDefenseToHit} to hit, ${MOD_EFFECTS.pointDefenseDamagePct}% damage, shorter range. Halves the base size and cost. It only shoots down missiles and craft coming in inside its firing arc; pick All round to cover every side.`,
   armorPiercing: "Damage goes straight past the armor into structure.",
   continuous: `Steady beam: +${MOD_EFFECTS.continuousToHit} to hit.`,
   noRangeDissipation: "Full damage at any range.",

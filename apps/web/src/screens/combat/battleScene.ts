@@ -356,6 +356,7 @@ export class BattleScene {
       const chosen = t.key === cmd.target;
       flat(w.r, w.r + (chosen ? 0.22 : 0.1), chosen ? 0xff3b3b : t.inRange ? 0xffa040 : 0x8a8f9c, chosen ? 0.95 : t.inRange ? 0.6 : 0.35, w.at);
     }
+    if (cmd.flightTarget) flat(0.45, 0.65, 0xff3b3b, 0.95, gridToWorld(cmd.flightTarget.x, cmd.flightTarget.y));
     if (cmd.moveTo) {
       const to = gridToWorld(cmd.moveTo.x, cmd.moveTo.y);
       flat(0.35, 0.5, 0x7dffb0, 0.9, to);
@@ -443,6 +444,27 @@ export class BattleScene {
         this.fx.lightFlash(src, 25);
         this.fx.scatter(src, this.reduced ? 3 : 8, 0.07 + r * 0.05, 2 + r);
         if (!this.reduced) this.stage.shake(0.25 + r * 0.25);
+        break;
+      }
+      case "intercept": {
+        // Beams or rockets thrown at a volley in flight: a streak to it, and a burst for every one downed.
+        if (!src || e.x === undefined || e.y === undefined) break;
+        const shooter = this.units.get(e.ship);
+        const from = src.clone();
+        if (shooter && shooter.info.kind !== "planet") {
+          const m = shooter.model.muzzle.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -shooter.heading);
+          from.add(m.setY(0));
+        }
+        const to = gridToWorld(e.x, e.y).setY(FLIGHT_Y);
+        const look = weaponLook(e.weapon);
+        const color = BEAM_COLORS[e.weapon ?? ""] ?? 0x9ad0ff;
+        if (look === "beam") this.fx.beam(from, to, color, 0.05, step * 1.6, e.hit ? 1 : 0.4);
+        else this.fx.projectile(from, to, 0xffffff, 0.25, 0);
+        if (e.downed) {
+          this.fx.burst(to, { count: count(6 + e.downed * 3), colors: ["#ffffff", "#ffe7a3", "#ffb347"], speed: 2.2, life: [0.2, 0.5], size: [0.08, 0.18] });
+          this.fx.flash(to, 0.8, 0xfff0c8, 0.2);
+          this.overlay.float(to.clone().setY(to.y + 0.6), `${e.downed} shot down`, "#ffe7a3", 0, 1.1);
+        }
         break;
       }
       case "retreat": {
