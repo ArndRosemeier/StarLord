@@ -184,6 +184,20 @@ describe("original station, retreat, boarding and explosion rules", () => {
     expect(st.computer?.max).toBe(5);
   });
 
+  it("always puts the colony's planet in a battle beside its station, as the original does", () => {
+    const s = twoEmpires();
+    const c = home(s, 1);
+    c.buildings = [...c.buildings.filter((b) => !["groundBatteries", "missileBase", "spaceMines"].includes(b)), "starBase"];
+    const a = addFleet(s, 0, s.players[1]!.homeStarId, [{ designId: "frigate", count: 1 }], "defend");
+    const battle = prepareBattle(s, new Rng({ s: 1 }), side(0, [a]), side(1, [], c));
+    const planet = battle.units.find((u) => u.kind === "planet" && u.side === 1)!;
+    expect(planet.alive).toBe(true);
+    expect(battle.units.some((u) => u.kind === "station" && u.side === 1)).toBe(true);
+    // A fleet that did not come for the planet still only shoots at the guns firing on it.
+    const ship = battle.units.find((u) => u.side === 0)!;
+    expect(battle.targets(ship).map((u) => u.kind)).toEqual(["station"]);
+  });
+
   it("gives a side flat beam attack from its battlestation, star fortress or defended planet", () => {
     const s = twoEmpires();
     const c = home(s, 1);

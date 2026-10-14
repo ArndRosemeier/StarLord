@@ -959,12 +959,9 @@ export class Battle {
       if (!s.colony) continue;
       const player = state.players[s.ownerId]!;
       const d = planetDefense(s.colony);
-      if (d.installations.length > 0 || d.mines) {
-        const p = planetUnit(player, s.colony, d, i as 0 | 1);
-        // A planet with only mines is not a target and does not hold the field.
-        if (d.installations.length === 0) p.alive = false;
-        this.units.push(p);
-      }
+      // The colony's planet is always in its battle, armed or not, with its station beside it (the original's
+      // FUN_0004a9e4); a planet without working installations does not hold the field.
+      this.units.push(planetUnit(player, s.colony, d, i as 0 | 1));
       if (d.station) this.units.push(stationUnit(player, s.colony, HULLS_BY_ID[d.station], i as 0 | 1));
     }
     this.deploy();
