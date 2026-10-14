@@ -587,3 +587,16 @@ export function startingDesigns(): ShipDesign[] {
 export function findDesign(player: Player, designId: string): ShipDesign | undefined {
   return player.designs.find((d) => d.id === designId);
 }
+
+/** The newest version of a design, following edits; undefined if the design is unknown. */
+export function latestDesign(player: Player, designId: string): ShipDesign | undefined {
+  let d = findDesign(player, designId);
+  for (let hops = 0; d?.supersededBy && hops < player.designs.length; hops++) d = findDesign(player, d.supersededBy) ?? d;
+  return d;
+}
+
+/** The newer version ships of this design should be refitted to, if the design was edited since they were built. */
+export function outdatedBy(player: Player, designId: string): ShipDesign | undefined {
+  const latest = latestDesign(player, designId);
+  return latest && latest.id !== designId ? latest : undefined;
+}

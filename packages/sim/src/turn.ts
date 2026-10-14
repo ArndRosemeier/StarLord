@@ -41,7 +41,7 @@ import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
 import { PLACED_PROJECTS, availableDesigns, availableProjects, baseTargets, canBuildShips, colonyRoom, freePlanetsInSystem, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
 import { applyMutation } from "./mutation.js";
-import { cancelRefit, completeRefit, startRefit } from "./refit.js";
+import { cancelRefit, completeRefit, replaceDesign, startRefit } from "./refit.js";
 import { applyDebug } from "./debug.js";
 import { creditElimination, noteAttack, recordHistory, score } from "./score.js";
 import type { BuildItem, Colony, CombatAftermath, Fleet, GameState, Id, Planet, Player, PlayerId } from "./types.js";
@@ -292,6 +292,11 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "saveDesign": {
       const design = structuredClone(cmd.design);
       design.obsolete = false;
+      delete design.supersededBy;
+      if (cmd.replaces !== undefined) {
+        replaceDesign(state, playerId, cmd.replaces, design);
+        break;
+      }
       const i = player.designs.findIndex((d) => d.id === design.id);
       if (i >= 0) player.designs[i] = design;
       else player.designs.push(design);

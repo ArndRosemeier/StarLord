@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  MAX_QUEUE, findDesign, refitCost, refitDocks, refitTargets, refitTurns, refittable, validateCommand, type Colony, type Fleet, type ShipDesign,
+  MAX_QUEUE, findDesign, outdatedBy, refitCost, refitDocks, refitTargets, refitTurns, refittable, validateCommand, type Colony, type Fleet, type ShipDesign,
 } from "@starlord/sim";
 import { useGame } from "./hooks";
 import { refitTip } from "./explain";
@@ -21,7 +21,9 @@ export function RefitPicker({ fleet, designId, count, onDone, initialTarget }: {
   const { session, view, me, readOnly } = useGame();
   const from = findDesign(me, designId);
   const targets = refitTargets(view, me.id, designId);
-  const [targetId, setTargetId] = useState(initialTarget && targets.some((d) => d.id === initialTarget) ? initialTarget : targets.at(-1)?.id ?? "");
+  // Outdated ships default to the newest version of their own design.
+  const preferred = initialTarget ?? outdatedBy(me, designId)?.id;
+  const [targetId, setTargetId] = useState(preferred && targets.some((d) => d.id === preferred) ? preferred : targets.at(-1)?.id ?? "");
   const to = targets.find((d) => d.id === targetId);
   const anyDock = fleet.starId ? refitDocks(view, me.id, fleet.starId) : [];
   const docks = fleet.starId && to ? refitDocks(view, me.id, fleet.starId, to) : [];

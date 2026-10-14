@@ -69,7 +69,12 @@ export type Command =
   | { type: "refitShips"; fleetId: Id; designId: string; toDesignId: string; colonyId: Id; count: number }
   /** Removes a refit job from a colony's queue; the ship in dock is scrapped. */
   | { type: "cancelRefit"; colonyId: Id; refitId: Id }
-  | { type: "saveDesign"; design: ShipDesign }
+  /**
+   * Saves a design. With `replaces`, the design is an edit of that one under a
+   * new id: queued builds switch to it, and ships already built to the old
+   * version keep it but are outdated until refitted.
+   */
+  | { type: "saveDesign"; design: ShipDesign; replaces?: string }
   | { type: "obsoleteDesign"; designId: string; obsolete: boolean }
   | { type: "setDoctrine"; doctrine: CombatDoctrine }
   /** Whether this human commands their battles (the default) or lets them resolve by themselves. */
@@ -310,7 +315,12 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       return c.queue.some((q) => q.kind === "refit" && q.refitId === cmd.refitId) ? OK : fail("no such refit job here");
     }
     case "saveDesign": {
-      if (player.designs.filter((d) => !d.obsolete).length >= 30 && !findDesign(player, cmd.design.id)) {
+      if (cmd.replaces !== undefined) {
+        const old = findDesign(player, cmd.replaces);
+        if (!old || old.module || old.fixed) return fail("no such design to edit");
+        if (old.supersededBy) return fail("that design was already edited; edit its newest version");
+        if (findDesign(player, cmd.design.id)) return fail("an edited design needs a new id");
+      } else if (player.designs.filter((d) => !d.obsolete).length >= 30 && !findDesign(player, cmd.design.id)) {
         return fail("too many designs; mark some obsolete");
       }
       const existing = findDesign(player, cmd.design.id);
@@ -318,8 +328,11 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       if (existing && shipsBuilt(state, playerId, existing.id)) return fail("design is in use; save it under a new id");
       return validateDesign(player, cmd.design) === null ? OK : fail(validateDesign(player, cmd.design)!);
     }
-    case "obsoleteDesign":
-      return findDesign(player, cmd.designId) ? OK : fail("no such design");
+    case "obsoleteDesign": {
+      const d = findDesign(player, cmd.designId);
+      if (!d) return fail("no such design");
+      return d.supersededBy && !cmd.obsolete ? fail("this design was edited; its newest version replaces it") : OK;
+    }
     case "setAutoBattles":
       return OK;
     case "orbitalStrike":

@@ -165,3 +165,21 @@ export function refitJobs(state: GameState, playerId: PlayerId): { colony: Colon
     .filter((c) => c.ownerId === playerId)
     .flatMap((c) => c.queue.flatMap((q) => (q.kind === "refit" ? [{ colony: c, job: q }] : [])));
 }
+
+/**
+ * Saves `design` as the edited version of design `oldId`. Builds queued to the
+ * old version switch to the new one; ships already built (and refits under
+ * way) keep the old version, which is hidden from build lists and marked as
+ * superseded so those ships show as outdated until they are refitted.
+ */
+export function replaceDesign(state: GameState, playerId: PlayerId, oldId: string, design: ShipDesign): void {
+  const player = state.players[playerId]!;
+  const old = findDesign(player, oldId)!;
+  player.designs.push(design);
+  for (const c of Object.values(state.colonies)) {
+    if (c.ownerId !== playerId) continue;
+    for (const q of c.queue) if (q.kind === "ship" && q.designId === oldId) q.designId = design.id;
+  }
+  old.obsolete = true;
+  old.supersededBy = design.id;
+}

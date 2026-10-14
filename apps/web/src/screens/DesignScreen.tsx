@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  ARCS, ARMORS, COMPUTERS, bestOf, defaultDesignName, HULLS, HULLS_BY_ID, MISSILE_RACKS, SHIELDS, SPECIALS, WEAPONS, WEAPON_MODS,
+  ARCS, ARMORS, COMPUTERS, bestOf, defaultDesignName, shipsBuilt, outdatedBy, HULLS, HULLS_BY_ID, MISSILE_RACKS, SHIELDS, SPECIALS, WEAPONS, WEAPON_MODS,
   DEFAULT_MISSILE_SHOTS, SHIP_STYLES, designStats, designStyle, raceShipStyle, knows, refinement, swapMountWeapon, validateDesign, weaponUnitCost,
   type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponDef, type WeaponModId, type WeaponMount,
 } from "@starlord/sim";
@@ -24,6 +24,8 @@ export function DesignScreen() {
   const [draft, setDraft] = useState<ShipDesign>(blank);
   // While the name is still the generated one it follows the hull (escort or capital names).
   const [autoName, setAutoName] = useState(true);
+  // The design being edited, if the draft was loaded with Edit; saving then changes that design.
+  const [editing, setEditing] = useState<string | null>(null);
   const [addWeapon, setAddWeapon] = useState("");
   const [refitTo, setRefitTo] = useState<string | null>(null);
 
@@ -56,11 +58,33 @@ export function DesignScreen() {
   const swapMount = (i: number, weaponId: string) => editMount(i, swapMountWeapon(me, draft, i, weaponId));
   const removeMount = (i: number) => update({ weapons: draft.weapons.filter((_, j) => j !== i) });
 
-  const save = () => {
+  const newId = () => {
     let n = 1;
     while (me.designs.some((d) => d.id === `u${view.turn}-${n}`)) n++;
-    const saved = { ...draft, id: `u${view.turn}-${n}`, obsolete: false };
+    return { id: `u${view.turn}-${n}`, n };
+  };
+  const editedDesign = editing ? me.designs.find((d) => d.id === editing) : undefined;
+  // Ships flying (or in dock) with the edited design: they keep its old version and become outdated.
+  const builtCount = editing
+    ? Object.values(view.fleets).filter((f) => f.ownerId === me.id).flatMap((f) => f.ships).filter((s) => s.designId === editing).reduce((a, s) => a + s.count, 0)
+    : 0;
+  const saveEdit = () => {
+    if (!editing) return;
+    // A design nothing was built or queued to yet is changed in place; otherwise the edit becomes a new version.
+    if (!shipsBuilt(view, me.id, editing)) {
+      session.issue({ type: "saveDesign", design: { ...draft, id: editing, obsolete: false } });
+      return;
+    }
+    const { id } = newId();
+    session.issue({ type: "saveDesign", design: { ...draft, id, obsolete: false }, replaces: editing });
+    setEditing(id);
+    setDraft({ ...draft, id });
+  };
+  const save = () => {
+    const { id, n } = newId();
+    const saved = { ...draft, id, obsolete: false };
     session.issue({ type: "saveDesign", design: saved });
+    setEditing(null);
     const next = autoName
       ? defaultDesignName({ ...me, designs: [...me.designs, saved] }, draft.hull)
       : `${draft.name.replace(/ Mk \d+$/, "")} Mk ${n + 1}`;
@@ -68,7 +92,8 @@ export function DesignScreen() {
   };
 
   // Colony ships, outpost ships and transports are fixed designs built straight from the build list.
-  const designs = me.designs.filter((d) => !d.fixed && !d.module);
+  // Earlier versions of edited designs live on only in the ships built to them (shown as outdated there).
+  const designs = me.designs.filter((d) => !d.fixed && !d.module && !d.supersededBy);
   const space = Math.min(100, (stats.spaceUsed / stats.spaceTotal) * 100);
 
   return (
@@ -78,7 +103,7 @@ export function DesignScreen() {
           <h2 style={{ margin: 0 }}>Ship designer</h2>
           <span className="spacer" />
           <Tip card={{ title: "New design", text: ["Start over with an empty frigate fitted with your best armor, shield and computer, named in your race's style."] }}>
-            <button className="small" onClick={() => { setDraft(blank()); setAutoName(true); }}>New</button>
+            <button className="small" onClick={() => { setDraft(blank()); setAutoName(true); setEditing(null); }}>New</button>
           </Tip>
         </div>
         <div className="blueprint">
@@ -93,7 +118,7 @@ export function DesignScreen() {
           <span className="blueprint-style">{SHIP_STYLES.find((s) => s.id === style)?.name} style</span>
           <span className="blueprint-hull">{HULLS_BY_ID[draft.hull]?.name} · {words(stats.role)}</span>
         </div>
-        <Tip block card={{ title: "Design name", text: ["Shown in build lists and fleets. Saving again adds a new Mk number, so older ships keep their design."] }}>
+        <Tip block card={{ title: "Design name", text: ["Shown in build lists and fleets."] }}>
           <input type="text" value={draft.name} onChange={(e) => { setAutoName(false); update({ name: e.target.value }); }} style={{ width: "100%" }} />
         </Tip>
         <div className="row">
@@ -176,9 +201,33 @@ export function DesignScreen() {
         </Tip>
         <StatsTable player={me} stats={stats} />
         {error && <div className="bad">{error}</div>}
-        <Tip block card={{ title: "Save design", text: ["Adds this design to your list so colonies can build it. Existing ships are not changed."], note: error ?? (!draft.name.trim() ? "Give the design a name first." : undefined) }}>
-          <button className="primary" style={{ width: "100%" }} disabled={readOnly || !!error || !draft.name.trim()} onClick={save}>Save design</button>
-        </Tip>
+        {editedDesign ? (
+          <>
+            <div className="muted">
+              Editing <b>{editedDesign.name}</b>.{" "}
+              {builtCount > 0
+                ? `${builtCount} ship${builtCount === 1 ? "" : "s"} built to it keep their old equipment and will show as outdated until refitted.`
+                : "No ships are built to it yet."}
+            </div>
+            <div className="row">
+              <Tip card={{ title: "Save changes", text: [
+                "Changes the design. Colonies build the new version from now on, including ships already queued.",
+                builtCount > 0
+                  ? `Your ${builtCount} ship${builtCount === 1 ? "" : "s"} of this design keep the old version and are marked outdated; refit them at a colony to bring them up to date.`
+                  : "No ships of it exist yet, so nothing becomes outdated.",
+              ], note: error ?? (!draft.name.trim() ? "Give the design a name first." : undefined) }}>
+                <button className="primary" style={{ flex: 1 }} disabled={readOnly || !!error || !draft.name.trim()} onClick={saveEdit}>Save changes</button>
+              </Tip>
+              <Tip card={{ title: "Save as new design", text: ["Keeps the original design as it is and adds this one as a separate design."] }}>
+                <button className="small" disabled={readOnly || !!error || !draft.name.trim()} onClick={save}>Save as new</button>
+              </Tip>
+            </div>
+          </>
+        ) : (
+          <Tip block card={{ title: "Save design", text: ["Adds this design to your list so colonies can build it. Existing ships are not changed."], note: error ?? (!draft.name.trim() ? "Give the design a name first." : undefined) }}>
+            <button className="primary" style={{ width: "100%" }} disabled={readOnly || !!error || !draft.name.trim()} onClick={save}>Save design</button>
+          </Tip>
+        )}
       </div>
 
       <div className="panel col">
@@ -186,6 +235,8 @@ export function DesignScreen() {
         {designs.map((d) => {
           const s = designStats(me, d);
           const valid = validateDesign(me, d) === null;
+          const outdated = Object.values(view.fleets).filter((f) => f.ownerId === me.id).flatMap((f) => f.ships)
+            .filter((x) => x.designId !== d.id && outdatedBy(me, x.designId)?.id === d.id).reduce((a, x) => a + x.count, 0);
           return (
             <div key={d.id} className="col" style={{ gap: 4, borderBottom: "1px solid var(--line)", paddingBottom: 6 }}>
             <div className="row design-row" style={{ opacity: d.obsolete ? 0.5 : 1 }}>
@@ -196,11 +247,19 @@ export function DesignScreen() {
                 <div className="muted" style={{ fontSize: 12 }}>
                   cost {fmt(s.cost)} · hits {fmt(s.hits)} · attack {fmt(s.attack)} · defense {fmt(s.defense)} · strength {fmt(s.strength)}
                   {!valid && <span className="bad"> · outdated parts</span>}
+                  {outdated > 0 && <span className="bad"> · {outdated} ship{outdated === 1 ? "" : "s"} still on an older version (use Refit…)</span>}
                 </div>
               </div>
               </Tip>
               <Tip card={{ title: "Copy", text: ["Loads this design into the designer so you can change it and save it as a new design."] }}>
-                <button className="small" onClick={() => { setDraft({ ...structuredClone(d), id: "", name: `${d.name}`, obsolete: false }); setAutoName(false); }}>Copy</button>
+                <button className="small" onClick={() => { setDraft({ ...structuredClone(d), id: "", name: `${d.name}`, obsolete: false }); setAutoName(false); setEditing(null); }}>Copy</button>
+              </Tip>
+              <Tip card={{ title: "Edit", text: [
+                "Loads this design into the designer to change it. Saving changes the design itself: colonies build the new version, including builds already queued.",
+                "Ships already built keep the equipment they were built with. They are marked outdated until you refit them to the new version at one of your colonies.",
+              ] }}>
+                <button className={`small${editing === d.id ? " active" : ""}`} disabled={readOnly}
+                  onClick={() => { setDraft(structuredClone(d)); setAutoName(false); setEditing(d.id); }}>Edit</button>
               </Tip>
               <Tip card={d.obsolete
                 ? { title: "Restore", text: ["Puts this design back in build lists."] }
