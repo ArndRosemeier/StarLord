@@ -317,3 +317,11 @@ export const BOMBARD_ROUNDS = 10;
  * between the nearest squares of the two footprints.
  */
 export const FOOTPRINT = { byHull: [1, 2, 2, 3, 3, 3], planet: 3 } as const;
+
+/**
+ * How the original's computer players pick which enemy colony at a star to
+ * attack (FUN_000e7dae): score = colony value x min(our strength / theirs,
+ * cap)^2. Value here is population (outposts count `outpostValue`), times
+ * `mindControlBonus` where a telepath can take it.
+ */
+export const ATTACK_TARGET = { ratioCap: 3, outpostValue: 1, mindControlBonus: 2 } as const;

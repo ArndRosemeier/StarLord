@@ -233,6 +233,7 @@ export const STANCE_TIPS: Record<"defend" | "attack", TipCard> = {
     text: [
       "Counts as the attacker in battle and fires on enemy planets and stations as well as ships.",
       "Needed to bombard or invade colonies. New ships never join an attacking fleet.",
+      "Combat has planet scale: it attacks one enemy planet per system each turn, the one you pick (Attack on the planet, or the question when the turn ends). All your fleets there join that battle, and bombing, invasion or mind control strike only that planet.",
     ],
   },
 };

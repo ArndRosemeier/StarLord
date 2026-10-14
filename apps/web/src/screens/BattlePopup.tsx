@@ -21,7 +21,7 @@ export function BattlePopup({ battles, onClose }: { battles: CombatReport[]; onC
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="row">
           <h3 style={{ margin: 0 }}>
-            Battle at {starName(view, report.starId)}: <span className={won ? "good" : "bad"}>{won ? "victory" : "defeat"}</span>
+            Battle at {starName(view, report.starId)}{report.colonyId && view.colonies[report.colonyId] ? <> over {view.colonies[report.colonyId]!.name}</> : null}: <span className={won ? "good" : "bad"}>{won ? "victory" : "defeat"}</span>
             {battles.length > 1 && <small className="muted"> ({index + 1} of {battles.length})</small>}
           </h3>
           <span className="spacer" />

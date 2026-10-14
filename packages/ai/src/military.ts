@@ -1,5 +1,5 @@
 import {
-  blocksInvasion, canMindControl, canReach, colonyDefenseStrength, distance, isHostile, portalStars, raiderHomeShips, relation, type Command, type Fleet, type PlayerView,
+  ATTACK_TARGET, attackTargetAt, blocksInvasion, population, canMindControl, canReach, colonyDefenseStrength, distance, isHostile, portalStars, raiderHomeShips, relation, type Command, type Fleet, type PlayerView,
 } from "@starlord/sim";
 import { orbitalOrders } from "./orbital.js";
 import { strategyOf } from "./strategies.js";
@@ -118,10 +118,19 @@ export function militaryOrders(view: PlayerView): Command[] {
       })
       .filter((t) => t.need <= power && canReach(view, view.viewer, main, t.star.id))
       .sort((a, b) => distance(rallyPos, a.star) - distance(rallyPos, b.star));
-    const t = targets[0];
+    // At the nearest star, the planet the original's computer players attack (FUN_000e7dae): the one worth most for
+    // how surely we beat what defends it.
+    const score = (x: (typeof targets)[number]) => {
+      const ratio = Math.min(ATTACK_TARGET.ratioCap, power / x.need);
+      const value = (x.c.outpost ? ATTACK_TARGET.outpostValue : population(x.c)) * (canMindControl(view, { ...main, starId: x.star.id }, x.c) ? ATTACK_TARGET.mindControlBonus : 1);
+      return value * ratio * ratio;
+    };
+    const t = targets.filter((x) => x.star.id === targets[0]?.star.id).sort((a, b) => score(b) - score(a))[0];
     if (t && fleetRoles(view, main).has("warship")) {
       out.push({ type: "setStance", fleetId: main.id, stance: "attack" });
-      out.push({ type: "moveFleet", fleetId: main.id, destStarId: t.star.id });
+      if (main.starId !== t.star.id) out.push({ type: "moveFleet", fleetId: main.id, destStarId: t.star.id });
+      // Every battle is fought over one planet: the one picked here.
+      out.push({ type: "attackPlanet", fleetId: main.id, colonyId: t.c.id });
       return out;
     }
   }
@@ -156,11 +165,9 @@ function raiderHomeStrength(view: PlayerView, homeStarId: string): number {
   return fleetStrength(view, { id: "", ownerId: raiders.id, x: 0, y: 0, starId: homeStarId, destStarId: null, ships, stance: "attack", name: "" });
 }
 
-/** At an enemy colony: land troops when we have them, otherwise keep bombing. */
+/** At an enemy colony: land troops on the planet we attack when we have them, otherwise keep bombing. */
 function invadeOrStay(view: PlayerView, f: Fleet, out: Command[]): boolean {
-  const enemyColony = Object.values(view.colonies).find(
-    (c) => view.planets[c.planetId]!.starId === f.starId && isHostile(view, view.viewer, c.ownerId),
-  );
+  const enemyColony = f.starId ? attackTargetAt(view, view.viewer, f.starId) : null;
   if (!enemyColony) return false;
   // Telepaths take the colony by mind control with any cruiser or larger in orbit.
   if ((!blocksInvasion(enemyColony) && fleetRoles(view, f).has("transport")) || canMindControl(view, f, enemyColony)) out.push({ type: "invade", fleetId: f.id, colonyId: enemyColony.id });

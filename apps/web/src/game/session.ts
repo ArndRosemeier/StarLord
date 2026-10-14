@@ -1,8 +1,8 @@
 import { audienceAnswer, automationOrders } from "@starlord/ai";
 import { saveAutomationPrefs } from "./automationPrefs";
 import {
-  newGame, newRecord, pendingBattle, pendingOrbital, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
-  type CombatReport, type OrbitalChoice, type OrbitalPrompt, type PendingBattle, type TacticalOrder, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type TurnOrders,
+  attackableColonies, newGame, newRecord, pendingBattle, pendingOrbital, pendingTarget, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
+  type CombatReport, type OrbitalChoice, type OrbitalPrompt, type PendingBattle, type TargetPrompt, type TacticalOrder, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type TurnOrders,
 } from "@starlord/sim";
 
 /**
@@ -39,6 +39,8 @@ export class GameSession {
    * (bomb, biological weapons, destroy, hold fire), with the turn's orders so far; the turn goes on with `finishOrbital`.
    */
   orbital: { prompt: OrbitalPrompt; orders: TurnOrders } | null = null;
+  /** The turn waits on which planet the player's fleets attack at a star (see `pendingTarget`). */
+  target: { prompt: TargetPrompt; orders: TurnOrders } | null = null;
   /** Battles of the last turn the player commanded (by report id); they were watched live, so they do not pop up again. */
   commandedBattles = new Set<string>();
   /** Bumped on every change so React can re-render cheaply. */
@@ -231,7 +233,7 @@ export class GameSession {
    * resolves by itself.
    */
   endTurn(opts: { commandBattles?: boolean } = {}): void {
-    if (this.state.over || this.battle || this.orbital) return;
+    if (this.state.over || this.battle || this.orbital || this.target) return;
     this.commandedBattles = new Set();
     this.resumeTurn(this.ordersForTurn(), opts.commandBattles ?? true);
   }
@@ -244,6 +246,28 @@ export class GameSession {
     if (orders !== "auto") this.commandedBattles.add(b.pending.reportId);
     const turn: TurnOrders = { ...b.orders, [me]: [...(b.orders[me] ?? []), { type: "battleOrders", battle: b.pending.key, orders }] };
     this.battle = null;
+    this.resumeTurn(turn, true);
+  }
+
+  /** Hands in which planet the player's fleets attack at the star the turn waits on, and goes on with the turn. */
+  finishTarget(colonyId: string): void {
+    const t = this.target;
+    if (!t || this.me === null) return;
+    const me = this.me;
+    const picks: Command[] = t.prompt.fleetIds.map((fleetId) => ({ type: "attackPlanet", fleetId, colonyId }));
+    const turn: TurnOrders = { ...t.orders, [me]: [...(t.orders[me] ?? []), ...picks] };
+    this.target = null;
+    this.resumeTurn(turn, true);
+  }
+
+  /** Attacks nothing at the star the turn waits on, as the original's Close button: the fleets there are set to defend. */
+  skipTarget(): void {
+    const t = this.target;
+    if (!t || this.me === null) return;
+    const me = this.me;
+    const hold: Command[] = t.prompt.fleetIds.map((fleetId) => ({ type: "setStance", fleetId, stance: "defend" }));
+    const turn: TurnOrders = { ...t.orders, [me]: [...(t.orders[me] ?? []), ...hold] };
+    this.target = null;
     this.resumeTurn(turn, true);
   }
 
@@ -274,6 +298,16 @@ export class GameSession {
     return set?.type === "setAutoBattles" ? !set.on : !this.state.players[this.me]?.autoBattles;
   }
 
+  /** Whether any of the player's fleets is at or bound for a star with more than one enemy colony, to skip the check otherwise. */
+  private mayChooseTarget(): boolean {
+    const me = this.me;
+    if (me === null) return false;
+    return Object.values(this.state.fleets).some((f) => {
+      const star = f.ownerId === me ? f.destStarId ?? f.starId : null;
+      return !!star && attackableColonies(this.state, me, star).length > 1;
+    });
+  }
+
   /** Whether any of the player's fleets is set to attack (only those strike from orbit without an order), to skip the check otherwise. */
   private mayStrikeFromOrbit(orders: TurnOrders): boolean {
     if (this.me === null) return false;
@@ -282,6 +316,15 @@ export class GameSession {
   }
 
   private resumeTurn(orders: TurnOrders, commandBattles: boolean): void {
+    // Every battle is fought over one planet: where the player's fleets could attack more than one, they pick it first.
+    if (commandBattles && this.me !== null && this.mayChooseTarget()) {
+      const prompt = pendingTarget(this.state, orders, this.me);
+      if (prompt) {
+        this.target = { prompt, orders };
+        this.refresh();
+        return;
+      }
+    }
     if (commandBattles && this.me !== null && this.commandsBattles(orders)) {
       const pending = pendingBattle(this.state, orders, this.me);
       if (pending) {

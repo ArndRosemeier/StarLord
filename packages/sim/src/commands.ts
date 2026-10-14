@@ -57,6 +57,11 @@ export type Command =
    */
   | { type: "colonize"; fleetId: Id; planetId: Id; module?: "colony" | "outpost" }
   | { type: "invade"; fleetId: Id; colonyId: Id }
+  /**
+   * Picks the enemy colony a fleet attacks at its star or the star it is bound for (and sets it to attack), or
+   * clears the pick with null. Every battle is fought over one planet; takeovers strike only that planet.
+   */
+  | { type: "attackPlanet"; fleetId: Id; colonyId: Id | null }
   | { type: "splitFleet"; fleetId: Id; ships: { designId: string; count: number }[] }
   | { type: "mergeFleets"; fleetIds: Id[] }
   | { type: "setStance"; fleetId: Id; stance: FleetStance }
@@ -276,6 +281,15 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       }, 0);
       if (troops <= 0) return fail(hasTrait(getRace(player.raceId), "telepathic") ? `fleet carries no troops and can't mind-control: ${mindControlProblem(state, playerId, c)}` : "fleet carries no troops");
       return OK;
+    }
+    case "attackPlanet": {
+      const f = ownFleet(state, playerId, cmd.fleetId);
+      if (!f) return fail("not your fleet");
+      if (cmd.colonyId === null) return OK;
+      const c = state.colonies[cmd.colonyId];
+      const at = c ? state.planets[c.planetId]!.starId : null;
+      if (!c || (at !== f.starId && at !== f.destStarId)) return fail("no such colony where the fleet is or is going");
+      return isHostile(state, playerId, c.ownerId) ? OK : fail("not at war with that colony's owner");
     }
     case "splitFleet": {
       const f = ownFleet(state, playerId, cmd.fleetId);

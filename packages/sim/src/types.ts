@@ -205,6 +205,11 @@ export interface Fleet {
   name: string;
   /** Colony this fleet's troops will invade once its defenses are down. */
   invadeTarget?: Id;
+  /**
+   * Enemy colony at its star (or the star it is bound for) this fleet attacks. Every battle is fought over one
+   * planet, and bombing, invasion and mind control strike only the planet the battle was over.
+   */
+  attackTarget?: Id;
   /** Star the fleet last left, for jump gates between your own colonies. */
   fromStarId?: Id;
   /** Fixed speed in parsecs per turn for monsters roaming the galaxy. */
@@ -642,6 +647,8 @@ export interface CombatReport {
   rounds: CombatRoundEvent[][];
   winner: PlayerId | null;
   losses: Record<string, number>;
+  /** The colony the battle was fought over, if any (every battle is fought over one planet). */
+  colonyId?: Id;
   /** What became of each beaten empire's ships left at the star once the battle was over. */
   aftermath?: CombatAftermath[];
 }

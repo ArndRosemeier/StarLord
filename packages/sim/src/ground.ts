@@ -1,3 +1,4 @@
+import { attackTargetAt, targetKey, type Targets } from "./targets.js";
 import { BUILDINGS_BY_ID } from "./data/buildings.js";
 import { MILITIA_PER_POP } from "./data/economy.js";
 import { DIFFICULTY_ORDER } from "./data/galaxy.js";
@@ -226,12 +227,15 @@ export function converterInOrbit(state: GameState, playerId: PlayerId, starId: I
     && f.ships.some((s) => s.count > 0 && hasConverter(findDesign(owner, s.designId))));
 }
 
-/** The colonies a fleet could strike from orbit now: enemy colonies at its star whose defenses are down, with no armed enemy left there. */
-function orbitTargets(state: GameState, f: Fleet, silenced: Silenced): Colony[] {
+/**
+ * The colony a fleet could strike from orbit now: the one planet its owner attacked at its star this turn, when its
+ * defenses are down and no armed enemy is left there. Combat has planet scale, so every other colony in the
+ * system is out of reach until a battle is fought over it.
+ */
+function orbitTargets(state: GameState, f: Fleet, silenced: Silenced, targets?: Targets): Colony[] {
   if (!f.starId || hostileArmedAt(state, f.starId, f.ownerId)) return [];
-  return Object.values(state.colonies).filter(
-    (c) => state.planets[c.planetId]!.starId === f.starId && isHostile(state, f.ownerId, c.ownerId) && silenced.has(c.id),
-  );
+  const c = targets ? state.colonies[targets.get(targetKey(f.ownerId, f.starId)) ?? ""] : attackTargetAt(state, f.ownerId, f.starId);
+  return c && state.planets[c.planetId]!.starId === f.starId && isHostile(state, f.ownerId, c.ownerId) && silenced.has(c.id) ? [c] : [];
 }
 
 /** What a fleet does to a colony when its owner gave no orbital order: attack-stance fleets and raiders bombard, without biological weapons. */
@@ -245,17 +249,17 @@ export class OrbitalPause {
 }
 
 /** Bombing, invasion, mind control and planet destruction after orbital combat. */
-export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
+export function groundPhase(ctx: TurnContext, silenced: Silenced, targets?: Targets): void {
   const { state, rng } = ctx;
   const outraged = new Set<PlayerId>();
   for (const f of Object.values(state.fleets)) {
     if (!f.starId || !state.fleets[f.id]) continue;
     const owner = state.players[f.ownerId]!;
     if (owner.kind === "monsters") continue;
-    const targets = orbitTargets(state, f, silenced);
-    if (targets.length === 0) continue;
+    const open = orbitTargets(state, f, silenced, targets);
+    if (open.length === 0) continue;
 
-    const invadeTarget = f.invadeTarget ? targets.find((c) => c.id === f.invadeTarget) : undefined;
+    const invadeTarget = f.invadeTarget ? open.find((c) => c.id === f.invadeTarget) : undefined;
     // Telepaths take a beaten colony by will alone, barrier shield or not; their troops stay aboard.
     if (invadeTarget && canMindControl(state, f, invadeTarget)) {
       delete f.invadeTarget;
@@ -267,7 +271,7 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced): void {
       invade(ctx, f, invadeTarget);
       continue;
     }
-    for (const c of targets) {
+    for (const c of open) {
       if (!state.colonies[c.id] || !state.fleets[f.id]) continue;
       const choice = orbitalChoiceFor(ctx, f, c);
       if (choice === "none") continue;

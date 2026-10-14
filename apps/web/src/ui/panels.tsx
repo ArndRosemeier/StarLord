@@ -2,7 +2,7 @@ import { STANCE_TIPS, climateTip, crewTip, gravityTip, mineralsTip, sizeTip, spe
 import { Tip } from "./Tip";
 import { useState, type ReactNode } from "react";
 import {
-  CLIMATES, canReach, crewLevel, crewName, designStats, findDesign, getRace, hasTrait, mindControlProblem, outdatedBy, refitCost, isHostile, maxPopulation, movementHalted, population, relation, travelGroup, travelSpeed, travelTurns,
+  CLIMATES, attackTargetAt, canReach, colonyDefenseStrength, crewLevel, crewName, designStats, findDesign, getRace, hasTrait, mindControlProblem, outdatedBy, refitCost, isHostile, maxPopulation, movementHalted, population, relation, travelGroup, travelSpeed, travelTurns,
   type Fleet, type Planet, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "./hooks";
@@ -54,6 +54,9 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
   const fleets = Object.values(view.fleets).filter((f) => f.starId === star.id);
   const fleet = fleetId ? view.fleets[fleetId] : undefined;
   const myFleetHere = fleet && fleet.ownerId === me.id && fleet.starId === star.id ? fleet : undefined;
+  // The selected fleet of yours at or bound for this star picks the one planet it attacks here.
+  const attacker = !readOnly && fleet && fleet.ownerId === me.id && (fleet.destStarId ?? fleet.starId) === star.id ? fleet : undefined;
+  const target = attacker ? attackTargetAt(view, me.id, star.id) : null;
   const telepath = hasTrait(race, "telepathic");
   const troops = myFleetHere?.ships.reduce((n, s) => {
     const d = findDesign(me, s.designId);
@@ -124,6 +127,13 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
                   onClick={() => session.issue({ type: "invade", fleetId: myFleetHere!.id, colonyId: colony!.id })}>Mind control</button>
               )}
               {canInvade && <button className="small danger" onClick={() => session.issue({ type: "invade", fleetId: myFleetHere!.id, colonyId: colony!.id })}>Invade ({troops})</button>}
+              {attacker && colony && isHostile(view, me.id, colony.ownerId) && (
+                <button className={`small danger${target?.id === colony.id ? " active" : ""}`}
+                  title={`${attacker.name} attacks ${colony.name} (combat strength of its defenses ${fmt(colonyDefenseStrength(view, colony))}). Every battle is fought over one planet: all your fleets in the system join it, and bombing, invasion or mind control strike only that planet this turn.${target?.id === colony.id ? " This is the planet your fleets attack here." : ""}`}
+                  onClick={() => session.issue({ type: "attackPlanet", fleetId: attacker.id, colonyId: colony.id })}>
+                  {target?.id === colony.id ? "Attacking" : "Attack"}
+                </button>
+              )}
             </div>
           </div>
         );
