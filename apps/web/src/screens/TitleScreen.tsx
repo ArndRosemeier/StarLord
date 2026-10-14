@@ -5,13 +5,17 @@ import { latestSave } from "../game/saves";
 import { LoadGame } from "./LoadGame";
 import { SettingsPanel } from "./SettingsPanel";
 import { useHelp } from "../help/HelpDialog";
-import { HeroScene } from "../title/heroScene";
+import type { TitleScene3D } from "../title/titleScene3d";
+import { webglAvailable } from "../three/webgl";
 import { RaceShowcase } from "../title/RaceShowcase";
 import { NewsTicker } from "../title/NewsTicker";
 import { VERSION } from "../changelog/changelog";
 import { WhatsNew } from "../changelog/WhatsNew";
 import { HallOfFame } from "./HallOfFame";
 import { openContactMail } from "../title/contact";
+
+/** Painted nebulae behind the title scene; each start picks one, maybe mirrored and slightly re-tinted. */
+const NEBULAE = ["art/title-nebula.webp", "art/title-nebula-2.webp", "art/title-nebula-3.webp"];
 
 const KONAMI = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
 
@@ -28,7 +32,7 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-/** The game's front door: living key art, theme music, the races and the main menu. */
+/** The game's front door: a living 3D space scene, theme music, the races and the main menu. */
 export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: string) => void; onStart: (s: GameSession) => void }) {
   const [settings, setSettings] = useState(false);
   const [whatsNew, setWhatsNew] = useState(false);
@@ -38,23 +42,41 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
   const [leaving, setLeaving] = useState(false);
   const openHelp = useHelp();
   const reduced = usePrefersReducedMotion();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const artRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<HeroScene | null>(null);
+  const sceneRef = useRef<TitleScene3D | null>(null);
+  const [sceneReady, setSceneReady] = useState(false);
+  const [nebula] = useState(() => ({
+    backgroundImage: `url(${NEBULAE[Math.floor(Math.random() * NEBULAE.length)]})`,
+    scale: Math.random() < 0.5 ? "-1 1" : undefined,
+    filter: `hue-rotate(${Math.round(Math.random() * 50 - 25)}deg)`,
+  }));
   const latest = latestSave();
 
   useEffect(() => { audio.setMood("menu"); }, []);
 
+  // The 3D scene loads after the title is up; until it is ready the painted nebula shows on its own.
   useEffect(() => {
-    const scene = new HeroScene(canvasRef.current!, artRef.current, {
-      onToast: (text) => setToast({ text, id: Date.now() }),
-      onSound: (effect) => audio.play(effect),
-    }, reduced);
-    sceneRef.current = scene;
-    scene.start();
+    if (!webglAvailable()) return;
+    let cancelled = false;
+    let scene: TitleScene3D | null = null;
+    void import("../title/titleScene3d").then(async ({ TitleScene3D }) => {
+      if (cancelled || !stageRef.current) return;
+      scene = new TitleScene3D(stageRef.current, artRef.current, {
+        onToast: (text) => setToast({ text, id: Date.now() }),
+        onSound: (effect) => audio.play(effect),
+      }, reduced);
+      sceneRef.current = scene;
+      await scene.ready();
+      if (cancelled) return;
+      scene.start();
+      setSceneReady(true);
+    });
     return () => {
-      scene.destroy();
+      cancelled = true;
+      scene?.destroy();
       sceneRef.current = null;
+      setSceneReady(false);
     };
   }, [reduced]);
 
@@ -89,9 +111,9 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
 
   return (
     <div className={`title-hero${leaving ? " leaving" : ""}${reduced ? " still" : ""}`}>
-      <div className="title-art" ref={artRef} />
+      <div className="title-art" ref={artRef} style={nebula} />
       <div className="title-vignette" />
-      <canvas className="title-canvas" ref={canvasRef} onClick={(e) => sceneRef.current?.click(e.clientX, e.clientY)} />
+      <div className={`title-canvas${sceneReady ? " ready" : ""}`} ref={stageRef} onClick={(e) => sceneRef.current?.click(e.clientX, e.clientY)} />
       <div className="title-content">
         <h1 className="title-logo" aria-label="StarLord">
           {"STARLORD".split("").map((c, i) => <span key={i} className="title-letter" style={{ ["--i" as string]: i }} aria-hidden="true">{c}</span>)}

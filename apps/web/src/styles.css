@@ -129,15 +129,18 @@ img.planet-img { display: block; justify-self: center; object-fit: contain; flex
 /* ---- title screen */
 .title-hero { position: relative; height: 100%; overflow: hidden; background: #000; }
 .title-art {
-  position: absolute; inset: -3%; background: url(/art/title.webp) center / cover no-repeat;
+  position: absolute; inset: -3%; background: url(/art/title-nebula.webp) center / cover no-repeat;
   will-change: transform; transform-origin: 50% 50%;
 }
 .title-vignette {
-  position: absolute; inset: 0;
+  position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(ellipse at 50% 30%, transparent 30%, rgba(0,0,0,0.55) 100%),
     linear-gradient(transparent 55%, rgba(4,5,11,0.85));
 }
-.title-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+.title-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; opacity: 0; transition: opacity 1.2s; }
+.title-canvas.ready { opacity: 1; }
+.title-hero.leaving .title-canvas::after { content: ""; position: absolute; inset: 0; background: #fff; animation: title-jump-flash 1.4s ease-in both; pointer-events: none; }
+@keyframes title-jump-flash { 0%, 70% { opacity: 0; } 100% { opacity: 0.9; } }
 .title-content {
   position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; padding: 9vh 16px 54px;
   pointer-events: none; transition: opacity 0.5s, transform 0.9s ease-in;
