@@ -5,7 +5,7 @@ import {
 import { me, myFleets, personality, shipStats } from "./util.js";
 
 /** Aggression from which a computer ruler releases biological weapons despite the outrage (an estimate). */
-const BIO_AGGRESSION = 0.6;
+export const BIO_AGGRESSION = 0.6;
 
 const carries = (view: PlayerView, f: Fleet, effect: "stellarConverter" | "spores") => {
   const owner = me(view);

@@ -2,6 +2,7 @@ import {
   AI_PEACE, COUNTER_PRICE, COVET, DEMAND_ANSWER, NO_WAR_MULT, PATIENCE, PEACE_ANSWER, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS,
   TEMPERAMENTS, TREATY_ANSWER, TREATY_YIELD, TRIBUTE_PERCENTS, TRUST, type Temperament, PROPOSAL_LIFETIME,
 } from "./data/diplomacy.js";
+import { TEMPERAMENT_ORDER, TEMPERAMENT_ROLL, TEMPERAMENT_ROWS } from "./data/aiPersonality.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import { leaderTradeBonus } from "./leaders.js";
 import { raceDiplomacyPoints } from "./raceEffects.js";
@@ -232,12 +233,23 @@ export function fixedRoll(state: GameState, key: string, n: number): number {
   return 1 + (h % n);
 }
 
-/** A computer empire's temperament, after the original's six AI personalities; fixed for the game. */
+/**
+ * A computer empire's temperament, after the original's six AI personalities;
+ * fixed for the game. Rolled on its race's row (TEMPERAMENT_ROWS): d10 + 1 -
+ * difficulty, so harder games lean every race toward its hostile end.
+ */
 export function temperament(state: GameState, playerId: PlayerId): Temperament | null {
   const p = state.players[playerId];
   if (!p || p.kind !== "empire" || p.isHuman) return null;
-  const all = Object.keys(TEMPERAMENTS) as Temperament[];
-  return all[fixedRoll(state, `temperament${playerId}`, all.length) - 1]!;
+  return rolledTemperament(state, playerId);
+}
+
+/** The temperament roll for any empire, human or not (a human's only steers its automated areas). */
+export function rolledTemperament(state: GameState, playerId: PlayerId): Temperament {
+  const p = state.players[playerId]!;
+  const row = TEMPERAMENT_ROWS[getRace(p.raceId).assetKey] ?? TEMPERAMENT_ROWS.default!;
+  const index = fixedRoll(state, `temperament${playerId}`, TEMPERAMENT_ROLL.die) + TEMPERAMENT_ROLL.shift - difficultyLevel(state);
+  return TEMPERAMENT_ORDER[row[Math.max(0, Math.min(row.length - 1, index))]!]!;
 }
 
 /** Records a proposal's cost to both sides' patience; returns the listener's patience before it and the listener's roll. */

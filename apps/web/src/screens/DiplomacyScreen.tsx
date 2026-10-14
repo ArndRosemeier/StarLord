@@ -10,7 +10,7 @@ import { Envoy } from "../ui/panels";
 import { describeProposal } from "../diplomacy/terms";
 import { mood, type AudienceRequest } from "./Audience";
 import { CouncilResult, castBallot, councilSession, mayCastCouncilVote } from "./CouncilPopup";
-import { activeEffects, incomingEffect, TIRED_TEXT, temperamentText } from "../diplomacy/effects";
+import { activeEffects, incomingEffect, leaningsText, TIRED_TEXT, temperamentText } from "../diplomacy/effects";
 
 /** Your relation with them, where it drifts, and what holds it up or down. */
 function AttitudeBreakdown({ them }: { them: number }) {
@@ -129,6 +129,16 @@ export function DiplomacyScreen({ onAudience, onCouncil }: { onAudience: (r: Aud
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row"><span className="dot" style={{ background: p.color }} /><b>{p.name}</b></div>
                   <div className="muted">{race.plural} · {government(p).name}{temperamentText(view, p.id) && <> · <span className="explained" title={temperamentText(view, p.id)!.text}>{temperamentText(view, p.id)!.name}</span></>}</div>
+                  {(() => {
+                    const lean = leaningsText(view, p.id);
+                    return lean && (
+                      <div className="muted">
+                        <span className="explained" title={lean.objective.text}>{lean.objective.name}</span>
+                        {" · "}
+                        <span className="explained" title={lean.doctrine.text}>{lean.doctrine.name}</span>
+                      </div>
+                    );
+                  })()}
                   <div className="mood-meter" style={{ marginTop: 10 }} title={`Relation with you: ${feel.text}`}>
                     <span style={{ left: `${(attitude(view, p.id, me.id) + 100) / 2}%` }} />
                   </div>

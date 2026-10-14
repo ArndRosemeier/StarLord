@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  AI_AI_PEACE, AI_TREATIES, COUNCIL_VOTE, COUNTER_PRICE, PATIENCE, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS, Rng, TEMPERAMENTS, TREATY_ANSWER, TIER_OF_TECH,
+  AI_AI_PEACE, AI_TREATIES, COUNCIL_VOTE, COUNTER_PRICE, PATIENCE, PEACE_TREATY_TURNS, RELATION, RELATION_EVENTS, Rng, TEMPERAMENTS, TEMPERAMENT_ORDER, TEMPERAMENT_ROWS, TREATY_ANSWER, TIER_OF_TECH,
   attitude, audienceTired, baselineOf, canSign, councilVotes, counterPrice, declareWar, demandAnswer, destructibleBuildings, driftStep,
   diplomacyTick, empireExpenses, empireIncome, giftWorth, makePeace, newGame, patience, peaceLossTerm, playerView, previewOrders, processTurn, rampStep,
   relKey, relation, relationEvent, relationsTick, reputationOf, scaleRelationEvent, setRelation, spyEdge, strikesOf, temperament, treatyAcceptChance,
@@ -17,9 +17,11 @@ function met(seed: string, races = ["terran", "felhari"], extra: object = {}): G
 }
 
 /** A game where player 1 (a computer empire) has the given temperament; player 0 is human. */
-function withTemper(t: Temperament, races = ["felhari", "kordex"]): GameState {
+function withTemper(t: Temperament, races?: string[]): GameState {
+  // Temperaments come from each race's row, so pick a second race that can roll this one.
+  const second = Object.keys(TEMPERAMENT_ROWS).find((r) => r !== "default" && TEMPERAMENT_ROWS[r]!.some((x) => TEMPERAMENT_ORDER[x] === t))!;
   for (let i = 0; i < 400; i++) {
-    const s = met(`temper${t}${i}`, races, { humanPlayers: [0] });
+    const s = met(`temper${t}${i}`, races ?? ["felhari", second], { humanPlayers: [0] });
     if (temperament(s, 1) === t) return s;
   }
   throw new Error(`no seed gives ${t}`);
@@ -481,7 +483,7 @@ describe("galactic council", () => {
   });
 
   it("a computer voter weighs its mood toward a human candidate, and only a human one", () => {
-    const s = withTemper("pacifistic", ["felhari", "kordex", "terran"]);
+    const s = withTemper("pacifistic", ["felhari", "ythari", "terran"]);
     s.attitude[1] = { 0: 20, 2: 20 };
     const mood = TEMPERAMENTS.pacifistic.vsHumans;
     // Player 0 is human, player 2 (charismatic Terrans) a computer empire.

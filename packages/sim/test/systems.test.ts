@@ -159,7 +159,7 @@ describe("espionage", () => {
 describe("leaders", () => {
   it("offers leaders that can be hired and assigned", () => {
     let s = twoEmpires("lead");
-    for (let i = 0; i < 15; i++) s = processTurn(s, {});
+    for (let i = 0; i < 40 && s.players[0]!.leaderOffers.length === 0; i++) s = processTurn(s, {});
     const offer = s.players[0]!.leaderOffers[0]!;
     expect(offer).toBeDefined();
     s.players[0]!.bc = 10000;

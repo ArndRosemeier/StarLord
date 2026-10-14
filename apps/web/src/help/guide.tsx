@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { ALL_DOMAINS, DOMAIN_INFO, STRATEGIES } from "@starlord/ai";
 import {
-  ANDROIDS, ASSIMILATION, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_HIT,
+  OBJECTIVES, RACES, RESEARCH_GROUP_NAMES, SHIP_SPECIALTIES, SPECIALS_BY_ID, TEMPERAMENT_ORDER, TEMPERAMENT_ROLL, TEMPERAMENT_ROWS, WEAPON_LEANS,
+  type ResearchGroup, ANDROIDS, ASSIMILATION, PATIENCE, TEMPERAMENTS, TREATY_ANSWER, BUY_PRICE_PER_POINT, GROWTH, SPECIAL_INCOME, BASE_COMMAND_POINTS, BASE_SCAN_RANGE, BLOCKADE_PENALTY, BOMB_DAMAGE_PER_HIT,
   CAPTURE_TECH, COMMAND_OVERAGE_COST, SPY, COUNCIL, COUNCIL_FIRST,
   BOARDING, DEPLOY, EXPLOSION, HULLS_BY_ID, RETREAT, SIDE_ATTACK_BY_IMMOBILE_SIZE, STATION_ARMS, ANTI_MISSILE, BOMBARD_ROUNDS,
   COMBAT_BOMB_RANGE, CRAFT, DAMAGE, PLANET_POPULATION_HP,
@@ -712,6 +713,21 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
 
         can only make peace or war.
       </P>
+      <h3>Computer rulers' personalities</h3>
+      <P>
+        Like in the original, every computer ruler gets a temperament, an objective and a ship doctrine at the start,
+        fixed for the game. The temperament is rolled on its race's own row of ten: a d{TEMPERAMENT_ROLL.die} +{" "}
+        {TEMPERAMENT_ROLL.shift} minus the difficulty (tutor 0 to impossible 4), so harder games roll the hostile end.
+        Each race can be: {RACES.map((r) => `${r.plural} ${[...new Set((TEMPERAMENT_ROWS[r.assetKey] ?? TEMPERAMENT_ROWS.default!).map((x) => TEMPERAMENTS[TEMPERAMENT_ORDER[x]!].name))].join("/")}`).join("; ")}.
+        The objective, weapon lean and ship specialty are drawn by weights that the race's picks raise (creative races
+        lean hard toward Technologist, +50 ship attack toward Militarist and beams, cybernetic races toward armor).
+        The Diplomacy screen shows each ruler's objective and doctrine; hover them for what they do.
+      </P>
+      <Ul>
+        {Object.values(OBJECTIVES).map((o) => <li key={o.name}><b>{o.name}</b>: {o.text} Researches {Object.keys(o.research).map((g) => RESEARCH_GROUP_NAMES[g as ResearchGroup]).join(", ")} early.</li>)}
+        {Object.values(WEAPON_LEANS).map((w) => <li key={w.name}><b>{w.name}</b>: {w.text} Researches {Object.keys(w.research).map((g) => RESEARCH_GROUP_NAMES[g as ResearchGroup]).join(", ")} early.</li>)}
+        {Object.values(SHIP_SPECIALTIES).map((sp) => <li key={sp.name}><b>{sp.name} specialty</b>: {sp.text} Fits {sp.specials.map((id) => SPECIALS_BY_ID[id]?.name ?? id).join(", ")} first.</li>)}
+      </Ul>
       <h3>How computer rulers answer</h3>
       <P>
         A computer ruler accepts a treaty when its relation with you, plus a d100, minus what the treaty asks of it

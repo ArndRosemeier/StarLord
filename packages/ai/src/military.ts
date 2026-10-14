@@ -3,7 +3,7 @@ import {
 } from "@starlord/sim";
 import { orbitalOrders } from "./orbital.js";
 import { strategyOf } from "./strategies.js";
-import { colonyStar, fleetRoles, fleetStrength, hostileFleetsNear, me, myColonies, myFleets, personality, starById } from "./util.js";
+import { BOLD_AGGRESSION, BOLD_RETREAT, CAUTIOUS_RETREAT, colonyStar, fleetRoles, fleetStrength, hostileFleetsNear, me, myColonies, myFleets, personality, starById } from "./util.js";
 
 /**
  * How each military strategy fights: retreat threshold (null keeps the personality's),
@@ -38,7 +38,7 @@ export function militaryOrders(view: PlayerView): Command[] {
   const out: Command[] = orbitalOrders(view);
   const pers = personality(view);
   const posture = POSTURE[strategyOf(view, "military")] ?? POSTURE.balanced!;
-  const wantDoctrine = posture.retreatBelow ?? (pers.aggression > 0.6 ? 0.3 : 0.55);
+  const wantDoctrine = posture.retreatBelow ?? (pers.aggression > BOLD_AGGRESSION ? BOLD_RETREAT : CAUTIOUS_RETREAT);
   if (Math.abs(player.doctrine.retreatBelow - wantDoctrine) > 0.01) {
     out.push({ type: "setDoctrine", doctrine: { retreatBelow: wantDoctrine, focus: "nearest" } });
   }

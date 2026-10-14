@@ -1,5 +1,5 @@
 import {
-  designStats, distance, findDesign, getRace, isHostile, type Colony, type DesignStats, type Fleet, type PlayerView, type Star,
+  designStats, distance, findDesign, getRace, isHostile, leanings, type Objective, type Temperament, type Colony, type DesignStats, type Fleet, type PlayerView, type Star,
 } from "@starlord/sim";
 
 export function me(view: PlayerView) {
@@ -62,17 +62,37 @@ export function nearest<T extends { x: number; y: number }>(from: { x: number; y
   return best;
 }
 
+/** How hard each temperament presses its fights (StarLord's tuning of the original's personalities). */
+export const TEMPER_AGGRESSION: Record<Temperament, number> = {
+  xenophobic: 0.6, ruthless: 0.7, aggressive: 0.8, erratic: 0.55, honorable: 0.4, pacifistic: 0.3,
+};
+/** Share of non-farmers on research, by objective. */
+export const OBJECTIVE_SCIENCE: Record<Objective, number> = {
+  diplomat: 0.35, militarist: 0.3, expansionist: 0.3, technologist: 0.5, industrialist: 0.25, ecologist: 0.35,
+};
+/** Extra aggression for a militarist. */
+export const MILITARIST_AGGRESSION = 0.1;
+/** Above this aggression an empire's fleets fight on until BOLD_RETREAT of their strength is left, else CAUTIOUS_RETREAT. */
+export const BOLD_AGGRESSION = 0.6;
+export const BOLD_RETREAT = 0.3;
+export const CAUTIOUS_RETREAT = 0.55;
+
 /**
- * Each AI empire's leanings, from its race's strengths plus a stable hash so
- * two empires of different races never play quite alike. No randomness.
+ * Each AI empire's leanings: its temperament and objective (rolled at the
+ * start like the original's computer players, see the sim's leanings) plus
+ * its race's strengths. No randomness beyond the game's fixed rolls.
  */
 export function personality(view: PlayerView): { aggression: number; science: number } {
-  const p = me(view);
+  return personalityOf(view, view.viewer);
+}
+
+/** Any empire's leanings as its AI plays them (the diplomacy screen shows them for computer rulers). */
+export function personalityOf(view: PlayerView, playerId: number): { aggression: number; science: number } {
+  const p = view.players[playerId]!;
   const picks = getRace(p.raceId).picks;
-  let h = 0;
-  for (const ch of p.raceId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const l = leanings(view, playerId);
   const military = picks.shipAttack + picks.shipDefense + picks.groundCombat;
-  const aggression = 0.3 + (h % 5) / 10 + 0.05 * military;
-  const science = 0.3 + ((h >> 3) % 3) / 20 + 0.06 * (picks.science - picks.industry);
+  const aggression = TEMPER_AGGRESSION[l.temperament] + (l.objective === "militarist" ? MILITARIST_AGGRESSION : 0) + 0.05 * military;
+  const science = OBJECTIVE_SCIENCE[l.objective] + 0.06 * (picks.science - picks.industry);
   return { aggression: Math.min(1, aggression), science: Math.max(0.15, Math.min(0.6, science)) };
 }

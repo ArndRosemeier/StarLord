@@ -85,7 +85,12 @@ export function automationOrders(view: PlayerView): Command[] {
 
 export { STRATEGIES, strategyOf, type AutomationDomain, type StrategyInfo } from "./strategies.js";
 export { colonizationOrders, colonizationTargets, outpostTargets } from "./colonization.js";
-export { bestWarship } from "./design.js";
+export { DOCTRINE_MARGIN, bestWarship } from "./design.js";
+export { LEAN_PULL } from "./research.js";
+export { BIO_AGGRESSION } from "./orbital.js";
+export {
+  BOLD_AGGRESSION, BOLD_RETREAT, CAUTIOUS_RETREAT, MILITARIST_AGGRESSION, OBJECTIVE_SCIENCE, TEMPER_AGGRESSION, personalityOf,
+} from "./util.js";
 export { answerOrders, answerProposal, audienceAnswer } from "./diplomacy.js";
 export * from "./simulate.js";
 export * from "./combatLab.js";
