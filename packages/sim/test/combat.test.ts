@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  EXPLOSION, HULLS_BY_ID, Rng, bestBeam, bestMissile, bestPointDefenseBeam, canBuildShips, colonyDefenseStrength,
+  EXPLOSION, HULLS_BY_ID, Rng, bestBeam, bestMissile, bestPointDefenseBeam, canBuildShips, stationProfile, colonyDefenseStrength,
   commandPointsUsed, designStats, findDesign, newGame, prepareBattle, processTurn, resolveCombat, stationWeapons,
   validateDesign, weaponUnitCost,
   type CombatReport, type CombatSide, type Fleet, type GameState, type ShipDesign,
@@ -156,6 +156,19 @@ describe("original station, retreat, boarding and explosion rules", () => {
     expect(more.count).toBe(Math.floor((hull.space * 1.25) / 4 / unit(beam.id, ["heavyMount"])));
   });
 
+  it("arms stations with the known beam of highest maximum damage, as the original picks it", () => {
+    const s = twoEmpires();
+    const p = s.players[0]!;
+    p.techs.push("gaussCannon", "phasor", "plasmaCannon");
+    // Plasma Cannon (6-30) beats Gauss Cannon (18) and Phasor (5-20) although they deal more per space.
+    expect(bestBeam(p).id).toBe("plasmaCannon");
+    const w = stationWeapons(p, HULLS_BY_ID.starBase);
+    expect(w.some((m) => m.weaponId === "plasmaCannon" && m.mods?.includes("heavyMount"))).toBe(true);
+    p.techs.push("disruptorCannon");
+    expect(bestBeam(p).id).toBe("disruptorCannon");
+    expect(stationProfile(p, "starBase").weapons.some((m) => m.weaponId === "disruptorCannon")).toBe(true);
+  });
+
   it("fights a station as a ship hull of its size with a Regular crew and free specials", () => {
     const s = twoEmpires();
     const c = home(s, 1);
@@ -169,6 +182,20 @@ describe("original station, retreat, boarding and explosion rules", () => {
     expect(st.maxArmor).toBe(HULLS_BY_ID.starBase.armor * 3);
     expect(st.fx.beamAttack).toBe(50);
     expect(st.computer?.max).toBe(5);
+  });
+
+  it("always puts the colony's planet in a battle beside its station, as the original does", () => {
+    const s = twoEmpires();
+    const c = home(s, 1);
+    c.buildings = [...c.buildings.filter((b) => !["groundBatteries", "missileBase", "spaceMines"].includes(b)), "starBase"];
+    const a = addFleet(s, 0, s.players[1]!.homeStarId, [{ designId: "frigate", count: 1 }], "defend");
+    const battle = prepareBattle(s, new Rng({ s: 1 }), side(0, [a]), side(1, [], c));
+    const planet = battle.units.find((u) => u.kind === "planet" && u.side === 1)!;
+    expect(planet.alive).toBe(true);
+    expect(battle.units.some((u) => u.kind === "station" && u.side === 1)).toBe(true);
+    // A fleet that did not come for the planet still only shoots at the guns firing on it.
+    const ship = battle.units.find((u) => u.side === 0)!;
+    expect(battle.targets(ship).map((u) => u.kind)).toEqual(["station"]);
   });
 
   it("gives a side flat beam attack from its battlestation, star fortress or defended planet", () => {

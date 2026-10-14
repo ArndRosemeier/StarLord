@@ -424,23 +424,21 @@ export function bestOf<T extends { requires: string }>(player: Player, items: T[
   return items.filter((i) => knows(player, i.requires)).at(-1);
 }
 
-/** Damage per space of a weapon at the player's refinement, for picking the best one. */
-function weaponValue(player: Player, w: WeaponDef, mods: WeaponModId[] = []): number {
-  const m: WeaponMount = { weaponId: w.id, count: 1, mods };
-  return mountFirepower(m, 50) / weaponUnitCost(player, m).space;
-}
-
-/** The player's best beam weapon by damage for its space. */
+/**
+ * The player's best beam weapon, as the original picks it for stations, ground batteries and events: the known beam
+ * with the highest maximum damage (the earlier one on a tie). Laser Cannon when none is known.
+ */
 export function bestBeam(player: Player): WeaponDef {
   const beams = WEAPONS.filter((w) => w.kind === "beam" && knows(player, w.requires));
   if (beams.length === 0) return WEAPONS.find((w) => w.id === "laserCannon")!;
-  return beams.reduce((best, w) => (weaponValue(player, w) > weaponValue(player, best) ? w : best));
+  return beams.reduce((best, w) => (w.damageMax > best.damageMax ? w : best));
 }
 
-/** The player's hardest-hitting missile. */
+/** The player's hardest-hitting missile: the known one with the highest damage (the earlier one on a tie). */
 export function bestMissile(player: Player): WeaponDef {
   const missiles = WEAPONS.filter((w) => w.kind === "missile" && knows(player, w.requires));
-  return missiles.at(-1) ?? WEAPONS.find((w) => w.kind === "missile")!;
+  if (missiles.length === 0) return WEAPONS.find((w) => w.kind === "missile")!;
+  return missiles.reduce((best, w) => (w.damageMax > best.damageMax ? w : best));
 }
 
 /** The modifications of `wanted` a weapon takes and the player has refined it far enough for. */
@@ -478,7 +476,10 @@ export function swapMountWeapon(player: Player, design: ShipDesign, index: numbe
 export function bestPointDefenseBeam(player: Player): WeaponDef | null {
   const beams = WEAPONS.filter((w) => w.kind === "beam" && w.mods.includes("pointDefense") && knows(player, w.requires));
   if (beams.length === 0) return null;
-  return beams.reduce((best, w) => (weaponValue(player, w, ["pointDefense"]) > weaponValue(player, best, ["pointDefense"]) ? w : best));
+  // The original's score: maximum damage per 100 space of a point-defense mount, plus the maximum damage; later wins ties.
+  const score = (w: WeaponDef) =>
+    Math.floor((w.damageMax * 100) / weaponUnitCost(player, { weaponId: w.id, count: 1, mods: ["pointDefense"] }).space) + w.damageMax;
+  return beams.reduce((best, w) => (score(w) >= score(best) ? w : best));
 }
 
 /** Splits a weapon count into mounts of at most `perSlot`. */

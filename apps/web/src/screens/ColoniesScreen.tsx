@@ -98,7 +98,7 @@ function BuildingList({ colony }: { colony: Colony }) {
       <div className="row">
         {colony.buildings.length === 0 && <span className="muted">None</span>}
         {colony.buildings.map((b) => (
-          <Tip key={b} card={BUILDINGS_BY_ID[b] ? () => buildingTip(b) : null}>
+          <Tip key={b} card={BUILDINGS_BY_ID[b] ? () => buildingTip(b, me) : null}>
             <span
               className={`chip${readOnly ? "" : " pickable"}${b === target ? " active" : ""}`}
               role={readOnly ? undefined : "button"}
@@ -321,7 +321,7 @@ function AddToQueue({ onAdd, buildings, designs, projects, colony, industry }: {
         {sortedBuildings.map((b) => {
           const def = BUILDINGS_BY_ID[b]!;
           return (
-            <Tip key={b} block card={() => buildingTip(b)}>
+            <Tip key={b} block card={() => buildingTip(b, me)}>
               <button className="small" onClick={() => onAdd({ kind: "building", id: b })}>
                 <span className="name">{def.name}</span> <span className="muted">{def.cost}</span>
               </button>

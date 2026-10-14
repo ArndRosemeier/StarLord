@@ -6,6 +6,7 @@ import {
   BUILDINGS_BY_ID, BUILDING_SCRAP, buildingScrapRefund, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
   HULLS_BY_ID, REFIT, designStats, refitCost, type ShipDesign,
   SCORE, type ScoreBreakdown, FIELD_NAMES, RESEARCH, type TechField,
+  ALL_WEAPONS, WEAPON_MODS_BY_ID, stationProfile, type WeaponMount,
 } from "@starlord/sim";
 import { Tip, type TipCard } from "./Tip";
 import { techSummary, unlockSummary } from "../help/articles";
@@ -323,13 +324,43 @@ export function hyperAdvanceText(field: TechField): string[] {
   ];
 }
 
-export function buildingTip(id: string): TipCard {
+/** Weapon mounts as "12× Phasor 5–20 (Heavy Mount)", identical mounts merged. */
+export function mountList(weapons: WeaponMount[]): string[] {
+  const merged = new Map<string, WeaponMount>();
+  for (const m of weapons) {
+    const key = `${m.weaponId}|${(m.mods ?? []).join(",")}|${m.ammo ?? ""}`;
+    const prev = merged.get(key);
+    merged.set(key, prev ? { ...prev, count: prev.count + m.count } : { ...m });
+  }
+  return [...merged.values()].map((m) => {
+    const w = ALL_WEAPONS[m.weaponId];
+    const dmg = !w ? "" : w.damageMin === w.damageMax ? ` ${w.damageMax}` : ` ${w.damageMin}–${w.damageMax}`;
+    const extra = [...(m.mods ?? []).map((id) => WEAPON_MODS_BY_ID[id]?.name ?? id), ...(m.ammo ? [`${m.ammo} shots`] : [])];
+    return `${m.count}× ${w?.name ?? m.weaponId}${dmg}${extra.length ? ` (${extra.join(", ")})` : ""}`;
+  });
+}
+
+/** With the owner given, a station shows the gear it fights with right now. */
+export function buildingTip(id: string, player?: Player): TipCard {
   const b = BUILDINGS_BY_ID[id]!;
-  return {
-    title: b.name, kind: "Building",
-    rows: [["Cost", `${b.cost} production`], ["Upkeep", `${b.maintenance} BC a turn`]],
-    text: [...buildingEffects(b.effects), ...(b.description ? [b.description] : [])],
-  };
+  const rows: [string, string][] = [["Cost", `${b.cost} production`], ["Upkeep", `${b.maintenance} BC a turn`]];
+  const text = [...buildingEffects(b.effects), ...(b.description ? [b.description] : [])];
+  const station = b.effects.defense?.station;
+  if (station && player) {
+    const p = stationProfile(player, station);
+    rows.push(
+      ["Armor", `${fmt(p.armor)} (${p.armorName}), structure ${fmt(p.structure)}`],
+      ["Shield", p.shieldName ? `${p.shieldName}: class ${p.shieldClass}, ${fmt(p.shieldPerFacing)} per facing` : "none"],
+      ["Beam attack", `${signed(p.beamAttack)}${p.computerName ? ` (${p.computerName})` : ""}`],
+      ["Beam defense", signed(p.beamDefense)],
+      ["Marines", `${p.marines}`],
+    );
+    text.push(
+      `Always armed with your best weapons, armor, shield and computer as of each battle; nothing to refit. Weapons now: ${mountList(p.weapons).join(", ")}.`,
+      ...(p.specials.length ? [`Free specials: ${p.specials.map((s) => SPECIALS_BY_ID[s]?.name ?? s).join(", ")}.`] : []),
+    );
+  }
+  return { title: b.name, kind: "Building", rows, text };
 }
 
 /** What scrapping a building pays and costs, for the confirm step on the Colonies screen. */

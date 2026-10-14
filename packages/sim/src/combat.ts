@@ -567,7 +567,7 @@ export function stationSpecials(player: Player): string[] {
  * It carries the owner's best armor, shield and computer, a Regular crew, its
  * hull's marines and the free specials the owner knows.
  */
-function stationUnit(player: Player, colony: Colony, hull: HullDef<StationHull>, sideIdx: 0 | 1): Unit {
+function stationUnit(player: Player, colony: Pick<Colony, "id" | "name">, hull: HullDef<StationHull>, sideIdx: 0 | 1): Unit {
   const armor = bestArmor(player);
   const shield = bestShield(player);
   const computer = bestComputer(player);
@@ -628,6 +628,40 @@ function stationUnit(player: Player, colony: Colony, hull: HullDef<StationHull>,
     hits: u.maxArmor + u.maxStructure, shield: u.shieldClass, shieldStrength: shieldMax, missileEvasion: fx.missileEvasion, effects: fx,
   });
   return u;
+}
+
+/** What an orbital station of the owner fights with right now: it always carries the empire's current best gear. */
+export interface StationProfile {
+  weapons: WeaponMount[];
+  armorName: string;
+  armor: number;
+  structure: number;
+  shieldName: string | null;
+  shieldClass: number;
+  shieldPerFacing: number;
+  computerName: string | null;
+  beamAttack: number;
+  beamDefense: number;
+  marines: number;
+  specials: string[];
+}
+
+export function stationProfile(player: Player, hullId: StationHull): StationProfile {
+  const u = stationUnit(player, { id: "profile", name: "" }, HULLS_BY_ID[hullId], 0);
+  return {
+    weapons: stationWeapons(player, HULLS_BY_ID[hullId]),
+    armorName: bestArmor(player).name,
+    armor: u.maxArmor,
+    structure: u.maxStructure,
+    shieldName: bestShield(player)?.name ?? null,
+    shieldClass: u.shieldClass,
+    shieldPerFacing: u.shieldMax,
+    computerName: bestComputer(player)?.name ?? null,
+    beamAttack: u.attackBase + u.computerAttack + CREW.attack[DEFENSE_CREW_LEVEL]!,
+    beamDefense: u.fixedDefense ?? 0,
+    marines: u.marines,
+    specials: stationSpecials(player),
+  };
 }
 
 /**
@@ -925,12 +959,9 @@ export class Battle {
       if (!s.colony) continue;
       const player = state.players[s.ownerId]!;
       const d = planetDefense(s.colony);
-      if (d.installations.length > 0 || d.mines) {
-        const p = planetUnit(player, s.colony, d, i as 0 | 1);
-        // A planet with only mines is not a target and does not hold the field.
-        if (d.installations.length === 0) p.alive = false;
-        this.units.push(p);
-      }
+      // The colony's planet is always in its battle, armed or not, with its station beside it (the original's
+      // FUN_0004a9e4); a planet without working installations does not hold the field.
+      this.units.push(planetUnit(player, s.colony, d, i as 0 | 1));
       if (d.station) this.units.push(stationUnit(player, s.colony, HULLS_BY_ID[d.station], i as 0 | 1));
     }
     this.deploy();
