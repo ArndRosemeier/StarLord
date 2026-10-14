@@ -101,6 +101,23 @@ describe("stations and planets", () => {
     for (const e of fires) expect((e.armorDamage ?? 0) + (e.structureDamage ?? 0)).toBeLessThanOrEqual(e.damage!);
   });
 
+  it("fights a battle in a shared system over the defender's colony only", () => {
+    const s = twoEmpires();
+    const star = s.players[1]!.homeStarId;
+    const theirs = home(s, 1);
+    const sys = s.galaxy.stars.find((x) => x.id === star)!;
+    const other = sys.planetIds.find((id) => id !== theirs.planetId)!;
+    // The attacker also has an armed colony in the system.
+    const mine = { ...structuredClone(home(s, 0)), id: "c-shared", planetId: other, buildings: ["groundBatteries", "starBase"], queue: [] };
+    s.colonies[mine.id] = mine;
+    addFleet(s, 0, star, [{ designId: "frigate", count: 2 }], "attack");
+    const next = processTurn(s, {});
+    const report = next.combats.find((r) => r.starId === star && r.turn === s.turn)!;
+    const planets = report.ships.filter((x) => x.kind === "planet");
+    expect(planets.map((x) => x.ownerId)).toEqual([1]);
+    expect(report.ships.filter((x) => x.kind === "station").map((x) => x.ownerId)).toEqual([1]);
+  });
+
   it("adds a planet unit for ground batteries and rates the colony stronger", () => {
     const s = twoEmpires();
     const c = home(s, 1);

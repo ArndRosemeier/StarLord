@@ -600,7 +600,14 @@ function nextBattle(state: GameState, starId: Id, silenced: Silenced, fought: Se
       const b = sideAt(state, starId, list[j]!, silenced);
       a.initiates = wantsFight(state, a, b) && !passesBy(state, starId, a, b, list);
       b.initiates = wantsFight(state, b, a) && !passesBy(state, starId, b, a, list);
-      if (a.initiates || b.initiates) return [a, b];
+      if (!a.initiates && !b.initiates) continue;
+      // As in the original, a battle is fought over one colony: the defender's. In a system both sides have settled,
+      // the other side's colony stays out of it and fights only when its own planet is the one attacked.
+      if (a.colony && b.colony) {
+        if (defenderScore(state, b, a) > defenderScore(state, a, b)) a.colony = undefined;
+        else b.colony = undefined;
+      }
+      return [a, b];
     }
   }
   return null;
@@ -623,6 +630,19 @@ function passesBy(state: GameState, starId: Id, me: CombatSide, them: CombatSide
   return parties.some((id) => id !== them.ownerId && owner(id).kind === "empire" && !isLucky(id) && isHostile(state, me.ownerId, id)
     && (Object.values(state.fleets).some((f) => f.ownerId === id && f.starId === starId)
       || Object.values(state.colonies).some((c) => c.ownerId === id && state.planets[c.planetId]!.starId === starId)));
+}
+
+/**
+ * How clearly `me` is the side being attacked, to pick whose colony a battle is fought over: 3 when armed enemy
+ * ships came for its planet, 2 when the enemy started the fight with ships and `me` did not, 1 when its own
+ * defenses open fire on enemy ships in orbit, 0 otherwise. Ties go to the first side.
+ */
+function defenderScore(state: GameState, me: CombatSide, them: CombatSide): number {
+  const theirArmed = them.fleets.some((f) => isArmed(state, f));
+  if (theirArmed && them.attacksPlanet && me.colony) return 3;
+  if (them.initiates && !me.initiates && theirArmed) return 2;
+  if (hasDefenses(me.colony) && them.fleets.length > 0) return 1;
+  return 0;
 }
 
 function wantsFight(state: GameState, me: CombatSide, them: CombatSide): boolean {
