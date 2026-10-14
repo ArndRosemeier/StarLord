@@ -28,7 +28,7 @@ function LeaderCard({ l, children }: { l: Leader; children: ReactNode }) {
   const next = LEVEL_XP[l.level];
   return (
     <div className="leader-card">
-      <LeaderPortrait name={l.name} />
+      <LeaderPortrait leader={l} />
       <div className="col" style={{ gap: 4, minWidth: 0 }}>
         <div><b>{l.name}</b> <span className="level-stars" title={`Level ${l.level}`}>{"★".repeat(Math.max(1, Math.min(6, l.level)))}</span></div>
         <small className="muted">{l.title}. {kindName(l.kind)}, level {l.level}, {l.xp}{next !== undefined ? `/${next}` : ""} XP</small>

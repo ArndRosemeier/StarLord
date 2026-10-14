@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { HEROES, HERO_SKILLS, LEADER_RULES, abilityValue, administratorGain, heroLeaderId, newGame, refreshLeaders, type GameState } from "@starlord/sim";
 import { GameSession } from "../src/game/session";
 import { SessionContext } from "../src/ui/hooks";
 import { HERO_INTROS } from "../src/leaders/intros";
 import { LeaderOfferPopup, newLeaderOffers } from "../src/screens/LeaderOfferPopup";
+import { leaderPortraitUrl } from "../src/ui/panels";
 
 function offered(heroName: string): { state: GameState; id: string } {
   const state = newGame({ seed: "intro", races: ["terran", "felhari"], humanPlayers: [0] });
@@ -29,6 +32,12 @@ function render(state: GameState, id: string): string {
 describe("leader introduction", () => {
   it("has a greeting of their own for every hero", () => {
     for (const h of HEROES) expect(HERO_INTROS[h.name], h.name).toBeTruthy();
+  });
+
+  it("gives every hero a portrait of their own", () => {
+    const urls = HEROES.map((_, i) => leaderPortraitUrl(i));
+    expect(new Set(urls).size).toBe(HEROES.length);
+    for (const [i, url] of urls.entries()) expect(existsSync(join(__dirname, "../../../public", url)), HEROES[i]!.name).toBe(true);
   });
 
   it("opens only for last turn's offers that still wait for an answer", () => {

@@ -265,14 +265,13 @@ export function viewStarOfColony(view: PlayerView, colonyId: string) {
   return p ? view.galaxy.stars.find((s) => s.id === p.starId) : undefined;
 }
 
-const LEADER_PORTRAITS = 24;
+/** Each leader's own painted portrait in public/leaders, numbered by their place in the hero roster. */
+export function leaderPortraitUrl(heroId: number): string {
+  return `leaders/${String(heroId).padStart(2, "0")}.webp`;
+}
 
-/** One of the painted leader portraits, picked by name so a leader always keeps the same face. */
-export function LeaderPortrait({ name, size = 84 }: { name: string; size?: number }) {
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  const n = String((h % LEADER_PORTRAITS) + 1).padStart(2, "0");
-  return <img src={`leaders/${n}.webp`} alt={name} width={size} height={size} loading="lazy" style={{ borderRadius: 6, objectFit: "cover", background: "#000", display: "block", flex: "none" }} />;
+export function LeaderPortrait({ leader, size = 84 }: { leader: { heroId: number; name: string }; size?: number }) {
+  return <img src={leaderPortraitUrl(leader.heroId)} alt={leader.name} width={size} height={size} loading="lazy" style={{ borderRadius: 6, objectFit: "cover", background: "#000", display: "block", flex: "none" }} />;
 }
 
 /** A large planet for detail views: it floats, glows at the rim and has a small moon circling it. */

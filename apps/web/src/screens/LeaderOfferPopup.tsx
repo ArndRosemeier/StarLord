@@ -79,7 +79,7 @@ export function LeaderOfferPopup({ leaderId, onClose, onLeaders }: { leaderId: s
     <div className="modal-back leader-offer-back" onClick={onClose}>
       <div className="modal leader-offer" role="dialog" aria-label={`${l.name} offers their services`} onClick={(e) => e.stopPropagation()}>
         <div className="lo-head">
-          <div className="lo-portrait"><LeaderPortrait name={l.name} size={150} /></div>
+          <div className="lo-portrait"><LeaderPortrait leader={l} size={150} /></div>
           <div className="col" style={{ gap: 4, minWidth: 0 }}>
             <div className="lo-kicker">A leader offers their services</div>
             <div className="lo-name">{l.name}</div>
