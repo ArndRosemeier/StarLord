@@ -61,3 +61,27 @@ export const CAPTURE_TECH = {
  * asteroid belts are all small).
  */
 export const ASTEROID_BELT_SIZE = "small" as const;
+
+/**
+ * What a colony loses when it changes hands (invasion, mind control or a
+ * revolt), as in the original. These buildings are torn down; every other
+ * building, station, missile base, battery, shield and fighter garrison goes
+ * to the new owner. The build queue, its progress and every trained marine and
+ * tank are gone too. A Unification captor also tears down the morale buildings
+ * it has no use for and gets back `refundShare` of their cost.
+ */
+export const CAPTURE_LOSSES = {
+  buildings: ["capitol", "marineBarracks", "armorBarracks", "alienManagementCenter"],
+  unificationRefunds: ["holoSimulator", "pleasureDome"],
+  refundShare: 0.5,
+} as const;
+
+/**
+ * After a won invasion the surviving marines re-board troop ships, one ship
+ * per this many marines, keeping at least one marine on the planet; ships they
+ * can't fill are dismantled and the rest stay on as the garrison (up to the
+ * marine cap of the planet's size, see `marineCap`).
+ */
+export const MARINES_PER_TRANSPORT = 4;
+/** Rebels who win a revolt leave at most this many of their own as marines. */
+export const REBEL_GARRISON_MAX = 4;

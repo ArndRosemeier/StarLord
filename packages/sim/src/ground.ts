@@ -4,7 +4,7 @@ import { MILITIA_PER_POP } from "./data/economy.js";
 import { DIFFICULTY_ORDER } from "./data/galaxy.js";
 import { GOVERNMENTS } from "./data/governments.js";
 import {
-  BASE_EQUIPMENT, BATTLEOID_HITS, BOMB_DAMAGE_PER_HIT, SPECIAL_UNIT_RATING, CAPTURE_TECH,
+  BASE_EQUIPMENT, BATTLEOID_HITS, BOMB_DAMAGE_PER_HIT, SPECIAL_UNIT_RATING, CAPTURE_LOSSES, CAPTURE_TECH, MARINES_PER_TRANSPORT,
   ASTEROID_BELT_SIZE, POWERED_ARMOR_HITS, RATING_PER_LEVEL, SPORE_DEFENSE, SPORE_KILL_CHANCE_PER_POINT, TROOPS, type TroopKind,
 } from "./data/ground.js";
 import { hullIndex } from "./data/components.js";
@@ -16,7 +16,7 @@ import { TIER_OF_TECH } from "./data/techs.js";
 import { bombardment, planetDefense } from "./combat.js";
 
 import { RELATION_EVENTS } from "./data/diplomacy.js";
-import { gravityOf } from "./data/planets.js";
+import { SIZE_POP_BASE, gravityOf } from "./data/planets.js";
 import type { TurnContext } from "./context.js";
 import { ALL_WEAPONS, designStats, findDesign } from "./designs.js";
 import { isHostile } from "./diplomacy.js";
@@ -206,7 +206,6 @@ export function canMindControl(state: GameState, fleet: Fleet, colony: Colony): 
 
 /** Takes a beaten colony by mind control: it changes hands with every colonist assimilated at once. */
 export function mindControl(ctx: TurnContext, by: PlayerId, colony: Colony): void {
-  ctx.emit({ kind: "colonyLost", playerId: colony.ownerId, colonyId: colony.id, to: by, how: "mindControlled" });
   noteAttack(ctx.state, colony.ownerId, by);
   captureColony(ctx, colony, by, { mindControl: true });
 }
@@ -403,6 +402,8 @@ export interface OrbitalPrompt {
    */
   outrage: { roll: number; empires: { playerId: PlayerId; from: number; to: number }[] };
   options: OrbitalOption[];
+  /** Building ids torn down if the colony is taken (invasion or mind control), and BC the taker gets back. */
+  captureLosses: { buildings: string[]; refund: number };
 }
 
 /** Bomb-hit targets a colony offers: wreckable buildings, trained marines and tanks, colonists. */
@@ -474,6 +475,7 @@ export function orbitalPrompt(state: GameState, playerId: PlayerId, colonyId: Id
     troops: garrisonOf(state, c), shield, barrier, fleetIds: fleets.map((f) => f.id),
     outrage: { roll: RELATION_EVENTS.destruction, empires: appalled },
     options,
+    captureLosses: captureLosses(state, c, playerId),
   };
 }
 
@@ -500,12 +502,13 @@ export function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
   const attacker = state.players[f.ownerId]!;
   noteAttack(state, colony.ownerId, attacker.id);
   let landed = 0;
-  for (const s of [...f.ships]) {
+  const transports: { designId: string; count: number }[] = [];
+  for (const s of f.ships) {
     const d = findDesign(attacker, s.designId);
     const t = d ? designStats(attacker, d).troops : 0;
     if (t > 0) {
       landed += t * s.count;
-      removeShips(state, f, s.designId, s.count);
+      transports.push({ designId: s.designId, count: s.count });
     }
   }
   delete f.invadeTarget;
@@ -532,12 +535,40 @@ export function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
   colony.tanksTrained = Math.max(0, left("armor") - barracksTroops(colony, "tanks"));
   colony.marinesTrained = Math.max(0, left("marines") - barracksTroops(colony, "marines"));
   if (attackers.length === 0) {
+    for (const t of transports) removeShips(state, f, t.designId, t.count);
     ctx.emit({ kind: "invasionFailed", playerId: attacker.id, colonyId: colony.id });
     return;
   }
-  const loser = colony.ownerId;
-  ctx.emit({ kind: "colonyLost", playerId: loser, colonyId: colony.id, to: attacker.id, how: "invaded" });
-  captureColony(ctx, colony, attacker.id);
+  // The survivors re-board full troop ships, keeping at least one marine on the planet; the empty ships are dismantled.
+  let spare = attackers.length - 1;
+  let reboarded = 0;
+  for (const t of transports) {
+    const keep = Math.min(t.count, Math.floor(spare / MARINES_PER_TRANSPORT));
+    spare -= keep * MARINES_PER_TRANSPORT;
+    reboarded += keep;
+    if (t.count > keep) removeShips(state, f, t.designId, t.count - keep);
+  }
+  captureColony(ctx, colony, attacker.id, { garrison: 1 + spare, reboarded });
+}
+
+/** Most marines a colony can hold as a garrison: half its planet size's base (warlords the whole), at least 1. */
+export function marineCap(state: GameState, colony: Colony): number {
+  const owner = state.players[colony.ownerId];
+  const mult = owner && hasTrait(getRace(owner.raceId), "warlord") ? TRAIT_EFFECTS.warlordTroopMult : 1;
+  const share = BUILDINGS_BY_ID["marineBarracks"]!.effects.training!.popShare;
+  return Math.max(1, Math.floor(SIZE_POP_BASE[state.planets[colony.planetId]!.size] * share * mult));
+}
+
+/** Buildings a colony loses when it passes to a new owner, with any BC the new owner gets back for them. */
+export function captureLosses(state: GameState, colony: Colony, newOwner: PlayerId): { buildings: string[]; refund: number } {
+  const owner = state.players[newOwner]!;
+  const unification = owner.government === "unification" || owner.government === "galacticUnification";
+  const torn: readonly string[] = CAPTURE_LOSSES.buildings;
+  const sold: readonly string[] = unification ? CAPTURE_LOSSES.unificationRefunds : [];
+  const buildings = colony.buildings.filter((b) => torn.includes(b) || sold.includes(b));
+  const refund = buildings.filter((b) => sold.includes(b))
+    .reduce((sum, b) => sum + Math.floor((BUILDINGS_BY_ID[b]?.cost ?? 0) * CAPTURE_LOSSES.refundShare), 0);
+  return { buildings, refund };
 }
 
 /** Rebels fight with their ruler's equipment, 20 below a marine. */
@@ -579,30 +610,47 @@ export function revoltFight(ctx: TurnContext, colony: Colony, rebels: number): {
 }
 
 /**
- * Hands a colony to a new owner (conquest, mind control or revolt). Its
- * people become aliens who must be assimilated, unless they came from a
- * feudal empire, the new ruler is telepathic or they return to an empire of
- * their own race. A captured Capitol is lost. Conquerors (not rebels) may
- * learn a technology from captured scientists.
+ * Hands a colony to a new owner (conquest, mind control or revolt), as the
+ * original does for all three. Its people become aliens who must be
+ * assimilated, unless they came from a feudal empire, the new ruler is
+ * telepathic or they return to an empire of their own race. The Capitol,
+ * barracks and Alien Management Center are torn down (see CAPTURE_LOSSES),
+ * the queue and every trained ground unit are lost; `garrison` marines (capped
+ * by `marineCap`) stay on for the new owner. Conquerors (not rebels) may learn
+ * a technology from captured scientists.
  */
-export function captureColony(ctx: TurnContext, colony: Colony, newOwner: PlayerId, opts: { revolt?: boolean; mindControl?: boolean } = {}): void {
+export function captureColony(
+  ctx: TurnContext, colony: Colony, newOwner: PlayerId,
+  opts: { revolt?: boolean; mindControl?: boolean; garrison?: number; reboarded?: number } = {},
+): void {
   const { state, rng } = ctx;
   const loser = colony.ownerId;
   const loserPlayer = state.players[loser]!;
   const attacker = state.players[newOwner]!;
   const instantly = (loserPlayer.kind === "empire" && GOVERNMENTS[loserPlayer.government].assimilatesInstantly) ||
     hasTrait(getRace(attacker.raceId), "telepathic");
+  const { buildings: lost, refund } = captureLosses(state, colony, newOwner);
+  const how = opts.revolt ? "revolted" : opts.mindControl ? "mindControlled" : "invaded";
+  ctx.emit({ kind: "colonyLost", playerId: loser, colonyId: colony.id, to: newOwner, how, lostBuildings: lost });
   colony.formerOwnerId = loser;
   colony.ownerId = newOwner;
   colony.queue = [];
   colony.progress = 0;
   colony.assimilation = 0;
-  colony.marinesTrained = 0;
   colony.tanksTrained = 0;
-  colony.buildings = colony.buildings.filter((b) => !BUILDINGS_BY_ID[b]?.effects.capitol);
+  colony.buildings = colony.buildings.filter((b) => !lost.includes(b));
+  delete colony.readyBases;
+  attacker.bc += refund;
+  colony.marinesTrained = colony.outpost ? 0 : Math.min(marineCap(state, colony), Math.max(0, opts.garrison ?? 0));
   if (colony.outpost) colony.raceId = attacker.raceId;
   colony.aliens = colony.outpost || instantly || colony.raceId === attacker.raceId ? 0 : population(colony);
-  ctx.emit({ kind: "colonyCaptured", playerId: newOwner, colonyId: colony.id, from: loser, ...(opts.mindControl ? { mindControl: true as const } : {}) });
+  ctx.emit({
+    kind: "colonyCaptured", playerId: newOwner, colonyId: colony.id, from: loser,
+    ...(opts.mindControl ? { mindControl: true as const } : {}),
+    ...(opts.revolt ? { revolt: true as const } : {}),
+    lostBuildings: lost, refund, garrison: colony.marinesTrained,
+    ...(opts.reboarded ? { reboarded: opts.reboarded } : {}),
+  });
   for (const l of Object.values(state.leaders)) {
     if (l.ownerId === loser && l.assignedTo === state.planets[colony.planetId]!.starId) l.assignedTo = null;
   }
