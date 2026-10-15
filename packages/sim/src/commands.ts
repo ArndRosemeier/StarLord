@@ -121,6 +121,8 @@ export type Command =
   | { type: "setAutomationStrategy"; domain: string; strategy: string }
   /** Whether the end-turn check lists colonies that only make Trade Goods; a per-game choice, on by default. */
   | { type: "setIdleAlert"; on: boolean }
+  /** Ignores another empire's diplomatic overtures (their proposals no longer ask for an audience), or stops ignoring them. */
+  | { type: "setIgnore"; target: PlayerId; on: boolean }
   /** Cheats, accepted only in games started in debug mode. */
   | { type: "debug"; action: DebugAction };
 
@@ -459,6 +461,12 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
         : fail("bad automation strategy");
     case "setIdleAlert":
       return typeof cmd.on === "boolean" ? OK : fail("bad idle alert setting");
+    case "setIgnore": {
+      if (typeof cmd.on !== "boolean") return fail("bad ignore setting");
+      const target = state.players[cmd.target];
+      if (!target || target.kind !== "empire" || cmd.target === playerId) return fail("no such empire");
+      return player.contacts.includes(cmd.target) ? OK : fail("no contact");
+    }
     case "debug": {
       const why = debugProblem(state, playerId, cmd.action);
       return why ? fail(why) : OK;

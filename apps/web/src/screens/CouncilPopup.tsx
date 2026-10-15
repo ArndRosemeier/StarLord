@@ -148,7 +148,7 @@ export function CouncilSession({ onClose, instant = false }: { onClose: () => vo
           {!done && !atMySeat && <button onClick={() => setShown(stop)}>Skip to {stop < seats.length ? "your seat" : "the count"}</button>}
           <span className="spacer" />
           {done ? <button className="primary" onClick={onClose}>Leave the chamber</button>
-            : <button onClick={onClose} title="The council waits for your vote: the Diplomacy screen or End Turn brings you back to the chamber.">Look around first</button>}
+            : <button onClick={onClose} title="The council waits for your vote: the Races screen or End Turn brings you back to the chamber.">Look around first</button>}
         </div>
       </div>
     </div>

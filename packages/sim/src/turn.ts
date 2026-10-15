@@ -422,6 +422,13 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       if (cmd.on) delete player.idleAlertOff;
       else player.idleAlertOff = true;
       break;
+    case "setIgnore": {
+      const rest = (player.ignoring ?? []).filter((id) => id !== cmd.target);
+      if (cmd.on) rest.push(cmd.target);
+      if (rest.length > 0) player.ignoring = rest;
+      else delete player.ignoring;
+      break;
+    }
     case "debug":
       applyDebug(ctx, playerId, cmd.action);
       break;

@@ -706,10 +706,16 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
   diplomacy: () => (
     <>
       <P>
-        Once you meet an empire you can request an audience with its ruler on the <b>Diplomacy</b> screen and trade
+        Once you meet an empire you can request an audience with its ruler on the <b>Races</b> screen (R) and trade
         proposals face to face; computer rulers answer on the spot. They also ask for an audience themselves when you
         first meet, when they declare war and when they bring a proposal or demand. Proposals expire after{" "}
         {PROPOSAL_LIFETIME} turns.
+      </P>
+      <P>
+        Each race's card there also places your spies with them and sets their mission. <b>Report</b> opens what you know
+        of that race: its ruler's personality, its agents in your empire, its alliances and wars, and its technologies,
+        with the ones you lack highlighted. <b>Ignore</b> stops their proposals from asking for an audience; they still
+        wait in the list until they expire, and first contact and war declarations still come to you.
       </P>
       <Ul>
         <li><b>War</b>: your ships and theirs fight on sight. Relations fall to {RELATION_EVENTS.declareWar.set} minus a d{RELATION_EVENTS.declareWar.roll} and stay at {RELATION.warCeiling} or below. Declaring war on someone you had a treaty with costs their trust and your reputation with everyone, and their computer allies may join in over the next turns.</li>
@@ -745,7 +751,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Each race can be: {RACES.map((r) => `${r.plural} ${[...new Set((TEMPERAMENT_ROWS[r.assetKey] ?? TEMPERAMENT_ROWS.default!).map((x) => TEMPERAMENTS[TEMPERAMENT_ORDER[x]!].name))].join("/")}`).join("; ")}.
         The objective, weapon lean and ship specialty are drawn by weights that the race's picks raise (creative races
         lean hard toward Technologist, +50 ship attack toward Militarist and beams, cybernetic races toward armor).
-        The Diplomacy screen shows each ruler's objective and doctrine; hover them for what they do.
+        The Races screen shows each ruler's objective and doctrine; hover them for what they do.
       </P>
       <Ul>
         {Object.values(OBJECTIVES).map((o) => <li key={o.name}><b>{o.name}</b>: {o.text} Researches {Object.keys(o.research).map((g) => RESEARCH_GROUP_NAMES[g as ResearchGroup]).join(", ")} early.</li>)}
@@ -884,7 +890,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         A candidate with {pct(COUNCIL_MAJORITY)} of all votes is elected. A session plays out as a turn starts, as in the
         original: every empire's delegation declares in seat order, computer candidates for themselves, and the running count is shown
         against the two thirds needed. When your seat comes up you back a candidate or abstain, even when you stand yourself. Your votes are never cast for you: the
-        turn does not end until you have declared, and the Diplomacy screen takes you back into the chamber. The council counts the votes when the turn ends.
+        turn does not end until you have declared, and the Races screen takes you back into the chamber. The council counts the votes when the turn ends.
       </P>
       <h3>How computer empires vote</h3>
       <P>

@@ -31,7 +31,7 @@ export const SHORTCUTS: Shortcut[] = [
   tab("d", "designs", "Ship design"),
   tab("f", "fleets", "Fleets"),
   tab("l", "leaders", "Leaders"),
-  tab("r", "diplomacy", "Diplomacy (races)"),
+  tab("r", "diplomacy", "Races: diplomacy, spies and reports"),
   tab("s", "espionage", "Espionage (spies)"),
   tab("i", "empire", "Empire & automation (info)"),
   tab("h", "info", "Info: standings and history"),

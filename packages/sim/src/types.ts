@@ -370,6 +370,8 @@ export interface Player {
   automationStrategies?: Record<string, string>;
   /** Set when the player turned off the end-turn alert about colonies making only Trade Goods; this game only. */
   idleAlertOff?: boolean;
+  /** Empires whose diplomatic overtures this player ignores, like the original's Ignore button: their proposals open no audience. */
+  ignoring?: PlayerId[];
   /** Set when a human lets every battle resolve by itself instead of commanding it (the default is to command). */
   autoBattles?: boolean;
   /** Whether any colony of the empire has a Dimensional Portal (kept in step with `Colony.portal`). */
