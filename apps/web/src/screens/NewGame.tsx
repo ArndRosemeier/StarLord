@@ -10,6 +10,7 @@ import { customRaceDefs, loadCustomRaces, saveCustomRaces } from "../game/custom
 import { RaceBuilder, blankRace } from "./RaceBuilder";
 import { GameSession } from "../game/session";
 import { savedAutomationOrders } from "../game/automationPrefs";
+import { loadNewGamePrefs, saveNewGamePrefs } from "../game/newGamePrefs";
 import { useHold } from "../ui/touch";
 import { words } from "../ui/format";
 
@@ -29,21 +30,26 @@ function shuffled<T>(list: T[]): T[] {
 }
 
 export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSession) => void; onBack: () => void; initialRace?: string }) {
-  const [raceId, setRaceId] = useState(initialRace ?? RACES[0]!.id);
-  const [opponents, setOpponents] = useState(3);
-  const [galaxy, setGalaxy] = useState<GalaxySize>("medium");
-  const [seed, setSeed] = useState(() => String(Math.floor(Math.random() * 1e6)));
-  const [maxTurns, setMaxTurns] = useState(400);
-  const [turnLimit, setTurnLimit] = useState(false);
-  const [monsters, setMonsters] = useState(true);
-  const [raiders, setRaiders] = useState(true);
-  const [council, setCouncil] = useState(true);
-  const [difficulty, setDifficulty] = useState<Difficulty>("average");
-  const [galaxyAge, setGalaxyAge] = useState<GalaxyAge>("average");
-  const [techLevel, setTechLevel] = useState<TechLevel>("average");
-  const [randomEvents, setRandomEvents] = useState(true);
-  const [shipInitiative, setShipInitiative] = useState(false);
+  // Start from the options of the last game; a race picked on the title screen wins over the remembered one.
+  const [last] = useState(loadNewGamePrefs);
   const [customSpecs, setCustomSpecs] = useState<CustomRaceSpec[]>(loadCustomRaces);
+  const [raceId, setRaceId] = useState(() => {
+    const offered = [...RACES.map((r) => r.id), ...customRaceDefs(customSpecs).map((c) => c.def.id)];
+    return initialRace ?? (last.raceId && offered.includes(last.raceId) ? last.raceId : RACES[0]!.id);
+  });
+  const [opponents, setOpponents] = useState(last.opponents);
+  const [galaxy, setGalaxy] = useState<GalaxySize>(last.galaxy);
+  const [seed, setSeed] = useState(() => String(Math.floor(Math.random() * 1e6)));
+  const [maxTurns, setMaxTurns] = useState(last.maxTurns);
+  const [turnLimit, setTurnLimit] = useState(last.turnLimit);
+  const [monsters, setMonsters] = useState(last.monsters);
+  const [raiders, setRaiders] = useState(last.raiders);
+  const [council, setCouncil] = useState(last.council);
+  const [difficulty, setDifficulty] = useState<Difficulty>(last.difficulty);
+  const [galaxyAge, setGalaxyAge] = useState<GalaxyAge>(last.galaxyAge);
+  const [techLevel, setTechLevel] = useState<TechLevel>(last.techLevel);
+  const [randomEvents, setRandomEvents] = useState(last.randomEvents);
+  const [shipInitiative, setShipInitiative] = useState(last.shipInitiative);
   const [editing, setEditing] = useState<{ spec: CustomRaceSpec; index: number | null } | null>(null);
   const custom = useMemo(() => customRaceDefs(customSpecs), [customSpecs]);
   const chosenCustom = custom.find((c) => c.def.id === raceId);
@@ -61,6 +67,10 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
   /** Holding Ctrl+Alt while starting (or, on touch, holding the button down) turns on the debug menu for that game. */
   const debugHold = useHold(() => start(false, true), 1500);
   const start = (spectate: boolean, debug = false) => {
+    saveNewGamePrefs({
+      raceId: spectate ? last.raceId : raceId, opponents, galaxy, galaxyAge, difficulty, techLevel, turnLimit,
+      maxTurns: Math.round(maxTurns), monsters, raiders, council, randomEvents, shipInitiative,
+    });
     const others = shuffled(RACES.map((r) => r.id).filter((id) => id !== raceId)).slice(0, opponents);
     const races = spectate ? shuffled(RACES.map((r) => r.id)).slice(0, opponents + 1) : [raceId, ...others];
     const customRaces = !spectate && chosenCustom ? [chosenCustom.spec] : [];
