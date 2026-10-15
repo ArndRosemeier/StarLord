@@ -12,7 +12,9 @@ import type { BuildItem, Colony, Fleet, GameState, Id, Player, PlayerId, ShipDes
  * same hull. The job goes into that colony's build queue and is paid with its
  * production like anything else; until it is done the ship is in dock and
  * takes no part in anything. It comes back with its crew's experience and
- * repaired. Removing the job from the queue scraps the ship.
+ * repaired. Like any other item the job can be moved around the queue; taking
+ * it out of the queue (or losing the colony) sends the ship back to orbit
+ * unchanged, and only the production already spent on it is gone.
  *
  * Drives (combat and travel speed) and fuel range follow your best technology
  * on every ship without a refit; armor, shields, computers, weapons and
@@ -132,16 +134,32 @@ export function startRefit(state: GameState, playerId: PlayerId, o: RefitOrder):
   }
 }
 
-/** Removes a refit job; the ship in dock is scrapped with it. */
+/** Removes a refit job; the ship in dock goes back to orbit with its old design. */
 export function cancelRefit(state: GameState, colony: Colony, refitId: Id): void {
-  colony.queue = colony.queue.filter((q) => !(q.kind === "refit" && q.refitId === refitId));
+  const job = colony.queue.find((q): q is RefitJob => q.kind === "refit" && q.refitId === refitId);
+  colony.queue = colony.queue.filter((q) => q !== job);
   if (colony.queue.length === 0) colony.progress = 0;
+  if (job) undock(state, colony, job, job.fromDesignId);
+}
+
+/**
+ * Sends every ship in this colony's dock back to orbit unrefitted, for when the
+ * colony changes hands or is destroyed. Call it before the owner changes.
+ */
+export function releaseRefits(state: GameState, colony: Colony): void {
+  for (const q of colony.queue) if (q.kind === "refit") undock(state, colony, q, q.fromDesignId);
+  colony.queue = colony.queue.filter((q) => q.kind !== "refit");
 }
 
 /** A finished refit: the ship leaves dock with its new design, rejoining its old fleet if that still waits here. */
 export function completeRefit(state: GameState, colony: Colony, job: RefitJob): void {
+  undock(state, colony, job, job.designId);
+}
+
+/** Puts the docked ship back in orbit as `designId`, rejoining its old fleet if that still waits here. */
+export function undock(state: GameState, colony: Colony, job: RefitJob, designId: string): void {
   const player = state.players[colony.ownerId]!;
-  const design = findDesign(player, job.designId);
+  const design = findDesign(player, designId);
   if (!design) return;
   const star = starOf(state, colony.planetId);
   const idle = (f: Fleet) => f.ownerId === colony.ownerId && f.starId === star.id && !f.destStarId;

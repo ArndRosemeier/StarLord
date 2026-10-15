@@ -72,7 +72,7 @@ export type Command =
    * another design of the same hull at a colony in the system they orbit.
    */
   | { type: "refitShips"; fleetId: Id; designId: string; toDesignId: string; colonyId: Id; count: number }
-  /** Removes a refit job from a colony's queue; the ship in dock is scrapped. */
+  /** Removes a refit job from a colony's queue; the ship in dock goes back to orbit unchanged. */
   | { type: "cancelRefit"; colonyId: Id; refitId: Id }
   /**
    * Saves a design. With `replaces`, the design is an edit of that one under a
@@ -167,7 +167,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const projects = new Set(availableProjects(state, playerId, c));
       const designs = new Set(availableDesigns(state, playerId));
       const seen = new Set<string>();
-      // Refit jobs hold a ship: they may be moved, but only cancelRefit removes one.
+      // Refit jobs hold a ship: they may be moved or dropped (the ship goes back to orbit), never invented.
       const refits = new Set(c.queue.flatMap((q) => (q.kind === "refit" ? [q.refitId] : [])));
       const kept = new Set<string>();
       for (const item of cmd.queue) {
@@ -189,7 +189,6 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
         const alreadyHere = item.kind === "project" && c.queue.some((q) => q.kind === "project" && q.id === item.id);
         if (item.kind === "project" && !projects.has(item.id) && !alreadyHere) return fail(`project ${item.id} not available`);
       }
-      if (kept.size < refits.size) return fail("removing a refit job scraps its ship; cancel it instead");
       // Every Colony Base or Artificial Planet needs a planet of its own.
       for (const id of new Set(cmd.queue.flatMap((q) => (q.kind === "project" && PLACED_PROJECTS[q.id] ? [q.id] : [])))) {
         const claims = baseClaims(state, c, id, cmd.queue);

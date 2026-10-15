@@ -430,12 +430,15 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       <h3>Refits</h3>
       <P>
         Drives and fuel range follow your best technology on every ship by themselves. Armor, shields, computers, weapons
-        and specials are part of the design: to change them, refit the ship to another design of the same hull from its
-        fleet's panel or the Ship design screen, while it orbits a system with a colony of yours that could build that hull. The refit costs{" "}
+        and specials are part of the design: to change them, refit the ship to another design of the same hull. A refit is
+        planetary production like any other: open the production screen of any colony of yours in the system the ship
+        orbits and press <b>Refit ships in orbit</b> (the ship's fleet panel and the Ship design screen offer the same).
+        The colony must be able to build that hull. The refit costs{" "}
         {REFIT.costDifferenceMult} times what the new design costs more than the old one, but at least the bare hull's cost divided by {REFIT.minHullCostDivisor}, and goes into
         that colony's build queue ahead of Trade Goods and Housing, paid with its production. Until it is done the ship
-        is in dock and takes part in nothing; it comes back repaired and keeps its crew's experience. Removing the job
-        from the queue scraps the ship. Colony ships, outpost ships and transports can't be refitted.
+        is gone from its fleet, in dock, and takes part in nothing; only when the item is finished does it come back,
+        repaired and with its crew's experience. Like any item the refit can be moved around the queue; taking it out
+        of the queue, or losing the colony, brings the ship back unchanged. Colony ships, outpost ships and transports can't be refitted.
       </P>
       <P>
         See <HelpLink to="page:weapons" />, <HelpLink to="page:shields" />, <HelpLink to="page:computers" />,{" "}
