@@ -5,6 +5,8 @@ The first goal is a faithful MoO2 alpha with a modern, easier interface where th
 player can hand any part of the game to automation. Later goals include
 multiplayer and a 3D view.
 
+**Play it free in your browser: https://apps.futuremagic.de/starlord/**
+
 ## Layout
 
 | Path | What it is |
@@ -53,3 +55,8 @@ pnpm sim --turns 200 --record runs/g.json && pnpm replay runs/g.json   # record 
 - **Rules are data.** Races, planets, buildings, techs, ships and governments live in `packages/sim/src/data`.
 - **Original names.** Races are renamed versions of the MoO2 archetypes. Their media
   lives in `public/races`, named by race id.
+
+## License
+
+StarLord is open source under the [MIT License](LICENSE). It is a fan tribute inspired by
+Master of Orion II and is not affiliated with or endorsed by the owners of Master of Orion.
