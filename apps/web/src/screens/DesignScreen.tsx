@@ -8,7 +8,6 @@ import { useGame } from "../ui/hooks";
 import { fmt, pct, words } from "../ui/format";
 import { ShipModelView, ShipThumb } from "../ui/ShipModel";
 import { Tip, tipText } from "../ui/Tip";
-import { DesignRefits } from "../ui/RefitPanel";
 import {
   arcTip, armorTip, computerTip, designTip, styleTip, hullTip, modTip, rackTip, shieldTip, spaceTip, specialTip, statTip, weaponTip,
 } from "./designTips";
@@ -27,7 +26,6 @@ export function DesignScreen() {
   // The design being edited, if the draft was loaded with Edit; saving then changes that design.
   const [editing, setEditing] = useState<string | null>(null);
   const [addWeapon, setAddWeapon] = useState("");
-  const [refitTo, setRefitTo] = useState<string | null>(null);
 
   const hulls = HULLS.filter((h) => knows(me, h.requires));
   const armors = ARMORS.filter((a) => knows(me, a.requires));
@@ -213,7 +211,7 @@ export function DesignScreen() {
               <Tip card={{ title: "Save changes", text: [
                 "Changes the design. Colonies build the new version from now on, including ships already queued.",
                 builtCount > 0
-                  ? `Your ${builtCount} ship${builtCount === 1 ? "" : "s"} of this design keep the old version and are marked outdated; refit them at a colony to bring them up to date.`
+                  ? `Your ${builtCount} ship${builtCount === 1 ? "" : "s"} of this design keep the old version and are marked outdated; refit them from a colony's production screen to bring them up to date.`
                   : "No ships of it exist yet, so nothing becomes outdated.",
               ], note: error ?? (!draft.name.trim() ? "Give the design a name first." : undefined) }}>
                 <button className="primary" style={{ flex: 1 }} disabled={readOnly || !!error || !draft.name.trim()} onClick={saveEdit}>Save changes</button>
@@ -247,7 +245,7 @@ export function DesignScreen() {
                 <div className="muted" style={{ fontSize: 12 }}>
                   cost {fmt(s.cost)} · hits {fmt(s.hits)} · attack {fmt(s.attack)} · defense {fmt(s.defense)} · strength {fmt(s.strength)}
                   {!valid && <span className="bad"> · outdated parts</span>}
-                  {outdated > 0 && <span className="bad"> · {outdated} ship{outdated === 1 ? "" : "s"} still on an older version (use Refit…)</span>}
+                  {outdated > 0 && <span className="bad"> · {outdated} ship{outdated === 1 ? "" : "s"} still on an older version (refit them from a colony's production screen)</span>}
                 </div>
               </div>
               </Tip>
@@ -256,7 +254,7 @@ export function DesignScreen() {
               </Tip>
               <Tip card={{ title: "Edit", text: [
                 "Loads this design into the designer to change it. Saving changes the design itself: colonies build the new version, including builds already queued.",
-                "Ships already built keep the equipment they were built with. They are marked outdated until you refit them to the new version at one of your colonies.",
+                "Ships already built keep the equipment they were built with. They are marked outdated until you refit them to the new version from the production screen of one of your colonies.",
               ] }}>
                 <button className={`small${editing === d.id ? " active" : ""}`} disabled={readOnly}
                   onClick={() => { setDraft(structuredClone(d)); setAutoName(false); setEditing(d.id); }}>Edit</button>
@@ -268,13 +266,7 @@ export function DesignScreen() {
                   {d.obsolete ? "Restore" : "Obsolete"}
                 </button>
               </Tip>
-              {!d.obsolete && valid && (
-                <Tip card={{ title: "Refit ships to this design", text: [`Lists your ships of other ${HULLS_BY_ID[d.hull]?.name} designs in orbit where a colony could refit them to ${d.name}, with the cost and time.`] }}>
-                  <button className={`small${refitTo === d.id ? " active" : ""}`} disabled={readOnly} onClick={() => setRefitTo(refitTo === d.id ? null : d.id)}>Refit…</button>
-                </Tip>
-              )}
             </div>
-            {refitTo === d.id && <DesignRefits design={d} />}
             </div>
           );
         })}

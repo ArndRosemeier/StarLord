@@ -10,7 +10,6 @@ import { climateName, fmt, words } from "./format";
 import { additive } from "./touch";
 import { colonizeCommand, colonizeOption, type ColonizeOption } from "../game/colonize";
 import { leadMonster, monsterBehavior, monsterName } from "../game/monsters";
-import { RefitPicker } from "./RefitPanel";
 
 /** Painted planet art in public/planets, scaled by planet size. */
 export function PlanetIcon({ planet, size }: { planet: Planet; size?: number }) {
@@ -158,7 +157,6 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
   const fleet = view.fleets[fleetId];
   const [split, setSplit] = useState<Record<string, number>>({});
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [refitting, setRefitting] = useState<string | null>(null);
   if (!fleet) return null;
   const owner = view.players[fleet.ownerId]!;
   const mine = owner.id === me.id && !readOnly;
@@ -211,7 +209,7 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
                     <Tip card={{ title: "Outdated", text: [
                       `These ships were built before you edited ${d.name} and still carry the old equipment (strength ${fmt(designStats(owner, d).strength)} against ${fmt(designStats(owner, newer).strength)} for the new version).`,
                       newer.hull === d.hull
-                        ? `Refit them to the new version at one of your colonies that can build ships, for ${fmt(refitCost(owner, d, newer))} production each.`
+                        ? `Refit them to the new version from the production screen of a colony of yours in their system that can build ships, for ${fmt(refitCost(owner, d, newer))} production each.`
                         : `The new version uses a ${words(newer.hull)} hull, so they cannot be refitted to it; refit them to another ${words(d.hull)} design or keep them as they are.`,
                     ] }}>
                       {" "}<span className="chip bad">outdated</span>
@@ -234,10 +232,6 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
                   <td>
                     <input type="number" min={0} max={s.count} value={split[s.designId] ?? 0} style={{ width: 52 }}
                       onChange={(e) => setSplit({ ...split, [s.designId]: Math.max(0, Math.min(s.count, Number(e.target.value))) })} />
-                    {fleet.starId && d && !d.fixed && !d.module && (
-                      <button className="small" title="Refit: rebuild these ships to another design of their hull at a colony in this system. Refits as many as the Split count, or one."
-                        onClick={() => setRefitting(refitting === s.designId ? null : s.designId)}>Refit</button>
-                    )}
                   </td>
                 )}
               </tr>
@@ -245,10 +239,6 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
           })}
         </tbody>
       </table>
-      {mine && refitting && fleet.ships.some((s) => s.designId === refitting) && (
-        <RefitPicker key={refitting} fleet={fleet} designId={refitting} count={Math.max(1, split[refitting] ?? 0)}
-          onDone={() => { setRefitting(null); setSplit({}); }} />
-      )}
       {mine && (
         <>
           <div className="row">

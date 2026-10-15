@@ -432,7 +432,7 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         Drives and fuel range follow your best technology on every ship by themselves. Armor, shields, computers, weapons
         and specials are part of the design: to change them, refit the ship to another design of the same hull. A refit is
         planetary production like any other: open the production screen of any colony of yours in the system the ship
-        orbits and press <b>Refit ships in orbit</b> (the ship's fleet panel and the Ship design screen offer the same).
+        orbits and press <b>Refit ships in orbit</b>; that is the only place refits are ordered.
         The colony must be able to build that hull. The refit costs{" "}
         {REFIT.costDifferenceMult} times what the new design costs more than the old one, but at least the bare hull's cost divided by {REFIT.minHullCostDivisor}, and goes into
         that colony's build queue ahead of Trade Goods and Housing, paid with its production. Until it is done the ship
