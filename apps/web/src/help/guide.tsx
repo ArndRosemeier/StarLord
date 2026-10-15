@@ -471,8 +471,13 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <h3>Blockades</h3>
       <P>
-        An enemy warship over one of your colonies, with none of yours or your allies' to oppose it, blockades it: the
-        colony's farmers and workers lose {BLOCKADE_PENALTY}% of their output, and freighters can't get through.
+        Any warship of an empire at war with you (armed or not, so a scout will do; colony, outpost and troop ships
+        don't count) or a monster or raider still in orbit over one of your systems at the end of a turn blockades your
+        colonies there for the next turn. Your own or your allies' ships in the system don't lift it; only driving the
+        enemy off or making peace does. In a blockaded system farmers and workers lose {BLOCKADE_PENALTY}% of their
+        output (building flats and research are untouched), no freighter brings food in or takes spare food out, its
+        spare food isn't sold, and colonists moved there are lost on arrival. The colony screen shows the blockade and
+        what it costs.
       </P>
       <h3>Command points</h3>
       <P>

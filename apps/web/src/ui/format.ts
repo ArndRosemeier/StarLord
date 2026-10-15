@@ -1,5 +1,5 @@
 import {
-  BUILDINGS_BY_ID, FIELD_NAMES, PROJECTS_BY_ID, TECHS, findDesign,
+  BLOCKADE_PENALTY, BUILDINGS_BY_ID, FIELD_NAMES, PROJECTS_BY_ID, TECHS, findDesign,
   type BuildItem, type CombatReport, type GameEvent, type PlayerView,
 } from "@starlord/sim";
 
@@ -61,6 +61,12 @@ export const playerName = (view: PlayerView, id: number) => view.players[id]?.na
 export const starName = (view: PlayerView, id: string) => view.galaxy.stars.find((s) => s.id === id)?.name ?? "an unknown star";
 export const colonyName = (view: PlayerView, id: string) => view.colonies[id]?.name ?? "a colony";
 export const climateName = (t: string) => words(t);
+
+/** Who holds a blockade, for player-facing text: "the Kaltari and a space monster". */
+export function blockaderNames(view: PlayerView, ids: readonly number[]): string {
+  const names = ids.map((id) => (view.players[id]?.kind === "monsters" ? "a space monster" : `the ${playerName(view, id)}`));
+  return names.length <= 1 ? names[0] ?? "an enemy" : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
 
 /** Player-facing text for a turn event, plus the star it happened at if any. */
 const buildingList = (ids: readonly string[]) => ids.map((b) => BUILDINGS_BY_ID[b]?.name ?? b).join(", ");
@@ -149,6 +155,15 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
       return { text: `Galactic council: ${e.what.replace(/\.$/, "")}.`, tone: "info" };
     case "random":
       return { text: e.what, tone: "info" };
+    case "blockade": {
+      const at = starName(view, e.starId);
+      if (e.lifted) return { text: `The blockade of ${at} is over: production there is back to normal and freighters get through again.`, starId: e.starId, tone: "good" };
+      if (e.victim === view.viewer) {
+        const who = blockaderNames(view, e.by);
+        return { text: `${who.charAt(0).toUpperCase()}${who.slice(1)} blockade${e.by.length === 1 && view.players[e.by[0]!]?.kind === "monsters" ? "s" : ""} ${at}: farmers and workers there make ${BLOCKADE_PENALTY}% less, and no freighter brings food or colonists in or takes food out.`, starId: e.starId, tone: "bad" };
+      }
+      return { text: `Our warships blockade the ${playerName(view, e.victim)} at ${at}: their farmers and workers there make ${BLOCKADE_PENALTY}% less, and their freighters can't get through.`, starId: e.starId, tone: "good" };
+    }
     case "raid":
       return { text: `Raiders strike at ${starName(view, e.starId)}!`, starId: e.starId, tone: "bad" };
     case "eliminated":

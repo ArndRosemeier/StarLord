@@ -8,7 +8,7 @@ import { hasStealthyShips, seesAllFleets } from "./raceEffects.js";
 import { colonyScanBonus, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
 import { knowsStats } from "./score.js";
-import type { Fleet, GameState, PlayerId } from "./types.js";
+import type { Blockades, Fleet, GameState, PlayerId } from "./types.js";
 
 /** What an empire calls a system it has not explored yet. */
 export const UNKNOWN_STAR_NAME = "Unknown system";
@@ -141,9 +141,17 @@ export function playerView(state: GameState, viewer: PlayerId): PlayerView {
   if (state.settings.council) for (const p of state.players) if (p.kind === "empire" && p.alive) knownCouncilVotes[p.id] = councilVotes(state, p.id);
   // The history record shows the viewer and the empires they are in contact with, as the original's graphs do.
   const history = state.history?.map((h) => ({ turn: h.turn, rows: h.rows.map((r, id) => (r && knowsStats(state, viewer, id) ? r : null)) }));
+  // The viewer knows the blockades of its own colonies and those its own warships hold.
+  const blockades: Blockades = {};
+  for (const [starId, byVictim] of Object.entries(state.blockades ?? {})) {
+    for (const [key, by] of Object.entries(byVictim)) {
+      if (Number(key) === viewer || by.includes(viewer)) (blockades[starId] ??= {})[Number(key)] = by;
+    }
+  }
   return structuredClone({
     ...state,
     ...(history ? { history } : {}),
+    blockades,
     knownPopulation,
     knownTreatyPop,
     knownCouncilVotes,

@@ -7,6 +7,8 @@ import type { HeroSkill } from "./data/leaders.js";
 
 export type PlayerId = number;
 export type Id = string;
+/** Star id → blockaded empire → the players whose warships blockade it there. */
+export type Blockades = Record<Id, Record<PlayerId, PlayerId[]>>;
 
 export type GalaxySize = "small" | "medium" | "large" | "huge";
 
@@ -725,6 +727,8 @@ export type GameEvent =
   | { turn: number; kind: "leader"; playerId: PlayerId; leaderId: Id; what: string; /** A hero offering their services. */ offer?: true }
   | { turn: number; kind: "council"; playerId: PlayerId; what: string }
   | { turn: number; kind: "random"; playerId: PlayerId; what: string; starId?: Id }
+  /** A blockade of `victim` at a star started (`by` blockade it) or, with `lifted`, ended. */
+  | { turn: number; kind: "blockade"; playerId: PlayerId; starId: Id; victim: PlayerId; by: PlayerId[]; lifted?: true }
   | { turn: number; kind: "raid"; playerId: PlayerId; starId: Id }
   /** Everyone hears when an empire destroys the raiders at home and the galaxy capitulates. */
   | { turn: number; kind: "raidersDefeated"; playerId: PlayerId; by: PlayerId }
@@ -858,6 +862,8 @@ export interface GameState {
   nebulae?: Nebula[];
   tributes?: Tribute[];
   activeEvents?: ActiveEvent[];
+  /** Blockades worked out at the end of the last turn (see blockade.ts); production this turn uses them. */
+  blockades?: Blockades;
   /**
    * Turn the last random event struck, each lucky empire's count toward a
    * bonus windfall, and the kinds of event already used (each happens once a game).

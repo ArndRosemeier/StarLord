@@ -2,14 +2,14 @@ import { useState } from "react";
 import {
   exterminateProblem, buildingScrapRefund, scrapBuildingProblem,
   BUILDINGS_BY_ID, MAX_QUEUE, PLACED_PROJECTS, PROJECTS_BY_ID, baseTargets, availableBuildings, availableDesigns, availableProjects, buyCost,
-  FREIGHTERS, androids, colonyOutput, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
-  type BuildItem, type Colony,
+  BLOCKADE_PENALTY, FREIGHTERS, androids, blockadeLoss, blockadersOf, colonyOutput, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
+  type BuildItem, type Colony, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
-import { climateName, fmt, itemName, signed, words } from "../ui/format";
+import { blockaderNames, climateName, fmt, itemName, signed, words } from "../ui/format";
 import { PlanetIcon, PlanetOrb, viewStarOfColony } from "../ui/panels";
 import { Icon } from "../ui/fx";
-import { Tip, TipBody } from "../ui/Tip";
+import { Tip, TipBody, type TipCard } from "../ui/Tip";
 import { PlanetFacts, buildingScrapTip, buildingTip, moraleTip, projectTip, tradeGoodsBC, tradeGoodsTip } from "../ui/explain";
 import { designTip } from "./designTips";
 import { BaseChoices } from "./BasePrompt";
@@ -67,6 +67,7 @@ export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (sta
                   <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
                     {view.planets[c.planetId] && <PlanetIcon planet={view.planets[c.planetId]!} size={20} />}
                     {c.name}{c.outpost && <small className="muted"> outpost</small>}
+                    {o.blockaded && <Tip card={() => blockadeTip(view, c)}><span className="chip bad">blockaded</span></Tip>}
                   </span>
                 </td>
                 <td>{c.outpost ? "–" : `${population(c)}/${o.maxPopulation}`}</td>
@@ -82,6 +83,21 @@ export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (sta
       {colony && <ColonyDetail key={colony.id} colony={colony} onShowStar={onShowStar} />}
     </div>
   );
+}
+
+/** What a blockade of the colony costs, with the sim's numbers. */
+function blockadeTip(view: PlayerView, colony: Colony): TipCard {
+  const loss = blockadeLoss(view, colony);
+  const who = blockaderNames(view, blockadersOf(view, colony));
+  return {
+    title: "Blockaded",
+    text: [
+      `Warships of ${who} sat in orbit here at the end of last turn, so the system is blockaded this turn.`,
+      `Farmers and workers make ${BLOCKADE_PENALTY}% less: ${fmt(loss.food, 1)} food and ${fmt(loss.industry, 1)} industry lost this turn. Buildings' flat output and research are untouched.`,
+      "No freighter brings food in or takes spare food out, spare food here isn't sold, and colonists moved here are lost on arrival.",
+      "It ends once no warship of an empire at war with you (or a monster) is left in orbit at the end of a turn; your own ships here don't lift it.",
+    ],
+  };
 }
 
 /**
@@ -169,6 +185,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
             </div>
           </div>
         </div>
+        {o.blockaded && <div className="panel col bad" style={{ gap: 4 }}><TipBody card={blockadeTip(view, colony)} /></div>}
         {!colony.outpost && (
           <>
             <table>
@@ -188,13 +205,13 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
                 <tr><td className="food"><span className="stat-label"><Icon name="food" />Food</span></td><td>{fmt(o.foodProduced, 1)} produced, {fmt(o.foodEaten)} eaten <b className={o.foodNet < 0 ? "bad" : "good"}>{signed(o.foodNet, 1)}</b>
                   {o.foodReplicated > 0 && <small className="muted"> ({fmt(o.foodReplicated, 1)} replicated)</small>}
                   {o.foodNet < 0 && (shortfall > 0
-                    ? <div><small className="bad">Short by {fmt(shortfall, 1)}: not enough freighters{o.blockaded ? " (blockaded)" : ""}, the colony starves</small></div>
+                    ? <div><small className="bad">Short by {fmt(shortfall, 1)}: {o.blockaded ? "the blockade keeps freighters out" : "not enough freighters"}, the colony starves</small></div>
                     : <div><small className="muted">Imported by freighter</small></div>)}
                 </td></tr>
                 <tr><td className="industry"><span className="stat-label"><Icon name="industry" />Industry</span></td><td>{fmt(o.industryGross, 1)} gross, {fmt(o.pollution, 1)} pollution, {fmt(o.taxes, 1)} taxed <b>{fmt(o.industry, 1)}</b></td></tr>
                 <tr><td className="research"><span className="stat-label"><Icon name="research" />Research</span></td><td>{fmt(o.research, 1)}</td></tr>
                 <tr><td className="bc"><span className="stat-label"><Icon name="bc" />BC</span></td><td>{signed(o.bc, 1)} income, {fmt(o.maintenance, 1)} upkeep</td></tr>
-                <tr><td>Morale</td><td className={o.morale < 0 ? "bad" : o.morale > 0 ? "good" : ""}><Tip card={() => moraleTip(view, colony)}><span className="explained">{signed(o.morale)}%</span></Tip>{o.blockaded && <span className="bad"> · blockaded, production halved</span>}</td></tr>
+                <tr><td>Morale</td><td className={o.morale < 0 ? "bad" : o.morale > 0 ? "good" : ""}><Tip card={() => moraleTip(view, colony)}><span className="explained">{signed(o.morale)}%</span></Tip></td></tr>
                 <tr><td>Troops</td><td>{fmt(o.troops)}</td></tr>
               </tbody>
             </table>
@@ -209,7 +226,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
               if (e.target.value) session.issue({ type: "moveColonists", fromColonyId: colony.id, toColonyId: e.target.value, count: 1 });
             }}>
               <option value="">…</option>
-              {sameRace.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {sameRace.map((c) => <option key={c.id} value={c.id}>{c.name}{blockadersOf(view, c).length > 0 ? " (blockaded: colonists sent there are lost on arrival)" : ""}</option>)}
             </select>
             <small className="muted">needs {FREIGHTERS.perColonist} idle freighters ({idle} idle)</small>
           </div>

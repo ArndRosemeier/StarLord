@@ -55,7 +55,7 @@ export const MILITIA_PER_POP = 0.2;
 /** Extra BC a gold or gem deposit pays every turn, untouched by morale. */
 export const SPECIAL_INCOME = { gold: 5, gems: 10 } as const;
 
-/** Percent lost from every farmer's and worker's output while an enemy fleet sits unopposed in the system. */
+/** Percent lost from every farmer's and worker's output in a blockaded system (original FUN_000de264: -10 in 5% steps). */
 export const BLOCKADE_PENALTY = 50;
 
 /** BC upkeep for each food Food Replicators make. */

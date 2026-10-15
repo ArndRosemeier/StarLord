@@ -82,6 +82,8 @@ function hitOf(view: PlayerView, e: GameEvent): { starId: string | undefined; hi
       return { starId: e.starId, hit: e.by === view.viewer ? { kind: "battleWon", label: e.planetDestroyed ? "Planet destroyed" : "Orbital strike" } : { kind: "loss", label: "Planet destroyed" } };
     case "raid":
       return { starId: e.starId, hit: { kind: "raid", label: "Raiders!" } };
+    case "blockade":
+      return { starId: e.starId, hit: e.lifted ? { kind: "colony", label: "Blockade over" } : e.victim === view.viewer ? { kind: "warning", label: "Blockaded" } : { kind: "battleWon", label: "Blockade" } };
     case "random":
       return { starId: e.starId, hit: { kind: "event", label: "Galactic event" } };
     case "explored":

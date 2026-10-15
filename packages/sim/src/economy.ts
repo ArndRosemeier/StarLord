@@ -11,8 +11,7 @@ import {
   type PlanetType,
 } from "./data/planets.js";
 import { getRace, hasTrait, type RaceDef } from "./data/races.js";
-import { findDesign } from "./designs.js";
-import { isHostile } from "./diplomacy.js";
+import { blockadersOf } from "./blockade.js";
 import { raceFoodPerFarmer, raceMaxPopulation, surplusFoodBc } from "./raceEffects.js";
 import { empireBonus, government, knows } from "./empire.js";
 import type { AndroidCounts, Colony, Difficulty, GameState, LeaderSkills, Planet, Player, PlayerId } from "./types.js";
@@ -204,7 +203,7 @@ export interface ColonyOutput {
   maintenance: number;
   growthK: number;
   troops: number;
-  /** An enemy fleet sits unopposed in the system: production is halved and freighters can't get through. */
+  /** Enemy warships held the system at the end of last turn: farmers and workers make half, freighters can't get through. */
   blockaded: boolean;
   /**
    * Upkeep the colony's industry can't cover, in half units: first its own
@@ -249,15 +248,30 @@ export function farmerFood(state: GameState, colony: Colony): number {
 /** A colony's output; `leader` stands in for the system's administrator (null: as if none governed it). */
 export function colonyOutput(state: GameState, colony: Colony, leader?: LeaderSkills | null): ColonyOutput {
   const planet = state.planets[colony.planetId]!;
-  const player = state.players[colony.ownerId]!;
-  return computeOutput(planet, player, colony, {
+  return computeOutput(planet, state.players[colony.ownerId]!, colony, outputContext(state, colony, leader));
+}
+
+function outputContext(state: GameState, colony: Colony, leader?: LeaderSkills | null): OutputContext {
+  const planet = state.planets[colony.planetId]!;
+  return {
     frozen: systemFrozen(state, planet.starId),
     turn: state.turn,
     leader: leader === undefined ? administratorSkills(state, planet.starId, colony.ownerId) : leader ?? undefined,
     blockaded: isBlockaded(state, colony),
     difficulty: state.settings.difficulty,
     growthPercent: eventGrowthPercent(state, colony.id),
-  });
+  };
+}
+
+/** Food and industry a blockade costs the colony this turn (zero when it isn't blockaded). */
+export function blockadeLoss(state: GameState, colony: Colony): { food: number; industry: number } {
+  const ctx = outputContext(state, colony);
+  if (!ctx.blockaded) return { food: 0, industry: 0 };
+  const planet = state.planets[colony.planetId]!;
+  const player = state.players[colony.ownerId]!;
+  const now = computeOutput(planet, player, colony, ctx);
+  const free = computeOutput(planet, player, colony, { ...ctx, blockaded: false });
+  return { food: free.foodProduced - now.foodProduced, industry: free.industryGross - now.industryGross };
 }
 
 /** What a colony leader would change in one of an empire's systems right now, summed over its colonies there. */
@@ -295,27 +309,9 @@ export function administratorSkills(state: GameState, starId: string, ownerId: n
   return undefined;
 }
 
-function hasArmedShips(state: GameState, ownerId: PlayerId, ships: { designId: string }[]): boolean {
-  const owner = state.players[ownerId];
-  if (!owner) return false;
-  return ships.some((s) => {
-    const d = findDesign(owner, s.designId);
-    return !!d && (!!d.fixed || d.weapons.length > 0);
-  });
-}
-
-/** A hostile armed fleet sits in the colony's system and no armed fleet of the owner challenges it. */
+/** The colony's system is blockaded for its owner (worked out at the end of the last turn, see blockade.ts). */
 export function isBlockaded(state: GameState, colony: Colony): boolean {
-  if (colony.outpost) return false;
-  const starId = state.planets[colony.planetId]?.starId;
-  if (!starId) return false;
-  let enemy = false;
-  for (const f of Object.values(state.fleets)) {
-    if (f.starId !== starId || !hasArmedShips(state, f.ownerId, f.ships)) continue;
-    if (f.ownerId === colony.ownerId) return false;
-    if (isHostile(state, colony.ownerId, f.ownerId)) enemy = true;
-  }
-  return enemy;
+  return blockadersOf(state, colony).length > 0;
 }
 
 /** Ground troops: barracks units plus a militia from the population. */
