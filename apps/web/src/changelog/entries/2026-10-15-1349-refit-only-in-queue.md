@@ -1,0 +1,1 @@
+- Refits are now ordered only from a colony's production screen ("Refit ships in orbit"). The Refit buttons in the fleet panel and the Ship design screen are gone; outdated ships point you to the colony's production screen.
