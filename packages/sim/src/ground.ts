@@ -26,6 +26,7 @@ import { destructibleBuildings, population } from "./economy.js";
 import { empireBonus, grantTech, knows } from "./empire.js";
 import { removeShips } from "./fleetOps.js";
 import { removePopulation } from "./jobs.js";
+import { releaseRefits } from "./refit.js";
 import { noteAttack } from "./score.js";
 import type { Colony, Fleet, GameState, Id, OrbitalChoice, PlayerId, ShipDesign } from "./types.js";
 
@@ -495,6 +496,7 @@ export function raze(ctx: TurnContext, c: Colony, kills: number, by?: PlayerId):
 }
 
 export function destroyColony(state: GameState, colony: Colony): void {
+  releaseRefits(state, colony);
   state.planets[colony.planetId]!.colonyId = null;
   delete state.colonies[colony.id];
 }
@@ -637,6 +639,7 @@ export function captureColony(
   recordPopLosses(state, loser, newOwner, POP_LOSS_TALLY.colonyTaken + population(colony));
   ctx.emit({ kind: "colonyLost", playerId: loser, colonyId: colony.id, to: newOwner, how, lostBuildings: lost });
   colony.formerOwnerId = loser;
+  releaseRefits(state, colony);
   colony.ownerId = newOwner;
   colony.queue = [];
   colony.progress = 0;

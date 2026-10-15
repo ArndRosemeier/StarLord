@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  HULLS_BY_ID, REFIT, designStats, fleetSpeed, newGame, previewOrders, processTurn, refitCost, refitTargets, refitTurns, validateCommand,
+  HULLS_BY_ID, REFIT, cedeSystem, designStats, destroyColony, fleetSpeed, newGame, previewOrders, processTurn, refitCost, refitTargets, refitTurns, validateCommand,
   type Colony, type Fleet, type GameState, type ShipDesign,
 } from "@starlord/sim";
 
@@ -103,13 +103,12 @@ describe("refitting ships", () => {
     expect(validateCommand(s, 0, cmd).ok).toBe(false);
   });
 
-  it("cannot be dropped from the queue by setQueue, only cancelled, which scraps the ship", () => {
+  it("moves around the queue like any item; taking it out brings the ship back unchanged", () => {
     const { s: s0, home } = setup();
     const s1 = processTurn(s0, { 0: [{ type: "setQueue", colonyId: home.id, queue: [{ kind: "ship", designId: "cr" }] }, refit(home)] });
     const c = s1.colonies[home.id]!;
     const job = c.queue.find((q) => q.kind === "refit")!;
     expect(job).toBeDefined();
-    expect(validateCommand(s1, 0, { type: "setQueue", colonyId: home.id, queue: c.queue.filter((q) => q.kind !== "refit") }).ok).toBe(false);
     // Moving it is fine, and the stored cost can't be changed from outside.
     const moved = [{ ...job, cost: 1 }, ...c.queue.filter((q) => q.kind !== "refit")];
     const s2 = previewOrders(s1, 0, [{ type: "setQueue", colonyId: home.id, queue: moved }]).state;
@@ -117,11 +116,34 @@ describe("refitting ships", () => {
     expect(head.kind).toBe("refit");
     expect(head.kind === "refit" && head.cost).toBe(job.kind === "refit" && job.cost);
     expect(job.kind === "refit" && job.cost).toBeGreaterThan(1);
-    const ships = (st: GameState) => Object.values(st.fleets).filter((f) => f.ownerId === 0).reduce((n, f) => n + f.ships.filter((x) => x.designId === "frigate" || x.designId === "mk2").reduce((m, x) => m + x.count, 0), 0);
-    const before = ships(s1);
-    const s3 = processTurn(s1, { 0: [{ type: "cancelRefit", colonyId: home.id, refitId: job.kind === "refit" ? job.refitId : "" }] });
+    // A job that isn't in this queue can't be invented.
+    expect(validateCommand(s1, 0, { type: "setQueue", colonyId: home.id, queue: [{ ...job, refitId: "nope" }] }).ok).toBe(false);
+    const frigates = (st: GameState) => Object.values(st.fleets).filter((f) => f.ownerId === 0).reduce((n, f) => n + (f.ships.find((x) => x.designId === "frigate")?.count ?? 0), 0);
+    const before = frigates(s1);
+    // Dropped by setQueue, like any other item.
+    const s3 = processTurn(s1, { 0: [{ type: "setQueue", colonyId: home.id, queue: c.queue.filter((q) => q.kind !== "refit") }] });
+    expect(s3.events.filter((e) => e.kind === "commandRejected")).toEqual([]);
     expect(s3.colonies[home.id]!.queue.some((q) => q.kind === "refit")).toBe(false);
-    expect(ships(s3)).toBe(before);
+    expect(frigates(s3)).toBe(before + 1);
+    expect(s3.fleets.rf!.ships.find((x) => x.designId === "frigate")!.xp).toBeGreaterThanOrEqual(40);
+    // Or with cancelRefit.
+    const s4 = processTurn(s1, { 0: [{ type: "cancelRefit", colonyId: home.id, refitId: job.kind === "refit" ? job.refitId : "" }] });
+    expect(s4.colonies[home.id]!.queue.some((q) => q.kind === "refit")).toBe(false);
+    expect(frigates(s4)).toBe(before + 1);
+  });
+
+  it("sends the ship back to orbit unrefitted when the colony is destroyed or changes hands", () => {
+    const { s: s0, home } = setup();
+    const s1 = processTurn(s0, { 0: [{ type: "setQueue", colonyId: home.id, queue: [{ kind: "ship", designId: "cr" }] }, refit(home)] });
+    const frigates = (st: GameState) => Object.values(st.fleets).filter((f) => f.ownerId === 0).reduce((n, f) => n + (f.ships.find((x) => x.designId === "frigate")?.count ?? 0), 0);
+    const before = frigates(s1);
+    const s2 = structuredClone(s1);
+    destroyColony(s2, s2.colonies[home.id]!);
+    expect(frigates(s2)).toBe(before + 1);
+    const s3 = structuredClone(s1);
+    cedeSystem(s3, 0, 1, s3.planets[home.planetId]!.starId);
+    expect(frigates(s3)).toBe(before + 1);
+    expect(s3.colonies[home.id]!.queue.some((q) => q.kind === "refit")).toBe(false);
   });
 
   it("estimates the turns from the colony's industry and what is queued ahead", () => {

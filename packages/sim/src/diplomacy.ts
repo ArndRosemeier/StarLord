@@ -14,6 +14,7 @@ import { androids, empireTotals, population } from "./economy.js";
 import { empireBonus, empireIncome, empires, fleetRange, grantTech, scanRange } from "./empire.js";
 import { distance } from "./galaxy.js";
 import { piratesActive } from "./randomEvents.js";
+import { releaseRefits } from "./refit.js";
 import type { DiplomaticStatus, GameState, Id, Player, PlayerId, Price, Proposal, ProposalKind, Relation, SurrenderTally } from "./types.js";
 import type { Rng } from "./rng.js";
 import {
@@ -692,6 +693,7 @@ function addTribute(state: GameState, from: PlayerId, to: PlayerId, percent: num
 /** Hands every colony a player has at a star to another empire (a gift or a demand). */
 export function cedeSystem(state: GameState, from: PlayerId, to: PlayerId, starId: Id, emit?: Emit): void {
   for (const c of coloniesAt(state, from, starId)) {
+    releaseRefits(state, c);
     c.ownerId = to;
     c.queue = [];
     c.progress = 0;
@@ -1312,6 +1314,7 @@ export function surrenderEmpire(state: GameState, from: PlayerId, to: PlayerId, 
     // The receiver now knows the systems it rules, as the original marks them explored.
     const starId = state.planets[c.planetId]!.starId;
     if (!winner.explored.includes(starId)) winner.explored.push(starId);
+    releaseRefits(state, c);
     c.ownerId = to;
     c.queue = [];
     c.progress = 0;

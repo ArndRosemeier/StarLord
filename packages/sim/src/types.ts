@@ -96,7 +96,7 @@ export type BuildItem =
   /**
    * A ship taken out of its fleet to be rebuilt to another design of its hull.
    * Until the job is done the ship is in dock and takes no part in anything;
-   * removing the job from the queue scraps the ship.
+   * removing the job from the queue sends the ship back unchanged.
    */
   | {
     kind: "refit";

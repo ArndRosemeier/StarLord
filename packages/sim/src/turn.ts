@@ -42,7 +42,7 @@ import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
 import { PLACED_PROJECTS, availableDesigns, availableProjects, baseTargets, canBuildShips, colonyRoom, freePlanetsInSystem, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
 import { applyMutation } from "./mutation.js";
-import { cancelRefit, completeRefit, replaceDesign, startRefit } from "./refit.js";
+import { cancelRefit, completeRefit, replaceDesign, startRefit, undock } from "./refit.js";
 import { applyDebug } from "./debug.js";
 import { TargetPause, attackTargetAt, attackableColonies, chosenTarget, targetKey, targetPrompt, type TargetPrompt, type Targets } from "./targets.js";
 import { creditElimination, noteAttack, recordHistory, score } from "./score.js";
@@ -184,6 +184,8 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
       const jobs = new Map(c.queue.flatMap((q) => (q.kind === "refit" ? [[q.refitId, q] as const] : [])));
       c.queue = cmd.queue.map((i) => (i.kind === "refit" ? jobs.get(i.refitId)! : { ...i }));
       if (c.queue.length === 0) c.progress = 0;
+      // A refit taken out of the queue sends its ship back to orbit as it was.
+      for (const job of jobs.values()) if (!c.queue.includes(job)) undock(state, c, job, job.fromDesignId);
       break;
     }
     case "placeBase": {
