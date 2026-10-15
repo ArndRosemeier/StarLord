@@ -2,8 +2,13 @@ import {
   COUNCIL_VOTE, TEMPERAMENTS, councilCandidates, councilVotes, voteChance,
   COUNCIL, COUNCIL_INTERVAL, COUNCIL_MAJORITY, RELATION, TREATY_WARMTH, attitude, audienceTired, baselineOf, canSign, getRace, government, nextCouncilTurn,
   noWarTurns, relation, strikesOf,
-  settledShare,
+  settledShare, spyingLevel, PROPOSAL_LIFETIME, securityLevel, type SpyMission,
 } from "@starlord/sim";
+import { useState } from "react";
+import { Tip } from "../ui/Tip";
+import { fmt } from "../ui/format";
+import { RaceReport } from "./RaceReport";
+import { missionTip, oddsLine } from "./EspionageScreen";
 import { useGame } from "../ui/hooks";
 import { pct, playerName, signed, words } from "../ui/format";
 import { Envoy } from "../ui/panels";
@@ -56,6 +61,8 @@ function AttitudeBreakdown({ them }: { them: number }) {
 }
 
 
+const IGNORE_TEXT = `Ignored: their proposals no longer open an audience at the start of your turn. They still wait under Proposals to you for ${PROPOSAL_LIFETIME} turns; a demand for a system left unanswered counts as refused. First contact and declarations of war still come to you.`;
+
 export function DiplomacyScreen({ onAudience, onCouncil }: { onAudience: (r: AudienceRequest) => void; onCouncil: () => void }) {
   const { session, view, me, readOnly } = useGame();
   const known = view.players.filter((p) => p.kind === "empire" && p.id !== me.id && me.contacts.includes(p.id));
@@ -66,6 +73,9 @@ export function DiplomacyScreen({ onAudience, onCouncil }: { onAudience: (r: Aud
   const pending = council.pending;
   const myAnswer = session.pending.find((c) => c.type === "councilResponse");
   const nextSession = nextCouncilTurn(view);
+  const [report, setReport] = useState<number | null>(null);
+  const ignoring = new Set(me.ignoring ?? []);
+  const setSpies = (target: number, count: number, mission: SpyMission) => session.issue({ type: "setSpies", target, count, mission });
 
   return (
     <div className="col">
@@ -95,7 +105,7 @@ export function DiplomacyScreen({ onAudience, onCouncil }: { onAudience: (r: Aud
           {incoming.map((p) => (
             <div className="row" key={p.id}>
               <span className="dot" style={{ background: view.players[p.from]!.color }} />
-              <b>{view.players[p.from]!.name}</b> {describeProposal(view, p)}.
+              <b>{view.players[p.from]!.name}</b> {describeProposal(view, p)}.{ignoring.has(p.from) && <small className="muted"> (ignored)</small>}
               <small className="muted" style={{ flexBasis: "100%" }}>Accepting: {incomingEffect(view, p).accept} Refusing: {incomingEffect(view, p).refuse}</small>
               <span className="spacer" />
               {responded.has(p.id) ? <span className="muted">answered</span> : (
@@ -160,12 +170,43 @@ export function DiplomacyScreen({ onAudience, onCouncil }: { onAudience: (r: Aud
                     </ul>
                   )}
                   <AttitudeBreakdown them={p.id} />
+                  {(() => {
+                    const a = me.spies.abroad[p.id] ?? { count: 0, mission: "steal" as SpyMission };
+                    return (
+                      <div className="col" style={{ gap: 4 }}>
+                        <div className="row" style={{ gap: 6 }}>
+                          <span>Your spies</span>
+                          <button className="small" disabled={readOnly || a.count === 0} onClick={() => setSpies(p.id, a.count - 1, a.mission)} aria-label="Recall a spy">−</button>
+                          <b style={{ minWidth: 18, textAlign: "center" }}>{a.count}</b>
+                          <button className="small" disabled={readOnly || me.spies.home === 0} onClick={() => setSpies(p.id, a.count + 1, a.mission === "idle" ? "steal" : a.mission)} aria-label="Send a spy">+</button>
+                          <span className="spy-chip">{Array.from({ length: Math.min(8, a.count) }, (_, i) => <i key={i} />)}</span>
+                        </div>
+                        <div className="row" style={{ gap: 4 }}>
+                          <span className="muted">Mission</span>
+                          {(["steal", "sabotage", "idle"] as const).map((m) => (
+                            <Tip key={m} card={() => missionTip(view, me.id, p.id, Math.max(1, a.count), m)}>
+                              <button className={`small${a.mission === m && a.count > 0 ? " active" : ""}`} disabled={readOnly || a.count === 0}
+                                onClick={() => setSpies(p.id, a.count, m)}>{m === "idle" ? "Hide" : m === "steal" ? "Espionage" : "Sabotage"}</button>
+                            </Tip>
+                          ))}
+                        </div>
+                        {a.count > 0 && <small className="muted">Each turn: {oddsLine(view, me.id, p.id, a.count, a.mission)}.</small>}
+                      </div>
+                    );
+                  })()}
                   <div className="row">
                     <button className="primary" onClick={() => onAudience({ themId: p.id, opening: { kind: "visit" } })}>
-                      {readOnly ? "View audience" : "Request audience"}
+                      {readOnly ? "View audience" : "Audience"}
+                    </button>
+                    <button onClick={() => setReport(p.id)}>Report</button>
+                    <button className={ignoring.has(p.id) ? "active" : ""} disabled={readOnly}
+                      title={ignoring.has(p.id) ? "Hear their proposals again" : IGNORE_TEXT}
+                      onClick={() => session.issue({ type: "setIgnore", target: p.id, on: !ignoring.has(p.id) })}>
+                      {ignoring.has(p.id) ? "Ignored" : "Ignore"}
                     </button>
                     {tired && <small className="muted">{TIRED_TEXT}</small>}
                   </div>
+                  {ignoring.has(p.id) && <small className="muted">{IGNORE_TEXT}</small>}
                 </>
               )}
             </div>
@@ -174,6 +215,18 @@ export function DiplomacyScreen({ onAudience, onCouncil }: { onAudience: (r: Aud
         {known.length === 0 && <div className="panel muted">You have not met any other empire yet. Explore to make contact.</div>}
       </div>
       {unknown > 0 && <div className="muted">{unknown} empire{unknown === 1 ? "" : "s"} not yet met.</div>}
+      {known.length > 0 && (
+        <div className="panel row" style={{ gap: 8 }}>
+          <span className="chip">Agents at home: <b>{me.spies.home}</b> <span className="spy-chip">{Array.from({ length: Math.min(12, me.spies.home) }, (_, i) => <i key={i} />)}</span></span>
+          <span className="chip" title="Your spying level: added to your agents' rolls abroad">Agent bonus {fmt(spyingLevel(me, view), 1)}</span>
+          <span className="chip" title="Your security level: how hard your empire is for enemy agents">Security {fmt(securityLevel(view, me.id), 1)}</span>
+          <small className="muted">Spies at home guard your empire; train more with the "Train Spy" project in a colony's build queue.</small>
+        </div>
+      )}
+      {report !== null && (
+        <RaceReport them={report} onClose={() => setReport(null)}
+          onAudience={() => { const them = report; setReport(null); onAudience({ themId: them, opening: { kind: "visit" } }); }} />
+      )}
 
       {view.settings.council && (
         <div className="panel col">

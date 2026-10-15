@@ -74,7 +74,7 @@ const MISSION_TEXT: Record<SpyMission, string> = {
   idle: "No mission: the spies only hide, which makes them harder to catch.",
 };
 
-function oddsLine(view: PlayerView, me: number, target: number, count: number, mission: SpyMission): string {
+export function oddsLine(view: PlayerView, me: number, target: number, count: number, mission: SpyMission): string {
   const o = spyOdds(spyEdge(view, me, target, count), mission);
   const lines = mission === "idle" ? [] : [`${pct(o.success)} success`];
   lines.push(`${pct(o.lost)} lose a spy`);
@@ -82,7 +82,7 @@ function oddsLine(view: PlayerView, me: number, target: number, count: number, m
   return lines.join(", ");
 }
 
-function missionTip(view: PlayerView, me: number, target: number, count: number, mission: SpyMission): TipCard {
+export function missionTip(view: PlayerView, me: number, target: number, count: number, mission: SpyMission): TipCard {
   const o = spyOdds(spyEdge(view, me, target, count), mission);
   const rows: [string, string][] = [];
   if (mission !== "idle") {

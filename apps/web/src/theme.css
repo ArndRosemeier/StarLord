@@ -848,3 +848,11 @@ body:has(.job-drag-card) { cursor: grabbing; }
   .end-bar, .end-stage { transition: none; }
   .end-captions h1, .end-captions p { animation: none; }
 }
+
+/* Race report (Races screen) */
+.modal.race-report { max-width: 860px; }
+.race-report h3 { margin: 14px 0 4px; }
+.race-report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 4px 20px; }
+.race-report-grid section { gap: 6px; }
+.race-report-techs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 16px; margin-top: 8px; }
+.race-report .chip.new-tech { border-color: rgba(79, 209, 139, 0.7); color: #9dffbe; box-shadow: 0 0 8px rgba(79, 209, 139, 0.25); }

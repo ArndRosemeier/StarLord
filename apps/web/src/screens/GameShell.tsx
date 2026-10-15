@@ -59,7 +59,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "research", label: "Research", icon: "⚗" },
   { id: "designs", label: "Ship design", icon: "⛭" },
   { id: "fleets", label: "Fleets", icon: "➤" },
-  { id: "diplomacy", label: "Diplomacy", icon: "☍" },
+  { id: "diplomacy", label: "Races", icon: "☍" },
   { id: "espionage", label: "Espionage", icon: "◐" },
   { id: "leaders", label: "Leaders", icon: "♛" },
   { id: "empire", label: "Empire & automation", icon: "⚙" },
@@ -185,7 +185,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     const met = news.filter((e) => e.what === "made contact with you").map((e) => ({ themId: e.other, opening: { kind: "contact" as const } }));
     const wars = news.filter((e) => e.what === "declared war on you").map((e) => ({ themId: e.other, opening: { kind: "war" as const } }));
     const offers = me.automation.includes("diplomacy") ? [] : view.proposals
-      .filter((p) => p.to === me.id && p.turn === view.turn - 1 && view.players[p.from]?.kind === "empire")
+      .filter((p) => p.to === me.id && p.turn === view.turn - 1 && view.players[p.from]?.kind === "empire" && !me.ignoring?.includes(p.from))
       .map((p) => ({ themId: p.from, opening: { kind: "proposal" as const, proposal: p } }));
     const queue: AudienceRequest[] = [...met, ...wars, ...offers].filter((a) => view.players[a.themId]?.alive);
     setAudiences(queue);
