@@ -16,6 +16,7 @@ import { fmt, pct } from "../ui/format";
 import { OTHER_KEYS, SHORTCUTS } from "../ui/shortcuts";
 import { difficultyText, galaxyAgeText, techLevelText } from "../ui/explain";
 import { FLASH_LEGEND } from "../map/flashes";
+import { LONE_CLAIM, TERRITORY_REACH } from "../map/territory";
 import { AUTOSAVES_KEPT } from "../game/saves";
 import { REPLAY_SPEEDS } from "../game/prefs";
 import type { GuideSlug } from "./entries";
@@ -174,6 +175,8 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         <li><Key>Esc</Key> or a click on empty space deselects the fleet.</li>
         <li>Shift-click fleets to select several; they all take the next star order.</li>
         <li>Buttons on the map show your fuel range and scanner coverage over the whole map, jump to your next fleet without orders and center on your next colony.</li>
+        <li><b>Territory</b>: each empire's space is shaded in its color inside a glowing border. Every colonized system claims about {LONE_CLAIM.toFixed(1)} parsecs around it; colonies up to {(TERRITORY_REACH * 2).toFixed(1)} parsecs apart add their pull together, and where two empires meet the stronger pull takes the space. It is a picture of who holds what and has no effect on the rules.</li>
+        <li>Star size shows its class, from big blue giants down to small brown dwarfs. Names of colonized systems take their owner's color. Your fleets under way leave an engine trail, and a ripple marks where they will arrive.</li>
       </Ul>
       <h3>Colonies</h3>
       <Ul>
