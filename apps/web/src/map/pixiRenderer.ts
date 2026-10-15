@@ -1,8 +1,10 @@
-import { Application, Assets, Circle, Container, Graphics, Sprite, Text, Texture, type Ticker } from "pixi.js";
+import { Application, Assets, Circle, Container, Graphics, Sprite, Text, Texture, TilingSprite, type Ticker } from "pixi.js";
 import type { MapFlash } from "./flashes";
 import type { MapInput, MapRenderer } from "./renderer";
 import type { FleetLook, MapScene } from "./scene";
 import { rangeLayer } from "./rangeOverlay";
+import { borderSegments, chainSegments, computeTerritory, TERRITORY_REACH, type Territory } from "./territory";
+import { cloud, corona, farStars, flare, glow, starDisc, streak, vignette } from "./textures";
 import { prefersReducedMotion } from "../ui/fx";
 import { HOLD_MS, HOLD_SLOP, additive, buzz, isTouchDevice } from "../ui/touch";
 
@@ -50,42 +52,6 @@ function dashedRing(g: Graphics, r: number, segments: number, fill = 0.6): Graph
   return g;
 }
 
-/** A soft round glow, white so sprites can tint it any colour. Made once and shared. */
-let glowTexture: Texture | null = null;
-function glow(): Texture {
-  if (glowTexture) return glowTexture;
-  const c = document.createElement("canvas");
-  c.width = c.height = 128;
-  const ctx = c.getContext("2d")!;
-  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  g.addColorStop(0, "rgba(255,255,255,1)");
-  g.addColorStop(0.18, "rgba(255,255,255,0.55)");
-  g.addColorStop(0.45, "rgba(255,255,255,0.14)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 128, 128);
-  glowTexture = Texture.from(c);
-  return glowTexture;
-}
-
-/** Four-pointed lens flare for bright stars. */
-let flareTexture: Texture | null = null;
-function flare(): Texture {
-  if (flareTexture) return flareTexture;
-  const c = document.createElement("canvas");
-  c.width = c.height = 128;
-  const ctx = c.getContext("2d")!;
-  for (const [w, h] of [[128, 6], [6, 128]] as const) {
-    const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    g.addColorStop(0, "rgba(255,255,255,0.9)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(64 - w / 2, 64 - h / 2, w, h);
-  }
-  flareTexture = Texture.from(c);
-  return flareTexture;
-}
-
 function glowSprite(color: number, size: number, alpha: number): Sprite {
   const s = new Sprite(glow());
   s.anchor.set(0.5);
@@ -93,6 +59,38 @@ function glowSprite(color: number, size: number, alpha: number): Sprite {
   s.alpha = alpha;
   s.width = s.height = size;
   s.blendMode = "add";
+  return s;
+}
+
+/**
+ * Empire space as one picture, a pixel per grid point: each empire's colour, brightest just
+ * inside its border and fading toward its heart, so the edge of a realm reads at a glance.
+ */
+function territorySprite(t: Territory): Sprite {
+  const c = document.createElement("canvas");
+  c.width = t.cols;
+  c.height = t.rows;
+  const ctx = c.getContext("2d")!;
+  const img = ctx.createImageData(t.cols, t.rows);
+  const rgb = t.empires.map((e) => hex(e));
+  for (let k = 0; k < t.owner.length; k++) {
+    const e = t.owner[k]!;
+    if (e < 0) continue;
+    const m = t.margin[e]![k]!;
+    const edge = Math.max(0, 1 - m / 0.3);
+    const a = Math.min(1, m / 0.02) * (0.07 + 0.17 * edge * edge);
+    const col = rgb[e]!;
+    img.data[k * 4] = (col >> 16) & 0xff;
+    img.data[k * 4 + 1] = (col >> 8) & 0xff;
+    img.data[k * 4 + 2] = col & 0xff;
+    img.data[k * 4 + 3] = Math.round(a * 255);
+  }
+  ctx.putImageData(img, 0, 0);
+  const s = new Sprite(Texture.from(c));
+  // Pixel centres sit on the grid points.
+  s.position.set((-TERRITORY_REACH - t.cell / 2) * UNIT, (-TERRITORY_REACH - t.cell / 2) * UNIT);
+  s.width = t.cols * t.cell * UNIT;
+  s.height = t.rows * t.cell * UNIT;
   return s;
 }
 
@@ -148,6 +146,12 @@ function shipIcon(look: FleetLook, color: number): { g: Graphics; tail: number; 
 /** Things the ticker keeps moving between renders. */
 interface Pulse { obj: Container; base: number; amp: number; speed: number; phase: number; prop: "scale" | "alpha" }
 interface Spin { obj: Container; speed: number }
+/** A ring that keeps swelling and fading from a point, `period` seconds per wave. */
+interface Ripple { g: Graphics; color: number; period: number; phase: number; reach: number }
+/** One wave of a ripple, `p` from 0 (just started) to 1 (gone). */
+function drawRipple(r: Ripple, p: number): void {
+  r.g.clear().circle(0, 0, 6 + r.reach * p).stroke({ width: 1.5, color: r.color, alpha: 0.6 * (1 - p) ** 1.5 });
+}
 /** A flash in progress; `t` counts seconds since it started (negative while it waits its turn). */
 interface LiveFlash {
   f: MapFlash; calm: boolean; t: number; node: Container;
@@ -160,6 +164,22 @@ interface Trail { x1: number; y1: number; x2: number; y2: number; color: number;
 const NEBULA_URL = "art/galaxy.webp";
 /** How far the nebula moves relative to the map when panning, for a sense of depth. */
 const PARALLAX = 0.06;
+/** The repeated far star field moves at this fraction of the map's speed. */
+const FAR_PARALLAX = 0.3;
+/** Relative star sizes by colour: hot blue giants big, brown dwarfs small. */
+const STAR_SIZE: Record<string, number> = { blue: 1.2, white: 1.06, yellow: 1, orange: 0.94, red: 0.86, brown: 0.78 };
+/** Empire borders: line and glow widths in screen pixels, kept constant while zooming. */
+const BORDER_LINE = 1.6;
+const BORDER_GLOW = 7;
+
+/** Mix a colour toward white, for owner-tinted names that stay easy to read. */
+function lighten(c: number, k: number): number {
+  const ch = (shift: number) => {
+    const v = (c >> shift) & 0xff;
+    return Math.round(v + (255 - v) * k) << shift;
+  };
+  return ch(16) | ch(8) | ch(0);
+}
 
 export class PixiMapRenderer implements MapRenderer {
   private app = new Application();
@@ -189,6 +209,16 @@ export class PixiMapRenderer implements MapRenderer {
   private destroyed = false;
   /** Soft empire-coloured glow around owned systems, under everything else. */
   private territory = new Container();
+  /** Empire space: a soft fill and glowing border lines, rebuilt only when colonies change hands. */
+  private borders = new Container();
+  private borderLines: { color: number; lines: number[][] }[] = [];
+  private borderGfx = new Graphics();
+  private borderScale = 0;
+  private territoryKey = "";
+  private territoryFill: Sprite | null = null;
+  private far: TilingSprite | null = null;
+  private shade: Sprite | null = null;
+  private ripples: Ripple[] = [];
   private trails = new Graphics();
   /** Turn-start flashes, drawn above everything at a constant size on screen. */
   private fx = new Container();
@@ -224,8 +254,14 @@ export class PixiMapRenderer implements MapRenderer {
     window.addEventListener("pointermove", this.onTouchMove);
     window.addEventListener("pointerup", this.onTouchUp);
     window.addEventListener("pointercancel", this.onTouchUp);
-    this.app.stage.addChild(this.camera);
-    this.camera.addChild(this.backdrop, this.territory, this.trails, this.world, this.hover, this.fx);
+    this.far = new TilingSprite({ texture: farStars(), width: this.app.screen.width, height: this.app.screen.height });
+    this.far.alpha = 0.8;
+    this.shade = new Sprite(vignette());
+    this.shade.eventMode = "none";
+    this.app.stage.addChild(this.far, this.camera, this.shade);
+    this.borders.addChild(this.borderGfx);
+    this.camera.addChild(this.backdrop, this.territory, this.borders, this.trails, this.world, this.hover, this.fx);
+    this.app.ticker.add(this.placeSky);
     this.fx.eventMode = "none";
     this.app.ticker.add(this.animate);
     this.app.ticker.add(this.animateFlashes);
@@ -316,6 +352,64 @@ export class PixiMapRenderer implements MapRenderer {
       height / 2 + clamp((this.camera.y - height / 2) * PARALLAX + Math.cos(drift * 0.023) * maxY * 0.5, maxY),
     );
   };
+
+  /**
+   * Every frame, motion or not: the far star field follows the camera slowly, the vignette
+   * covers the screen, and border lines are redrawn when the zoom has changed enough that
+   * their on-screen width would drift.
+   */
+  private placeSky = () => {
+    const { width, height } = this.app.screen;
+    const s = this.camera.scale.x;
+    if (this.far) {
+      this.far.width = width;
+      this.far.height = height;
+      this.far.tilePosition.set(this.camera.x * FAR_PARALLAX, this.camera.y * FAR_PARALLAX);
+    }
+    if (this.shade) {
+      this.shade.width = width;
+      this.shade.height = height;
+    }
+    if (this.borderLines.length > 0 && Math.abs(Math.log(s / this.borderScale)) > 0.12) this.drawBorders();
+  };
+
+  /** Empire border lines at the current zoom: a wide faint glow under a thin bright line. */
+  private drawBorders(): void {
+    const s = this.camera.scale.x;
+    this.borderScale = s;
+    const g = this.borderGfx.clear();
+    for (const pass of [{ w: BORDER_GLOW, a: 0.16 }, { w: BORDER_LINE, a: 0.85 }]) {
+      for (const { color, lines } of this.borderLines) {
+        for (const l of lines) {
+          g.moveTo(l[0]! * UNIT, l[1]! * UNIT);
+          for (let k = 2; k < l.length; k += 2) g.lineTo(l[k]! * UNIT, l[k + 1]! * UNIT);
+        }
+        g.stroke({ width: pass.w / s, color: pass.w === BORDER_LINE ? lighten(color, 0.25) : color, alpha: pass.a, cap: "round", join: "round" });
+      }
+    }
+  }
+
+  /** Recompute empire space when any colony changed hands (not on every selection click). */
+  private drawTerritory(scene: MapScene): void {
+    const stars = scene.stars.filter((s) => s.owners.length > 0);
+    const key = `${scene.width}x${scene.height}|${stars.map((s) => `${s.id}:${s.owners.join("+")}`).join(",")}`;
+    if (key === this.territoryKey) return;
+    this.territoryKey = key;
+    if (this.territoryFill) {
+      this.territoryFill.destroy({ texture: true, textureSource: true });
+      this.territoryFill = null;
+    }
+    const t = computeTerritory(stars, scene.width, scene.height);
+    this.borderLines = t.empires.map((c, e) => ({ color: hex(c), lines: chainSegments(borderSegments(t, e)) }));
+    this.borderScale = 0;
+    if (this.borderLines.length === 0) {
+      this.borderGfx.clear();
+      return;
+    }
+    this.drawBorders();
+    this.territoryFill = territorySprite(t);
+    this.borders.addChildAt(this.territoryFill, 0);
+  }
 
   private onWheel = (e: WheelEvent) => {
     e.preventDefault();
@@ -453,6 +547,8 @@ export class PixiMapRenderer implements MapRenderer {
     }
     for (const s of this.spins) s.obj.rotation += s.speed * ticker.deltaMS / 1000;
     for (const l of this.twinkle) l.g.alpha = 0.65 + 0.35 * Math.sin(t * 0.9 + l.phase);
+    for (const r of this.ripples) drawRipple(r, ((t + r.phase) % r.period) / r.period);
+    this.borders.alpha = 0.88 + 0.12 * Math.sin(t * 0.7);
     this.drawTrails(t * 22);
   };
 
@@ -507,6 +603,7 @@ export class PixiMapRenderer implements MapRenderer {
   private drawTrails(offset: number): void {
     const g = this.trails.clear();
     for (const r of this.trailList) {
+      g.moveTo(r.x1, r.y1).lineTo(r.x2, r.y2).stroke({ width: r.selected ? 7 : 4, color: r.color, alpha: r.selected ? 0.16 : 0.08 });
       dashTo(g, r.x1, r.y1, r.x2, r.y2, r.selected ? 9 : 6, r.selected ? 6 : 6, offset);
       g.stroke({ width: r.selected ? 2.5 : 1.5, color: r.color, alpha: r.selected ? 0.95 : 0.5 });
     }
@@ -523,6 +620,7 @@ export class PixiMapRenderer implements MapRenderer {
     for (const child of this.territory.removeChildren()) child.destroy({ children: true });
     this.pulses = [];
     this.spins = [];
+    this.ripples = [];
     this.trailList = [];
     const rand = (id: string) => {
       let h = 0;
@@ -530,12 +628,24 @@ export class PixiMapRenderer implements MapRenderer {
       return (h % 1000) / 1000;
     };
 
-    // Nebulae: soft violet clouds under the territory glow.
-    for (const n of scene.nebulae) {
-      const cloud = glowSprite(0x9b6bd6, n.r * UNIT * 2.6, 0.32);
-      cloud.position.set(n.x * UNIT, n.y * UNIT);
-      this.territory.addChild(cloud);
-    }
+    // Nebulae: a soft violet glow under two wispy cloud layers that turn slowly against each other.
+    scene.nebulae.forEach((n, i) => {
+      const base = glowSprite(0x7c4dbd, n.r * UNIT * 2.4, 0.22);
+      base.position.set(n.x * UNIT, n.y * UNIT);
+      this.territory.addChild(base);
+      for (const [layer, tint, alpha, size] of [[0, 0xb48cff, 0.85, 2.6], [1, 0xff8ad8, 0.5, 2.2]] as const) {
+        const c = new Sprite(cloud((i * 2 + layer) % 3));
+        c.anchor.set(0.5);
+        c.tint = tint;
+        c.alpha = alpha;
+        c.blendMode = "add";
+        c.width = c.height = n.r * UNIT * size;
+        c.position.set(n.x * UNIT, n.y * UNIT);
+        c.rotation = rand(`${i}:${layer}`) * Math.PI * 2;
+        this.territory.addChild(c);
+        this.spins.push({ obj: c, speed: layer === 0 ? 0.012 : -0.018 });
+      }
+    });
     // Wormholes: a faint dashed link joining the pair.
     if (scene.wormholes.length > 0) {
       const links = new Graphics();
@@ -547,29 +657,44 @@ export class PixiMapRenderer implements MapRenderer {
     if (scene.scanRange.length > 0) this.territory.addChild(rangeLayer(scene.scanRange, UNIT, SCAN_COLOR, { fill: 0.08, dashed: true }));
     if (scene.fuelRange.length > 0) this.territory.addChild(rangeLayer(scene.fuelRange, UNIT, FUEL_COLOR, { fill: 0.1 }));
 
+    // Empire space with its borders, plus a warm glow around each colonised star.
+    this.drawTerritory(scene);
     for (const s of scene.stars) {
       if (s.owners.length === 0) continue;
-      const t = glowSprite(hex(s.owners[0]!), UNIT * 5, 0.34);
+      const t = glowSprite(hex(s.owners[0]!), UNIT * 3.2, 0.22);
       t.position.set(s.x * UNIT, s.y * UNIT);
       this.territory.addChild(t);
     }
 
+    const ripplesAt = new Map<string, Ripple>();
     for (const f of scene.fleets) {
       if (!f.dest) continue;
       const selected = scene.selectedFleetIds.has(f.id);
       this.trailList.push({ x1: f.x * UNIT, y1: f.y * UNIT, x2: f.dest.x * UNIT, y2: f.dest.y * UNIT, color: hex(f.color), selected });
+      // A slow ripple marks where the fleet will arrive (one per destination and colour).
+      const rippleKey = `${f.dest.x},${f.dest.y},${f.color}`;
+      if (!ripplesAt.has(rippleKey) || selected) {
+        ripplesAt.get(rippleKey)?.g.destroy();
+        const g = new Graphics();
+        g.position.set(f.dest.x * UNIT, f.dest.y * UNIT);
+        this.territory.addChild(g);
+        const ripple = { g, color: hex(f.color), period: 2.6, phase: rand(f.id) * 2.6, reach: selected ? 30 : 22 };
+        ripplesAt.set(rippleKey, ripple);
+        drawRipple(ripple, 0.6);
+      }
       if (selected && f.eta !== null) {
         const t = f.held ? label("held by hyperspace flux", 0xff8a8a) : label(`arrives in ${turns(f.eta)}`, 0xffffff);
         t.position.set(f.dest.x * UNIT, f.dest.y * UNIT - 24);
         this.world.addChild(t);
       }
     }
+    this.ripples = [...ripplesAt.values()];
     this.drawTrails(0);
 
     for (const s of scene.stars) {
       const node = new Container();
       node.position.set(s.x * UNIT, s.y * UNIT);
-      const r = s.special === "orion" ? 9 : s.special === "raiderHome" ? 10 : 6;
+      const r = s.special === "orion" ? 9 : s.special === "raiderHome" ? 10 : 6 * (STAR_SIZE[s.starColor] ?? 1);
       const color = hex(s.color);
       const phase = rand(s.id) * Math.PI * 2;
       if (scene.reachable.has(s.id)) {
@@ -589,6 +714,17 @@ export class PixiMapRenderer implements MapRenderer {
       } else {
         const halo = glowSprite(color, r * (s.explored ? 10 : 6), s.explored ? 0.9 : 0.45);
         node.addChild(halo);
+        if (s.explored) {
+          const crown = new Sprite(corona());
+          crown.anchor.set(0.5);
+          crown.tint = color;
+          crown.blendMode = "add";
+          crown.width = crown.height = r * 7;
+          crown.alpha = 0.75;
+          crown.rotation = phase;
+          node.addChild(crown);
+          this.spins.push({ obj: crown, speed: 0.025 + rand(s.id + "c") * 0.03 });
+        }
         this.pulses.push({ obj: halo, base: halo.scale.x, amp: 0.08, speed: 1.2 + rand(s.id + "s"), phase, prop: "scale" });
         if (s.explored || s.special) {
           const spikes = new Sprite(flare());
@@ -601,7 +737,13 @@ export class PixiMapRenderer implements MapRenderer {
           node.addChild(spikes);
           this.spins.push({ obj: spikes, speed: 0.04 + rand(s.id + "v") * 0.05 });
         }
-        node.addChild(new Graphics().circle(0, 0, r).fill({ color, alpha: s.explored ? 1 : 0.55 }).circle(0, 0, r * 0.45).fill({ color: 0xffffff, alpha: s.explored ? 0.85 : 0.3 }));
+        const disc = new Sprite(starDisc());
+        disc.anchor.set(0.5);
+        disc.tint = color;
+        disc.width = disc.height = r * 2.1;
+        disc.alpha = s.explored ? 1 : 0.6;
+        const heart = glowSprite(0xffffff, r * 2.2, s.explored ? 0.95 : 0.35);
+        node.addChild(disc, heart);
       }
       if (s.special === "orion") {
         const ring = dashedRing(new Graphics(), r + 9, 12).stroke({ width: 1.5, color: 0xffd36b, alpha: 0.85 });
@@ -615,7 +757,8 @@ export class PixiMapRenderer implements MapRenderer {
       }
       const rings = new Graphics();
       s.owners.forEach((c, i) => {
-        rings.circle(0, 0, r + 4 + i * 3).stroke({ width: 2, color: hex(c), alpha: 0.9 });
+        rings.circle(0, 0, r + 4 + i * 3).stroke({ width: 4, color: hex(c), alpha: 0.22 });
+        rings.circle(0, 0, r + 4 + i * 3).stroke({ width: 1.6, color: lighten(hex(c), 0.2), alpha: 0.95 });
       });
       node.addChild(rings);
       if (s.guarded) {
@@ -624,7 +767,14 @@ export class PixiMapRenderer implements MapRenderer {
         this.pulses.push({ obj: skull, base: 0.85, amp: 0.2, speed: 4, phase, prop: "alpha" });
       }
       if (s.id === scene.selectedStarId) {
-        const sel = dashedRing(new Graphics(), r + 15, 16, 0.55).stroke({ width: 2, color: 0xffffff, alpha: 0.95 });
+        // Four corner brackets turning slowly around a pulsing ring.
+        const sel = new Graphics();
+        const R = r + 17;
+        for (let k = 0; k < 4; k++) {
+          const a = (k * Math.PI) / 2 + Math.PI / 4;
+          sel.moveTo(Math.cos(a - 0.32) * R, Math.sin(a - 0.32) * R).arc(0, 0, R, a - 0.32, a + 0.32);
+        }
+        sel.stroke({ width: 6, color: 0x9fd0ff, alpha: 0.25 }).stroke({ width: 2.2, color: 0xffffff, alpha: 0.95 });
         node.addChild(sel);
         this.spins.push({ obj: sel, speed: 0.6 });
         const ping = new Graphics().circle(0, 0, r + 15).stroke({ width: 1, color: 0x9fd0ff, alpha: 0.6 });
@@ -636,7 +786,7 @@ export class PixiMapRenderer implements MapRenderer {
         const label = new Text({
           text: s.name,
           style: {
-            fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, fill: 0xd7def0,
+            fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, fill: s.owners.length ? lighten(hex(s.owners[0]!), 0.55) : 0xc4cce0,
             fontWeight: s.owners.length ? "600" : "400",
             dropShadow: { color: 0x000000, alpha: 0.9, blur: 3, distance: 0, angle: 0 },
           },
@@ -706,6 +856,18 @@ export class PixiMapRenderer implements MapRenderer {
         icon.g.scale.set(shrink);
         const engine = glowSprite(color, (f.dest ? 18 : 12) * Math.max(1, r / 8), 0.9);
         engine.x = icon.tail * shrink;
+        if (f.dest && !f.starId) {
+          // Under way: a tapered exhaust streak behind the ship.
+          const trail = new Sprite(streak());
+          trail.anchor.set(1, 0.5);
+          trail.tint = color;
+          trail.blendMode = "add";
+          trail.width = 30 * Math.max(1, r / 8);
+          trail.height = 5 * Math.max(1, r / 8);
+          trail.x = icon.tail * shrink + 2;
+          trail.alpha = 0.8;
+          body.addChild(trail);
+        }
         body.addChild(engine);
         if (f.dest) this.pulses.push({ obj: engine, base: engine.scale.x, amp: 0.25, speed: 14, phase: rand(f.id) * 6, prop: "scale" });
         body.addChild(icon.g);
@@ -792,6 +954,7 @@ export class PixiMapRenderer implements MapRenderer {
     window.removeEventListener("pointercancel", this.onTouchUp);
     this.cancelHold();
     this.app.ticker.remove(this.placeNebula);
+    this.app.ticker.remove(this.placeSky);
     this.app.ticker.remove(this.animate);
     this.app.ticker.remove(this.animateFlashes);
     this.app.destroy(true, { children: true });

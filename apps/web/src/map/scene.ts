@@ -148,6 +148,8 @@ export interface SceneStar {
   /** A monster lair or other hostile guard is known to be here. */
   guarded: boolean;
   blackHole: boolean;
+  /** Spectral class, which sets the drawn size. */
+  starColor: Star["color"];
 }
 
 export interface SceneFleet {
@@ -230,6 +232,7 @@ export function buildScene(
     special: s.special,
     guarded: guarded.has(s.id),
     blackHole: s.color === "blackHole",
+    starColor: s.color,
   }));
   const fleets: SceneFleet[] = Object.values(view.fleets).map((f) => {
     const dest = f.destStarId ? starById.get(f.destStarId) : undefined;
