@@ -126,6 +126,7 @@ export function newGame(opts: NewGameOptions): GameState {
     nebulae,
     tributes: [],
     activeEvents: [],
+    blockades: {},
     combats: [],
     events: [],
     nextId: 0,

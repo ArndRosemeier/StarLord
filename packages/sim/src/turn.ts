@@ -9,6 +9,7 @@ import { RESEARCH, TECHS, TIERS_BY_ID, emptyHyperLevels, researchCost } from "./
 import { battleKey, colonyDefenseStrength, createBattle, hasArmedDefenses, type Battle, type CombatSide } from "./combat.js";
 import { buildingScrapRefund, buyCost, settlerModule, termsOf, validateCommand, type Command } from "./commands.js";
 import { newId, type TurnContext } from "./context.js";
+import { blockadersOf, computeBlockades, updateBlockades } from "./blockade.js";
 import { councilTick } from "./council.js";
 import { designStats, findDesign } from "./designs.js";
 import { SCOUT_LAB_RESEARCH, hullIndex, type HullId } from "./data/components.js";
@@ -46,7 +47,7 @@ import { cancelRefit, completeRefit, replaceDesign, startRefit, undock } from ".
 import { applyDebug } from "./debug.js";
 import { TargetPause, attackTargetAt, attackableColonies, chosenTarget, targetKey, targetPrompt, type TargetPrompt, type Targets } from "./targets.js";
 import { creditElimination, noteAttack, recordHistory, score } from "./score.js";
-import type { BuildItem, Colony, CombatAftermath, Fleet, GameState, Id, Planet, Player, PlayerId } from "./types.js";
+import type { Blockades, BuildItem, Colony, CombatAftermath, Fleet, GameState, Id, Planet, Player, PlayerId } from "./types.js";
 
 export type TurnOrders = Partial<Record<PlayerId, Command[]>>;
 
@@ -101,6 +102,7 @@ export function processTurn(
   randomEventTick(ctx);
   surrenders(ctx);
   checkElimination(ctx);
+  updateBlockades(ctx);
 
   state.turn += 1;
   if (!state.over && state.settings.maxTurns > 0 && state.turn > state.settings.maxTurns) {
@@ -937,7 +939,9 @@ function nearestOwnStar(state: GameState, playerId: PlayerId, fromStarId: Id): I
 
 function runEconomy(ctx: TurnContext): void {
   const { state } = ctx;
-  for (const player of state.players) if (player.kind === "empire" && player.alive) arriveColonists(ctx, player.id);
+  // Arriving colonists meet the blockades as they stand after this turn's battles.
+  const blockades = computeBlockades(state);
+  for (const player of state.players) if (player.kind === "empire" && player.alive) arriveColonists(ctx, player.id, blockades);
 
   const byPlayer = new Map<PlayerId, { colony: Colony; out: ColonyOutput }[]>();
   for (const c of Object.values(state.colonies)) {
@@ -993,7 +997,7 @@ function runEconomy(ctx: TurnContext): void {
 }
 
 /** Colonists whose freighters reach their new home this turn; on a full planet they die. */
-function arriveColonists(ctx: TurnContext, playerId: PlayerId): void {
+function arriveColonists(ctx: TurnContext, playerId: PlayerId, blockades: Blockades): void {
   const { state } = ctx;
   const player = state.players[playerId]!;
   if (!player.transfers?.length) return;
@@ -1006,6 +1010,11 @@ function arriveColonists(ctx: TurnContext, playerId: PlayerId): void {
     const to = state.colonies[t.toColonyId];
     if (!to || to.ownerId !== playerId || to.raceId !== t.raceId) {
       ctx.emit({ kind: "random", playerId, what: `${t.count} colonist${t.count === 1 ? "" : "s"} in transit had nowhere to land and were lost.` });
+      continue;
+    }
+    // As in the original (FUN_000ff1f6), freighters can't land colonists in a blockaded system: they are lost.
+    if (blockadersOf(state, to, blockades).length > 0) {
+      ctx.emit({ kind: "random", playerId, starId: starOf(state, to.planetId).id, what: `${to.name} is blockaded: ${t.count} arriving colonist${t.count === 1 ? "" : "s"} could not land and ${t.count === 1 ? "was" : "were"} lost.` });
       continue;
     }
     const room = Math.max(0, colonyRoom(state, to));

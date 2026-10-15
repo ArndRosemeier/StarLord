@@ -4,6 +4,7 @@ export * from "./context.js";
 export * from "./galaxy.js";
 export * from "./setup.js";
 export * from "./economy.js";
+export * from "./blockade.js";
 export * from "./empire.js";
 export * from "./designs.js";
 export * from "./combat.js";
