@@ -52,7 +52,7 @@ export interface MusicTrack {
 /** Browser hooks the director needs; tests pass fakes. */
 export interface AudioEnv {
   createTrack(src: string): MusicTrack;
-  /** Gesture and visibility events; null when there is no window (tests, SSR). */
+  /** Gesture, visibility and page lifecycle events; null when there is no window (tests, SSR). */
   events: Pick<Window, "addEventListener"> | null;
   isVisible(): boolean;
   setTimeout(fn: () => void, ms: number): unknown;
@@ -94,6 +94,10 @@ export class AudioDirector {
   private ctx: AudioContext | null = null;
   /** A short piece of music played over the background (a breakthrough fanfare), which ducks the music meanwhile. */
   private stingTrack: MusicTrack | null = null;
+  /** Tracks fading out after a mood change; their fade runs on animation frames, which stop while hidden. */
+  private leaving = new Set<MusicTrack>();
+  /** The page is hidden or being closed: everything stays silent until it is shown again. */
+  private hidden = false;
 
   constructor(private env: AudioEnv = browserEnv()) {
     // Browsers refuse play() until a click or key press, and some (Safari, tablets) refuse it again for a
@@ -105,9 +109,41 @@ export class AudioDirector {
     };
     env.events?.addEventListener("pointerdown", resume);
     env.events?.addEventListener("keydown", resume);
-    env.events?.addEventListener("visibilitychange", () => {
-      if (env.isVisible()) resume();
-    });
+    // Tablets keep a page's audio running after the app is closed or sent to the background, so music
+    // stops whenever the page is hidden or unloaded and picks up again when it is shown.
+    const lifecycle = () => {
+      if (env.isVisible()) {
+        this.hidden = false;
+        resume();
+      } else this.silence();
+    };
+    env.events?.addEventListener("visibilitychange", lifecycle);
+    env.events?.addEventListener("pageshow", lifecycle);
+    env.events?.addEventListener("pagehide", () => this.silence());
+  }
+
+  /** Stop all music and effects at once, without the fade (which would not run while hidden). */
+  silence(): void {
+    this.hidden = true;
+    this.current?.pause();
+    for (const track of this.leaving) this.drop(track);
+    this.leaving.clear();
+    if (this.stingTrack) {
+      const sting = this.stingTrack;
+      this.stingTrack = null;
+      sting.pause();
+      if (this.current) {
+        this.fades.delete(this.current);
+        this.current.volume = this.musicVolume();
+      }
+    }
+    if (this.ctx?.state === "running") void this.ctx.suspend();
+  }
+
+  private drop(track: MusicTrack): void {
+    this.fades.delete(track);
+    track.pause();
+    track.src = "";
   }
 
   subscribe = (fn: () => void) => {
@@ -158,7 +194,7 @@ export class AudioDirector {
   /** Restart music that should be playing but is paused (blocked autoplay, a browser pause). */
   resume(): void {
     const track = this.current;
-    if (!track || this.mood === "none" || this.finished || !track.paused) return;
+    if (!track || this.hidden || this.mood === "none" || this.finished || !track.paused) return;
     void track.play().catch(() => {});
   }
 
@@ -204,7 +240,7 @@ export class AudioDirector {
       // whereas a fresh element started from this event can be refused and leave the game silent.
       this.trackIndex = this.nextTrack();
       track.src = this.trackSrc();
-      void track.play().catch(() => {});
+      if (!this.hidden) void track.play().catch(() => {});
     });
     track.addEventListener("playing", () => {
       if (track === this.current) this.failures = 0;
@@ -217,12 +253,12 @@ export class AudioDirector {
         if (track !== this.current) return;
         this.trackIndex = this.nextTrack();
         track.src = this.trackSrc();
-        void track.play().catch(() => {});
+        if (!this.hidden) void track.play().catch(() => {});
       }, delay);
     });
     this.current = track;
-    // Rejected until the first gesture; the gesture listener retries.
-    void track.play().catch(() => {});
+    // Rejected until the first gesture; the gesture listener retries. A hidden page starts it when shown.
+    if (!this.hidden) void track.play().catch(() => {});
     this.fade(track, this.musicVolume());
   }
 
@@ -243,9 +279,11 @@ export class AudioDirector {
 
   private fadeOut(track: MusicTrack | null): void {
     if (!track) return;
+    if (this.hidden) return this.drop(track);
+    this.leaving.add(track);
     this.fade(track, 0, () => {
-      track.pause();
-      track.src = "";
+      this.leaving.delete(track);
+      this.drop(track);
     });
   }
 
@@ -255,7 +293,7 @@ export class AudioDirector {
    */
   sting(src: string): void {
     const volume = this.musicVolume();
-    if (volume <= 0) return;
+    if (volume <= 0 || this.hidden) return;
     this.stingTrack?.pause();
     const track = this.env.createTrack(src);
     track.loop = false;
@@ -276,7 +314,7 @@ export class AudioDirector {
   /** A short synthesised effect. */
   play(effect: Effect): void {
     const volume = this.settings.muted ? 0 : this.settings.effects;
-    if (volume <= 0 || typeof AudioContext === "undefined") return;
+    if (volume <= 0 || this.hidden || typeof AudioContext === "undefined") return;
     this.ctx ??= new AudioContext();
     const ctx = this.ctx;
     if (ctx.state === "suspended") void ctx.resume();

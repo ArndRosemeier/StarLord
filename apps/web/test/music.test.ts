@@ -119,6 +119,51 @@ describe("background music", () => {
     expect(tracks[0]!.paused).toBe(false);
   });
 
+  it("stops the music when the page is hidden or closed and plays it again when shown", () => {
+    const { director, tracks, timers, state, fire } = setup();
+    director.setMood("galaxy");
+    expect(tracks[0]!.paused).toBe(false);
+
+    // A tablet closing the app or sending it to the background hides the page.
+    state.visible = false;
+    fire("visibilitychange");
+    expect(tracks[0]!.paused).toBe(true);
+    // Nothing brings it back while hidden: a retry, a mood change, a stray gesture.
+    tracks[0]!.emit("error");
+    timers[0]!();
+    expect(tracks[0]!.paused).toBe(true);
+    director.setMood("combat");
+    expect(tracks[0]!.paused).toBe(true);
+    expect(tracks[0]!.src).toBe("");
+    expect(tracks[1]!.paused).toBe(true);
+    fire("pointerdown");
+    expect(tracks[1]!.paused).toBe(true);
+    director.sting("audio/breakthrough-1.mp3");
+    expect(tracks).toHaveLength(2);
+
+    state.visible = true;
+    fire("visibilitychange");
+    expect(tracks[1]!.paused).toBe(false);
+
+    // pagehide (the tab or app closing) silences even while still reported visible.
+    fire("pagehide");
+    expect(tracks[1]!.paused).toBe(true);
+    fire("pageshow");
+    expect(tracks[1]!.paused).toBe(false);
+  });
+
+  it("silences a track that is still fading out when the page is hidden", () => {
+    const { director, tracks, state, fire } = setup();
+    director.setMood("galaxy");
+    director.setMood("combat");
+    // The fade-out runs on animation frames, which never come here (or on a hidden page).
+    expect(tracks[0]!.paused).toBe(false);
+    state.visible = false;
+    fire("visibilitychange");
+    expect(tracks[0]!.paused).toBe(true);
+    expect(tracks[1]!.paused).toBe(true);
+  });
+
   it("retries after a track fails to load instead of going silent", () => {
     const { director, tracks, timers } = setup();
     director.setMood("galaxy");
