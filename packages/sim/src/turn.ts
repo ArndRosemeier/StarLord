@@ -41,7 +41,7 @@ import { raidersReturn, raidTick, returnThroughPortal, salvageTech, syncPortals 
 import { absorbResearch, payBribe, randomEventTick } from "./randomEvents.js";
 import { explore, onColonize } from "./specials.js";
 import { Rng } from "./rng.js";
-import { PLACED_PROJECTS, availableDesigns, availableProjects, baseTargets, canBuildShips, colonyRoom, freePlanetsInSystem, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
+import { PLACED_PROJECTS, availableDesigns, availableProjects, baseTargets, buildIndex, canBuildShips, colonyRoom, currentBuild, freePlanetsInSystem, itemCost, learnsWholeField, researchOptions, starOf } from "./rules.js";
 import { applyMutation } from "./mutation.js";
 import { cancelRefit, completeRefit, replaceDesign, startRefit, undock } from "./refit.js";
 import { applyDebug } from "./debug.js";
@@ -209,7 +209,7 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
     case "buy": {
       const c = state.colonies[cmd.colonyId]!;
       player.bc -= buyCost(state, c);
-      c.progress = itemCost(state, playerId, c.queue[0]!, c);
+      c.progress = itemCost(state, playerId, currentBuild(c)!, c);
       break;
     }
     case "setResearch":
@@ -1193,7 +1193,9 @@ function upgradeGovernment(player: GameState["players"][number]): void {
 function produce(ctx: TurnContext, colony: Colony, industry: number, tradeMult: number): number {
   const { state } = ctx;
   if (colony.outpost) return 0;
-  const head = colony.queue[0];
+  // An auto build with nothing in front of it is passed over: the items behind it are built.
+  const at = buildIndex(colony.queue);
+  const head = at < 0 ? undefined : colony.queue[at];
   if (!head || head.kind === "tradeGoods") {
     // An empty queue sells the turn's industry as trade goods; production already stored waits for the next item.
     return tradeGoods(industry, tradeMult);
@@ -1202,7 +1204,7 @@ function produce(ctx: TurnContext, colony: Colony, industry: number, tradeMult: 
   if (head.kind === "project" && head.id === "housing") return 0;
   // A refit the colony can no longer do (its orbital station is gone) is lost with its ship, as in the original.
   if (head.kind === "refit" && !canBuildShips(colony, findDesign(state.players[colony.ownerId]!, head.designId))) {
-    colony.queue.shift();
+    colony.queue.splice(at, 1);
     const name = findDesign(state.players[colony.ownerId]!, head.fromDesignId)?.name ?? "a ship";
     ctx.emit({ kind: "random", playerId: colony.ownerId, what: `${colony.name} lost its orbital station; ${name} in its dock for a refit was scrapped.` });
     return produce(ctx, colony, industry, tradeMult);
@@ -1210,17 +1212,17 @@ function produce(ctx: TurnContext, colony: Colony, industry: number, tradeMult: 
   const cost = itemCost(state, colony.ownerId, head, colony);
   colony.progress += industry;
   if (!Number.isFinite(cost)) {
-    colony.queue.shift();
+    colony.queue.splice(at, 1);
     return 0;
   }
   if (colony.progress < cost) return 0;
   // MoO2 builds at most one item per turn; overflow carries into the next.
   // Whatever is left over stays stored for the next item, as in the original.
   colony.progress -= cost;
-  colony.queue.shift();
+  colony.queue.splice(at, 1);
   completeItem(ctx, colony, head);
-  // A repeat item stays at the head until it is removed or the rules allow no more of it.
-  if ("repeat" in head && head.repeat && canBuildAgain(state, colony, head)) colony.queue.unshift(head);
+  // A repeat item stays where it was until it is removed or the rules allow no more of it.
+  if ("repeat" in head && head.repeat && canBuildAgain(state, colony, head)) colony.queue.splice(at, 0, head);
   return 0;
 }
 

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   exterminateProblem, buildingScrapRefund, scrapBuildingProblem,
   BUILDINGS_BY_ID, MAX_QUEUE, PLACED_PROJECTS, PROJECTS_BY_ID, baseTargets, availableBuildings, availableDesigns, availableProjects, buyCost,
-  BLOCKADE_PENALTY, FREIGHTERS, androids, blockadeLoss, blockadersOf, colonyOutput, findDesign, foodPlan, freeFreighters, isContinuous, itemCost, population,
+  BLOCKADE_PENALTY, FREIGHTERS, androids, blockadeLoss, blockadersOf, colonyOutput, findDesign, foodPlan, freeFreighters, buildIndex, currentBuild, isContinuous, itemCost, population,
   type BuildItem, type Colony, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
@@ -10,7 +10,8 @@ import { blockaderNames, climateName, fmt, itemName, signed, words } from "../ui
 import { PlanetIcon, PlanetOrb, viewStarOfColony } from "../ui/panels";
 import { Icon } from "../ui/fx";
 import { Tip, TipBody, type TipCard } from "../ui/Tip";
-import { PlanetFacts, buildingScrapTip, buildingTip, moraleTip, projectTip, tradeGoodsBC, tradeGoodsTip } from "../ui/explain";
+import { STRATEGIES, autoBuildPick } from "@starlord/ai";
+import { PlanetFacts, autoBuildTip, buildingScrapTip, buildingTip, moraleTip, projectTip, tradeGoodsBC, tradeGoodsTip } from "../ui/explain";
 import { designTip } from "./designTips";
 import { BaseChoices } from "./BasePrompt";
 import { JobRows } from "./JobRows";
@@ -29,7 +30,7 @@ export function ColoniesScreen({ onShowStar, initialColony }: { onShowStar: (sta
   const { sort, toggle } = useSort<ColonySortKey>("name", "asc", (k) => (k === "name" || k === "building" ? "asc" : "desc"));
   const rows = colonies.map((c) => {
     const o = colonyOutput(view, c);
-    const head = c.queue[0];
+    const head = currentBuild(c);
     const cost = head ? itemCost(view, me.id, head, c) : 0;
     const turns = head && Number.isFinite(cost) && o.industry > 0 ? Math.ceil((cost - c.progress) / o.industry) : null;
     return { c, o, head, turns };
@@ -166,7 +167,8 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
   const buildings = availableBuildings(view, me.id, colony).filter((b) => !queuedBuildings.has(b));
   const designs = availableDesigns(view, me.id);
   const projects = availableProjects(view, me.id, colony);
-  const head = colony.queue[0];
+  const at = buildIndex(colony.queue);
+  const head = currentBuild(colony);
   const headCost = head ? itemCost(view, me.id, head, colony) : Infinity;
   const price = buyCost(view, colony);
 
@@ -263,14 +265,17 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
               <div className="row" key={i}>
                 <span style={{ width: 18 }} className="muted">{i + 1}.</span>
                 <span style={{ flex: 1 }}>
-                  {itemName(view, item)}
+                  {item.kind === "auto" ? (
+                    <AutoBuildRow colony={colony} strategy={item.strategy} first={i === 0}
+                      onStrategy={(strategy) => setQueue(colony.queue.map((q, j) => (j === i ? { kind: "auto", strategy } : q)))} />
+                  ) : itemName(view, item)}
                   {(item.kind === "ship" || item.kind === "project") && item.repeat && <small className="muted"> · repeat</small>}
-                  {i === 0 && Number.isFinite(cost) && (
+                  {i === at && Number.isFinite(cost) && (
                     <div className="bar" style={{ marginTop: 3 }}><div style={{ width: `${Math.min(100, (colony.progress / cost) * 100)}%` }} /></div>
                   )}
                 </span>
                 <small className="muted">
-                  {Number.isFinite(cost) ? `${fmt(i === 0 ? colony.progress : 0)}/${fmt(cost)}` : "ongoing"}
+                  {Number.isFinite(cost) ? `${fmt(i === at ? colony.progress : 0)}/${fmt(cost)}` : "ongoing"}
                 </small>
                 {(item.kind === "ship" || (item.kind === "project" && Number.isFinite(cost))) && (
                   <button className={item.repeat ? "small active" : "small"} disabled={readOnly} aria-pressed={!!item.repeat}
@@ -290,7 +295,8 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
                   setQueue(q);
                 }}>↑</button>
                 <button className="small" disabled={readOnly} aria-label="Remove"
-                  title={item.kind === "refit" ? "Take the refit out of the queue: the ship leaves dock and comes back to orbit unchanged." : "Take this out of the queue."}
+                  title={item.kind === "refit" ? "Take the refit out of the queue: the ship leaves dock and comes back to orbit unchanged."
+                    : item.kind === "auto" ? "Take Auto build out of the queue. Items it already put in front of itself stay." : "Take this out of the queue."}
                   onClick={() => setQueue(colony.queue.filter((_, j) => j !== i))}>✕</button>
               </div>
             );
@@ -312,6 +318,35 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
   );
 }
 
+/** An Auto build queue row: its strategy, and what it would put in front of itself now. */
+function AutoBuildRow({ colony, strategy, first, onStrategy }: {
+  colony: Colony;
+  strategy: string;
+  first: boolean;
+  onStrategy: (strategy: string) => void;
+}) {
+  const { view, readOnly } = useGame();
+  const pick = useMemo(() => autoBuildPick(view, colony.id, strategy), [view, colony.id, strategy]);
+  const behind = colony.queue.slice(colony.queue.findIndex((q) => q.kind === "auto") + 1).some((q) => q.kind !== "auto");
+  return (
+    <Tip block card={() => autoBuildTip(view, colony, strategy)}>
+      <div className="col" style={{ gap: 2 }}>
+        <span className="row" style={{ gap: 6 }}>
+          <span>⚙ Auto build</span>
+          <select disabled={readOnly} value={strategy} aria-label="Auto build strategy" onChange={(e) => onStrategy(e.target.value)}>
+            {STRATEGIES.production.map((s) => <option key={s.id} value={s.id} title={s.description}>{s.name}</option>)}
+          </select>
+        </span>
+        {pick.item ? (
+          <small className="muted">{first ? "Puts" : "When it comes up, puts"} {itemName(view, pick.item)} in front of itself at the end of the turn.</small>
+        ) : (
+          <small className="warn">Idle: {pick.why} {behind ? "The items behind it are built instead." : "The industry goes to Trade Goods."}</small>
+        )}
+      </div>
+    </Tip>
+  );
+}
+
 /** Sentinel id that sorts Trade Goods in among the projects. */
 const TRADE_GOODS = "\u0000tradeGoods";
 
@@ -327,6 +362,8 @@ function AddToQueue({ onAdd, buildings, designs, projects, colony, industry }: {
   const byName = <T,>(items: T[], name: (t: T) => string) => [...items].sort((a, b) => name(a).localeCompare(name(b)));
   const sortedBuildings = byName(buildings, (b) => BUILDINGS_BY_ID[b]!.name);
   const sortedDesigns = byName(designs, (d) => findDesign(me, d)!.name);
+  // A new Auto build starts with the strategy chosen for production automation.
+  const autoStrategy = STRATEGIES.production.find((x) => x.id === me.automationStrategies?.production)?.id ?? "balanced";
   const sortedProjects = byName([...projects, TRADE_GOODS], (p) => (p === TRADE_GOODS ? "Trade Goods" : PROJECTS_BY_ID[p]?.name ?? p));
   return (
     <div className="col" style={{ gap: 6 }}>
@@ -356,6 +393,13 @@ function AddToQueue({ onAdd, buildings, designs, projects, colony, industry }: {
         })}
       </div>}
       <div className="build-chips">
+        {!colony.queue.some((q) => q.kind === "auto") && (
+          <Tip block card={() => autoBuildTip(view, colony, autoStrategy)}>
+            <button className="small" onClick={() => onAdd({ kind: "auto", strategy: autoStrategy })}>
+              <span className="name">⚙ Auto build</span> <span className="muted">{STRATEGIES.production.find((s) => s.id === autoStrategy)?.name}</span>
+            </button>
+          </Tip>
+        )}
         {sortedProjects.map((p) => p === TRADE_GOODS ? (
           <Tip key={p} block card={() => tradeGoodsTip(colony.raceId, industry)}>
             <button className="small" onClick={() => onAdd({ kind: "tradeGoods" })}><span className="name">Trade Goods</span></button>

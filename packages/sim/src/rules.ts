@@ -224,19 +224,35 @@ export function itemCost(state: GameState, playerId: PlayerId, item: BuildItem, 
     case "refit":
       return item.cost;
     case "tradeGoods":
+    case "auto":
       return Infinity;
   }
 }
 
-/** Items that never complete; output flows into BC or growth instead. */
+/** Items that never complete; output flows into BC or growth, or (auto build) into the items it puts in front of itself. */
 export function isContinuous(item: BuildItem): boolean {
-  return item.kind === "tradeGoods" || (item.kind === "project" && item.id === "housing");
+  return item.kind === "tradeGoods" || item.kind === "auto" || (item.kind === "project" && item.id === "housing");
+}
+
+/**
+ * Where in the queue the colony's industry goes: the first item that isn't
+ * an auto build, which is passed over while it has nothing to pick; -1 when
+ * there is none.
+ */
+export function buildIndex(queue: readonly BuildItem[]): number {
+  return queue.findIndex((q) => q.kind !== "auto");
+}
+
+/** The item the colony is building now (see buildIndex). */
+export function currentBuild(colony: Pick<Colony, "queue">): BuildItem | undefined {
+  const i = buildIndex(colony.queue);
+  return i < 0 ? undefined : colony.queue[i];
 }
 
 /** A settled colony with nothing to build or Trade Goods at the head of its queue, so all its industry becomes BC. */
 export function isTradeGoodsOnly(colony: Colony): boolean {
   if (colony.outpost) return false;
-  const head = colony.queue[0];
+  const head = currentBuild(colony);
   return !head || head.kind === "tradeGoods";
 }
 

@@ -96,6 +96,12 @@ export type BuildItem =
   | { kind: "project"; id: string; planetId?: Id; repeat?: boolean }
   | { kind: "tradeGoods" }
   /**
+   * Auto build: never built itself. Whenever it comes up, the player's
+   * automation puts what its production strategy picks in front of it; while
+   * it has nothing to pick, the colony builds the items behind it instead.
+   */
+  | { kind: "auto"; strategy: string }
+  /**
    * A ship taken out of its fleet to be rebuilt to another design of its hull.
    * Until the job is done the ship is in dock and takes no part in anything;
    * removing the job from the queue sends the ship back unchanged.
