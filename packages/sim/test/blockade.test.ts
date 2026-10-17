@@ -97,4 +97,17 @@ describe("blockades as in the original (FUN_000e507b)", () => {
     f.ships = [{ designId: d.id, count: 1 }];
     expect(blockadersOf(s, home, computeBlockades(s))).toEqual([monsters!.id]);
   });
+
+  it("never count ships of an empire not at war, even when peace comes after the blockade was set", () => {
+    const { s, home } = setup("scout");
+    const next = run(s);
+    const h = homeOf(next, home.id);
+    expect(colonyOutput(next, h).blockaded).toBe(true);
+    next.relations["0-1"] = { status: "peace", trade: false, research: false, since: next.turn };
+    expect(blockadersOf(next, h)).toEqual([]);
+    expect(colonyOutput(next, h).blockaded).toBe(false);
+    expect(colonyOutput(playerView(next, 1), h).blockaded).toBe(false);
+    const after = run(next);
+    expect(after.blockades?.[next.planets[h.planetId]!.starId]).toBeUndefined();
+  });
 });

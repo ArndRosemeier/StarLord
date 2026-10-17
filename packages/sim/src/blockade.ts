@@ -42,11 +42,15 @@ function hasWarship(state: GameState, f: Fleet): boolean {
   return f.ships.some((s) => s.count > 0 && findDesign(owner, s.designId)?.module === null);
 }
 
-/** The players whose warships blockade the colony's system for its owner (none for an outpost). */
+/**
+ * The players whose warships blockade the colony's system for its owner (none for an outpost). Only those still
+ * at war with the owner count: peace made since the blockade was worked out lifts it at once.
+ */
 export function blockadersOf(state: GameState, colony: Colony, blockades: Blockades | undefined = state.blockades): PlayerId[] {
   if (colony.outpost) return [];
   const starId = state.planets[colony.planetId]?.starId;
-  return (starId && blockades?.[starId]?.[colony.ownerId]) || [];
+  const by = (starId && blockades?.[starId]?.[colony.ownerId]) || [];
+  return by.filter((b) => b !== colony.ownerId && isHostile(state, b, colony.ownerId));
 }
 
 /**
