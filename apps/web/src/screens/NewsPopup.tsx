@@ -1,17 +1,19 @@
 import type { GameEvent } from "@starlord/sim";
 import { useGame } from "../ui/hooks";
 import { starName } from "../ui/format";
-import { fallDetails, fallHeadline, type FallNews } from "../ui/galacticNews";
-import { Envoy } from "../ui/panels";
+import { ELDER, fallDetails, fallHeadline, guardianDetails, guardianHeadline, type FallNews, type GuardianNews } from "../ui/galacticNews";
+import { Envoy, LeaderPortrait } from "../ui/panels";
+import { HEROES } from "@starlord/sim";
 
 type RandomNews = Extract<GameEvent, { kind: "random" }>;
-export type News = RandomNews | FallNews;
+export type News = RandomNews | FallNews | GuardianNews;
 
-/** The turn's news worth a popup: an empire's end (destroyed or surrendered) first, then the random events. */
+/** The turn's news worth a popup: the Guardian's fall and an empire's end (destroyed or surrendered) first, then the random events. */
 export function newsOf(events: GameEvent[]): News[] {
+  const guardian = events.flatMap((e) => (e.kind === "guardianSlain" ? [e] : []));
   const falls = events.flatMap((e) => (e.kind === "empireFell" ? [e] : []));
   const random = events.flatMap((e) => (e.kind === "random" ? [e] : []));
-  return [...falls, ...random];
+  return [...guardian, ...falls, ...random];
 }
 
 /**
@@ -27,7 +29,9 @@ export function NewsPopup({ news, onClose, onShowStar }: { news: News[]; onClose
     <div className="modal-back" onClick={onClose}>
       <div className="modal news-modal" onClick={(e) => e.stopPropagation()}>
         <div className="news-masthead">Galactic News<small>Stardate {view.turn - 1}</small></div>
-        {news.map((n, i) => n.kind === "empireFell" ? <FrontPage key={i} news={n} delay={0.6 + i * 0.15} /> : (
+        {news.map((n, i) => n.kind === "guardianSlain" ? (
+          <OrionPage key={i} news={n} delay={0.6 + i * 0.15} onShow={() => { onClose(); onShowStar(n.starId); }} />
+        ) : n.kind === "empireFell" ? <FrontPage key={i} news={n} delay={0.6 + i * 0.15} /> : (
           <div key={i} className="news-item" style={{ animationDelay: `${0.6 + i * 0.15}s` }}>
             {n.what}
             {n.starId && (
@@ -57,6 +61,27 @@ function FrontPage({ news, delay }: { news: FallNews; delay: number }) {
       </div>
       <div className="news-front-headline">{fallHeadline(view, news)}</div>
       {fallDetails(view, news).map((line, i) => <div key={i} className="news-front-detail">{line}</div>)}
+    </div>
+  );
+}
+
+/** The Guardian of Orion has fallen: the victor reads what it found on the elders' ship, everyone else the headline. */
+function OrionPage({ news, delay, onShow }: { news: GuardianNews; delay: number; onShow: () => void }) {
+  const { view } = useGame();
+  const by = view.players[news.by];
+  const mine = news.by === view.viewer;
+  return (
+    <div className="news-item news-front orion" style={{ animationDelay: `${delay}s` }}>
+      <div className="news-front-kicker">{mine ? "Orion discovered" : "Orion visited"}</div>
+      <div className="news-front-faces">
+        {by && <Envoy raceId={by.raceId} color={by.color} className="news-front-envoy" autoPlay once />}
+        {mine && news.heroJoined && (
+          <><span className="news-front-arrow" aria-hidden>+</span><LeaderPortrait leader={{ heroId: HEROES.indexOf(ELDER), name: ELDER.name }} size={96} /></>
+        )}
+      </div>
+      <div className="news-front-headline">{guardianHeadline(view, news)}</div>
+      {guardianDetails(view, news).map((line, i) => <div key={i} className="news-front-detail">{line}</div>)}
+      <div style={{ marginTop: 8 }}><button className="small" onClick={onShow}>Show {starName(view, news.starId)}</button></div>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import {
   SPECIAL_INCOME, SPLINTER_POP, TERRAFORM_STEP, climatePopulation, colonyMoraleParts, colonyOutput, getRace, government,
   gravityMultiplier, ADVANCED_START, CLIMATE_TABLE_BY_AGE, CREW, FIRST_FIELDS, TIERS_BY_ID, bodyMix, meanPlanets, DIFFICULTIES, DIFFICULTY_ORDER, JEALOUSY, GOVERNMENTS, PICK_OPTIONS, STAR_COLORS_BY_AGE, TAX_BC_PER_INDUSTRY,
   BATTLE_SCANNER_RANGE, FUEL_RANGES, ORBITAL_BASES, SPECIALS_BY_ID, TRANSIT_DETECTION_PER_SIZE, canColonize, fleetRange, maxPopulation, raceMaxPopulation, scanRange, type Player,
-  BUILDINGS_BY_ID, BUILDING_SCRAP, buildingScrapRefund, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
+  BUILDINGS_BY_ID, BUILDING_SCRAP, buildingScrapRefund, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, XENON_TECHS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
   HULLS_BY_ID, REFIT, designStats, refitCost, type ShipDesign,
   SCORE, type ScoreBreakdown, FIELD_NAMES, RESEARCH, type TechField,
   ALL_WEAPONS, WEAPON_MODS_BY_ID, stationProfile, type WeaponMount,
@@ -312,7 +312,7 @@ export function techTip(id: string): TipCard {
   const t = TECHS[id]!;
   const unlocks = techUnlocks(id);
   return {
-    title: t.name, kind: TIER_OF_TECH[id]?.name,
+    title: t.name, kind: TIER_OF_TECH[id]?.name ?? (XENON_TECHS.includes(id) ? "Xenon technology" : undefined),
     text: [techSummary(id), ...unlocks.map((u) => `${u.name}: ${unlockSummary(u)}`)],
   };
 }

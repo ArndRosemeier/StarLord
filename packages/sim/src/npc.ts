@@ -170,8 +170,11 @@ export function guardianSlain(ctx: TurnContext, killer: number, starId: string):
   if (star?.special !== "orion" || ctx.state.guardianSlainBy !== undefined) return;
   const p = ctx.state.players[killer]!;
   if (p.kind === "empire") ctx.state.guardianSlainBy = killer;
+  const techs: string[] = [];
   const learn = (tech: string) => {
-    if (grantTech(p, tech)) ctx.emit({ kind: "techLearned", playerId: killer, techId: tech, tierId: TIER_OF_TECH[tech]?.id ?? "xenon", source: "salvage" });
+    if (!grantTech(p, tech)) return;
+    techs.push(tech);
+    ctx.emit({ kind: "techLearned", playerId: killer, techId: tech, tierId: TIER_OF_TECH[tech]?.id ?? "xenon", source: "salvage" });
   };
   learn("deathRay");
   const pool = XENON_FIELD_TECHS.filter((t) => !p.techs.includes(t));
@@ -183,6 +186,14 @@ export function guardianSlain(ctx: TurnContext, killer: number, starId: string):
   const fleet = spawn(ctx.state, killer, star, [{ designId: AVENGER_DESIGN.id, count: 1 }], AVENGER_DESIGN.name);
   fleet.stance = "defend";
   heroJoins(ctx.state, killer, "guardian", ctx.emit, fleet.id);
+  const heroJoined = Object.values(ctx.state.leaders).some((l) => l.ownerId === killer && l.assignedTo === fleet.id);
+  // The original shows the victor what it found on the elders' ship; everyone else reads of it in the news.
+  for (const o of ctx.state.players) {
+    if (o.kind !== "empire" || !o.alive) continue;
+    ctx.emit(o.id === killer
+      ? { kind: "guardianSlain", playerId: o.id, by: killer, starId, techs, fleetId: fleet.id, heroJoined }
+      : { kind: "guardianSlain", playerId: o.id, by: killer, starId });
+  }
 }
 
 /** Every NPC weapon tech resolves to a tier or "never"; keep the helper close to its data. */

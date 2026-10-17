@@ -80,6 +80,26 @@ describe("slaying the Guardian", () => {
     guardianSlain({ state: s, rng: new Rng(seedRng(2)), emit: () => {} }, 1, orion.id);
     expect(s.guardianSlainBy).toBe(0);
   });
+
+  it("pays out after a real battle at Orion and tells every empire, the victor with what it found", () => {
+    const s = newGame({ seed: "npc", races: ["terran", "felhari"], monsters: true, raiders: false, council: false });
+    const orion = s.galaxy.stars.find((x) => x.special === "orion")!;
+    const p = s.players[0]!;
+    p.designs.push({ ...structuredClone(p.designs.find((d) => d.id === "frigate")!), id: "doom", name: "Doom", hull: "titan", weapons: [{ weaponId: "deathRay", count: 30 }] });
+    addFleet(s, 0, orion.id, [{ designId: "doom", count: 40 }], "attack");
+    const next = processTurn(s, {});
+    expect(next.guardianSlainBy).toBe(0);
+    const mine = next.events.find((e) => e.kind === "guardianSlain" && e.playerId === 0);
+    expect(mine).toMatchObject({ by: 0, starId: orion.id, heroJoined: true });
+    const techs = mine?.kind === "guardianSlain" ? mine.techs! : [];
+    expect(techs[0]).toBe("deathRay");
+    expect(techs.length).toBe(4);
+    for (const t of techs) expect(next.players[0]!.techs).toContain(t);
+    // The other empire only reads the headline.
+    const theirs = next.events.find((e) => e.kind === "guardianSlain" && e.playerId === 1);
+    expect(theirs).toMatchObject({ by: 0, starId: orion.id });
+    expect(theirs && "techs" in theirs ? theirs.techs : undefined).toBeUndefined();
+  });
 });
 
 describe("who monsters attack", () => {

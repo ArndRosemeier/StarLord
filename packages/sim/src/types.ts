@@ -732,6 +732,14 @@ export type GameEvent =
   | { turn: number; kind: "raid"; playerId: PlayerId; starId: Id }
   /** Everyone hears when an empire destroys the raiders at home and the galaxy capitulates. */
   | { turn: number; kind: "raidersDefeated"; playerId: PlayerId; by: PlayerId }
+  /**
+   * Everyone hears when Orion's guardian falls; the victor's copy lists what it
+   * found: the techs learned, the elders' ship and whether the last elder took command.
+   */
+  | {
+    turn: number; kind: "guardianSlain"; playerId: PlayerId; by: PlayerId; starId: Id;
+    techs?: string[]; fleetId?: Id; heroJoined?: boolean;
+  }
   | { turn: number; kind: "eliminated"; playerId: PlayerId }
   /**
    * Galactic News told to every empire: `fallen` was destroyed (its last

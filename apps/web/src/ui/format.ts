@@ -175,6 +175,10 @@ export function describeEvent(view: PlayerView, e: GameEvent): { text: string; s
           text: `Galactic News: the ${playerName(view, e.fallen)} surrendered to the ${playerName(view, e.to ?? e.fallen)}.`,
           tone: e.to === view.viewer ? "good" : e.fallen === view.viewer ? "bad" : "info",
         };
+    case "guardianSlain":
+      return e.by === view.viewer
+        ? { text: `Our fleet destroyed the Guardian of ${starName(view, e.starId)} and took the elders' ship${e.techs?.length ? `, learning ${e.techs.map((t) => TECHS[t]?.name ?? t).join(", ")}` : ""}.`, starId: e.starId, tone: "good" }
+        : { text: `Galactic News: the ${playerName(view, e.by)} destroyed the Guardian of ${starName(view, e.starId)}.`, starId: e.starId, tone: "info" };
     case "raidersDefeated":
       return {
         text: e.by === view.viewer
