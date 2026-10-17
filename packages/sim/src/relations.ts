@@ -386,10 +386,12 @@ function treatyWarmth(state: GameState, actor: PlayerId, observer: PlayerId, rol
 /**
  * Armed human ships at a computer empire's colony of 5 or more population
  * (strength over 100) sour it every turn by (pop - 4) + strength / 50,
- * unless the two are allied.
+ * unless the two are allied. Only from Average difficulty up, as in the
+ * original. Ships merely being there never starts a war or a battle.
  */
 function threats(state: GameState): void {
   const T = RELATION_EVENTS.threat;
+  if (difficultyLevel(state) < T.minDifficulty) return;
   const humans = empires(state).filter((p) => p.alive && p.isHuman);
   if (humans.length === 0) return;
   for (const c of Object.values(state.colonies).sort((x, y) => (x.id < y.id ? -1 : 1))) {

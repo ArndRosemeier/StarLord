@@ -246,8 +246,9 @@ export const RELATION_EVENTS = {
    * Armed ships near a computer empire's colony of at least `minPop` population,
    * with strength over `minStrength`, cost -((pop - `popOffset`) + strength / `strengthPer`)
    * each turn unless allied (StarLord's fleet strength stands in for the original's threat rating: an estimate).
+   * Only from Average difficulty up (`minDifficulty`, the original's `1 < difficulty` check in FUN_000dbb83).
    */
-  threat: { minPop: 5, minStrength: 100, popOffset: 4, strengthPer: 50 },
+  threat: { minPop: 5, minStrength: 100, popOffset: 4, strengthPer: 50, minDifficulty: 2 },
   /** Declaring war: relation set to `set` - d`roll` on both sides, baseline `baseline` (direct, not scaled). */
   declareWar: { set: -75, roll: 25, baseline: -10 },
   /** Peace: relation rises by `gain`, but no higher than `max` (direct). */
