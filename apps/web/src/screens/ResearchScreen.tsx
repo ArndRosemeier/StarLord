@@ -3,7 +3,7 @@ import { hyperAdvanceText, techTip } from "../ui/explain";
 import { techSummary } from "../help/articles";
 import { useState } from "react";
 import {
-  FIELD_NAMES, PICK_OPTIONS, RESEARCH, TECHS, TECH_FIELDS, TECH_TIERS, TIERS_BY_ID, TRAIT_COSTS, availableTiers, getRace,
+  FIELD_NAMES, PICK_OPTIONS, RESEARCH, TECHS, TECH_FIELDS, TECH_TIERS, TIERS_BY_ID, TRAIT_COSTS, XENON_TECHS, availableTiers, getRace,
   hasTrait, hyperLevel, learnsWholeField, mutationCost, nextBreakthroughChance, researchCost, researchOptions, type NumericPick, type Player, type RacePicks,
   type RaceTrait,
 } from "@starlord/sim";
@@ -25,6 +25,7 @@ export function ResearchScreen() {
   // As in MoO2: turns until the points pass the cost, then a chance each turn that climbs to certain at twice the cost.
   const cost = current ? researchCost(me, current) : 0;
   const chance = nextBreakthroughChance(me, rpt);
+  const xenon = XENON_TECHS.filter((id) => me.techs.includes(id));
   const eta = current && rpt > 0 ? Math.max(1, Math.floor((cost - me.research.progress) / rpt) + 1) : null;
 
   return (
@@ -70,6 +71,8 @@ export function ResearchScreen() {
           const done = tiers.filter((t) => me.tiers.includes(t.id));
           const next = TECH_TIERS.filter((t) => t.field === field && open.has(t.id));
           const hyper = hyperLevel(me, field);
+          // Everything known in the field, also techs stolen, traded or salvaged from fields not finished yet.
+          const known = tiers.flatMap((t) => t.techs.filter((id) => me.techs.includes(id)));
           return (
             <div className="panel col field-card" key={field} style={{ ["--field" as string]: FIELD_LOOK[field]?.color }}>
               <h3>
@@ -120,11 +123,11 @@ export function ResearchScreen() {
                 );
               })}
               {next.length === 0 && <span className="muted">Field complete.</span>}
-              {done.length > 0 && (
+              {known.length > 0 && (
                 <details>
                   <summary className="muted">Known</summary>
                   <ul style={{ margin: "6px 0", paddingLeft: 18 }}>
-                    {done.flatMap((t) => t.techs.filter((id) => me.techs.includes(id))).map((id) => (
+                    {known.map((id) => (
                       <li key={id}><Tip card={() => techTip(id)}><span className="explained">{TECHS[id]?.name}</span></Tip></li>
                     ))}
                   </ul>
@@ -134,6 +137,17 @@ export function ResearchScreen() {
           );
         })}
       </div>
+      {xenon.length > 0 && (
+        <div className="panel col field-card">
+          <h3>Xenon technology <small className="muted">{xenon.length}/{XENON_TECHS.length}</small></h3>
+          <small className="muted">Never researched: only salvaged from the elders' ship at Orion when its Guardian falls, or by scrapping captured Vexari ships. Hover a tech for what it does.</small>
+          <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+            {xenon.map((id) => (
+              <Tip key={id} card={() => techTip(id)}><span className="chip good explained">{TECHS[id]?.name ?? id}</span></Tip>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
