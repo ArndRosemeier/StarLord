@@ -437,6 +437,19 @@ export function applyCommand(ctx: TurnContext, playerId: PlayerId, cmd: Command)
   }
 }
 
+/**
+ * A new colony's id comes from its planet and the turn, not a running counter,
+ * so it is the same whether or not other empires settled earlier in the turn.
+ * The player's orders for a colony settled this turn (its build queue, set
+ * right after landing) then reach it when the turn runs.
+ */
+function newColonyId(state: GameState, planetId: Id): Id {
+  const base = `c${planetId}.${state.turn}`;
+  let id = base;
+  for (let n = 2; state.colonies[id]; n++) id = `${base}.${n}`;
+  return id;
+}
+
 function foundColony(ctx: TurnContext, playerId: PlayerId, planetId: Id, pop: number, raceId: string): Colony {
   const { state } = ctx;
   const planet = state.planets[planetId]!;
@@ -444,7 +457,7 @@ function foundColony(ctx: TurnContext, playerId: PlayerId, planetId: Id, pop: nu
   const sameStar = Object.values(state.colonies).filter((c) => state.planets[c.planetId]!.starId === star.id).length;
   const roman = ["", " II", " III", " IV", " V", " VI"][sameStar] ?? "";
   const colony: Colony = {
-    id: newId(state, "c"), planetId, ownerId: playerId, raceId, name: `${star.name}${roman}`, outpost: pop === 0,
+    id: newColonyId(state, planetId), planetId, ownerId: playerId, raceId, name: `${star.name}${roman}`, outpost: pop === 0,
     farmers: 0, workers: pop, scientists: 0, growthK: 0,
     buildings: [], queue: [], progress: 0, founded: state.turn, terraformed: 0,
   };
