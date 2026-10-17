@@ -11,7 +11,7 @@ import { removePopulation } from "./jobs.js";
 import { raidersId, spawn } from "./npc.js";
 import { forceRaid } from "./raiders.js";
 import { fireEvent } from "./randomEvents.js";
-import { itemCost } from "./rules.js";
+import { currentBuild, itemCost } from "./rules.js";
 import { explore } from "./specials.js";
 import type { GameState, Id, PlayerId } from "./types.js";
 
@@ -96,8 +96,9 @@ export function applyDebug(ctx: TurnContext, playerId: PlayerId, a: DebugAction)
     }
     case "finishBuilds":
       for (const c of Object.values(state.colonies)) {
-        if (c.ownerId !== playerId || !c.queue[0]) continue;
-        const cost = itemCost(state, playerId, c.queue[0], c);
+        const head = currentBuild(c);
+        if (c.ownerId !== playerId || !head) continue;
+        const cost = itemCost(state, playerId, head, c);
         if (Number.isFinite(cost)) c.progress = Math.max(c.progress, cost);
       }
       break;

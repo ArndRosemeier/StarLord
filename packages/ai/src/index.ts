@@ -7,7 +7,7 @@ import { explorationOrders } from "./exploration.js";
 import { jobOrders } from "./jobs.js";
 import { leaderOrders } from "./leaders.js";
 import { militaryOrders } from "./military.js";
-import { productionOrders } from "./production.js";
+import { autoBuildOrders, productionOrders } from "./production.js";
 import { researchOrders } from "./research.js";
 import type { AutomationDomain } from "./strategies.js";
 
@@ -80,12 +80,14 @@ function dropScrappedFleets(view: PlayerView, orders: Command[]): Command[] {
 export function automationOrders(view: PlayerView): Command[] {
   const p = view.players[view.viewer]!;
   const domains = p.isHuman ? (p.automation.filter((d) => d in DOMAIN_INFO) as AutomationDomain[]) : ALL_DOMAINS;
-  return createController(domains).orders(view);
+  // Auto build items in the queue run whatever the player automates.
+  return [...createController(domains).orders(view), ...autoBuildOrders(view)];
 }
 
 export { STRATEGIES, strategyOf, type AutomationDomain, type StrategyInfo } from "./strategies.js";
 export { colonizationOrders, colonizationTargets, outpostTargets } from "./colonization.js";
 export { DOCTRINE_MARGIN, HULL_STRATEGIES, autoDesign, bestWarship } from "./design.js";
+export { autoBuildPick, type AutoBuildPick } from "./production.js";
 export { LEAN_PULL } from "./research.js";
 export { BIO_AGGRESSION } from "./orbital.js";
 export {

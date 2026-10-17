@@ -6,12 +6,13 @@ import {
   BUILDINGS_BY_ID, BUILDING_SCRAP, buildingScrapRefund, GROWTH, PROJECTS_BY_ID, TRADE_GOODS_RATE, tradeGoodsMult, population, TECHS, TECH_LEVELS, TIER_OF_TECH, TRAIT_COSTS, XENON_TECHS, techUnlocks, type Colony, type GalaxyAge, type NumericPick, type Planet, type PlayerView, type RaceTrait, type TechLevel,
   HULLS_BY_ID, REFIT, designStats, refitCost, type ShipDesign,
   SCORE, type ScoreBreakdown, FIELD_NAMES, RESEARCH, type TechField,
-  ALL_WEAPONS, WEAPON_MODS_BY_ID, stationProfile, type WeaponMount,
+  ALL_WEAPONS, WEAPON_MODS_BY_ID, stationProfile, itemCost, type WeaponMount,
 } from "@starlord/sim";
+import { STRATEGIES, autoBuildPick } from "@starlord/ai";
 import { Tip, type TipCard } from "./Tip";
 import { techSummary, unlockSummary } from "../help/articles";
 import { buildingEffects } from "../help/effects";
-import { climateName, fmt, pct, signed, words } from "./format";
+import { climateName, fmt, itemName, pct, signed, words } from "./format";
 
 /**
  * Tip cards that say what a thing on screen does, from the sim's own numbers.
@@ -392,6 +393,33 @@ export function tradeGoodsTip(raceId: string, industry: number): TipCard {
     rows: [["Here now", `+${tradeGoodsBC(raceId, industry)} BC a turn`]],
     text: [full ? "Your traders sell industry for its full value: 1 BC per industry." : `Sells industry for BC at ${TRADE_GOODS_RATE} BC per industry, rounded up.`,
       "An empty queue does the same."],
+  };
+}
+
+/**
+ * What an auto build item does under a production strategy, and what it
+ * would put in front of itself at this colony right now.
+ */
+export function autoBuildTip(view: PlayerView, colony: Colony, strategy: string): TipCard {
+  const info = STRATEGIES.production.find((s) => s.id === strategy) ?? STRATEGIES.production[0]!;
+  const pick = autoBuildPick(view, colony.id, info.id);
+  const industry = colonyOutput(view, colony).industry;
+  const rows: [string, string][] = [["Strategy", `${info.name}: ${info.description}`]];
+  if (pick.item) {
+    const cost = itemCost(view, view.viewer, pick.item, colony);
+    const turns = Number.isFinite(cost) && industry > 0 ? Math.max(1, Math.ceil(cost / industry)) : null;
+    rows.push(["Would pick now", `${itemName(view, pick.item)}${Number.isFinite(cost) ? `, ${fmt(cost)} industry` : ""}${turns ? ` (about ${turns} turn${turns === 1 ? "" : "s"} at ${fmt(industry, 1)} a turn)` : ""}`]);
+  } else {
+    rows.push(["Would pick now", `nothing. ${pick.why}`]);
+  }
+  return {
+    title: "Auto build", kind: "Ongoing",
+    rows,
+    text: [
+      "Whenever it is first in the queue at the end of a turn, it puts what this strategy picks in front of itself, the way production automation would choose for this colony. It stays in the queue until you remove it.",
+      "While it has nothing to pick, it is passed over: the items behind it are built, or the industry goes to Trade Goods if there are none.",
+      "The pick is made from the whole empire's needs (settlers, freighters, fleet size, upkeep), so it can change from turn to turn.",
+    ],
   };
 }
 

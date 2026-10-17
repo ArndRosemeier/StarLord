@@ -268,6 +268,13 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
         difference to the one it replaces.
       </P>
       <P>
+        <b>Auto build</b> is a queue item with a production strategy of its own (the same choices as production
+        automation). It is never built itself: whenever it is first in the queue at the end of a turn, it puts what its
+        strategy would pick for that colony in front of itself, and stays in the queue until you remove it. When the
+        strategy has nothing worth building there (it would only pick Housing or Trade Goods), the item is idle and passed
+        over, so the items behind it are built. A colony with Auto build in its queue is left alone by production automation.
+      </P>
+      <P>
         The build list only offers buildings that would do something at that colony: a Gravity Generator only where the
         planet's gravity hurts its people or androids, pollution cleanup only where the colony can pollute, morale
         buildings only under governments with morale, an Alien Management Center only where aliens or natives live. See{" "}

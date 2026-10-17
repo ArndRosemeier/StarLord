@@ -1,5 +1,5 @@
 import {
-  BUILDINGS_BY_ID, STATION_DOCK_HULLS, availableBuildings, availableDesigns, availableProjects, baseTargets, buyCost, colonyOutput, commandPointsAvailable,
+  BUILDINGS_BY_ID, MAX_QUEUE, STATION_DOCK_HULLS, isContinuous, validateCommand, availableBuildings, availableDesigns, availableProjects, baseTargets, buyCost, colonyOutput, commandPointsAvailable,
   distanceToNearestColony, fleetRange,
   commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasMarineBarracks, hasStarDock, queuedAnywhere, relation, suggestedBaseTarget,
   type BuildItem, type Colony, type Command, type PlayerView,
@@ -77,13 +77,25 @@ export function atWar(view: PlayerView): boolean {
   return player.contacts.some((id) => relation(view, view.viewer, id).status === "war");
 }
 
-export function productionOrders(view: PlayerView): Command[] {
+interface Plan {
+  wants: Wants;
+  designs: Set<string>;
+  war: boolean;
+  /** Colonies with their output, most industry first; a colony's place is its rank. */
+  ranked: { c: Colony; out: ReturnType<typeof colonyOutput> }[];
+  /** A rich empire with nothing left to build keeps its fleet growing. */
+  rich: boolean;
+  income: ReturnType<typeof empireIncome>;
+  hullCp: (designId: string) => number;
+}
+
+/** What the empire as a whole wants built this turn, under a production strategy. */
+function planWants(view: PlayerView, strategy: string): Plan {
   const player = me(view);
   const colonies = myColonies(view);
   const fleets = myFleets(view);
   const designs = new Set(availableDesigns(view, view.viewer));
   const totals = empireTotals(view, view.viewer);
-  const strategy = strategyOf(view, "production");
   const settlers = strategy === "expansion" ? SETTLERS_EXPANSION : SETTLERS;
 
   const queued = (pred: (q: BuildItem) => boolean) => colonies.reduce((n, c) => n + c.queue.filter(pred).length, 0);
@@ -161,6 +173,26 @@ export function productionOrders(view: PlayerView): Command[] {
   const transportsOwned = fleets.reduce((n, f) => n + f.ships.filter((s) => s.designId === "transport").reduce((m, s) => m + s.count, 0), 0);
   wants.transports = war ? Math.max(0, 4 - transportsOwned - shipQueued("transport")) : 0;
 
+  const ranked = colonies
+    .map((c) => ({ c, out: colonyOutput(view, c) }))
+    .sort((a, b) => b.out.industry - a.out.industry);
+  // Only when some dock can build the big design in time do the other colonies leave warships to it.
+  wants.bigHulls = !!design && STATION_DOCK_HULLS.includes(design.hull) &&
+    colonies.some((c) => hasStarDock(c) && canBuildInTime(view, c, design.id));
+  wants.bigDesign = design?.id ?? null;
+  const best = ranked[0]?.c;
+  if (best && !hasStarDock(best) && !best.queue.some((q) => q.kind === "building" && q.id === "starBase")) wants.dockColony = best.id;
+  const rich = player.bc > 1000 && income.net > -player.bc / 100;
+  return { wants, designs, war, ranked, rich, income, hullCp };
+}
+
+export function productionOrders(view: PlayerView): Command[] {
+  const player = me(view);
+  const fleets = myFleets(view);
+  const strategy = strategyOf(view, "production");
+  const { wants, designs, war, ranked, rich, income, hullCp } = planWants(view, strategy);
+  const targets = colonizationTargets(view);
+
   const out: Command[] = [];
   // Scouts with nothing left to explore only cost command points.
   if (!unexploredInReach(view)) {
@@ -194,7 +226,7 @@ export function productionOrders(view: PlayerView): Command[] {
   if (Math.abs(tax - player.taxRate) > 1e-9) out.push({ type: "setTaxRate", rate: Math.round(tax * 10) / 10 });
   // A finished base waiting for a target goes to the best planet left.
   const taken = new Set<string>();
-  for (const c of colonies) {
+  for (const c of myColonies(view)) {
     for (const id of c.readyBases ?? []) {
       const target = suggestedBaseTarget(view, c, id, taken);
       if (target) taken.add(target.id);
@@ -206,17 +238,10 @@ export function productionOrders(view: PlayerView): Command[] {
   out.push(...refits);
   const refitting = new Set(refits.flatMap((c) => (c.type === "refitShips" ? [c.colonyId] : [])));
   let bc = player.bc;
-  const ranked = colonies
-    .map((c) => ({ c, out: colonyOutput(view, c) }))
-    .sort((a, b) => b.out.industry - a.out.industry);
-  // Only when some dock can build the big design in time do the other colonies leave warships to it.
-  wants.bigHulls = !!design && STATION_DOCK_HULLS.includes(design.hull) &&
-    colonies.some((c) => hasStarDock(c) && canBuildInTime(view, c, design.id));
-  wants.bigDesign = design?.id ?? null;
-  const best = ranked[0]?.c;
-  if (best && !hasStarDock(best) && !best.queue.some((q) => q.kind === "building" && q.id === "starBase")) wants.dockColony = best.id;
 
   for (const [rank, { c, out: o }] of ranked.entries()) {
+    // The player's own auto build item runs this colony's queue (autoBuildOrders).
+    if (c.queue.some((q) => q.kind === "auto")) continue;
     const head = c.queue[0];
     if (head && head.kind !== "tradeGoods" && !(head.kind === "project" && head.id === "housing")) {
       // Rush the current item when the treasury is comfortably ahead.
@@ -230,9 +255,76 @@ export function productionOrders(view: PlayerView): Command[] {
       continue;
     }
     if (refitting.has(c.id)) continue;
-    const next = chooseItem(view, c, o.industry, rank, wants, designs, war, o.foodNet, player.bc > 1000 && income.net > -player.bc / 100);
+    const next = chooseItem(view, c, o.industry, rank, wants, designs, war, o.foodNet, rich);
     // Refit jobs hold ships and stay in the queue.
     out.push({ type: "setQueue", colonyId: c.id, queue: [next, ...c.queue.filter((q) => q.kind === "refit")] });
+  }
+  return out;
+}
+
+/** What an auto build item would do next. */
+export type AutoBuildPick =
+  | { item: BuildItem }
+  | { item: null; why: string };
+
+/**
+ * What an auto build item at this colony would put in front of itself under
+ * its strategy, judged as the production automation judges it. Picks that
+ * never finish (Housing, Trade Goods) leave the item idle: the colony builds
+ * whatever is behind it instead.
+ */
+export function autoBuildPick(view: PlayerView, colonyId: string, strategy: string): AutoBuildPick {
+  return autoPicks(view, [{ colonyId, strategy }]).get(colonyId)!;
+}
+
+function autoPicks(view: PlayerView, asks: { colonyId: string; strategy: string }[]): Map<string, AutoBuildPick> {
+  const plans = new Map<string, Plan>();
+  const out = new Map<string, AutoBuildPick>();
+  for (const { colonyId, strategy } of asks) {
+    let plan = plans.get(strategy);
+    if (!plan) plans.set(strategy, (plan = planWants(view, strategy)));
+    const rank = plan.ranked.findIndex((r) => r.c.id === colonyId);
+    const entry = plan.ranked[rank];
+    if (!entry) {
+      out.set(colonyId, { item: null, why: "This isn't your colony." });
+      continue;
+    }
+    const { c, out: o } = entry;
+    if (c.outpost) {
+      out.set(colonyId, { item: null, why: "Outposts build nothing." });
+      continue;
+    }
+    if (c.queue.length >= MAX_QUEUE) {
+      out.set(colonyId, { item: null, why: `The queue is full (${MAX_QUEUE} items).` });
+      continue;
+    }
+    const queuedHere = new Set(c.queue.flatMap((q) => (q.kind === "building" ? [q.id] : [])));
+    const item = chooseItem(view, c, o.industry, rank, plan.wants, plan.designs, plan.war, o.foodNet, plan.rich, queuedHere);
+    if (isContinuous(item)) {
+      out.set(colonyId, { item: null, why: item.kind === "tradeGoods" ? "The strategy has nothing left to build here." : "The strategy would only grow the population here (Housing)." });
+      continue;
+    }
+    const at = c.queue.findIndex((q) => q.kind === "auto");
+    const queue = [...c.queue.slice(0, Math.max(0, at)), item, ...c.queue.slice(Math.max(0, at))];
+    const check = validateCommand(view, view.viewer, { type: "setQueue", colonyId, queue });
+    out.set(colonyId, check.ok ? { item } : { item: null, why: `Its pick can't be queued: ${check.reason}.` });
+  }
+  return out;
+}
+
+/**
+ * Auto build items that have come up (are first in their queue) put their
+ * pick in front of themselves. Runs for the player whatever they automate.
+ */
+export function autoBuildOrders(view: PlayerView): Command[] {
+  const asks = myColonies(view)
+    .flatMap((c) => (c.queue[0]?.kind === "auto" ? [{ colonyId: c.id, strategy: c.queue[0].strategy }] : []));
+  if (asks.length === 0) return [];
+  const out: Command[] = [];
+  for (const [colonyId, pick] of autoPicks(view, asks)) {
+    if (!pick.item) continue;
+    const c = view.colonies[colonyId]!;
+    out.push({ type: "setQueue", colonyId, queue: [pick.item, ...c.queue] });
   }
   return out;
 }
@@ -255,8 +347,10 @@ function chooseItem(
   war: boolean,
   food: number,
   rich: boolean,
+  /** Buildings already queued here, which can't be picked again. */
+  queuedHere: ReadonlySet<string> = new Set(),
 ): BuildItem {
-  const buildable = new Set(availableBuildings(view, view.viewer, c));
+  const buildable = new Set(availableBuildings(view, view.viewer, c).filter((b) => !queuedHere.has(b)));
   const projects = new Set(availableProjects(view, view.viewer, c));
   const star = colonyStar(view, c);
   const threatened = hostileFleetsNear(view, star, 4).length > 0;

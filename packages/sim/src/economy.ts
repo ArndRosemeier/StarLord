@@ -446,7 +446,8 @@ export function computeOutput(planet: Planet, player: Player, colony: Colony, ct
   const maintenance = colonyMaintenance(planet, b, foodReplicated * REPLICATED_FOOD_UPKEEP);
 
   // Growth: housing turns production per colonist into growth percent.
-  const housing = colony.queue[0]?.kind === "project" && colony.queue[0].id === "housing";
+  const building = colony.queue.find((q) => q.kind !== "auto");
+  const housing = building?.kind === "project" && building.id === "housing";
   // The computer players' growth bonus skips a foreign race that still has unassimilated people.
   const aiGrowth = colony.raceId === player.raceId || aliens === 0 ? aiLevel?.aiGrowthPercent ?? 0 : 0;
   const growthPct = (lead.growth ?? 0) + aiGrowth + (ctx.growthPercent ?? 0) +

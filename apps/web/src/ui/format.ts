@@ -2,6 +2,7 @@ import {
   BLOCKADE_PENALTY, BUILDINGS_BY_ID, FIELD_NAMES, PROJECTS_BY_ID, TECHS, findDesign,
   type BuildItem, type CombatReport, type GameEvent, type PlayerView,
 } from "@starlord/sim";
+import { STRATEGIES } from "@starlord/ai";
 
 export const fmt = (n: number, digits = 0) =>
   Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: 0 }) : "–";
@@ -49,6 +50,8 @@ export function itemName(view: PlayerView, item: BuildItem): string {
       return PROJECTS_BY_ID[item.id]?.name ?? item.id;
     case "tradeGoods":
       return "Trade Goods";
+    case "auto":
+      return `Auto build (${STRATEGIES.production.find((x) => x.id === item.strategy)?.name ?? "Balanced"})`;
     case "refit": {
       const me = view.players[view.viewer]!;
       const from = findDesign(me, item.fromDesignId)?.name ?? item.fromDesignId;

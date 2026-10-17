@@ -16,7 +16,7 @@ import { ORBITAL_CHOICES, canMindControl, exterminateProblem, mindControlProblem
 import { moveProblem } from "./movement.js";
 import { bribeProblem } from "./randomEvents.js";
 import {
-  PLACED_PROJECTS, availableBuildings, baseClaims, baseTargets, canBuildShips, availableDesigns, availableProjects, availableTiers, itemCost,
+  PLACED_PROJECTS, availableBuildings, baseClaims, baseTargets, canBuildShips, availableDesigns, availableProjects, availableTiers, currentBuild, itemCost,
   researchOptions,
 } from "./rules.js";
 import { validateMutation } from "./mutation.js";
@@ -172,7 +172,11 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       // Refit jobs hold a ship: they may be moved or dropped (the ship goes back to orbit), never invented.
       const refits = new Set(c.queue.flatMap((q) => (q.kind === "refit" ? [q.refitId] : [])));
       const kept = new Set<string>();
+      if (cmd.queue.filter((q) => q.kind === "auto").length > 1) return fail("auto build queued twice");
       for (const item of cmd.queue) {
+        if (item.kind === "auto" && (typeof item.strategy !== "string" || item.strategy.length === 0 || item.strategy.length > 40)) {
+          return fail("auto build needs a strategy");
+        }
         if (item.kind === "refit") {
           if (!refits.has(item.refitId) || kept.has(item.refitId)) return fail("no such refit job here");
           kept.add(item.refitId);
@@ -213,7 +217,7 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
     case "buy": {
       const c = ownColony(state, playerId, cmd.colonyId);
       if (!c) return fail("not your colony");
-      const head = c.queue[0];
+      const head = currentBuild(c);
       if (!head || !Number.isFinite(itemCost(state, playerId, head, c))) return fail("nothing to buy");
       if (player.bc < buyCost(state, c)) return fail("not enough BC");
       return OK;
@@ -556,7 +560,7 @@ export function termsOf(x: ProposalTerms): ProposalTerms {
  * below 10%, so buying from scratch costs about four times the item.
  */
 export function buyCost(state: GameState, colony: Colony): number {
-  const head = colony.queue[0];
+  const head = currentBuild(colony);
   if (!head) return Infinity;
   const cost = itemCost(state, colony.ownerId, head, colony);
   if (!Number.isFinite(cost)) return Infinity;
