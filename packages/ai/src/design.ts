@@ -162,6 +162,59 @@ const HULL_NAMES: Record<HullSize, string> = {
   frigate: "Lancer", destroyer: "Hunter", cruiser: "Vanguard", battleship: "Sovereign", titan: "Colossus", doomStar: "Doom",
 };
 
+/** What a star dock with this industry may spend on one warship under a design strategy. */
+function warshipBudget(docked: number, strategy: string): number {
+  return Math.max(10, docked) * (BUILD_TURNS[strategy] ?? BUILD_TURNS.balanced!) * 1.5;
+}
+
+/**
+ * The best warship on a hull under the empire's design strategy.
+ * Missile boats when missiles out-hit beams; otherwise beam ships.
+ * The beam and missile strategies fix the weapon; missile boats use beams where missiles don't fit (frigates).
+ */
+function fitWarship(view: PlayerView, hull: HullSize, id: string): ShipDesign | null {
+  const player = me(view);
+  const strategy = strategyOf(view, "design");
+  const beam = bestWarship(view, hull, "beam", id);
+  const missile = hull === "frigate" || strategy === "beams" ? null : bestWarship(view, hull, "missile", id);
+  const strength = (d: ShipDesign | null) => (d ? designStats(player, d).strength / Math.max(1, designStats(player, d).cost) : 0);
+  if (strategy === "missiles") return missile ?? beam;
+  if (strategy !== "balanced") return strength(missile) > strength(beam) * BALANCED_MISSILE_MARGIN ? missile : beam;
+  // Balanced play designs like the computer empires: by the empire's weapon lean.
+  const lean = leanings(view, view.viewer).weapon;
+  if (lean === "beams") return strength(missile) > strength(beam) * DOCTRINE_MARGIN ? missile : beam;
+  if (lean === "missiles") return missile && strength(missile) * DOCTRINE_MARGIN >= strength(beam) ? missile : beam;
+  return strength(missile) > strength(beam) * BALANCED_MISSILE_MARGIN ? missile : beam;
+}
+
+/** Design strategies that choose the hull themselves; the others fill the hull they are given. */
+export const HULL_STRATEGIES: readonly string[] = ["heavy", "light"];
+
+/**
+ * A warship designed the way design automation would under `strategy`, for
+ * the ship designer's Auto design. Heavy and light hulls pick the hull like
+ * automation does for its main warship (biggest the best star dock turns out
+ * in time); the other strategies fit the given hull. Null when nothing fits.
+ */
+export function autoDesign(view: PlayerView, strategy: string, hull: HullSize): ShipDesign | null {
+  const p = me(view);
+  const v: PlayerView = {
+    ...view,
+    players: { ...view.players, [view.viewer]: { ...p, automationStrategies: { ...p.automationStrategies, design: strategy } } },
+  };
+  if (!HULL_STRATEGIES.includes(strategy)) return fitWarship(v, hull, "");
+  const mine = Object.values(v.colonies).filter((c) => c.ownerId === v.viewer && !c.outpost);
+  const docked = Math.max(0, ...mine.filter(hasStarDock).map((c) => colonyOutput(v, c).industry));
+  const budget = warshipBudget(docked, strategy);
+  let h = pickHull(v, Math.max(10, docked), "titan");
+  let design = fitWarship(v, h, "");
+  while (design && STATION_DOCK_HULLS.includes(h) && designStats(p, design).cost > budget) {
+    h = HULLS[HULLS.findIndex((x) => x.id === h) - 1]!.id;
+    design = fitWarship(v, h, "");
+  }
+  return design;
+}
+
 /**
  * Keeps two current warship designs: "W" on the biggest hull the economy
  * carries, built where a star dock stands, and "S" on a destroyer or smaller
@@ -176,22 +229,9 @@ export function designOrders(view: PlayerView): Command[] {
   const average = empireTotals(view, view.viewer).industry / Math.max(1, mine.length);
   const out: Command[] = [];
   const strategy = strategyOf(view, "design");
-  // Missile boats when missiles out-hit beams; otherwise beam ships.
-  // The beam and missile strategies fix the weapon; missile boats use beams where missiles don't fit (frigates).
-  const designFor = (hull: HullSize, id: string): ShipDesign | null => {
-    const beam = bestWarship(view, hull, "beam", id);
-    const missile = hull === "frigate" || strategy === "beams" ? null : bestWarship(view, hull, "missile", id);
-    const strength = (d: ShipDesign | null) => (d ? designStats(player, d).strength / Math.max(1, designStats(player, d).cost) : 0);
-    if (strategy === "missiles") return missile ?? beam;
-    if (strategy !== "balanced") return strength(missile) > strength(beam) * BALANCED_MISSILE_MARGIN ? missile : beam;
-    // Balanced play designs like the computer empires: by the empire's weapon lean.
-    const lean = leanings(view, view.viewer).weapon;
-    if (lean === "beams") return strength(missile) > strength(beam) * DOCTRINE_MARGIN ? missile : beam;
-    if (lean === "missiles") return missile && strength(missile) * DOCTRINE_MARGIN >= strength(beam) ? missile : beam;
-    return strength(missile) > strength(beam) * BALANCED_MISSILE_MARGIN ? missile : beam;
-  };
+  const designFor = (hull: HullSize, id: string) => fitWarship(view, hull, id);
   // The fitted ship costs more than its hull: step down until the best dock builds it in BUILD_TURNS x 1.5 turns.
-  const budget = Math.max(10, docked) * (BUILD_TURNS[strategy] ?? BUILD_TURNS.balanced!) * 1.5;
+  const budget = warshipBudget(docked, strategy);
   for (const tag of ["W", "S"] as const) {
     let hull = tag === "W" ? pickHull(view, Math.max(10, docked), "titan") : pickHull(view, Math.max(10, average * 2), "destroyer");
     const current = player.designs.filter((d) => !d.obsolete && !d.module && d.id.startsWith(`ai${tag}`));
