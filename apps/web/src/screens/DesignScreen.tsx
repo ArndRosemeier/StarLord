@@ -4,6 +4,7 @@ import {
   DEFAULT_MISSILE_SHOTS, SHIP_STYLES, designStats, designStyle, raceShipStyle, knows, refinement, swapMountWeapon, validateDesign, weaponUnitCost,
   type FiringArc, type HullSize, type Player, type ShipDesign, type WeaponDef, type WeaponModId, type WeaponMount,
 } from "@starlord/sim";
+import { HULL_STRATEGIES, STRATEGIES, autoDesign } from "@starlord/ai";
 import { useGame } from "../ui/hooks";
 import { fmt, pct, words } from "../ui/format";
 import { ShipModelView, ShipThumb } from "../ui/ShipModel";
@@ -26,6 +27,16 @@ export function DesignScreen() {
   // The design being edited, if the draft was loaded with Edit; saving then changes that design.
   const [editing, setEditing] = useState<string | null>(null);
   const [addWeapon, setAddWeapon] = useState("");
+  const [autoOpen, setAutoOpen] = useState(false);
+  // What each design strategy would make of the current draft, shown before the player picks one.
+  const autoOptions = useMemo(
+    () => autoOpen ? STRATEGIES.design.map((s) => ({ info: s, design: autoDesign(view, s.id, draft.hull) })) : [],
+    [autoOpen, view, draft.hull],
+  );
+  const applyAuto = (design: ShipDesign) => {
+    update({ hull: design.hull, armor: design.armor, shield: design.shield, computer: design.computer, weapons: design.weapons, specials: design.specials });
+    setAutoOpen(false);
+  };
 
   const hulls = HULLS.filter((h) => knows(me, h.requires));
   const armors = ARMORS.filter((a) => knows(me, a.requires));
@@ -100,10 +111,41 @@ export function DesignScreen() {
         <div className="row">
           <h2 style={{ margin: 0 }}>Ship designer</h2>
           <span className="spacer" />
+          <Tip card={{ title: "Auto design", text: [
+            "Fits this design the way design automation would, by one of its strategies. Pick one from the list that opens; each shows the ship it would make.",
+            "Name and style stay as they are. Nothing is saved until you save the design.",
+          ] }}>
+            <button className={`small${autoOpen ? " active" : ""}`} onClick={() => setAutoOpen(!autoOpen)}>Auto design</button>
+          </Tip>
           <Tip card={{ title: "New design", text: ["Start over with an empty frigate fitted with your best armor, shield and computer, named in your race's style."] }}>
             <button className="small" onClick={() => { setDraft(blank()); setAutoName(true); setEditing(null); }}>New</button>
           </Tip>
         </div>
+        {autoOpen && (
+          <div className="col auto-design" style={{ gap: 6, border: "1px solid var(--line)", borderRadius: 6, padding: 8 }}>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Pick a strategy to fit this design like the design automation does. Heavy and light hulls choose the hull from your best star dock's industry; the others fill the {HULLS_BY_ID[draft.hull]?.name}.
+            </div>
+            {autoOptions.map(({ info, design }) => {
+              const st = design ? designStats(me, design) : null;
+              return (
+                <div key={info.id} className="row" style={{ gap: 8, alignItems: "center" }}>
+                  <button className="small" style={{ minWidth: 120 }} disabled={!design} onClick={() => design && applyAuto(design)}>{info.name}</button>
+                  <div style={{ flex: 1, fontSize: 12 }}>
+                    <div>{info.description}{HULL_STRATEGIES.includes(info.id) ? "" : ` Keeps the ${HULLS_BY_ID[draft.hull]?.name} hull.`}</div>
+                    <div className="muted">
+                      {design && st
+                        ? `${HULLS_BY_ID[design.hull]?.name}: ${design.weapons.map((w) => `${w.count}× ${WEAPONS.find((x) => x.id === w.weaponId)?.name ?? w.weaponId}${w.mods?.length ? ` (${w.mods.map((m) => WEAPON_MODS.find((x) => x.id === m)?.abbr ?? m).join(" ")})` : ""}`).join(", ")}`
+                          + `${design.specials.length ? ` + ${design.specials.map((x) => SPECIALS.find((y) => y.id === x)?.name ?? x).join(", ")}` : ""}`
+                          + ` · cost ${fmt(st.cost)} · strength ${fmt(st.strength)}`
+                        : "No warship fits this hull with the weapons you know."}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div className="blueprint">
           <span className="blueprint-label">Schematic · {draft.name || "unnamed"}</span>
           <ShipModelView className="blueprint-model" hull={draft.hull} color={me.color} style={style} />

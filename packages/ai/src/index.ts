@@ -85,7 +85,7 @@ export function automationOrders(view: PlayerView): Command[] {
 
 export { STRATEGIES, strategyOf, type AutomationDomain, type StrategyInfo } from "./strategies.js";
 export { colonizationOrders, colonizationTargets, outpostTargets } from "./colonization.js";
-export { DOCTRINE_MARGIN, bestWarship } from "./design.js";
+export { DOCTRINE_MARGIN, HULL_STRATEGIES, autoDesign, bestWarship } from "./design.js";
 export { LEAN_PULL } from "./research.js";
 export { BIO_AGGRESSION } from "./orbital.js";
 export {
