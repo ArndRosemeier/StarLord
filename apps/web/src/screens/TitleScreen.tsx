@@ -12,7 +12,7 @@ import { NewsTicker } from "../title/NewsTicker";
 import { VERSION } from "../changelog/changelog";
 import { WhatsNew } from "../changelog/WhatsNew";
 import { HallOfFame } from "./HallOfFame";
-import { openContactMail } from "../title/contact";
+import { openContact } from "../title/contact";
 
 /** Painted nebulae behind the title scene; each start picks one, maybe mirrored and slightly re-tinted. */
 const NEBULAE = ["art/title-nebula.webp", "art/title-nebula-2.webp", "art/title-nebula-3.webp"];
@@ -132,7 +132,7 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
           <button className="title-button" onClick={() => setHall(true)}>Hall of Fame</button>
           <button className="title-button" onClick={() => setWhatsNew(true)}>What's new <small>v{VERSION}</small></button>
           <button className="title-button" onClick={() => setSettings(!settings)}>Settings</button>
-          <button className="title-button" onClick={() => openContactMail(VERSION)} title="Write an email to the developer: feedback, bugs, ideas">Contact</button>
+          <button className="title-button" onClick={openContact} title="Open the StarLord board (board.futuremagic.de) for feedback, bugs and ideas">Contact</button>
           {settings && <div className="panel title-settings"><SettingsPanel shortcuts={false} /></div>}
         </div>
         <RaceShowcase onPick={newGame} reduced={reduced} />
