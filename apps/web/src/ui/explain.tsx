@@ -416,9 +416,9 @@ export function autoBuildTip(view: PlayerView, colony: Colony, strategy: string)
     title: "Auto build", kind: "Ongoing",
     rows,
     text: [
-      "Whenever it is first in the queue at the end of a turn, it puts what this strategy picks in front of itself, the way production automation would choose for this colony. It stays in the queue until you remove it.",
-      "While it has nothing to pick, it is passed over: the items behind it are built, or the industry goes to Trade Goods if there are none.",
-      "The pick is made from the whole empire's needs (settlers, freighters, fleet size, upkeep), so it can change from turn to turn.",
+      "Whenever it is first in the queue at the end of a turn, it puts the building this strategy picks in front of itself, the way production automation would choose a building for this colony. It never picks ships or projects. It stays in the queue until you remove it.",
+      "While no building is worth adding, it is passed over: the items behind it are built, or the industry goes to Trade Goods if there are none.",
+      "The pick weighs the empire's upkeep, food, threats and war, so it can change from turn to turn.",
     ],
   };
 }

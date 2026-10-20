@@ -7,6 +7,8 @@ const quiet = { monsters: false, raiders: false, council: false };
 function setup(): { s: GameState; home: Colony } {
   const s = newGame({ seed: "autobuild", playerCount: 2, humanPlayers: [0], ...quiet });
   const home = Object.values(s.colonies).find((c) => c.ownerId === 0)!;
+  // A few buildings to pick from; a fresh empire knows none.
+  s.players[0]!.techs.push("automatedFactory", "hydroponicFarm", "researchLab", "missileBase", "roboMinerPlant");
   return { s, home };
 }
 
@@ -61,5 +63,21 @@ describe("auto build queue item", () => {
     let { s, home } = setup();
     s = processTurn(s, { 0: [{ type: "setQueue", colonyId: home.id, queue: [{ kind: "auto", strategy: "balanced" }] }] });
     expect(s.colonies[home.id]!.progress).toBe(0);
+  });
+
+  it("only ever picks buildings, under every strategy, over a long game", () => {
+    let { s, home } = setup();
+    const kinds = new Set<string>();
+    for (const strategy of ["balanced", "expansion", "industry", "research", "military"]) {
+      let g = processTurn(s, { 0: [{ type: "setQueue", colonyId: home.id, queue: [{ kind: "auto", strategy }] }] });
+      for (let t = 0; t < 40; t++) {
+        const view = playerView(g, 0);
+        const pick = autoBuildPick(view, home.id, strategy);
+        if (pick.item) kinds.add(pick.item.kind);
+        g = processTurn(g, { 0: automationOrders(view) });
+      }
+      for (const q of g.colonies[home.id]!.queue) expect(["building", "auto"]).toContain(q.kind);
+    }
+    expect([...kinds]).toEqual(["building"]);
   });
 });
