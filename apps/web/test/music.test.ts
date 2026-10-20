@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { AudioDirector, type AudioEnv, type MusicTrack } from "../src/audio/sound";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { RACE_LOOKS } from "@starlord/sim";
+import { AudioDirector, raceThemeSrc, type AudioEnv, type MusicTrack } from "../src/audio/sound";
 
 class FakeTrack implements MusicTrack {
   loop = false;
@@ -225,6 +228,28 @@ describe("music stings", () => {
     expect(music.volume).toBeCloseTo(0.1);
     sting.emit("ended");
     expect(music.volume).toBe(0.5);
+  });
+
+  it("can be faded out early, bringing the music back", () => {
+    const { director, tracks } = instant();
+    director.update({ music: 0.5, muted: false });
+    director.setMood("galaxy");
+    const stop = director.sting(raceThemeSrc("kyrrin"));
+    const theme = tracks[1]!;
+    expect(tracks[0]!.volume).toBeCloseTo(0.1);
+    stop();
+    expect(theme.paused).toBe(true);
+    expect(tracks[0]!.volume).toBe(0.5);
+    // A later sting is not cut by an old handle.
+    director.sting("audio/breakthrough-1.mp3");
+    stop();
+    expect(tracks[2]!.paused).toBe(false);
+  });
+
+  it("has a theme for every race look, built-in and custom", () => {
+    for (const look of RACE_LOOKS) {
+      expect(existsSync(join(__dirname, "../../../public", raceThemeSrc(look.assetKey))), look.assetKey).toBe(true);
+    }
   });
 
   it("stays silent when music is muted and follows a later mute", () => {
