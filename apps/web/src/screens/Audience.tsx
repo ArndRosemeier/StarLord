@@ -6,7 +6,7 @@ import {
 import { useGame } from "../ui/hooks";
 import { fmt, starName, words } from "../ui/format";
 import { Envoy } from "../ui/panels";
-import { audio } from "../audio/sound";
+import { audio, raceThemeSrc } from "../audio/sound";
 import { speak, type Moment } from "../diplomacy/voices";
 import { describeProposal, techName, tradableTechs } from "../diplomacy/terms";
 import { GIFT_EFFECT, SURRENDER_EFFECT, endTreatyEffect, incomingEffect, proposalEffect, warEffect, TIRED_TEXT } from "../diplomacy/effects";
@@ -102,6 +102,12 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
     setSpeech(line(m));
     setSpeechKey((k) => k + 1);
   };
+
+  // The race's own theme plays over the ducked background music while their leader is on screen.
+  useEffect(() => {
+    const stop = audio.sting(raceThemeSrc(race.assetKey));
+    return stop;
+  }, [race.assetKey]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

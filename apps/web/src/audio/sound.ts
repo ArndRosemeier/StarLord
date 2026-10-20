@@ -289,11 +289,12 @@ export class AudioDirector {
 
   /**
    * Play a short piece of music once, at the music volume, with the background
-   * music turned down beneath it and faded back up when it ends.
+   * music turned down beneath it and faded back up when it ends. The returned
+   * function fades the piece out early (a race's theme when its audience closes).
    */
-  sting(src: string): void {
+  sting(src: string): () => void {
     const volume = this.musicVolume();
-    if (volume <= 0 || this.hidden) return;
+    if (volume <= 0 || this.hidden) return () => {};
     this.stingTrack?.pause();
     const track = this.env.createTrack(src);
     track.loop = false;
@@ -309,6 +310,12 @@ export class AudioDirector {
     if (this.current) this.fade(this.current, volume * STING_DUCK);
     // Refused before the first gesture: then the music just stays as it was.
     void track.play().catch(done);
+    return () => {
+      if (track !== this.stingTrack) return;
+      this.stingTrack = null;
+      this.fadeOut(track);
+      if (this.current) this.fade(this.current, this.musicVolume());
+    };
   }
 
   /** A short synthesised effect. */
@@ -396,6 +403,11 @@ export class AudioDirector {
 }
 
 export const audio = new AudioDirector();
+
+/** The short theme a race's leader appears with; custom races use the theme of the look they wear. */
+export function raceThemeSrc(assetKey: string): string {
+  return `audio/races/${assetKey}.mp3`;
+}
 
 export function useAudioSettings(): AudioSettings {
   return useSyncExternalStore(audio.subscribe, audio.getSettings);
