@@ -1,5 +1,5 @@
 import {
-  BUILDINGS_BY_ID, MAX_QUEUE, STATION_DOCK_HULLS, isContinuous, validateCommand, availableBuildings, availableDesigns, availableProjects, baseTargets, buyCost, colonyOutput, commandPointsAvailable,
+  BUILDINGS_BY_ID, MAX_QUEUE, STATION_DOCK_HULLS, validateCommand, availableBuildings, availableDesigns, availableProjects, baseTargets, buyCost, colonyOutput, commandPointsAvailable,
   distanceToNearestColony, fleetRange,
   commandPointsUsed, COMMAND_OVERAGE_COST, empireIncome, HULLS_BY_ID, TAX_BC_PER_INDUSTRY, empireTotals, foodPlan, FREIGHTERS, government, hasArmedDefenses, hasMarineBarracks, hasStarDock, queuedAnywhere, relation, suggestedBaseTarget,
   type BuildItem, type Colony, type Command, type PlayerView,
@@ -262,16 +262,16 @@ export function productionOrders(view: PlayerView): Command[] {
   return out;
 }
 
-/** What an auto build item would do next. */
+/** What an auto build item would do next: always a building, or nothing. */
 export type AutoBuildPick =
   | { item: BuildItem }
   | { item: null; why: string };
 
 /**
  * What an auto build item at this colony would put in front of itself under
- * its strategy, judged as the production automation judges it. Picks that
- * never finish (Housing, Trade Goods) leave the item idle: the colony builds
- * whatever is behind it instead.
+ * its strategy: the building the production automation would choose for it.
+ * It never picks ships or projects; with no building worth adding the item is
+ * idle and the colony builds whatever is behind it instead.
  */
 export function autoBuildPick(view: PlayerView, colonyId: string, strategy: string): AutoBuildPick {
   return autoPicks(view, [{ colonyId, strategy }]).get(colonyId)!;
@@ -282,7 +282,14 @@ function autoPicks(view: PlayerView, asks: { colonyId: string; strategy: string 
   const out = new Map<string, AutoBuildPick>();
   for (const { colonyId, strategy } of asks) {
     let plan = plans.get(strategy);
-    if (!plan) plans.set(strategy, (plan = planWants(view, strategy)));
+    if (!plan) {
+      plan = planWants(view, strategy);
+      // Auto build only ever picks buildings: no ships, projects or spies.
+      Object.assign(plan.wants, { colonyShips: 0, outposts: 0, scouts: 0, warships: 0, transports: 0, spies: 0, freighterFleets: 0, portalQueued: true });
+      plan.wants.colonyBases.clear();
+      plan.designs = new Set();
+      plans.set(strategy, plan);
+    }
     const rank = plan.ranked.findIndex((r) => r.c.id === colonyId);
     const entry = plan.ranked[rank];
     if (!entry) {
@@ -299,9 +306,9 @@ function autoPicks(view: PlayerView, asks: { colonyId: string; strategy: string 
       continue;
     }
     const queuedHere = new Set(c.queue.flatMap((q) => (q.kind === "building" ? [q.id] : [])));
-    const item = chooseItem(view, c, o.industry, rank, plan.wants, plan.designs, plan.war, o.foodNet, plan.rich, queuedHere);
-    if (isContinuous(item)) {
-      out.set(colonyId, { item: null, why: item.kind === "tradeGoods" ? "The strategy has nothing left to build here." : "The strategy would only grow the population here (Housing)." });
+    const item = chooseItem(view, c, o.industry, rank, plan.wants, plan.designs, plan.war, o.foodNet, plan.rich, queuedHere, true);
+    if (item.kind !== "building") {
+      out.set(colonyId, { item: null, why: "The strategy has no building worth adding here." });
       continue;
     }
     const at = c.queue.findIndex((q) => q.kind === "auto");
@@ -349,9 +356,11 @@ function chooseItem(
   rich: boolean,
   /** Buildings already queued here, which can't be picked again. */
   queuedHere: ReadonlySet<string> = new Set(),
+  /** Auto build: pick a building or nothing (Housing or Trade Goods stand for nothing). */
+  buildingsOnly = false,
 ): BuildItem {
   const buildable = new Set(availableBuildings(view, view.viewer, c).filter((b) => !queuedHere.has(b)));
-  const projects = new Set(availableProjects(view, view.viewer, c));
+  const projects = new Set(buildingsOnly ? [] : availableProjects(view, view.viewer, c));
   const star = colonyStar(view, c);
   const threatened = hostileFleetsNear(view, star, 4).length > 0;
   const pop = c.farmers + c.workers + c.scientists;
@@ -415,7 +424,7 @@ function chooseItem(
     if (buildable.has("marineBarracks")) return { kind: "building", id: "marineBarracks" };
   }
   // Expansion grows young colonies before anything else.
-  if (wants.strategy === "expansion" && pop < 4) return { kind: "project", id: "housing" };
+  if (wants.strategy === "expansion" && pop < 4 && !buildingsOnly) return { kind: "project", id: "housing" };
   // Small colonies only build what pays off quickly.
   // Upkeep has to be paid every turn; past what the income spares, only buildings that add industry go up.
   const economy = ECONOMY_BUILDINGS.filter((b) => buildable.has(b))

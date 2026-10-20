@@ -269,9 +269,9 @@ export const GUIDE: Record<GuideSlug, () => ReactNode> = {
       </P>
       <P>
         <b>Auto build</b> is a queue item with a production strategy of its own (the same choices as production
-        automation). It is never built itself: whenever it is first in the queue at the end of a turn, it puts what its
-        strategy would pick for that colony in front of itself, and stays in the queue until you remove it. When the
-        strategy has nothing worth building there (it would only pick Housing or Trade Goods), the item is idle and passed
+        automation). It is never built itself: whenever it is first in the queue at the end of a turn, it puts the building its
+        strategy would pick for that colony in front of itself, and stays in the queue until you remove it. It only ever
+        picks buildings, never ships or projects. When no building is worth adding there, the item is idle and passed
         over, so the items behind it are built. A colony with Auto build in its queue is left alone by production automation.
       </P>
       <P>
