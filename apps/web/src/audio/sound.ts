@@ -19,6 +19,8 @@ const PLAYLISTS: Record<Exclude<Mood, "none">, { tracks: string[]; loop: boolean
 const FADE_MS = 1200;
 /** Share of the music volume the background keeps while a sting plays over it. */
 const STING_DUCK = 0.2;
+/** How fast the background ducks under a sting and the sting fades in, so neither is heard at full strength together. */
+const STING_FADE_MS = 400;
 
 export interface AudioSettings {
   music: number;
@@ -166,7 +168,10 @@ export class AudioDirector {
       this.fades.delete(this.current);
       this.current.volume = this.musicVolume() * (this.stingTrack ? STING_DUCK : 1);
     }
-    if (this.stingTrack) this.stingTrack.volume = this.musicVolume();
+    if (this.stingTrack) {
+      this.fades.delete(this.stingTrack);
+      this.stingTrack.volume = this.musicVolume();
+    }
     for (const fn of this.listeners) fn();
   }
 
@@ -262,14 +267,14 @@ export class AudioDirector {
     this.fade(track, this.musicVolume());
   }
 
-  private fade(track: MusicTrack, to: number, done?: () => void): void {
+  private fade(track: MusicTrack, to: number, done?: () => void, ms = FADE_MS): void {
     const from = track.volume;
     const t0 = this.env.now();
     const id = (this.fades.get(track) ?? 0) + 1;
     this.fades.set(track, id);
     const tick = () => {
       if (this.fades.get(track) !== id) return; // A newer fade on this track took over.
-      const k = Math.min(1, (this.env.now() - t0) / FADE_MS);
+      const k = Math.min(1, (this.env.now() - t0) / ms);
       track.volume = Math.max(0, Math.min(1, from + (to - from) * k));
       if (k < 1) this.env.nextFrame(tick);
       else done?.();
@@ -298,7 +303,7 @@ export class AudioDirector {
     this.stingTrack?.pause();
     const track = this.env.createTrack(src);
     track.loop = false;
-    track.volume = volume;
+    track.volume = 0;
     this.stingTrack = track;
     const done = () => {
       if (track !== this.stingTrack) return;
@@ -307,7 +312,8 @@ export class AudioDirector {
     };
     track.addEventListener("ended", done);
     track.addEventListener("error", done);
-    if (this.current) this.fade(this.current, volume * STING_DUCK);
+    if (this.current) this.fade(this.current, volume * STING_DUCK, undefined, STING_FADE_MS);
+    this.fade(track, volume, undefined, STING_FADE_MS);
     // Refused before the first gesture: then the music just stays as it was.
     void track.play().catch(done);
     return () => {
