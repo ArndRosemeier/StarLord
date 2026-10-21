@@ -246,6 +246,42 @@ describe("music stings", () => {
     expect(tracks[2]!.paused).toBe(false);
   });
 
+  it("fades in while the music ducks quickly, so they are never both loud at once", () => {
+    const tracks: FakeTrack[] = [];
+    let t = 0;
+    const frames: (() => void)[] = [];
+    const director = new AudioDirector({
+      createTrack: (src) => {
+        const track = new FakeTrack(src, () => true);
+        tracks.push(track);
+        return track;
+      },
+      events: null,
+      isVisible: () => true,
+      setTimeout: () => {},
+      now: () => t,
+      nextFrame: (fn) => frames.push(fn),
+    });
+    const step = (ms: number) => {
+      t += ms;
+      for (const fn of frames.splice(0)) fn();
+    };
+    director.update({ music: 0.5, muted: false });
+    director.setMood("galaxy");
+    for (let i = 0; i < 20; i++) step(100);
+    expect(tracks[0]!.volume).toBe(0.5);
+    director.sting(raceThemeSrc("gorvath"));
+    const theme = tracks[1]!;
+    expect(theme.volume).toBe(0);
+    step(0);
+    step(200);
+    expect(theme.volume).toBeCloseTo(0.25);
+    expect(tracks[0]!.volume).toBeCloseTo(0.3);
+    step(200);
+    expect(theme.volume).toBe(0.5);
+    expect(tracks[0]!.volume).toBeCloseTo(0.1);
+  });
+
   it("has a theme for every race look, built-in and custom", () => {
     for (const look of RACE_LOOKS) {
       expect(existsSync(join(__dirname, "../../../public", raceThemeSrc(look.assetKey))), look.assetKey).toBe(true);

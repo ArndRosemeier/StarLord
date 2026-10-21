@@ -90,7 +90,10 @@ function publish(asset, raw, kind) {
   else if (asset.trim) {
     // Stings: the model always makes ~30 s, so keep the opening and fade its tail out.
     const fade = 1.5;
-    ffmpeg(["-i", raw, "-t", String(asset.trim), "-af", `afade=t=out:st=${asset.trim - fade}:d=${fade},loudnorm=I=-16:TP=-1.5`, "-ar", "44100", "-b:a", "128k", out]);
+    // `fadeIn` softens a clip that starts at full strength; `loudness` (LUFS) defaults to a little above the music.
+    const fadeIn = asset.fadeIn ? `afade=t=in:d=${asset.fadeIn},` : "";
+    const loudness = asset.loudness ?? -16;
+    ffmpeg(["-i", raw, "-t", String(asset.trim), "-af", `${fadeIn}afade=t=out:st=${asset.trim - fade}:d=${fade},loudnorm=I=${loudness}:TP=-1.5`, "-ar", "44100", "-b:a", "128k", out]);
   } else ffmpeg(["-i", raw, "-af", "loudnorm=I=-18:TP=-1.5", "-ar", "44100", "-b:a", "128k", out]);
 }
 
