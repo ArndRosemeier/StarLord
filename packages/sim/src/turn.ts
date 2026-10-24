@@ -546,6 +546,35 @@ export function pendingBattle(prev: GameState, orders: TurnOrders, playerId: Pla
 }
 
 /**
+ * Online games: the first battle of this turn that any of `commanders` (people who command their battles)
+ * takes part in and has handed in no orders for, with every such side commanded. Two people in one battle
+ * both command it live; the turn then fights it from both sides' orders. Null when none is left.
+ */
+export function pendingLiveBattle(prev: GameState, orders: TurnOrders, commanders: readonly PlayerId[]): (PendingBattle & { commanders: PlayerId[] }) | null {
+  const has = (id: PlayerId, key: string) => (orders[id] ?? []).some((c) => c.type === "battleOrders" && c.battle === key);
+  let found: PlayerId[] = [];
+  try {
+    processTurn(prev, orders, (battle, key) => {
+      const sides = ([0, 1] as const).filter((side) => {
+        const owner = battle.sides[side].ownerId;
+        if (!commanders.includes(owner) || !prev.players[owner]?.isHuman || has(owner, key)) return false;
+        const mine = battle.units.some((u) => u.side === side && u.alive);
+        const theirs = battle.units.some((u) => u.side !== side && u.alive);
+        return mine && theirs;
+      });
+      if (sides.length === 0) return false;
+      for (const side of sides) battle.manual[side] = true;
+      found = sides.map((side) => battle.sides[side].ownerId);
+      return true;
+    });
+  } catch (e) {
+    if (e instanceof BattlePause) return { battle: e.battle, key: e.key, starId: e.starId, reportId: e.reportId, playerId: found[0]!, commanders: found };
+    throw e;
+  }
+  return null;
+}
+
+/**
  * The first star where `playerId`'s fleets could attack more than one enemy
  * planet this turn and they have picked none (no `attackPlanet` order), with
  * what defends each, as the turn will see it after movement. Ask this before

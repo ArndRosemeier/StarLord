@@ -1,13 +1,14 @@
 import { automationOrders, standInOrders } from "@starlord/ai";
 import {
   DIFFICULTIES, RACES_BY_ID, buildCustomRace, newGame, newRecord, playerView, processTurn, stateHash, validateCustomRace,
-  type Command, type CustomRaceSpec, type GameRecord, type GameState, type NewGameOptions, type PlayerId, type TurnOrders,
+  type Command, type CustomRaceSpec, type GameRecord, type GameState, type NewGameOptions, type PlayerId, type TacticalOrder, type TurnOrders,
 } from "@starlord/sim";
+import { defaultAnswer, nextAsk, type Ask } from "./asks";
 import { connect, type GameHub, type RoomSummary } from "./gamehub";
 import { GAMEHUB } from "./config";
 import {
   PROTOCOL, pack, seatKey, unpack,
-  type FromHost, type NetMessage, type RoomMeta, type RoomState, type ToHost, type TurnDelta, type TurnStatus,
+  type ChatLine, type Diplomacy, type FromHost, type NetMessage, type RoomMeta, type RoomState, type ToAll, type ToHost, type TurnDelta, type TurnStatus,
 } from "./protocol";
 
 /**
@@ -16,12 +17,12 @@ import {
  *
  * Every player runs the whole simulation. Each turn:
  *  1. every person sends their orders to the host ("orders" phase);
- *  2. the host adds the computer empires' orders and sends everyone the full set ("resolve" phase);
- *     each person answers what the turn asks of them (which planet to attack, battles they command
- *     against computer empires, what to do from orbit) and sends those extra orders;
+ *  2. the host adds the computer empires' orders, then asks the turn's questions one at a time
+ *     ("resolve" phase, see asks.ts): which planet to attack, battles to command (two people in one
+ *     battle fight it live, each sending their units' orders to the other), what to do from orbit;
  *  3. the host publishes the turn (orders plus a state hash) as a room delta; everyone applies it and
  *     checks the hash. A player whose game drifted gets the host's state.
- * Battles between two people resolve by themselves (pendingBattle never offers them).
+ * Players also chat, and people propose treaties to each other and answer them during the turn.
  */
 
 /** How the browser remembers which empire is ours in a room, so a reload or reconnect gets it back. */
@@ -70,6 +71,11 @@ export interface OnlineOptions {
 
 /** A full snapshot of the record every few turns keeps the room's replay history short for late joiners. */
 export const SNAPSHOT_EVERY = 10;
+/** After the turn timer runs out, the host waits this long for players' own orders, then the computer stands in for absent ones. */
+export const TIMER_GRACE_MS = 15000;
+/** Turn timer choices in the lobby, in seconds (0: none). */
+export const TIMER_CHOICES = [0, 60, 120, 180, 300, 600];
+const CHAT_KEPT = 100;
 const MAX_PLAYERS = 8;
 
 function newToken(): string {
@@ -92,13 +98,23 @@ export class OnlineGame {
   error: string | null = null;
   /** Bumped on every change so React can re-render cheaply. */
   version = 0;
+  /** The room's chat, oldest first. */
+  chat: ChatLine[] = [];
+  /** When this turn's timer runs out, by this computer's clock; null without a timer. */
+  deadline: number | null = null;
 
   /** A turn arrived and was applied: `state` is the new game state. */
   onTurn?: (state: GameState, orders: TurnOrders) => void;
   /** The game state was replaced (desync recovery or catching up); show it as it is now. */
   onReload?: (state: GameState) => void;
-  /** All orders are in: answer what the turn asks of this player, then call `sendExtras`. Unset: nothing to answer. */
-  onResolve?: (turn: number, orders: TurnOrders) => void;
+  /** The turn asks this player something (see asks.ts): show it, then call `answer`. Unset: the default answer goes. */
+  onAsk?: (ask: Ask, orders: TurnOrders) => void;
+  /** Another commander's order in a live battle. */
+  onStep?: (turn: number, ask: number, n: number, order: TacticalOrder) => void;
+  /** A proposal or an answer from another person. */
+  onDiplomacy?: (from: PlayerId, data: Diplomacy) => void;
+  /** A chat line from someone else. */
+  onChat?: (line: ChatLine) => void;
   /** The game started (or, for a late joiner, was rebuilt): `state` is ready to play. */
   onStart?: (state: GameState) => void;
   /** Something the player should be told about. */
@@ -111,17 +127,26 @@ export class OnlineGame {
   private queue: Promise<void> = Promise.resolve();
   private listeners = new Set<() => void>();
   /** What this player sent for the current turn, re-sent after a host change. */
-  private sent: { turn: number; orders?: TurnOrders; extras?: Command[] } = { turn: -1 };
-  private resolving = -1;
+  private sent: { turn: number; orders?: TurnOrders } = { turn: -1 };
+  /** The question we are answering ("turn:id"), and answers we gave, to give again if a new host asks the same. */
+  private asked = "";
+  private answers = new Map<string, Command[]>();
   private resyncAsked = -1;
   /** Host bookkeeping for the current turn. */
   private h = {
     phase: "orders" as TurnStatus["phase"],
     pending: new Map<PlayerId, TurnOrders>(),
-    extras: new Map<PlayerId, Command[]>(),
-    merged: null as TurnOrders | null,
+    /** Resolve phase: every empire's orders, with the answers so far. */
+    orders: null as TurnOrders | null,
+    ask: null as Ask | null,
+    answered: new Set<PlayerId>(),
+    askSeq: 0,
+    /** Questions asked this turn, so one that comes back unanswered gets its default answer instead of looping. */
+    seen: new Set<string>(),
     online: new Map<PlayerId, number>(),
     standIn: new Set<PlayerId>(),
+    deadline: null as number | null,
+    timer: null as ReturnType<typeof setTimeout> | null,
   };
 
   constructor(opts: OnlineOptions) {
@@ -289,12 +314,46 @@ export class OnlineGame {
     this.changed();
   }
 
-  /** What we decided when the turn asked (see `onResolve`). */
-  sendExtras(turn: number, commands: Command[]): void {
-    if (!this.token) return;
-    this.sent = { ...this.sent, turn, extras: commands };
-    this.toHost({ k: "extras", turn, token: this.token, commands });
+  /** Our answer to the question the turn asked (see `onAsk`). */
+  answer(commands: Command[]): void {
+    const s = this.status;
+    if (!this.token || !s?.ask || s.phase !== "resolve" || !s.orders) return;
+    this.answers.set(answerKey(s.ask, s.orders), commands);
+    this.toHost({ k: "answer", turn: s.turn, ask: s.ask.id, token: this.token, commands });
     this.changed();
+  }
+
+  /** Our order in a live battle, for the other commander. */
+  sendStep(turn: number, ask: number, n: number, order: TacticalOrder): void {
+    this.toAll({ k: "bstep", turn, ask, n, order });
+  }
+
+  /** Says something in the room's chat. */
+  say(text: string): void {
+    const t = text.trim().slice(0, 300);
+    if (!t) return;
+    const line: ChatLine = { name: this.name, seat: this.seat, text: t };
+    this.toAll({ k: "chat", line });
+    this.addChat(line);
+  }
+
+  /** Sends a proposal or an answer to another person's empire (passed on by the host). */
+  diplomacy(to: PlayerId, data: Diplomacy): void {
+    if (this.token) this.toHost({ k: "dip", token: this.token, to, data });
+  }
+
+  /** Whether that person's empire is played by someone connected right now (so they can answer during this turn). */
+  isOnline(seat: PlayerId): boolean {
+    return !!this.status?.online.includes(seat) && !this.status.standIn.includes(seat);
+  }
+
+  /** Host, in the lobby: the turn timer in seconds (0: none). */
+  setTimer(seconds: number): void {
+    void this.enqueue(async () => {
+      if (!this.hosting || this.room?.phase !== "lobby") return;
+      this.room.timer = seconds;
+      await this.publish();
+    });
   }
 
   /** Host: lets the computer play an absent person's empire until they come back (or stops it). */
@@ -305,7 +364,13 @@ export class OnlineGame {
       else this.h.standIn.delete(seat);
       this.broadcastStatus();
       this.maybeResolve();
+      this.reconsider();
     });
+  }
+
+  /** Shows the player a notice about the game. */
+  tell(text: string): void {
+    this.notice(text);
   }
 
   /** Names of the people in the room right now. */
@@ -338,6 +403,15 @@ export class OnlineGame {
     this.changed();
   }
 
+  private toAll(m: ToAll): void {
+    this.hub.send(m);
+  }
+
+  private addChat(line: ChatLine): void {
+    this.chat = [...this.chat, line].slice(-CHAT_KEPT);
+    this.changed();
+  }
+
   private toHost(m: ToHost): void {
     if (this.hosting) void this.enqueue(() => this.hostHandle(m, this.hub.you!));
     else if (this.hub.host !== null) this.hub.send(m, this.hub.host);
@@ -345,8 +419,15 @@ export class OnlineGame {
 
   private onMessage(m: NetMessage, from: number): void | Promise<void> {
     switch (m.k) {
-      case "claim": case "release": case "orders": case "withdraw": case "extras": case "resync":
+      case "claim": case "release": case "orders": case "withdraw": case "answer": case "resync": case "dip":
         if (this.hosting) return this.hostHandle(m, from);
+        return;
+      case "chat":
+        this.addChat(m.line);
+        this.onChat?.(m.line);
+        return;
+      case "bstep":
+        this.onStep?.(m.turn, m.ask, m.n, m.order);
         return;
       default:
         return this.clientHandle(m);
@@ -439,6 +520,10 @@ export class OnlineGame {
       this.notice(m.reason);
       return;
     }
+    if (m.k === "dipFrom") {
+      this.onDiplomacy?.(m.from, m.data);
+      return;
+    }
     if (m.k === "state") {
       const { record, state } = await unpack<{ record: GameRecord; state: GameState }>(m.data);
       const wasBehind = (this.record?.turns.length ?? 0) < record.turns.length;
@@ -454,19 +539,18 @@ export class OnlineGame {
     }
     const s = m.status;
     this.status = s;
+    this.deadline = s.phase === "orders" && s.left !== undefined ? Date.now() + s.left : null;
     const seat = this.seat;
     if (seat !== null && this.state && s.turn === this.state.turn && !s.done.includes(seat)) {
       if (s.phase === "orders" && this.sent.turn === s.turn && this.sent.orders && this.token) {
         // A new host does not have our orders yet.
         this.toHost({ k: "orders", turn: s.turn, token: this.token, orders: this.sent.orders });
-      } else if (s.phase === "resolve" && s.orders && s.online.includes(seat) && !s.standIn.includes(seat)) {
-        if (this.sent.turn === s.turn && this.sent.extras && this.token) {
-          this.toHost({ k: "extras", turn: s.turn, token: this.token, commands: this.sent.extras });
-        } else if (this.resolving !== s.turn) {
-          this.resolving = s.turn;
-          if (this.onResolve) this.onResolve(s.turn, s.orders);
-          else this.sendExtras(s.turn, []);
-        }
+      } else if (s.phase === "resolve" && s.ask && s.orders && s.ask.seats.includes(seat) && this.asked !== `${s.turn}:${s.ask.id}`) {
+        this.asked = `${s.turn}:${s.ask.id}`;
+        const given = this.answers.get(answerKey(s.ask, s.orders));
+        if (given) this.answer(given);
+        else if (this.onAsk) this.onAsk(s.ask, s.orders);
+        else this.answer(defaultAnswer(this.state, s.orders, s.ask, seat));
       }
     }
     this.changed();
@@ -489,7 +573,7 @@ export class OnlineGame {
     if (this.hosting) {
       for (const [seat, pid] of this.h.online) if (pid === id) this.h.online.delete(seat);
       this.broadcastStatus();
-      this.maybeFinish();
+      this.reconsider();
     }
     this.changed();
   }
@@ -497,10 +581,38 @@ export class OnlineGame {
   // ------------------------------------------------------------------ host
 
   private resetTurn(): void {
-    this.h.phase = "orders";
-    this.h.pending.clear();
-    this.h.extras.clear();
-    this.h.merged = null;
+    const h = this.h;
+    h.phase = "orders";
+    h.pending.clear();
+    h.orders = null;
+    h.ask = null;
+    h.answered.clear();
+    h.seen.clear();
+    if (h.timer) clearTimeout(h.timer);
+    h.timer = null;
+    h.deadline = null;
+    const seconds = this.room?.timer ?? 0;
+    if (this.hosting && seconds > 0 && this.room?.phase === "playing") {
+      h.deadline = Date.now() + seconds * 1000;
+      // Past the deadline (and a grace for slow connections), the computer stands in for people who are away.
+      h.timer = setTimeout(() => void this.enqueue(() => this.timeUp()), seconds * 1000 + TIMER_GRACE_MS);
+    }
+  }
+
+  private timeUp(): void {
+    const h = this.h;
+    if (!this.hosting || h.phase !== "orders") return;
+    let changed = false;
+    for (const seat of this.aliveHumans()) {
+      if (!h.pending.has(seat) && !h.online.has(seat)) {
+        h.standIn.add(seat);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.broadcastStatus();
+      this.maybeResolve();
+    }
   }
 
   private async takeOver(): Promise<void> {
@@ -577,6 +689,14 @@ export class OnlineGame {
       return;
     }
     const seat = this.seatOf(m.token);
+    if (m.k === "dip") {
+      if (seat === null || room.phase !== "playing") return;
+      const to = this.h.online.get(m.to);
+      if (to === undefined) return;
+      if (to === this.hub.you) void this.clientHandle({ k: "dipFrom", from: seat, data: m.data });
+      else this.hub.send({ k: "dipFrom", from: seat, data: m.data }, to);
+      return;
+    }
     if (seat === null || !this.state || m.turn !== this.state.turn || !this.aliveHumans().includes(seat)) return;
     if (m.k === "orders" && this.h.phase === "orders") {
       this.h.pending.set(seat, this.ownOrders(seat, m.orders));
@@ -585,10 +705,13 @@ export class OnlineGame {
     } else if (m.k === "withdraw" && this.h.phase === "orders") {
       this.h.pending.delete(seat);
       this.broadcastStatus();
-    } else if (m.k === "extras" && this.h.phase === "resolve") {
-      this.h.extras.set(seat, m.commands);
-      this.broadcastStatus();
-      this.maybeFinish();
+    } else if (m.k === "answer" && this.h.phase === "resolve") {
+      const { ask, answered, orders } = this.h;
+      if (!ask || !orders || m.ask !== ask.id || !ask.seats.includes(seat) || answered.has(seat)) return;
+      orders[seat] = [...(orders[seat] ?? []), ...m.commands];
+      answered.add(seat);
+      if (ask.seats.every((s) => answered.has(s))) this.advance();
+      else this.broadcastStatus();
     }
   }
 
@@ -654,13 +777,15 @@ export class OnlineGame {
   private broadcastStatus(): void {
     if (!this.hosting) return;
     const h = this.h;
+    const resolving = h.phase === "resolve" && !!h.orders && !!h.ask;
     const status: TurnStatus = {
       turn: this.state?.turn ?? 0,
       phase: h.phase,
-      done: [...(h.phase === "orders" ? h.pending.keys() : h.extras.keys())].sort((a, b) => a - b),
+      done: [...(h.phase === "orders" ? h.pending.keys() : h.answered)].sort((a, b) => a - b),
       online: [...h.online.keys()].sort((a, b) => a - b),
       standIn: [...h.standIn].sort((a, b) => a - b),
-      ...(h.phase === "resolve" && h.merged ? { orders: h.merged } : {}),
+      ...(resolving ? { orders: h.orders!, ask: h.ask! } : {}),
+      ...(h.phase === "orders" && h.deadline !== null ? { left: Math.max(0, h.deadline - Date.now()) } : {}),
     };
     this.hub.send({ k: "status", status });
     void this.clientHandle({ k: "status", status });
@@ -671,11 +796,39 @@ export class OnlineGame {
     if (!this.state || h.phase !== "orders" || this.room?.phase !== "playing") return;
     const humans = this.aliveHumans();
     if (!humans.every((s) => h.pending.has(s) || h.standIn.has(s))) return;
-    h.merged = this.mergeOrders();
+    h.orders = this.mergeOrders();
     h.phase = "resolve";
-    h.extras.clear();
-    this.broadcastStatus();
-    this.maybeFinish();
+    if (h.timer) clearTimeout(h.timer);
+    h.timer = null;
+    this.advance();
+  }
+
+  /** People who answer the turn's questions: connected, not stood in for, and who gave their own orders. */
+  private answering(): PlayerId[] {
+    const h = this.h;
+    return this.aliveHumans().filter((s) => h.online.has(s) && !h.standIn.has(s) && h.pending.has(s));
+  }
+
+  /** Asks the turn's next question, or runs the turn when none is left. */
+  private advance(): void {
+    const h = this.h;
+    if (!this.state || h.phase !== "resolve" || !h.orders) return;
+    for (let guard = 0; guard < 500; guard++) {
+      const next = nextAsk(this.state, h.orders, this.answering());
+      if (!next) return this.finish();
+      const sig = `${next.kind}:${next.key}:${next.seats.join(",")}`;
+      if (h.seen.has(sig)) {
+        // Asked before and still open: the default answer, so the turn cannot loop.
+        for (const seat of next.seats) h.orders[seat] = [...(h.orders[seat] ?? []), ...defaultAnswer(this.state, h.orders, next, seat)];
+        continue;
+      }
+      h.seen.add(sig);
+      h.ask = { ...next, id: ++h.askSeq };
+      h.answered.clear();
+      this.broadcastStatus();
+      return;
+    }
+    this.finish();
   }
 
   private mergeOrders(): TurnOrders {
@@ -699,13 +852,16 @@ export class OnlineGame {
     return orders;
   }
 
-  private maybeFinish(): void {
+  /** Someone left or is now stood in for: ask again without them (or run the turn). */
+  private reconsider(): void {
+    const ask = this.h.ask;
+    if (this.h.phase === "resolve" && ask && !ask.seats.every((s) => this.answering().includes(s) || this.h.answered.has(s))) this.advance();
+  }
+
+  private finish(): void {
     const h = this.h;
-    if (!this.state || h.phase !== "resolve" || !h.merged) return;
-    const asked = this.aliveHumans().filter((s) => h.online.has(s) && !h.standIn.has(s) && h.pending.has(s));
-    if (!asked.every((s) => h.extras.has(s))) return;
-    const orders = structuredClone(h.merged);
-    for (const [seat, cmds] of [...h.extras].sort((a, b) => a[0] - b[0])) orders[seat] = [...(orders[seat] ?? []), ...cmds];
+    if (!this.state || !h.orders) return;
+    const orders = h.orders;
     const n = this.record!.turns.length;
     this.state = processTurn(this.state, orders);
     const hash = stateHash(this.state);
@@ -717,4 +873,9 @@ export class OnlineGame {
     this.broadcastStatus();
     this.changed();
   }
+}
+
+/** Identifies a question by what it is and the orders it was asked with. */
+function answerKey(ask: Ask, orders: TurnOrders): string {
+  return `${ask.kind}:${ask.key}:${ask.seats.join(",")}:${seatKey(JSON.stringify(orders))}`;
 }

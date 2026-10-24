@@ -82,7 +82,7 @@ export function NewGame({ onStart, onBack, initialRace, onHost }: {
     const customRaces = !spectate && chosenCustom ? [chosenCustom.spec] : [];
     const options: NewGameOptions = {
       seed, galaxySize: galaxy, races, maxTurns: turnLimit ? maxTurns : 0, monsters, raiders, council, customRaces, difficulty, galaxyAge, techLevel, randomEvents, shipInitiative,
-      ...(debug && !onHost ? { debug: true } : {}),
+      ...(debug ? { debug: true } : {}),
     };
     if (onHost) {
       onHost(options);
@@ -185,7 +185,7 @@ export function NewGame({ onStart, onBack, initialRace, onHost }: {
             {customBlocked && <div className="bad">Custom races need Average difficulty or harder.</div>}
             <div className="row">
               {onHost ? (
-                <button className="primary" disabled={customBlocked} onClick={() => start(false)}
+                <button className="primary" disabled={customBlocked} onClick={(e) => start(false, e.ctrlKey && e.altKey)} {...debugHold}
                   title="Opens a room for this galaxy. Friends who join take the other empires (and may pick their own race); the computer plays the rest.">
                   Host online as the {race.plural}
                 </button>

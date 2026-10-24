@@ -1,4 +1,5 @@
-import type { Command, CustomRaceSpec, NewGameOptions, PlayerId, TurnOrders } from "@starlord/sim";
+import type { Command, CustomRaceSpec, NewGameOptions, PlayerId, TacticalOrder, TurnOrders } from "@starlord/sim";
+import type { Ask } from "./asks";
 
 /**
  * What StarLord sends over a GameHub room. No DOM, so it runs in the browser and in Node tests.
@@ -9,7 +10,7 @@ import type { Command, CustomRaceSpec, NewGameOptions, PlayerId, TurnOrders } fr
  */
 
 /** Bumped when the messages change in a way older builds cannot read. */
-export const PROTOCOL = 1;
+export const PROTOCOL = 2;
 
 /** A claimed empire: who plays it and the hash of the secret seat token that proves it is theirs. */
 export interface Seat {
@@ -28,6 +29,8 @@ export interface RoomState {
   seats: Record<string, Seat>;
   /** The packed game record (see `pack`) once the game runs; turns after it arrive as deltas. */
   record?: string;
+  /** Turn timer in seconds (0: none): when it runs out, a player's turn ends with the orders they gave so far. */
+  timer?: number;
 }
 
 /** One processed turn, the room's only delta: `n` is its index in the record. */
@@ -41,16 +44,30 @@ export interface TurnDelta {
 /** Where the current turn stands, broadcast by the host whenever it changes. */
 export interface TurnStatus {
   turn: number;
-  /** "orders": waiting for every empire's orders; "resolve": orders are in, each player answers what the turn asks them (targets, battles to command, orbit choices). */
+  /** "orders": waiting for every empire's orders; "resolve": orders are in and the turn asks people its questions one at a time (see `Ask`). */
   phase: "orders" | "resolve";
-  /** Seats that are done with the current phase. */
+  /** Orders phase: seats whose orders are in. Resolve phase: seats that answered the current question. */
   done: PlayerId[];
   /** Seats whose player is connected. */
   online: PlayerId[];
   /** Absent seats the computer plays until their player returns. */
   standIn: PlayerId[];
-  /** Every empire's orders, in the resolve phase. */
+  /** Resolve phase: every empire's orders so far, and the question being asked. */
   orders?: TurnOrders;
+  ask?: Ask;
+  /** Orders phase with a turn timer: milliseconds left when the host sent this. */
+  left?: number;
+}
+
+/** A diplomatic message between two people, passed on by the host. */
+export type Diplomacy =
+  | { type: "offer"; turn: number; cmd: Extract<Command, { type: "propose" }> }
+  | { type: "answer"; turn: number; proposalId: string; accept: boolean };
+
+export interface ChatLine {
+  name: string;
+  seat: PlayerId | null;
+  text: string;
 }
 
 export type ToHost =
@@ -58,16 +75,24 @@ export type ToHost =
   | { k: "release"; token: string }
   | { k: "orders"; turn: number; token: string; orders: TurnOrders }
   | { k: "withdraw"; turn: number; token: string }
-  | { k: "extras"; turn: number; token: string; commands: Command[] }
-  | { k: "resync"; token: string | null };
+  | { k: "answer"; turn: number; ask: number; token: string; commands: Command[] }
+  | { k: "resync"; token: string | null }
+  | { k: "dip"; token: string; to: PlayerId; data: Diplomacy };
 
 export type FromHost =
   | { k: "status"; status: TurnStatus }
   /** The host's own game state, sent to a player whose game drifted out of step. */
   | { k: "state"; turn: number; data: string }
-  | { k: "refused"; reason: string };
+  | { k: "refused"; reason: string }
+  | { k: "dipFrom"; from: PlayerId; data: Diplomacy };
 
-export type NetMessage = ToHost | FromHost;
+/** Sent to everyone in the room. */
+export type ToAll =
+  | { k: "chat"; line: ChatLine }
+  /** One order in a live battle, by its place in the battle's sequence of decisions. */
+  | { k: "bstep"; turn: number; ask: number; n: number; order: TacticalOrder };
+
+export type NetMessage = ToHost | FromHost | ToAll;
 
 /** Lobby listing info, set by the host. */
 export interface RoomMeta {

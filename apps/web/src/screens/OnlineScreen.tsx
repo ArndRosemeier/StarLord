@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { DIFFICULTIES, RACES, buildCustomRace, getRace, type CustomRaceSpec, type NewGameOptions } from "@starlord/sim";
-import { OnlineGame, browserSeatStore } from "../net/online";
+import { OnlineGame, TIMER_CHOICES, browserSeatStore } from "../net/online";
+import { ChatPanel } from "./OnlineBar";
 import type { RoomSummary } from "../net/gamehub";
 import type { RoomMeta } from "../net/protocol";
 import { GameSession } from "../game/session";
@@ -162,9 +163,9 @@ export function OnlineScreen({ joinCode, onStart, onBack }: { joinCode?: string 
         <h2>Play with friends</h2>
         <p className="muted" style={{ margin: 0 }}>
           Everyone plays at the same time: when every person has ended their turn, all orders run together. Empires
-          nobody takes are played by the computer. Battles between two people resolve by themselves for now; battles
-          against computer empires and monsters can be commanded as usual. Games run on games.futuremagic.de and need
-          everyone on the same StarLord version (yours: v{VERSION}).
+          nobody takes are played by the computer. Battles between two people are fought live, each commanding their
+          own side; proposals between people can be answered during the turn, and there is a chat and an optional turn
+          timer. Games run on games.futuremagic.de and need everyone on the same StarLord version (yours: v{VERSION}).
         </p>
         <label className="row">Your name
           <input type="text" maxLength={32} value={name} placeholder="Shown to the other players" onChange={(e) => setName(e.target.value)} autoFocus />
@@ -257,6 +258,7 @@ function RoomLobby({ game, notes, onLeave }: { game: OnlineGame; notes: string[]
           {words(options.galaxySize ?? "medium")} galaxy · {words(options.galaxyAge ?? "average")} age · {DIFFICULTIES[options.difficulty ?? "average"].name} difficulty
           (computer empires only) · {words(options.techLevel ?? "average")} tech
           {options.maxTurns ? ` · ${options.maxTurns} turn limit` : ""}
+          {options.debug ? " · debug game: every player can use the debug menu's cheats (F9)" : ""}
           {[options.monsters !== false && "monsters", options.raiders !== false && "raiders", options.council !== false && "galactic council", options.randomEvents !== false && "random events"].filter(Boolean).map((t) => ` · ${t}`)}
         </div>
       </div>
@@ -305,6 +307,15 @@ function RoomLobby({ game, notes, onLeave }: { game: OnlineGame; notes: string[]
         </small>
       </div>
       <div className="panel col">
+        <label className="row" title="When the timer runs out, a player's turn ends with the orders they gave so far (a council vote still waits for them). The computer plays the empires of people who are away.">
+          Turn timer
+          {game.isHost ? (
+            <select value={room.timer ?? 0} onChange={(e) => game.setTimer(Number(e.target.value))}>
+              {TIMER_CHOICES.map((t) => <option key={t} value={t}>{t === 0 ? "None" : `${t / 60} minute${t === 60 ? "" : "s"}`}</option>)}
+            </select>
+          ) : <b>{room.timer ? `${room.timer / 60} minute${room.timer === 60 ? "" : "s"}` : "None"}</b>}
+          <small className="muted">{room.timer ? "per turn, then the turn ends with the orders given so far" : "every turn waits until everyone has ended theirs"}</small>
+        </label>
         {game.isHost ? (
           <div className="row">
             <button className="primary" onClick={() => game.start()}>
@@ -315,6 +326,10 @@ function RoomLobby({ game, notes, onLeave }: { game: OnlineGame; notes: string[]
         ) : <div className="muted">Waiting for the host to start the game…</div>}
         {game.error && <div className="bad">{game.error}</div>}
         {notes.map((n, i) => <div key={i} className="muted">{n}</div>)}
+      </div>
+      <div className="panel col">
+        <h3 style={{ margin: 0 }}>Chat</h3>
+        <ChatPanel game={game} />
       </div>
     </div>
   );

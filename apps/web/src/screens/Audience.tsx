@@ -134,6 +134,14 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
   const propose = (cmd: Extract<Command, { type: "propose" }>) => {
     audio.play("click");
     const answer = session.audience(cmd);
+    if (answer === "sent") {
+      // Another person: they get the proposal now and answer from their own screen.
+      const ruler = session.online?.room?.seats[them.id]?.name ?? them.name;
+      setSpeech(`Your proposal is on its way to ${ruler}, who rules the ${them.name}. They can answer during this turn, and you will be told as soon as they do. If they don't, it waits for them next turn.`);
+      setSpeechKey((k) => k + 1);
+      setMenu("main");
+      return;
+    }
     if (answer === null) {
       say(tired ? "tired" : "refuse");
       return;

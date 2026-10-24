@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { automationOrders } from "@starlord/ai";
-import { playerView, stateHash, type NewGameOptions } from "@starlord/sim";
+import { playerView, proposalId, relation, stateHash, type NewGameOptions } from "@starlord/sim";
 import { OnlineGame, memorySeatStore, type SeatStore } from "../src/net/online";
 import { FakeRelay } from "./fakeHub";
+import { commander, type BattleLog } from "./commander";
 import { GameSession } from "../src/game/session";
 
 const OPTIONS: NewGameOptions = { seed: "online", galaxySize: "small", races: ["terran", "kordex", "zhrikk"] };
@@ -203,5 +204,93 @@ describe("online game sessions", { timeout: 30000 }, () => {
     expect(a.state.players[1]!.taxRate).toBe(0.3);
     expect(stateHash(a.state)).toBe(stateHash(b.state));
     expect(b.history[0]!.turn).toBe(1);
+  });
+});
+
+describe("live battles between people", { timeout: 60000 }, () => {
+  it("lets two people command one battle, each seeing the other's moves, and the turn fights it the same way", async () => {
+    const relay = new FakeRelay();
+    const host = player(relay, "Ann");
+    const code = await host.host({ ...OPTIONS, debug: true }, "war");
+    const guest = player(relay, "Bob");
+    await guest.join(code);
+    await until(() => !!guest.room, "room");
+    guest.claim(1);
+    await until(() => guest.seat === 1, "claim");
+    host.start();
+    await until(() => !!guest.state && !!host.state, "start");
+    const annLog: BattleLog = {};
+    const bobLog: BattleLog = {};
+    commander(host, annLog);
+    commander(guest, bobLog);
+    const state = host.state!;
+    const bobHome = Object.values(state.colonies).find((c) => c.ownerId === 1)!;
+    const starId = state.planets[bobHome.planetId]!.starId;
+    host.submitOrders({ 0: [
+      { type: "debug", action: { kind: "meetAll" } },
+      { type: "debug", action: { kind: "spawnShips", designId: "frigate", count: 3, starId } },
+      { type: "declareWar", target: 1 },
+    ] });
+    guest.submitOrders({ 1: [] });
+    await until(() => host.state!.turn === 2 && guest.state!.turn === 2, "the turn with the battle runs", 30000);
+    expect(annLog.outcome).toBeDefined();
+    expect(bobLog.outcome).toBeDefined();
+    // Both saw the same battle.
+    expect(bobLog.outcome!.report.rounds).toEqual(annLog.outcome!.report.rounds);
+    // And the turn fought it exactly as they did.
+    const report = host.state!.combats.find((c) => c.starId === starId)!;
+    expect(report.rounds).toEqual(annLog.outcome!.report.rounds);
+    expect(stateHash(guest.state!)).toBe(stateHash(host.state!));
+    // Both sides' orders went in with the turn.
+    const orders = host.record!.turns[0]!.orders;
+    expect(orders[0]!.some((c) => c.type === "battleOrders")).toBe(true);
+    expect(orders[1]!.some((c) => c.type === "battleOrders")).toBe(true);
+  });
+});
+
+describe("chat, diplomacy and the turn timer", { timeout: 30000 }, () => {
+  it("passes chat lines to everyone in the room", async () => {
+    const relay = new FakeRelay();
+    const { host, guest } = await lobby(relay);
+    host.say("hello there");
+    await until(() => guest.chat.length === 1, "chat arrives");
+    expect(guest.chat[0]).toEqual({ name: "Ann", seat: 0, text: "hello there" });
+    expect(host.chat).toHaveLength(1);
+  });
+
+  it("lets a person answer another person's proposal in the same turn", async () => {
+    const relay = new FakeRelay();
+    const { host, guest } = await lobby(relay);
+    host.start();
+    await until(() => !!guest.state, "start");
+    const a = GameSession.fromOnline(host);
+    const b = GameSession.fromOnline(guest);
+    // Meet first (debug is off, so let the empires meet through the record: give contact directly in both states).
+    for (const s of [a.state, b.state, host.state!, guest.state!]) {
+      if (!s.players[0]!.contacts.includes(1)) s.players[0]!.contacts.push(1);
+      if (!s.players[1]!.contacts.includes(0)) s.players[1]!.contacts.push(0);
+    }
+    await until(() => host.isOnline(1) && guest.isOnline(0), "both online");
+    expect(a.audience({ type: "propose", to: 1, kind: "trade" })).toBe("sent");
+    await until(() => b.liveOffers.length === 1, "offer arrives");
+    const id = proposalId(b.state.turn, 0, 1, "trade");
+    expect(b.view.proposals.some((p) => p.id === id)).toBe(true);
+    b.issue({ type: "respond", proposalId: id, accept: true });
+    await until(() => a.answerTo({ id }) === true, "answer arrives");
+    a.endTurn();
+    b.endTurn();
+    await until(() => a.state.turn === 2 && b.state.turn === 2, "turn runs");
+    expect(relation(a.state, 0, 1).trade).toBe(true);
+  });
+
+  it("runs a turn timer the host sets in the lobby", async () => {
+    const relay = new FakeRelay();
+    const { host, guest } = await lobby(relay);
+    host.setTimer(120);
+    await until(() => guest.room?.timer === 120, "timer reaches the room");
+    host.start();
+    await until(() => !!guest.status && guest.status.turn === 1, "start");
+    expect(guest.deadline).not.toBeNull();
+    expect(guest.deadline! - Date.now()).toBeGreaterThan(100000);
   });
 });

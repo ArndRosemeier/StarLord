@@ -111,6 +111,8 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   /** A "next idle fleet" or "next colony" request for the map; `n` changes on every press. */
   const [mapCycle, setMapCycle] = useState<MapCycle | null>(null);
   useAutosave(session);
+  // Development builds: the running game for browser tests and the console.
+  if (import.meta.env.DEV) (window as unknown as { starlord?: unknown }).starlord = session;
 
   const totals = empireTotals(view, me.id);
   const income = empireIncome(view, me.id);
@@ -136,6 +138,25 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     else if (noResearch || idleColonies.length > 0) setEndCheck({ points: noResearch ? research : null, idle: idleColonies });
     else session.endTurn({ commandBattles: !autoplay });
   };
+  // Online with a turn timer: when it runs out, the turn ends with the orders given so far. A council vote is never
+  // skipped: its window opens instead, and the turn ends once the player has declared.
+  const timeUpRef = useRef(() => {});
+  timeUpRef.current = () => {
+    const g = session.online;
+    if (!g || readOnly || g.deadline === null || Date.now() < g.deadline || session.locked || view.over || !me.alive) return;
+    if (session.battle || session.target || session.orbital) return;
+    if (councilAsk && castBallot(session) === undefined) {
+      if (councilPopup !== "vote") setCouncilPopup("vote");
+      return;
+    }
+    setEndCheck(null);
+    session.endTurn();
+  };
+  useEffect(() => {
+    if (!session.online) return;
+    const id = window.setInterval(() => timeUpRef.current(), 1000);
+    return () => window.clearInterval(id);
+  }, []);
   // Ctrl+Enter is bound once, so it calls the latest endTurn through a ref.
   const endTurnRef = useRef(endTurn);
   endTurnRef.current = endTurn;
@@ -191,6 +212,14 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
     const queue: AudienceRequest[] = [...met, ...wars, ...offers].filter((a) => view.players[a.themId]?.alive);
     setAudiences(queue);
   }, [view.turn]);
+
+  // Online: another person proposed something this turn; hear them out at once (answering is optional).
+  useEffect(() => {
+    if (readOnly || session.offerSeq === 0) return;
+    const o = session.liveOffers.at(-1);
+    const proposal = o && view.proposals.find((p) => p.from === o.from && p.to === me.id && p.kind === o.cmd.kind && p.turn === view.turn);
+    if (proposal) setAudiences((q) => [...q, { themId: proposal.from, opening: { kind: "proposal", proposal } }]);
+  }, [session.offerSeq]);
 
   useEffect(() => {
     if (!autoplay || view.over) return;
