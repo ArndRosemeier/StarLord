@@ -17,6 +17,7 @@ import { BaseChoices } from "./BasePrompt";
 import { JobRows } from "./JobRows";
 import { ColonyRefits } from "../ui/RefitPanel";
 import { SortTh, sortRows, useSort, type SortValue } from "../ui/sort";
+import { ask } from "../ui/confirm";
 
 type ColonySortKey = "name" | "pop" | "food" | "industry" | "research" | "building";
 
@@ -199,7 +200,7 @@ export function ColonyDetail({ colony, onShowStar }: { colony: Colony; onShowSta
                     const why = exterminateProblem(view, me.id, colony.id);
                     return (
                       <div><button className="small danger" disabled={readOnly || !!why} title={why ?? "Kill every alien and native here. Other empires will hate you for it."}
-                        onClick={() => { if (confirm(`Exterminate the alien population of ${colony.name}?`)) session.issue({ type: "exterminate", colonyId: colony.id }); }}>
+                        onClick={async () => { if (await ask(`Exterminate the alien population of ${colony.name}?`)) session.issue({ type: "exterminate", colonyId: colony.id }); }}>
                         Exterminate aliens</button></div>
                     );
                   })()}

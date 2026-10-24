@@ -7,6 +7,7 @@ import { SessionContext } from "./ui/hooks";
 import { audio } from "./audio/sound";
 import { HelpProvider } from "./help/HelpDialog";
 import { TouchTips } from "./ui/TouchTips";
+import { ConfirmHost } from "./ui/confirm";
 import { OnlineScreen, roomFromUrl, setRoomInUrl } from "./screens/OnlineScreen";
 
 export function App() {
@@ -48,6 +49,7 @@ export function App() {
         </SessionContext.Provider>
       )}
       <TouchTips />
+      <ConfirmHost />
     </HelpProvider>
   );
 }

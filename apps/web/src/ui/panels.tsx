@@ -10,6 +10,7 @@ import { climateName, fmt, words } from "./format";
 import { additive } from "./touch";
 import { colonizeCommand, colonizeOption, type ColonizeOption } from "../game/colonize";
 import { leadMonster, monsterBehavior, monsterName } from "../game/monsters";
+import { ask } from "./confirm";
 
 /** Painted planet art in public/planets, scaled by planet size. */
 export function PlanetIcon({ planet, size }: { planet: Planet; size?: number }) {
@@ -255,12 +256,12 @@ export function FleetPanel({ fleetId, onSelectFleet }: { fleetId: string; onSele
             {dest && fleet.starId && <button className="small" onClick={() => session.issue({ type: "moveFleet", fleetId, destStarId: fleet.starId! })}>Stop</button>}
             {raiderHome && dest?.id !== raiderHome.id && canReach(view, view.viewer, fleet, raiderHome.id) && (
               <button className="small danger" title="Send this fleet through the Dimensional Portal; it arrives next turn."
-                onClick={() => { if (confirm(`Send ${fleet.name} through the portal to attack ${raiderHome.name}?`)) session.issue({ type: "moveFleet", fleetId, destStarId: raiderHome.id }); }}>
+                onClick={async () => { if (await ask(`Send ${fleet.name} through the portal to attack ${raiderHome.name}?`)) session.issue({ type: "moveFleet", fleetId, destStarId: raiderHome.id }); }}>
                 Attack {raiderHome.name}
               </button>
             )}
             <button className="small danger" disabled={splitShips.length !== 1}
-              onClick={() => { const s = splitShips[0]!; if (confirm(`Scrap ${s.count} ship(s)?`)) session.issue({ type: "scrapShips", fleetId, designId: s.designId, count: s.count }); setSplit({}); }}>
+              onClick={async () => { const s = splitShips[0]!; if (await ask(`Scrap ${s.count} ship(s)?`)) session.issue({ type: "scrapShips", fleetId, designId: s.designId, count: s.count }); setSplit({}); }}>
               Scrap selected
             </button>
           </div>

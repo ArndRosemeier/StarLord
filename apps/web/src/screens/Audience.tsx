@@ -10,6 +10,7 @@ import { audio, raceThemeSrc } from "../audio/sound";
 import { speak, type Moment } from "../diplomacy/voices";
 import { describeProposal, techName, tradableTechs } from "../diplomacy/terms";
 import { GIFT_EFFECT, SURRENDER_EFFECT, endTreatyEffect, incomingEffect, proposalEffect, warEffect, TIRED_TEXT } from "../diplomacy/effects";
+import { ask } from "../ui/confirm";
 
 /** What an option does, under it. */
 const Effect = ({ children }: { children: string }) => <small className="audience-effect">{children}</small>;
@@ -228,15 +229,15 @@ export function Audience({ request, onClose }: { request: AudienceRequest; onClo
                 {repulsive && <div className="muted">{REPULSIVE_TEXT}</div>}
                 {BREAKABLE.some((b) => hasTreaty(view, me.id, them.id, b.treaty)) && <button onClick={() => setMenu("end")}>End a treaty</button>}
                 {!atWar && (
-                  <button className="danger" onClick={() => {
-                    if (!confirm(`Declare war on the ${them.name}?\n\n${warEffect(view, me.id, them.id)}`)) return;
+                  <button className="danger" onClick={async () => {
+                    if (!await ask(`Declare war on the ${them.name}?\n\n${warEffect(view, me.id, them.id)}`)) return;
                     session.issue({ type: "declareWar", target: them.id });
                     say("warReply");
                   }}>Declare war</button>
                 )}
                 {!atWar && <Effect>{warEffect(view, me.id, them.id)}</Effect>}
-                <button className="danger" onClick={() => {
-                  if (!confirm(`Surrender your whole empire to the ${them.name}? You will leave the game.`)) return;
+                <button className="danger" onClick={async () => {
+                  if (!await ask(`Surrender your whole empire to the ${them.name}? You will leave the game.`)) return;
                   session.issue({ type: "surrender", to: them.id });
                   onClose();
                 }}>Surrender</button>
@@ -395,8 +396,8 @@ function SubMenu({ menu, them, onPropose, onSay, onBack }: {
             <option value="">System…</option>
             {systemsOf(me.id).map((s) => <option key={s} value={s}>{starName(view, s)}</option>)}
           </select>
-          <button disabled={!param} onClick={() => {
-            if (confirm(`Give the ${starName(view, param)} system to the ${them.name}?`)) gift({ type: "gift", to: them.id, starId: param });
+          <button disabled={!param} onClick={async () => {
+            if (await ask(`Give the ${starName(view, param)} system to the ${them.name}?`)) gift({ type: "gift", to: them.id, starId: param });
           }}>Give system</button>
         </div>
         <Effect>{GIFT_EFFECT.system}</Effect>
@@ -416,8 +417,8 @@ function SubMenu({ menu, them, onPropose, onSay, onBack }: {
   return (
     <>
       {BREAKABLE.filter((b) => hasTreaty(view, me.id, them.id, b.treaty)).map((b) => (
-        <button key={b.treaty} className="danger" onClick={() => {
-          if (!confirm(`End the ${b.label} with the ${them.name}?`)) return;
+        <button key={b.treaty} className="danger" onClick={async () => {
+          if (!await ask(`End the ${b.label} with the ${them.name}?`)) return;
           session.issue({ type: "breakTreaty", target: them.id, treaty: b.treaty });
           onSay("broken");
           onBack();

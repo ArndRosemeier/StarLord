@@ -4,6 +4,7 @@ import { HERO_SKILLS, LEADER_RULES, LEVEL_XP, MAX_LEADERS, abilityValue, type Le
 import { useGame } from "../ui/hooks";
 import { fmt } from "../ui/format";
 import { LeaderPortrait } from "../ui/panels";
+import { ask } from "../ui/confirm";
 
 const kindName = (k: Leader["kind"]) => (k === "captain" ? "Ship officer" : "Colony leader");
 
@@ -79,7 +80,7 @@ export function LeadersScreen() {
                     ? systems.map((s) => <option key={s.id} value={s.id}>{s.name} system</option>)
                     : fleets.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
-                <button className="small danger" disabled={readOnly} onClick={() => confirm(`Dismiss ${l.name}?`) && session.issue({ type: "dismissLeader", leaderId: l.id })}>Dismiss</button>
+                <button className="small danger" disabled={readOnly} onClick={async () => await ask(`Dismiss ${l.name}?`) && session.issue({ type: "dismissLeader", leaderId: l.id })}>Dismiss</button>
               </div>
             </LeaderCard>
           ))}

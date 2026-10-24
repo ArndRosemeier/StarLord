@@ -426,3 +426,8 @@ tr.mine td { font-weight: 600; }
 .chat-panel.floating { position: fixed; right: 12px; top: 96px; width: min(360px, calc(100vw - 24px)); z-index: 9; padding: 10px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); font-size: 13px; }
 .chat-lines { max-height: 260px; min-height: 80px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.modal-back.confirm-back { z-index: 1000; }
+.modal.confirm-dialog { max-width: 480px; }
+.cued-badge { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 999px; background: rgba(0,0,0,0.45); border: 1px solid var(--line); font-size: 13px; }
+.cued-badge img, .cued-badge .cued-initials { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px; }
+.title-cued { position: absolute; top: 12px; left: 12px; z-index: 3; display: flex; flex-direction: column; gap: 4px; max-width: min(360px, calc(100vw - 24px)); }
