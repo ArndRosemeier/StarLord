@@ -40,6 +40,7 @@ import { AnimatedNumber, Icon, ScreenBackdrop, TurnBanner, type BackdropArt } fr
 import { useAutosave } from "../game/autosave";
 import { SHORTCUTS, shortcutFor } from "../ui/shortcuts";
 import type { MapCycle } from "./MapScreen";
+import { CuedBadge } from "../ui/CuedBadge";
 
 /** Turn report events loud enough to deserve an alert sound. */
 const ALERT_EVENTS = new Set(["combat", "colonyLost", "invasionFailed", "bombarded", "eliminated", "empireFell", "raid", "starvation"]);
@@ -313,6 +314,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         <div className="stat"><small><Icon name="command" size={12} /> Command</small><span className={cpUsed > cpMax ? "bad" : ""}>{cpUsed}/{cpMax}</span></div>
         <div className="stat"><small><Icon name="population" size={12} /> Population</small><span><AnimatedNumber value={totals.population} format={fmt} /></span></div>
         <div className="spacer" />
+        <CuedBadge compact />
         {debug && <button className="small debug-button" onClick={() => setDebugOpen(true)} title="Debug menu (F9)">Debug</button>}
         <button className="help-button" onClick={() => openHelp()} title="Encyclopedia (F1)">?</button>
         <button className="help-button" onClick={() => go("game")} title="Game menu: save, settings and keyboard shortcuts (G)" aria-label="Settings">⚙</button>

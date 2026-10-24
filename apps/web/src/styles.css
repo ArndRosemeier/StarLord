@@ -428,6 +428,13 @@ tr.mine td { font-weight: 600; }
 .chat-lines { max-height: 260px; min-height: 80px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
 .modal-back.confirm-back { z-index: 1000; }
 .modal.confirm-dialog { max-width: 480px; }
+.cued-plaque { display: inline-flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; border-radius: 10px; background: rgba(8, 14, 30, 0.78); border: 1px solid var(--accent); box-shadow: 0 0 12px rgba(80, 160, 255, 0.25); font-size: 14px; }
+.cued-plaque.warn { border-color: #ffb347; }
+.cued-plaque.bad { border-color: #ff6b6b; }
+.cued-plaque img, .cued-plaque .cued-initials { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; flex: none; }
+.cued-plaque .cued-label { text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; color: var(--accent); }
+.cued-badge.compact { padding: 2px 8px 2px 2px; font-size: 12px; }
+.cued-badge.compact .cued-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cued-badge { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 999px; background: rgba(0,0,0,0.45); border: 1px solid var(--line); font-size: 13px; }
 .cued-badge img, .cued-badge .cued-initials { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px; }
 .title-cued { position: absolute; top: 12px; left: 12px; z-index: 3; display: flex; flex-direction: column; gap: 4px; max-width: min(360px, calc(100vw - 24px)); }
