@@ -84,6 +84,14 @@ export function automationOrders(view: PlayerView): Command[] {
   return [...createController(domains).orders(view), ...autoBuildOrders(view)];
 }
 
+/**
+ * Orders for a human empire whose player is away from an online game: the computer runs everything
+ * but diplomacy, so no treaty is signed or broken in their name.
+ */
+export function standInOrders(view: PlayerView): Command[] {
+  return [...createController(ALL_DOMAINS.filter((d) => d !== "diplomacy")).orders(view), ...autoBuildOrders(view)];
+}
+
 export { STRATEGIES, strategyOf, type AutomationDomain, type StrategyInfo } from "./strategies.js";
 export { colonizationOrders, colonizationTargets, outpostTargets } from "./colonization.js";
 export { DOCTRINE_MARGIN, HULL_STRATEGIES, autoDesign, bestWarship } from "./design.js";

@@ -49,7 +49,12 @@ pnpm sim --turns 200 --record runs/g.json && pnpm replay runs/g.json   # record 
 - **Games are records.** A game is its starting options plus every turn's orders
   (`GameRecord`), with a state hash per turn. Replays rebuild it exactly, and the lockstep
   host/peer in `packages/sim/src/lockstep.ts` sends only orders between players and compares
-  hashes to catch desyncs. That's the groundwork for multiplayer.
+  hashes to catch desyncs.
+- **Online games over GameHub.** `apps/web/src/net` plays games with friends through the GameHub
+  relay (games.futuremagic.de): the room's snapshot is the packed game record and each turn one
+  delta, turns are simultaneous, the host adds the computer empires, and players get their empire
+  back after a reload through a seat token in the browser. `pnpm online-e2e` runs two headless
+  players against the live server.
 - **Renderer behind an interface.** Screens hand the map a `MapScene`; `PixiMapRenderer`
   draws it in 2D and a three.js renderer can implement the same `MapRenderer` interface.
 - **Rules are data.** Races, planets, buildings, techs, ships and governments live in `packages/sim/src/data`.

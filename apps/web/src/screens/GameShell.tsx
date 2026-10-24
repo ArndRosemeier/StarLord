@@ -29,6 +29,7 @@ import { BreakthroughPopup, breakthroughNews, type BreakthroughNews } from "./Br
 import { LeaderOfferPopup, newLeaderOffers } from "./LeaderOfferPopup";
 import { CouncilResultPopup, CouncilSession, castBallot, councilSession, mayCastCouncilVote } from "./CouncilPopup";
 import { CommandBattle } from "./CommandBattle";
+import { OnlineBar } from "./OnlineBar";
 import { OrbitalStrike } from "./OrbitalStrike";
 import { AttackTarget } from "./AttackTarget";
 import { battlesOfLastTurn } from "../game/battles";
@@ -260,7 +261,7 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
   };
 
   return (
-    <div className="shell">
+    <div className={`shell${session.online ? " online" : ""}`}>
       <div className="topbar">
         <span className="brand">STARLORD</span>
         <div className="stat turn-stat"><small><Icon name="turn" size={12} /> Turn</small><b key={view.turn} className="turn-num">{view.turn}</b></div>
@@ -288,23 +289,29 @@ export function GameShell({ onQuit }: { onQuit: () => void }) {
         <button className="help-button" onClick={() => go("game")} title="Game menu: save, settings and keyboard shortcuts (G)" aria-label="Settings">⚙</button>
         <MuteButton />
         {view.over && <span className="chip warn">Game over: {view.players[view.winner!]?.name} wins ({view.victory})</span>}
-        {readOnly ? (
+        {readOnly && session.online ? (
+          <span className="muted" title="You have no empire in this online game; turns run when the players end theirs">Watching</span>
+        ) : readOnly ? (
           <>
             <button onClick={() => setAutoplay(!autoplay)} disabled={view.over}>{autoplay ? "Pause" : "Play"}</button>
             <button className="primary" onClick={endTurn} disabled={view.over || autoplay}>Next turn</button>
           </>
         ) : (
           <>
-            {session.pending.length > 0 && (
+            {session.pending.length > 0 && !session.locked && (
               <span className="muted" title="Orders given this turn">
                 {session.pending.length} order{session.pending.length === 1 ? "" : "s"}{" "}
                 <button className="small" onClick={() => session.undo()}>Undo</button>
               </span>
             )}
-            <button className="primary end-turn" onClick={endTurn} disabled={view.over} title="End the turn (Ctrl+Enter)">End turn</button>
+            <button className="primary end-turn" onClick={endTurn} disabled={view.over || session.locked}
+              title={session.locked ? "Your orders are in; the turn runs when every player has ended theirs" : session.online ? "Send your orders; the turn runs when every player has ended theirs (Ctrl+Enter)" : "End the turn (Ctrl+Enter)"}>
+              {session.locked ? "Waiting…" : "End turn"}
+            </button>
           </>
         )}
       </div>
+      {session.online && <OnlineBar />}
       <div className="body">
         <nav className="nav">
           {TABS.map((t) => (

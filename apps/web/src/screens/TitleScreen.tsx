@@ -33,7 +33,7 @@ function usePrefersReducedMotion(): boolean {
 }
 
 /** The game's front door: a living 3D space scene, theme music, the races and the main menu. */
-export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: string) => void; onStart: (s: GameSession) => void }) {
+export function TitleScreen({ onNewGame, onStart, onOnline }: { onNewGame: (raceId?: string) => void; onStart: (s: GameSession) => void; onOnline: () => void }) {
   const [settings, setSettings] = useState(false);
   const [whatsNew, setWhatsNew] = useState(false);
   const [hall, setHall] = useState(false);
@@ -125,6 +125,9 @@ export function TitleScreen({ onNewGame, onStart }: { onNewGame: (raceId?: strin
         {toast && <div className="title-toast" key={toast.id}>{toast.text}</div>}
         <div className="title-menu">
           <button className="title-button primary" onClick={() => newGame()}>New game</button>
+          <button className="title-button" onClick={onOnline} title="Play with friends over the internet: host a room or join one with a code or link">
+            Online game <small>with friends</small>
+          </button>
           <button className="title-button" onClick={() => setLoading(true)} title="Pick one of your saves, or load a save or replay file">
             Load game {latest && <small>newest: {latest.empire}, turn {latest.turn}</small>}
           </button>

@@ -519,7 +519,8 @@ class BattlePause {
  * command and has handed in no orders for, set up exactly as the turn will
  * fight it. The player fights it step by step (`battle.fight`) and hands the
  * orders in with a `battleOrders` command; the turn then fights it the same
- * way. Null when no such battle is left.
+ * way. A battle against another human empire is never offered: it resolves
+ * by itself. Null when no such battle is left.
  */
 export function pendingBattle(prev: GameState, orders: TurnOrders, playerId: PlayerId): PendingBattle | null {
   if (!prev.players[playerId]?.isHuman) return null;
@@ -528,6 +529,8 @@ export function pendingBattle(prev: GameState, orders: TurnOrders, playerId: Pla
     processTurn(prev, orders, (battle, key) => {
       const side = battle.sides.findIndex((s) => s.ownerId === playerId);
       if (side < 0 || has.has(key)) return false;
+      // Two people cannot command one battle yet (online games): a battle against another human resolves by itself.
+      if (prev.players[battle.sides[side === 0 ? 1 : 0].ownerId]?.isHuman) return false;
       const mine = battle.units.some((u) => u.side === side && u.alive);
       // Nothing to command against: the other side brought no warships and has no armed colony.
       const theirs = battle.units.some((u) => u.side !== side && u.alive);
