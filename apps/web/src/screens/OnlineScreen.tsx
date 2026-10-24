@@ -10,10 +10,15 @@ import { VERSION } from "../changelog/changelog";
 import { customRaceDefs, loadCustomRaces } from "../game/customRaces";
 import { savedAutomationOrders } from "../game/automationPrefs";
 import { words } from "../ui/format";
+import { cuedPlayer } from "../net/cuedPlayer";
+import { CuedBadge } from "../ui/CuedBadge";
 
 const NAME_KEY = "starlord.online.name";
 
+/** The player's name: their cued name when opened from cued (friends know each other by it there), else the last one used. */
 function storedName(): string {
+  const fromCued = cuedPlayer()?.identity.name;
+  if (fromCued) return fromCued.trim().slice(0, 32);
   try { return localStorage.getItem(NAME_KEY) ?? ""; } catch { return ""; }
 }
 
@@ -167,6 +172,7 @@ export function OnlineScreen({ joinCode, onStart, onBack }: { joinCode?: string 
           own side; proposals between people can be answered during the turn, and there is a chat and an optional turn
           timer. Games run on games.futuremagic.de and need everyone on the same StarLord version (yours: v{VERSION}).
         </p>
+        <CuedBadge />
         <label className="row">Your name
           <input type="text" maxLength={32} value={name} placeholder="Shown to the other players" onChange={(e) => setName(e.target.value)} autoFocus />
         </label>
@@ -232,7 +238,15 @@ function RoomLobby({ game, notes, onLeave }: { game: OnlineGame; notes: string[]
   const takenByPeople = new Set(Object.keys(room.seats).map((s) => races[Number(s)]));
 
   const copy = () => {
-    void navigator.clipboard?.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+    const done = () => { setCopied(true); setTimeout(() => setCopied(false), 2000); };
+    // A framed page (cued) may not get the clipboard API: fall back to copying the selected link field.
+    const fallback = () => {
+      const input = document.querySelector<HTMLInputElement>(".online-screen input[readonly]");
+      input?.select();
+      if (document.execCommand("copy")) done();
+    };
+    if (navigator.clipboard) navigator.clipboard.writeText(link).then(done, fallback);
+    else fallback();
   };
   const pickRace = (seat: number, raceId: string) => {
     const custom = mine.find((c) => c.def.id === raceId)?.spec as CustomRaceSpec | undefined;

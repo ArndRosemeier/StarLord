@@ -13,6 +13,8 @@ import { VERSION } from "../changelog/changelog";
 import { WhatsNew } from "../changelog/WhatsNew";
 import { HallOfFame } from "./HallOfFame";
 import { openContact } from "../title/contact";
+import { CuedBadge } from "../ui/CuedBadge";
+import { cuedError, cuedPlayer } from "../net/cuedPlayer";
 
 /** Painted nebulae behind the title scene; each start picks one, maybe mirrored and slightly re-tinted. */
 const NEBULAE = ["art/title-nebula.webp", "art/title-nebula-2.webp", "art/title-nebula-3.webp"];
@@ -114,6 +116,7 @@ export function TitleScreen({ onNewGame, onStart, onOnline }: { onNewGame: (race
       <div className="title-art" ref={artRef} style={nebula} />
       <div className="title-vignette" />
       <div className={`title-canvas${sceneReady ? " ready" : ""}`} ref={stageRef} onClick={(e) => sceneRef.current?.click(e.clientX, e.clientY)} />
+      {(cuedPlayer() || cuedError()) && <div className="title-cued"><CuedBadge /></div>}
       <div className="title-content">
         <h1 className="title-logo" aria-label="StarLord">
           {"STARLORD".split("").map((c, i) => <span key={i} className="title-letter" style={{ ["--i" as string]: i }} aria-hidden="true">{c}</span>)}

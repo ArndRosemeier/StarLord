@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { useGame } from "../ui/hooks";
 import { downloadSave, listSaves, writeSave } from "../game/saves";
+import { inFrame } from "../net/cuedPlayer";
 import { SettingsPanel } from "./SettingsPanel";
 import { autosave } from "../game/autosave";
+import { ask } from "../ui/confirm";
+
+/** Why downloads are off inside another page (cued): its frame blocks them. */
+const FRAMED = "Downloads are blocked while StarLord runs inside another page (like cued). Saves in this browser still work; open apps.futuremagic.de/starlord directly to download a file.";
 
 export function GameMenu({ onQuit }: { onQuit: () => void }) {
   const { session, view, me, readOnly } = useGame();
@@ -31,19 +36,20 @@ export function GameMenu({ onQuit }: { onQuit: () => void }) {
           <button className="primary" onClick={save}>Save</button>
         </div>
         <div className="row">
-          <button onClick={() => downloadSave(session.toJSON(), `starlord-${view.seed}-t${view.turn}.json`)}>Download save file</button>
+          <button disabled={inFrame} title={inFrame ? FRAMED : undefined}
+            onClick={() => downloadSave(session.toJSON(), `starlord-${view.seed}-t${view.turn}.json`)}>Download save file</button>
           {session.record && (
-            <button title="Every turn's orders from the start. Load it from the title screen to watch the game again."
+            <button disabled={inFrame} title={inFrame ? FRAMED : "Every turn's orders from the start. Load it from the title screen to watch the game again."}
               onClick={() => downloadSave(session.record!, `starlord-${view.seed}-replay.json`)}>Download replay</button>
           )}
           <button onClick={() => setMessage(session.verifyRecord().message)}>Verify replay</button>
-          <button className="danger" onClick={() => {
+          <button className="danger" onClick={async () => {
             const saved = !readOnly && autosave(session)?.ok;
             if (session.online) {
-              if (confirm(`Leave the online game? Your empire waits for you: open the room link (or join room ${session.online.roomCode}) to come back. Until then the turn waits for you, unless the host lets the computer play your empire.`)) onQuit();
+              if (await ask(`Leave the online game? Your empire waits for you: open the room link (or join room ${session.online.roomCode}) to come back. Until then the turn waits for you, unless the host lets the computer play your empire.`)) onQuit();
               return;
             }
-            if (confirm(saved ? "Quit to the title screen? The game was autosaved; Continue on the title screen picks it up." : "Quit to the title screen? Unsaved progress is lost.")) onQuit();
+            if (await ask(saved ? "Quit to the title screen? The game was autosaved; Continue on the title screen picks it up." : "Quit to the title screen? Unsaved progress is lost.")) onQuit();
           }}>Quit to title</button>
         </div>
         {message && <div>{message}</div>}

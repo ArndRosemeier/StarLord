@@ -57,6 +57,9 @@ pnpm sim --turns 200 --record runs/g.json && pnpm replay runs/g.json   # record 
   turn's questions one at a time (`net/asks.ts`); battles between two people are commanded live by
   both, each sending its own decisions. Diplomacy between people goes through the host, plus room
   chat and an optional turn timer. `pnpm online-e2e` runs two headless players against the live server.
+- **Guest game on cued.** Opened from cued (cued.de) with `#cued=<pass>`, `net/cuedPlayer.ts` reads the
+  player's name and avatar (display only; the pass is never verified in the browser) and online games
+  use that name. The game avoids browser dialogs and downloads, which cued's sandboxed frame blocks.
 - **Renderer behind an interface.** Screens hand the map a `MapScene`; `PixiMapRenderer`
   draws it in 2D and a three.js renderer can implement the same `MapRenderer` interface.
 - **Rules are data.** Races, planets, buildings, techs, ships and governments live in `packages/sim/src/data`.
