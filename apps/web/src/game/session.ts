@@ -1,8 +1,10 @@
 import { audienceAnswer, automationOrders } from "@starlord/ai";
 import { saveAutomationPrefs } from "./automationPrefs";
 import type { OnlineGame } from "../net/online";
+import type { Diplomacy } from "../net/protocol";
+import { commandsBattles, mayChooseTarget, mayStrikeFromOrbit, type Ask } from "../net/asks";
 import {
-  attackableColonies, newGame, newRecord, pendingBattle, pendingOrbital, pendingTarget, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
+  newGame, newRecord, pendingBattle, pendingLiveBattle, pendingOrbital, pendingTarget, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
   type CombatReport, type OrbitalChoice, type OrbitalPrompt, type PendingBattle, type TargetPrompt, type TacticalOrder, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type TurnOrders,
 } from "@starlord/sim";
 
@@ -34,7 +36,7 @@ export class GameSession {
    * A battle the ending turn waits on the player to command, with the
    * turn's orders so far; the turn goes on with `finishBattle`.
    */
-  battle: { pending: PendingBattle; orders: TurnOrders } | null = null;
+  battle: { pending: PendingBattle; orders: TurnOrders; live?: { turn: number; ask: number; seats: PlayerId[] } } | null = null;
   /**
    * An enemy colony whose orbit the player's fleets hold after the battles, waiting on what to do to it
    * (bomb, biological weapons, destroy, hold fire), with the turn's orders so far; the turn goes on with `finishOrbital`.
@@ -53,9 +55,12 @@ export class GameSession {
 
   /** The online game this session plays in, or null for a game on this computer. */
   online: OnlineGame | null = null;
-  /** In an online turn being resolved: how many of the player's orders the host already has (the rest are answers to the turn's questions). */
-  private onlineBase = 0;
-  private onlineTurn = 0;
+  /** Online: proposals other people made to us this turn, which we may answer before the turn runs. */
+  liveOffers: { from: PlayerId; cmd: Extract<Command, { type: "propose" }> }[] = [];
+  /** Online: bumped when a live proposal arrives, so the screens can open the audience. */
+  offerSeq = 0;
+  /** Online, in a live battle: the other commander's orders, by their place in the battle's sequence of decisions. */
+  liveSteps = new Map<number, TacticalOrder>();
 
   constructor(
     state: GameState, me: PlayerId | null, pending: Command[] = [], record: GameRecord | null = null, answers: Record<string, boolean> = {},
@@ -95,7 +100,14 @@ export class GameSession {
       session.battle = session.target = session.orbital = null;
       session.refresh();
     };
-    game.onResolve = (turn, orders) => session.resolveOnline(turn, orders);
+    game.onAsk = (ask, orders) => session.askOnline(ask, orders);
+    game.onStep = (turn, ask, n, order) => {
+      const live = session.battle?.live;
+      if (!live || live.turn !== turn || live.ask !== ask) return;
+      session.liveSteps.set(n, order);
+      session.notify();
+    };
+    game.onDiplomacy = (from, data) => session.liveDiplomacy(from, data);
     game.subscribe(() => session.notify());
     return session;
   }
@@ -152,6 +164,7 @@ export class GameSession {
       const answers = (c: Command) => c.type === "respond";
       const first = previewOrders(this.state, this.me, this.pending.filter((c) => !answers(c)));
       let after = first.state;
+      for (const o of this.liveOffers) after = previewOrders(after, o.from, [o.cmd]).state;
       const ai = [...this.answerOrders()];
       for (const [id, cmds] of ai) after = previewOrders(after, id, cmds.filter((c) => !answers(c))).state;
       for (const [id, cmds] of ai) after = previewOrders(after, id, cmds.filter(answers)).state;
@@ -165,15 +178,34 @@ export class GameSession {
 
   /** Queues an order for this turn, replacing an earlier order it supersedes. */
   issue(...cmds: Command[]): void {
-    if (this.me === null || this.locked) return;
+    if (this.me === null) return;
+    if (this.locked) {
+      // Online, after End Turn: an answer to another person's live proposal still goes in, with the orders sent again.
+      if (this.online?.status?.phase !== "orders" || !cmds.every((c) => c.type === "respond")) return;
+      this.pending.push(...cmds);
+      this.refresh();
+      this.online.submitOrders(this.onlineOrders());
+      this.sendLiveAnswers(cmds);
+      return;
+    }
     for (const cmd of cmds) {
       const key = commandKey(cmd);
       if (key) this.pending = this.pending.filter((c) => commandKey(c) !== key);
       this.pending.push(cmd);
     }
     this.refresh();
+    this.sendLiveAnswers(cmds);
     // Automation choices carry over to the next game.
     if (cmds.some((c) => c.type === "setAutomation" || c.type === "setAutomationStrategy")) saveAutomationPrefs(this.view.players[this.me]!);
+  }
+
+  /** An answer to a proposal another person made this turn goes to them at once. */
+  private sendLiveAnswers(cmds: Command[]): void {
+    for (const cmd of cmds) {
+      if (cmd.type !== "respond" || !this.online) continue;
+      const offer = this.liveOffers.find((o) => proposalId(this.state.turn, o.from, this.me!, o.cmd.kind) === cmd.proposalId);
+      if (offer) this.online.diplomacy(offer.from, { type: "answer", turn: this.state.turn, proposalId: cmd.proposalId, accept: cmd.accept });
+    }
   }
 
   /**
@@ -181,7 +213,7 @@ export class GameSession {
    * answers on the spot; the answer is returned (null for human empires,
    * who answer on their own turn, and for proposals that cannot be made).
    */
-  audience(cmd: Extract<Command, { type: "propose" }>): boolean | null {
+  audience(cmd: Extract<Command, { type: "propose" }>): boolean | null | "sent" {
     if (this.me === null || this.locked) return null;
     const id = proposalId(this.state.turn, this.me, cmd.to, cmd.kind);
     if (this.pending.some((c) => c.type === "propose" && c.to === cmd.to && c.kind === cmd.kind)) return null;
@@ -192,6 +224,11 @@ export class GameSession {
     const them = this.state.players[cmd.to]!;
     if (them.isHuman) {
       this.refresh();
+      // Online, a person at their screen gets the proposal now and may answer before the turn runs.
+      if (this.online?.isOnline(cmd.to)) {
+        this.online.diplomacy(cmd.to, { type: "offer", turn: this.state.turn, cmd });
+        return "sent";
+      }
       return null;
     }
     const answer = audienceAnswer(playerView(state, cmd.to), proposal);
@@ -293,13 +330,62 @@ export class GameSession {
     return orders;
   }
 
-  /** Online: everyone's orders are in; ask the player what the turn needs from them, then send the answers. */
-  resolveOnline(turn: number, orders: TurnOrders): void {
-    if (this.me === null || turn !== this.state.turn) return;
-    this.onlineBase = orders[this.me]?.length ?? 0;
-    this.onlineTurn = turn;
-    this.commandedBattles = new Set();
-    this.resumeTurn(structuredClone(orders), true);
+  /** Online: the turn asks the player something (a target, a battle to command, an orbit choice); show it. */
+  askOnline(ask: Ask, orders: TurnOrders): void {
+    const me = this.me;
+    if (me === null || !this.online) return;
+    const base = structuredClone(orders);
+    this.battle = this.target = this.orbital = null;
+    if (ask.kind === "target") {
+      const prompt = pendingTarget(this.state, base, me);
+      if (prompt) this.target = { prompt, orders: base };
+    } else if (ask.kind === "battle") {
+      const pending = pendingLiveBattle(this.state, base, ask.seats);
+      if (pending) {
+        this.liveSteps = new Map();
+        const live = pending.commanders.length > 1 ? { turn: this.state.turn, ask: ask.id, seats: pending.commanders } : undefined;
+        this.battle = { pending, orders: base, ...(live ? { live } : {}) };
+      }
+    } else {
+      const prompt = pendingOrbital(this.state, base, me);
+      if (prompt) this.orbital = { prompt, orders: base };
+    }
+    if (!this.battle && !this.target && !this.orbital) this.online.answer([]);
+    this.refresh();
+  }
+
+  /** Online, in a live battle: our unit's order, sent to the other commander. */
+  sendBattleStep(n: number, order: TacticalOrder): void {
+    const live = this.battle?.live;
+    if (live && this.online) this.online.sendStep(live.turn, live.ask, n, order);
+  }
+
+  /** Online: a proposal from another person, or their answer to ours. */
+  liveDiplomacy(from: PlayerId, data: Diplomacy): void {
+    if (data.turn !== this.state.turn || this.me === null) return;
+    if (data.type === "offer") {
+      if (data.cmd.to !== this.me) return;
+      this.liveOffers = [...this.liveOffers.filter((o) => !(o.from === from && o.cmd.kind === data.cmd.kind)), { from, cmd: data.cmd }];
+      this.offerSeq++;
+    } else {
+      this.answers[data.proposalId] = data.accept;
+      const who = this.state.players[from]?.name ?? "They";
+      this.online?.tell(`${who} ${data.accept ? "accepted" : "declined"} your proposal.`);
+    }
+    this.refresh();
+  }
+
+  /**
+   * Goes on with the turn after the player answered one of its questions: locally the turn asks the next
+   * one (or runs); online the answer goes to the host, which asks the next.
+   */
+  private continueTurn(orders: TurnOrders, added: Command[]): void {
+    if (this.online) {
+      this.online.answer(added);
+      this.refresh();
+      return;
+    }
+    this.resumeTurn(orders, true);
   }
 
   /** Online: the host published the turn; show the new state. */
@@ -308,6 +394,7 @@ export class GameSession {
     this.state = state;
     this.record = this.online?.record ?? this.record;
     this.battle = this.target = this.orbital = null;
+    this.liveOffers = [];
     this.history = [{ turn, events: state.events, combats: state.combats }, ...this.history].slice(0, HISTORY_TURNS);
     this.pending = [];
     this.answers = {};
@@ -321,9 +408,10 @@ export class GameSession {
     if (!b || this.me === null) return;
     const me = this.me;
     if (orders !== "auto") this.commandedBattles.add(b.pending.reportId);
-    const turn: TurnOrders = { ...b.orders, [me]: [...(b.orders[me] ?? []), { type: "battleOrders", battle: b.pending.key, orders }] };
+    const added: Command[] = [{ type: "battleOrders", battle: b.pending.key, orders }];
+    const turn: TurnOrders = { ...b.orders, [me]: [...(b.orders[me] ?? []), ...added] };
     this.battle = null;
-    this.resumeTurn(turn, true);
+    this.continueTurn(turn, added);
   }
 
   /** Hands in which planet the player's fleets attack at the star the turn waits on, and goes on with the turn. */
@@ -334,7 +422,7 @@ export class GameSession {
     const picks: Command[] = t.prompt.fleetIds.map((fleetId) => ({ type: "attackPlanet", fleetId, colonyId }));
     const turn: TurnOrders = { ...t.orders, [me]: [...(t.orders[me] ?? []), ...picks] };
     this.target = null;
-    this.resumeTurn(turn, true);
+    this.continueTurn(turn, picks);
   }
 
   /** Attacks nothing at the star the turn waits on, as the original's Close button: the fleets there are set to defend. */
@@ -345,7 +433,7 @@ export class GameSession {
     const hold: Command[] = t.prompt.fleetIds.map((fleetId) => ({ type: "setStance", fleetId, stance: "defend" }));
     const turn: TurnOrders = { ...t.orders, [me]: [...(t.orders[me] ?? []), ...hold] };
     this.target = null;
-    this.resumeTurn(turn, true);
+    this.continueTurn(turn, hold);
   }
 
   /** Hands in what the player's fleets do to the colony the turn waits on, and goes on with the turn. */
@@ -353,9 +441,10 @@ export class GameSession {
     const o = this.orbital;
     if (!o || this.me === null) return;
     const me = this.me;
-    const turn: TurnOrders = { ...o.orders, [me]: [...(o.orders[me] ?? []), { type: "orbitalStrike", colonyId: o.prompt.colonyId, choice }] };
+    const added: Command[] = [{ type: "orbitalStrike", colonyId: o.prompt.colonyId, choice }];
+    const turn: TurnOrders = { ...o.orders, [me]: [...(o.orders[me] ?? []), ...added] };
     this.orbital = null;
-    this.resumeTurn(turn, true);
+    this.continueTurn(turn, added);
   }
 
   /** Turns commanding battles off (or back on); asked in the middle of a turn, it also counts for the turn's remaining battles. */
@@ -368,33 +457,9 @@ export class GameSession {
     this.issue(cmd);
   }
 
-  /** Whether the player commands their battles: the setting as this turn's orders leave it. */
-  private commandsBattles(orders: TurnOrders): boolean {
-    if (this.me === null) return false;
-    const set = [...(orders[this.me] ?? [])].reverse().find((c) => c.type === "setAutoBattles");
-    return set?.type === "setAutoBattles" ? !set.on : !this.state.players[this.me]?.autoBattles;
-  }
-
-  /** Whether any of the player's fleets is at or bound for a star with more than one enemy colony, to skip the check otherwise. */
-  private mayChooseTarget(): boolean {
-    const me = this.me;
-    if (me === null) return false;
-    return Object.values(this.state.fleets).some((f) => {
-      const star = f.ownerId === me ? f.destStarId ?? f.starId : null;
-      return !!star && attackableColonies(this.state, me, star).length > 1;
-    });
-  }
-
-  /** Whether any of the player's fleets is set to attack (only those strike from orbit without an order), to skip the check otherwise. */
-  private mayStrikeFromOrbit(orders: TurnOrders): boolean {
-    if (this.me === null) return false;
-    return Object.values(this.state.fleets).some((f) => f.ownerId === this.me && f.stance === "attack")
-      || (orders[this.me] ?? []).some((c) => c.type === "setStance" && c.stance === "attack");
-  }
-
   private resumeTurn(orders: TurnOrders, commandBattles: boolean): void {
     // Every battle is fought over one planet: where the player's fleets could attack more than one, they pick it first.
-    if (commandBattles && this.me !== null && this.mayChooseTarget()) {
+    if (commandBattles && this.me !== null && mayChooseTarget(this.state, this.me)) {
       const prompt = pendingTarget(this.state, orders, this.me);
       if (prompt) {
         this.target = { prompt, orders };
@@ -402,7 +467,7 @@ export class GameSession {
         return;
       }
     }
-    if (commandBattles && this.me !== null && this.commandsBattles(orders)) {
+    if (commandBattles && this.me !== null && commandsBattles(this.state, orders, this.me)) {
       const pending = pendingBattle(this.state, orders, this.me);
       if (pending) {
         this.battle = { pending, orders };
@@ -411,19 +476,13 @@ export class GameSession {
       }
     }
     // After the battles, as in the original, the player decides what their fleets do to each enemy colony whose orbit they hold.
-    if (commandBattles && this.me !== null && this.mayStrikeFromOrbit(orders)) {
+    if (commandBattles && this.me !== null && mayStrikeFromOrbit(this.state, orders, this.me)) {
       const prompt = pendingOrbital(this.state, orders, this.me);
       if (prompt) {
         this.orbital = { prompt, orders };
         this.refresh();
         return;
       }
-    }
-    if (this.online && this.me !== null) {
-      // The host runs the turn once every player has answered.
-      this.online.sendExtras(this.onlineTurn, (orders[this.me] ?? []).slice(this.onlineBase));
-      this.refresh();
-      return;
     }
     const turn = this.state.turn;
     this.state = processTurn(this.state, orders);

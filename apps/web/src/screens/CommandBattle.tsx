@@ -26,14 +26,20 @@ interface Engine {
   base: CombatReport;
   decision: BattleDecision | null;
   outcome: CombatOutcome | null;
-  /** Orders given so far, in the order the units acted. */
+  /** Our orders given so far, in the order our units acted. */
   orders: TacticalOrder[];
+  /** Decisions made so far by either side (a live battle against another person numbers its steps by this). */
+  n: number;
+  /** The sides we command. */
+  mine: (0 | 1)[];
+  /** Live battle: we let the computer fight our side as soon as our turn comes. */
+  autoAll: boolean;
 }
 
 // One fight per pending battle, kept outside React so a remount (or Strict Mode) never starts it twice.
 const engines = new WeakMap<PendingBattle, Engine>();
 
-function engineFor(pb: PendingBattle): Engine {
+function engineFor(pb: PendingBattle, me: number): Engine {
   let e = engines.get(pb);
   if (e) return e;
   const fight = pb.battle.fight(pb.starId, pb.reportId);
@@ -48,6 +54,9 @@ function engineFor(pb: PendingBattle): Engine {
     decision: first.done ? null : first.value,
     outcome: first.done ? first.value : null,
     orders: [],
+    n: 0,
+    mine: ([0, 1] as const).filter((i) => sides[i].ownerId === me),
+    autoAll: false,
   };
   engines.set(pb, e);
   return e;
@@ -89,7 +98,9 @@ const stepsOf = (pb: PendingBattle): ReplayStep[] => pb.battle.rounds.flatMap((r
  */
 export function CommandBattle({ pending }: { pending: PendingBattle }) {
   const { session, view } = useGame();
-  const engine = engineFor(pending);
+  const engine = engineFor(pending, session.me ?? pending.playerId);
+  /** Online, against another person: they command the other side live. */
+  const live = session.battle?.live ?? null;
   const reduced = useReducedMotion();
   const [asking, setAsking] = useState(engine.orders.length === 0 && !engine.outcome);
   const [, setVersion] = useState(0);
@@ -113,7 +124,8 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
   const units = useMemo(() => unitInfo(base, view), [base]);
   const options = decision ? pending.battle.options(decision.unit) : null;
   const caughtUp = shown >= steps.length;
-  const yourTurn = !asking && caughtUp && !!decision && !!options;
+  const ours = !!decision && engine.mine.includes(decision.side);
+  const yourTurn = !asking && caughtUp && ours && !!options && !engine.autoAll;
 
   useEffect(() => {
     const before = audio.setMood("combat");
@@ -147,15 +159,32 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
     if (event?.kind === "destroyed") audio.play("boom");
   }, [event]);
 
-  const send = (order: TacticalOrder) => {
-    if (!engine.decision) return;
-    engine.orders.push(order);
+  const step = (order: TacticalOrder) => {
+    engine.n++;
     const next = engine.fight.next(order);
     engine.decision = next.done ? null : next.value;
     engine.outcome = next.done ? next.value : null;
     setSteps(stepsOf(pending));
     setVersion((v) => v + 1);
   };
+  const send = (order: TacticalOrder) => {
+    if (!engine.decision || !engine.mine.includes(engine.decision.side)) return;
+    engine.orders.push(order);
+    session.sendBattleStep(engine.n, order);
+    step(order);
+  };
+
+  // Live: the other commander's orders arrive one by one; ours wait while it is their unit's turn.
+  useEffect(() => {
+    const d = engine.decision;
+    if (!live || !d || engine.mine.includes(d.side)) return;
+    const order = session.liveSteps.get(engine.n);
+    if (order) step(order);
+  });
+  // Live, after "Auto-resolve": the computer takes our side as soon as our turn comes.
+  useEffect(() => {
+    if (engine.autoAll && engine.decision && engine.mine.includes(engine.decision.side)) send({ kind: "auto" });
+  });
 
   const modeOf = (unit: string, mount: number): WeaponMode => modes.current.get(unit)?.get(mount) ?? "on";
   const setMode = (unit: string, mount: number, mode: WeaponMode) => {
@@ -223,7 +252,7 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
   const frames = useMemo(() => framesAt(base, steps, shown), [base, steps, shown]);
   const snap = (key: string | null | undefined) => (key ? base.ships.find((s) => s.key === key) : undefined);
   const name = (id: number) => view.players[id]?.name ?? "Unknown";
-  const me = pending.playerId;
+  const me = session.me ?? pending.playerId;
   const enemy = base.sides.find((s) => s !== me) ?? base.sides[1];
   const alive = (id: number) => base.ships.filter((s) => s.ownerId === id && unitAlive(frames, s.key)).length;
 
@@ -393,6 +422,7 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
           {asking && (
             <div className="command-ask">
               <h3>{name(enemy)} at {starName(view, pending.starId)}</h3>
+              {live && <p><b>Live battle:</b> {name(enemy)} commands their side at the same time. You see each of their moves as they make it, and they see yours.</p>}
               <p className="muted">
                 Command the battle yourself: on each of your units' turns, move it, pick a target and fire the weapon groups you
                 choose, then pick another target for the rest, as often as its movement and weapons allow.
@@ -400,7 +430,10 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
               </p>
               <div className="row">
                 <button className="primary" onClick={() => setAsking(false)}>Command the battle</button>
-                <button onClick={() => session.finishBattle("auto")}>Auto-resolve</button>
+                <button onClick={() => {
+                  // Against a person the battle is fought live either way: the computer takes our side.
+                  if (live) { engine.autoAll = true; setAsking(false); } else session.finishBattle("auto");
+                }}>Auto-resolve</button>
               </div>
               <label className="row muted" style={{ marginTop: 8 }}>
                 <input type="checkbox" checked={!!view.players[me]?.autoBattles}
@@ -608,6 +641,8 @@ export function CommandBattle({ pending }: { pending: PendingBattle }) {
               <div className="cb-actions cb-playing">
                 <div className="cb-log">
                   {log.map((l, i) => <div key={i} className={i === log.length - 1 ? "" : "muted"}>{l}</div>)}
+                  {live && caughtUp && decision && !ours && <div><b>Waiting for {name(enemy)} to command their {snap(decision.unit)?.name ?? "unit"}…</b></div>}
+                  {live && caughtUp && engine.autoAll && ours && <div className="muted">The computer commands your side.</div>}
                 </div>
                 <span className="spacer" />
                 <button className="small" onClick={() => setShown(steps.length)}>Skip ahead</button>

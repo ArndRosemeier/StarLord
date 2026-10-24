@@ -1,11 +1,13 @@
 // End-to-end test of StarLord online games against the live GameHub (games.futuremagic.de).
 //   pnpm online-e2e
-// Two headless players: lobby, seats, simultaneous turns, a reload (reconnect), the host leaving.
+// Two headless players: lobby, seats, chat, simultaneous turns, a live battle between them, a reload
+// (reconnect), the host leaving.
 // Env: GAMEHUB_URL (default https://games.futuremagic.de), GAMEHUB_KEY (default: the committed app key).
 import { automationOrders } from "@starlord/ai";
 import { playerView, stateHash } from "@starlord/sim";
 import { OnlineGame, memorySeatStore, type SeatStore } from "../src/net/online";
 import { GAMEHUB } from "../src/net/config";
+import { commander, type BattleLog } from "./commander";
 
 const url = process.env.GAMEHUB_URL ?? GAMEHUB.url;
 const appKey = process.env.GAMEHUB_KEY ?? GAMEHUB.appKey;
@@ -28,7 +30,7 @@ const host = player("E2E Host");
 let guest = player("E2E Guest", guestSeats);
 try {
   await Promise.all([host.ready, guest.ready]);
-  const code = await host.host({ seed: "e2e", galaxySize: "small", races: ["terran", "kordex", "zhrikk"] }, "StarLord e2e");
+  const code = await host.host({ seed: "e2e", galaxySize: "small", races: ["terran", "kordex", "zhrikk"], debug: true }, "StarLord e2e");
   ok(host.isHost && host.seat === 0, `host opened room ${code} and holds empire 0`);
 
   await guest.join(code);
@@ -37,15 +39,38 @@ try {
   ok(await until(() => guest.seat === 1 && host.room?.seats[1]?.name === "E2E Guest"), "guest claimed empire 1");
   ok(host.room!.options.races![1] === "lysari", "guest's race choice reached the host");
 
+  host.say("good luck");
+  ok(await until(() => guest.chat.some((l) => l.text === "good luck" && l.name === "E2E Host")), "chat line reached the guest");
+
   host.start();
   ok(await until(() => !!guest.state && !!host.state), "game started on both");
 
-  for (let i = 0; i < 5; i++) {
+  // Turn 1: the host's warships appear at the guest's home world and war is declared: a live battle between the two.
+  const hostLog: BattleLog = {};
+  const guestLog: BattleLog = {};
+  commander(host, hostLog);
+  commander(guest, guestLog);
+  const home = Object.values(host.state!.colonies).find((c) => c.ownerId === 1)!;
+  const starId = host.state!.planets[home.planetId]!.starId;
+  host.submitOrders({ 0: [
+    { type: "debug", action: { kind: "meetAll" } },
+    { type: "debug", action: { kind: "spawnShips", designId: "frigate", count: 3, starId } },
+    { type: "declareWar", target: 1 },
+  ] });
+  guest.submitOrders({ 1: [] });
+  ok(await until(() => guest.state!.turn === 2 && host.state!.turn === 2, 30000), "the turn with the live battle ran");
+  const fought = host.state!.combats.find((c) => c.starId === starId);
+  ok(!!hostLog.outcome && !!guestLog.outcome && JSON.stringify(hostLog.outcome.report.rounds) === JSON.stringify(guestLog.outcome.report.rounds),
+    `both commanders saw the same battle (${hostLog.orders?.length ?? 0} + ${guestLog.orders?.length ?? 0} orders)`);
+  ok(!!fought && JSON.stringify(fought.rounds) === JSON.stringify(hostLog.outcome?.report.rounds), "the turn fought it exactly as commanded");
+  ok(stateHash(guest.state!) === stateHash(host.state!), "games in step after the battle");
+
+  for (let i = 0; i < 4; i++) {
     const turn = host.state!.turn;
     endTurn(guest, host);
     if (!(await until(() => guest.state!.turn === turn + 1 && host.state!.turn === turn + 1))) { ok(false, `turn ${turn} resolved`); break; }
   }
-  ok(host.state!.turn === 6 && stateHash(guest.state!) === stateHash(host.state!), `5 turns in lockstep (turn ${host.state!.turn}, hashes match)`);
+  ok(host.state!.turn === 6 && stateHash(guest.state!) === stateHash(host.state!), `4 more turns in lockstep (turn ${host.state!.turn}, hashes match)`);
 
   // The guest reloads the page: a new connection with the same browser storage.
   guest.close();

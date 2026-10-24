@@ -53,8 +53,10 @@ pnpm sim --turns 200 --record runs/g.json && pnpm replay runs/g.json   # record 
 - **Online games over GameHub.** `apps/web/src/net` plays games with friends through the GameHub
   relay (games.futuremagic.de): the room's snapshot is the packed game record and each turn one
   delta, turns are simultaneous, the host adds the computer empires, and players get their empire
-  back after a reload through a seat token in the browser. `pnpm online-e2e` runs two headless
-  players against the live server.
+  back after a reload through a seat token in the browser. Once orders are in, the host asks the
+  turn's questions one at a time (`net/asks.ts`); battles between two people are commanded live by
+  both, each sending its own decisions. Diplomacy between people goes through the host, plus room
+  chat and an optional turn timer. `pnpm online-e2e` runs two headless players against the live server.
 - **Renderer behind an interface.** Screens hand the map a `MapScene`; `PixiMapRenderer`
   draws it in 2D and a three.js renderer can implement the same `MapRenderer` interface.
 - **Rules are data.** Races, planets, buildings, techs, ships and governments live in `packages/sim/src/data`.
