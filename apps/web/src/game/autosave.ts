@@ -10,7 +10,8 @@ const listeners = new Set<() => void>();
 
 /** Saves the game into the autosave slots if autosave is on; the outcome shows in the settings. */
 export function autosave(session: GameSession): AutosaveResult | null {
-  if (!getPrefs().autosave || session.spectator) return null;
+  // Online games live in their room (a reload rejoins it), not in the autosave slots.
+  if (!getPrefs().autosave || session.spectator || session.online) return null;
   const result = writeAutosave(session.toJSON());
   last = { ...result, turn: session.state.turn };
   for (const fn of listeners) fn();

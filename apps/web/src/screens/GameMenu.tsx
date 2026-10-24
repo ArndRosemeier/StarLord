@@ -39,6 +39,10 @@ export function GameMenu({ onQuit }: { onQuit: () => void }) {
           <button onClick={() => setMessage(session.verifyRecord().message)}>Verify replay</button>
           <button className="danger" onClick={() => {
             const saved = !readOnly && autosave(session)?.ok;
+            if (session.online) {
+              if (confirm(`Leave the online game? Your empire waits for you: open the room link (or join room ${session.online.roomCode}) to come back. Until then the turn waits for you, unless the host lets the computer play your empire.`)) onQuit();
+              return;
+            }
             if (confirm(saved ? "Quit to the title screen? The game was autosaved; Continue on the title screen picks it up." : "Quit to the title screen? Unsaved progress is lost.")) onQuit();
           }}>Quit to title</button>
         </div>

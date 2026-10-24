@@ -4,7 +4,7 @@ import { COUNCIL, RAID_GRACE_TURNS, type NumericPick } from "@starlord/sim";
 import { useMemo, useState } from "react";
 import {
   DIFFICULTIES, DIFFICULTY_ORDER, RACES, STAR_COUNTS, mapSize, TRAIT_COSTS, getRace, type CustomRaceSpec, type Difficulty, type GalaxyAge, type GalaxySize,
-  type TechLevel,
+  type NewGameOptions, type TechLevel,
 } from "@starlord/sim";
 import { customRaceDefs, loadCustomRaces, saveCustomRaces } from "../game/customRaces";
 import { RaceBuilder, blankRace } from "./RaceBuilder";
@@ -29,7 +29,13 @@ function shuffled<T>(list: T[]): T[] {
   return a;
 }
 
-export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSession) => void; onBack: () => void; initialRace?: string }) {
+export function NewGame({ onStart, onBack, initialRace, onHost }: {
+  onStart: (s: GameSession) => void;
+  onBack: () => void;
+  initialRace?: string;
+  /** Online: set up a room with these options instead of starting a game here. */
+  onHost?: (options: NewGameOptions) => void;
+}) {
   // Start from the options of the last game; a race picked on the title screen wins over the remembered one.
   const [last] = useState(loadNewGamePrefs);
   const [customSpecs, setCustomSpecs] = useState<CustomRaceSpec[]>(loadCustomRaces);
@@ -74,10 +80,15 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
     const others = shuffled(RACES.map((r) => r.id).filter((id) => id !== raceId)).slice(0, opponents);
     const races = spectate ? shuffled(RACES.map((r) => r.id)).slice(0, opponents + 1) : [raceId, ...others];
     const customRaces = !spectate && chosenCustom ? [chosenCustom.spec] : [];
-    const session = GameSession.create({
+    const options: NewGameOptions = {
       seed, galaxySize: galaxy, races, maxTurns: turnLimit ? maxTurns : 0, monsters, raiders, council, customRaces, difficulty, galaxyAge, techLevel, randomEvents, shipInitiative,
-      ...(debug ? { debug: true } : {}),
-    }, spectate ? null : 0);
+      ...(debug && !onHost ? { debug: true } : {}),
+    };
+    if (onHost) {
+      onHost(options);
+      return;
+    }
+    const session = GameSession.create(options, spectate ? null : 0);
     // Start with the automation the player chose last game.
     const automation = spectate ? [] : savedAutomationOrders();
     if (automation.length > 0) session.issue(...automation);
@@ -139,7 +150,7 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
               <label>Galaxy age <select value={galaxyAge} onChange={(e) => setGalaxyAge(e.target.value as GalaxyAge)}>
                 {(["young", "average", "old"] as const).map((a) => <option key={a} value={a}>{words(a)}</option>)}
               </select></label>
-              <label>Opponents <select value={opponents} onChange={(e) => setOpponents(Number(e.target.value))}>
+              <label title={onHost ? "The other empires: friends who join take them, the computer plays the rest" : undefined}>{onHost ? "Other empires" : "Opponents"} <select value={opponents} onChange={(e) => setOpponents(Number(e.target.value))}>
                 {[1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}
               </select></label>
             </div>
@@ -173,8 +184,17 @@ export function NewGame({ onStart, onBack, initialRace }: { onStart: (s: GameSes
             <small className="muted">Tech level {techLevelText(techLevel)}</small>
             {customBlocked && <div className="bad">Custom races need Average difficulty or harder.</div>}
             <div className="row">
-              <button className="primary" disabled={customBlocked} onClick={(e) => start(false, e.ctrlKey && e.altKey)} {...debugHold}>Play as the {race.plural}</button>
-              <button onClick={() => start(true)} title="All empires are run by the computer; you watch.">Watch an AI game</button>
+              {onHost ? (
+                <button className="primary" disabled={customBlocked} onClick={() => start(false)}
+                  title="Opens a room for this galaxy. Friends who join take the other empires (and may pick their own race); the computer plays the rest.">
+                  Host online as the {race.plural}
+                </button>
+              ) : (
+                <>
+                  <button className="primary" disabled={customBlocked} onClick={(e) => start(false, e.ctrlKey && e.altKey)} {...debugHold}>Play as the {race.plural}</button>
+                  <button onClick={() => start(true)} title="All empires are run by the computer; you watch.">Watch an AI game</button>
+                </>
+              )}
               <button onClick={onBack} title="Back to the title screen, where you can also load a saved game">Back to title</button>
             </div>
           </div>

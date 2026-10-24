@@ -33,6 +33,14 @@ describe("commanded battles", () => {
     expect(pendingBattle(lab.state, {}, lab.attackerId)).toBeNull();
   });
 
+  it("never stop for a battle between two people (online games resolve it by itself)", () => {
+    const lab = setup();
+    lab.state.players[lab.attackerId]!.isHuman = true;
+    expect(pendingBattle(lab.state, {}, lab.defenderId)).toBeNull();
+    expect(pendingBattle(lab.state, {}, lab.attackerId)).toBeNull();
+    expect(processTurn(lab.state, {}).combats.some((c) => c.starId === lab.starId)).toBe(true);
+  });
+
   it("fight the same battle again in the turn from the recorded orders", () => {
     const lab = setup();
     const pb = pendingBattle(lab.state, {}, lab.defenderId)!;

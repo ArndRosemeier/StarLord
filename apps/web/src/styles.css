@@ -411,3 +411,14 @@ tr.mine td { font-weight: 600; }
 .load-actions { text-align: right; white-space: nowrap; }
 .load-actions button { min-height: 40px; min-width: 72px; margin-left: 6px; }
 .load-file { margin-top: 12px; align-items: center; flex-wrap: wrap; }
+
+/* Online games */
+.shell.online { grid-template-rows: auto auto 1fr; }
+.online-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 12px; border-bottom: 1px solid var(--line); background: rgba(10, 16, 34, 0.92); font-size: 12px; }
+.online-bar .chip { gap: 6px; }
+.online-bar .chip.good { border-color: rgba(90, 200, 120, 0.6); }
+.online-bar .chip.warn { border-color: rgba(230, 180, 60, 0.6); }
+.online-bar .chip.bad { border-color: rgba(230, 90, 80, 0.6); }
+.online-bar .online-wait { display: inline-flex; align-items: center; gap: 6px; }
+.online-screen { max-width: 960px; }
+.online-screen table { width: 100%; }

@@ -1,5 +1,6 @@
 import { audienceAnswer, automationOrders } from "@starlord/ai";
 import { saveAutomationPrefs } from "./automationPrefs";
+import type { OnlineGame } from "../net/online";
 import {
   attackableColonies, newGame, newRecord, pendingBattle, pendingOrbital, pendingTarget, playerView, previewOrders, processTurn, proposalId, recordTurn, replayRecord, stateHash,
   type CombatReport, type OrbitalChoice, type OrbitalPrompt, type PendingBattle, type TargetPrompt, type TacticalOrder, type GameRecord, type Command, type GameEvent, type GameState, type NewGameOptions, type PlayerId, type PlayerView, type Price, type Proposal, type ProposalKind, type TurnOrders,
@@ -50,6 +51,12 @@ export class GameSession {
   /** Every turn's orders since the game began, for replays and lockstep play; null for old saves. */
   record: GameRecord | null;
 
+  /** The online game this session plays in, or null for a game on this computer. */
+  online: OnlineGame | null = null;
+  /** In an online turn being resolved: how many of the player's orders the host already has (the rest are answers to the turn's questions). */
+  private onlineBase = 0;
+  private onlineTurn = 0;
+
   constructor(
     state: GameState, me: PlayerId | null, pending: Command[] = [], record: GameRecord | null = null, answers: Record<string, boolean> = {},
     counters: GameSession["counters"] = {},
@@ -72,6 +79,30 @@ export class GameSession {
   static create(opts: NewGameOptions, me: PlayerId | null): GameSession {
     const options = { ...opts, humanPlayers: me === null ? [] : [me] };
     return new GameSession(newGame(options), me, [], newRecord(options));
+  }
+
+  /**
+   * Opens an online game that has started. Turns now run when every person has ended theirs: End Turn
+   * sends the orders, and the session follows the turns the host publishes.
+   */
+  static fromOnline(game: OnlineGame): GameSession {
+    const session = new GameSession(game.state!, game.seat, [], game.record);
+    session.online = game;
+    game.onTurn = (state) => session.adoptTurn(state);
+    game.onReload = (state) => {
+      session.state = state;
+      session.record = game.record;
+      session.battle = session.target = session.orbital = null;
+      session.refresh();
+    };
+    game.onResolve = (turn, orders) => session.resolveOnline(turn, orders);
+    game.subscribe(() => session.notify());
+    return session;
+  }
+
+  /** Online: orders were sent and the turn waits on the other players (or the host); new orders wait for the next turn. */
+  get locked(): boolean {
+    return !!this.online?.waiting;
   }
 
   /** Rebuilds a game from a record (verifying every turn) and opens it for watching. */
@@ -97,6 +128,12 @@ export class GameSession {
 
   get viewer(): PlayerId {
     return this.me ?? this.watching;
+  }
+
+  /** Tells the screens something changed outside the game state (online status). */
+  notify(): void {
+    this.version++;
+    for (const fn of this.listeners) fn();
   }
 
   subscribe(fn: () => void): () => void {
@@ -128,7 +165,7 @@ export class GameSession {
 
   /** Queues an order for this turn, replacing an earlier order it supersedes. */
   issue(...cmds: Command[]): void {
-    if (this.me === null) return;
+    if (this.me === null || this.locked) return;
     for (const cmd of cmds) {
       const key = commandKey(cmd);
       if (key) this.pending = this.pending.filter((c) => commandKey(c) !== key);
@@ -145,7 +182,7 @@ export class GameSession {
    * who answer on their own turn, and for proposals that cannot be made).
    */
   audience(cmd: Extract<Command, { type: "propose" }>): boolean | null {
-    if (this.me === null) return null;
+    if (this.me === null || this.locked) return null;
     const id = proposalId(this.state.turn, this.me, cmd.to, cmd.kind);
     if (this.pending.some((c) => c.type === "propose" && c.to === cmd.to && c.kind === cmd.kind)) return null;
     const { state } = previewOrders(this.state, this.me, [...this.pending, cmd]);
@@ -197,11 +234,13 @@ export class GameSession {
   }
 
   undo(): void {
+    if (this.locked) return;
     this.pending.pop();
     this.refresh();
   }
 
   clearOrders(): void {
+    if (this.locked) return;
     this.pending = [];
     this.refresh();
   }
@@ -234,8 +273,46 @@ export class GameSession {
    */
   endTurn(opts: { commandBattles?: boolean } = {}): void {
     if (this.state.over || this.battle || this.orbital || this.target) return;
+    if (this.online) {
+      if (this.me !== null && !this.locked) this.online.submitOrders(this.onlineOrders());
+      return;
+    }
     this.commandedBattles = new Set();
     this.resumeTurn(this.ordersForTurn(), opts.commandBattles ?? true);
+  }
+
+  /**
+   * What an online player sends when ending the turn: their orders plus their automation's, and the
+   * answers computer empires gave them in audiences (which the host adds to those empires' orders).
+   */
+  onlineOrders(): TurnOrders {
+    const me = this.me!;
+    const { state } = previewOrders(this.state, me, this.pending);
+    const orders: TurnOrders = { [me]: [...this.pending, ...automationOrders(playerView(state, me))] };
+    for (const [id, cmds] of this.answerOrders()) orders[id] = cmds;
+    return orders;
+  }
+
+  /** Online: everyone's orders are in; ask the player what the turn needs from them, then send the answers. */
+  resolveOnline(turn: number, orders: TurnOrders): void {
+    if (this.me === null || turn !== this.state.turn) return;
+    this.onlineBase = orders[this.me]?.length ?? 0;
+    this.onlineTurn = turn;
+    this.commandedBattles = new Set();
+    this.resumeTurn(structuredClone(orders), true);
+  }
+
+  /** Online: the host published the turn; show the new state. */
+  private adoptTurn(state: GameState): void {
+    const turn = this.state.turn;
+    this.state = state;
+    this.record = this.online?.record ?? this.record;
+    this.battle = this.target = this.orbital = null;
+    this.history = [{ turn, events: state.events, combats: state.combats }, ...this.history].slice(0, HISTORY_TURNS);
+    this.pending = [];
+    this.answers = {};
+    this.counters = {};
+    this.refresh();
   }
 
   /** Hands in the player's orders for the battle the turn waits on ("auto": let it resolve by itself) and goes on with the turn. */
@@ -341,6 +418,12 @@ export class GameSession {
         this.refresh();
         return;
       }
+    }
+    if (this.online && this.me !== null) {
+      // The host runs the turn once every player has answered.
+      this.online.sendExtras(this.onlineTurn, (orders[this.me] ?? []).slice(this.onlineBase));
+      this.refresh();
+      return;
     }
     const turn = this.state.turn;
     this.state = processTurn(this.state, orders);
