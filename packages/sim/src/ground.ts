@@ -212,7 +212,32 @@ export function mindControl(ctx: TurnContext, by: PlayerId, colony: Colony): voi
 }
 
 /** Every orbital choice, in the order the prompt offers them. */
-export const ORBITAL_CHOICES: readonly OrbitalChoice[] = ["mind", "bomb", "bio", "destroy", "none"];
+export const ORBITAL_CHOICES: readonly OrbitalChoice[] = ["mind", "invade", "bomb", "bio", "destroy", "none"];
+
+/** Troops a fleet carries (marines aboard its troop ships). */
+export function fleetTroops(state: GameState, f: Fleet): number {
+  const owner = state.players[f.ownerId];
+  if (!owner) return 0;
+  return f.ships.reduce((n, s) => {
+    const d = findDesign(owner, s.designId);
+    return n + (d ? designStats(owner, d).troops * s.count : 0);
+  }, 0);
+}
+
+/** A player's fleets at a star that carry troops. */
+function troopFleetsAt(state: GameState, playerId: PlayerId, starId: Id): Fleet[] {
+  return Object.values(state.fleets)
+    .filter((f) => f.ownerId === playerId && f.starId === starId && fleetTroops(state, f) > 0)
+    .sort((a, b) => (a.id < b.id ? -1 : 1));
+}
+
+/** Why a player's fleets at the colony's star can't land troops on it now, or null when they can. */
+export function invadeProblem(state: GameState, playerId: PlayerId, colony: Colony): string | null {
+  const starId = state.planets[colony.planetId]?.starId;
+  if (!starId || troopFleetsAt(state, playerId, starId).length === 0) return "no troop ship in orbit";
+  if (blocksInvasion(colony)) return "a Planetary Barrier Shield keeps troops out";
+  return null;
+}
 
 /** Whether a ship of the design carries a Stellar Converter. */
 function hasConverter(d: ShipDesign | undefined): boolean {
@@ -268,7 +293,7 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced, targets?: Targ
     }
     // A Planetary Barrier Shield keeps every troop out.
     if (invadeTarget && !blocksInvasion(invadeTarget)) {
-      invade(ctx, f, invadeTarget);
+      invade(ctx, [f], invadeTarget);
       continue;
     }
     for (const c of open) {
@@ -277,6 +302,11 @@ export function groundPhase(ctx: TurnContext, silenced: Silenced, targets?: Targ
       if (choice === "none") continue;
       if (choice === "mind") {
         if (mindControlProblem(state, f.ownerId, c) === null) mindControl(ctx, f.ownerId, c);
+        continue;
+      }
+      // As in the original's orbital menu, troops land right after the won battle: every troop ship in orbit goes down.
+      if (choice === "invade") {
+        if (invadeProblem(state, f.ownerId, c) === null) invade(ctx, troopFleetsAt(state, f.ownerId, f.starId), c);
         continue;
       }
       if (choice === "destroy" && converterInOrbit(state, f.ownerId, f.starId)) {
@@ -325,8 +355,8 @@ function orbitalChoiceFor(ctx: TurnContext, f: Fleet, c: Colony): OrbitalChoice 
   const ordered = ctx.orbitalOrders?.get(c.id)?.get(f.ownerId);
   if (ordered) return ordered;
   const choice = defaultOrbitalChoice(ctx.state, f);
-  // A telepath who could take the colony is always asked, whatever the fleet's stance.
-  const ask = choice !== "none" || mindControlProblem(ctx.state, f.ownerId, c) === null;
+  // A telepath who could take the colony, or a player with troops in orbit, is always asked, whatever the fleet's stance.
+  const ask = choice !== "none" || mindControlProblem(ctx.state, f.ownerId, c) === null || invadeProblem(ctx.state, f.ownerId, c) === null;
   if (ask && ctx.pauseAtOrbit?.(f.ownerId, c.id)) throw new OrbitalPause(orbitalPrompt(ctx.state, f.ownerId, c.id));
   return choice;
 }
@@ -393,6 +423,8 @@ export interface OrbitalPrompt {
   /** Buildings bombs can hit (defenses and the capitol can't be hit). */
   buildings: number;
   troops: GroundForces;
+  /** Marines aboard the player's troop ships in orbit, who land if they invade. */
+  invaders: number;
   /** Damage the planetary shield takes off every bomb. */
   shield: number;
   barrier: boolean;
@@ -444,9 +476,14 @@ export function orbitalPrompt(state: GameState, playerId: PlayerId, colonyId: Id
   const bioKills = barrier ? 0 : Math.max(0, Math.min(t.pop - bombKills, spores * SPORE_KILL_CHANCE_PER_POINT * bioDefense(state, c)));
   const converter = converterInOrbit(state, playerId, starId);
   const mind = mindControlProblem(state, playerId, c);
+  const landing = invadeProblem(state, playerId, c);
   const all: OrbitalOption[] = [
     {
       choice: "mind", available: mind === null, why: mind ?? undefined,
+      hits: 0, popKilled: 0, buildingsLost: 0, outrage: false,
+    },
+    {
+      choice: "invade", available: landing === null, why: landing ?? undefined,
       hits: 0, popKilled: 0, buildingsLost: 0, outrage: false,
     },
     {
@@ -475,6 +512,7 @@ export function orbitalPrompt(state: GameState, playerId: PlayerId, colonyId: Id
   return {
     playerId, colonyId, colonyName: c.name, ownerId: c.ownerId, starId, population: t.pop, buildings: t.buildings,
     troops: garrisonOf(state, c), shield, barrier, fleetIds: fleets.map((f) => f.id),
+    invaders: troopFleetsAt(state, playerId, starId).reduce((n, f) => n + fleetTroops(state, f), 0),
     outrage: { roll: RELATION_EVENTS.destruction, empires: appalled },
     options,
     captureLosses: captureLosses(state, c, playerId),
@@ -501,22 +539,24 @@ export function destroyColony(state: GameState, colony: Colony): void {
   delete state.colonies[colony.id];
 }
 
-/** Lands every troop ship in the fleet and fights it out. */
-export function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
+/** Lands every troop ship of the fleets and fights it out. */
+export function invade(ctx: TurnContext, fleets: Fleet[], colony: Colony): void {
   const { state, rng } = ctx;
-  const attacker = state.players[f.ownerId]!;
+  const attacker = state.players[fleets[0]!.ownerId]!;
   noteAttack(state, colony.ownerId, attacker.id);
   let landed = 0;
-  const transports: { designId: string; count: number }[] = [];
-  for (const s of f.ships) {
-    const d = findDesign(attacker, s.designId);
-    const t = d ? designStats(attacker, d).troops : 0;
-    if (t > 0) {
-      landed += t * s.count;
-      transports.push({ designId: s.designId, count: s.count });
+  const transports: { fleet: Fleet; designId: string; count: number }[] = [];
+  for (const f of fleets) {
+    for (const s of f.ships) {
+      const d = findDesign(attacker, s.designId);
+      const t = d ? designStats(attacker, d).troops : 0;
+      if (t > 0) {
+        landed += t * s.count;
+        transports.push({ fleet: f, designId: s.designId, count: s.count });
+      }
     }
+    delete f.invadeTarget;
   }
-  delete f.invadeTarget;
   const starId = state.planets[colony.planetId]!.starId;
   const atk = troopUnit(state, attacker.id, attacker.raceId, "marines", false, starId);
   const attackers: number[] = Array(landed).fill(atk.hits);
@@ -540,7 +580,7 @@ export function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
   colony.tanksTrained = Math.max(0, left("armor") - barracksTroops(colony, "tanks"));
   colony.marinesTrained = Math.max(0, left("marines") - barracksTroops(colony, "marines"));
   if (attackers.length === 0) {
-    for (const t of transports) removeShips(state, f, t.designId, t.count);
+    for (const t of transports) removeShips(state, t.fleet, t.designId, t.count);
     ctx.emit({ kind: "invasionFailed", playerId: attacker.id, colonyId: colony.id });
     return;
   }
@@ -551,7 +591,7 @@ export function invade(ctx: TurnContext, f: Fleet, colony: Colony): void {
     const keep = Math.min(t.count, Math.floor(spare / MARINES_PER_TRANSPORT));
     spare -= keep * MARINES_PER_TRANSPORT;
     reboarded += keep;
-    if (t.count > keep) removeShips(state, f, t.designId, t.count - keep);
+    if (t.count > keep) removeShips(state, t.fleet, t.designId, t.count - keep);
   }
   captureColony(ctx, colony, attacker.id, { garrison: 1 + spare, reboarded });
 }

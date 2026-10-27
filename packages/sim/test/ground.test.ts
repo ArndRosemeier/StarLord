@@ -94,7 +94,7 @@ describe("invasion", () => {
     victim.buildings = ["capitol", "starBase"];
     victim.queue = [{ kind: "building", id: "marineBarracks" } as Colony["queue"][number]];
     const f = addFleet(s, 0, starOf(s, victim), [{ designId: "transport", count: 10 }]);
-    invade(ctx, f, victim);
+    invade(ctx, [f], victim);
     // Survivors re-board full ships (4 each) keeping one on the planet; the rest stay as the garrison.
     const cap = events.find((e) => e.kind === "colonyCaptured");
     const kept = cap?.kind === "colonyCaptured" ? cap.reboarded ?? 0 : -1;
@@ -115,7 +115,7 @@ describe("invasion", () => {
     const { s, ctx, events } = game();
     const victim = stripped(homeColony(s, 1), 4, { tanks: 20 });
     const f = addFleet(s, 0, starOf(s, victim), [{ designId: "transport", count: 1 }]);
-    invade(ctx, f, victim);
+    invade(ctx, [f], victim);
     expect(victim.ownerId).toBe(1);
     expect(events.some((e) => e.kind === "invasionFailed" && e.playerId === 0)).toBe(true);
     expect(victim.tanksTrained).toBeGreaterThan(0);
@@ -127,7 +127,7 @@ describe("invasion", () => {
     const run = () => {
       const { s, ctx } = game();
       const victim = stripped(homeColony(s, 1), 6, { marines: 6, tanks: 2 });
-      invade(ctx, addFleet(s, 0, starOf(s, victim), [{ designId: "transport", count: 3 }]), victim);
+      invade(ctx, [addFleet(s, 0, starOf(s, victim), [{ designId: "transport", count: 3 }])], victim);
       return { owner: victim.ownerId, marines: victim.marinesTrained, tanks: victim.tanksTrained, pop: population(victim) };
     };
     expect(run()).toEqual(run());

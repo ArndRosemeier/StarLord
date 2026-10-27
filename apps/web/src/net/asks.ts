@@ -1,5 +1,5 @@
 import {
-  attackableColonies, pendingLiveBattle, pendingOrbital, pendingTarget,
+  attackableColonies, fleetTroops, getRace, hasTrait, pendingLiveBattle, pendingOrbital, pendingTarget,
   type Command, type GameState, type PlayerId, type TurnOrders,
 } from "@starlord/sim";
 
@@ -21,18 +21,26 @@ export interface Ask {
   key: string;
 }
 
-/** Whether any of the player's fleets is at or bound for a star with more than one enemy colony, to skip the check otherwise. */
+/**
+ * Whether any of the player's fleets is at or bound for a star with more than one enemy colony, or bound for a
+ * star with any (fleets arriving ask what to attack, as in the original), to skip the check otherwise.
+ */
 export function mayChooseTarget(state: GameState, me: PlayerId): boolean {
   return Object.values(state.fleets).some((f) => {
     const star = f.ownerId === me ? f.destStarId ?? f.starId : null;
-    return !!star && attackableColonies(state, me, star).length > 1;
+    return !!star && attackableColonies(state, me, star).length > (f.destStarId ? 0 : 1);
   });
 }
 
-/** Whether any of the player's fleets is set to attack (only those strike from orbit without an order), to skip the check otherwise. */
+/**
+ * Whether the turn may ask the player what to do from orbit: a fleet of theirs is set (or told) to attack or
+ * invade, carries troops, or they are telepaths. Skips the check otherwise.
+ */
 export function mayStrikeFromOrbit(state: GameState, orders: TurnOrders, me: PlayerId): boolean {
-  return Object.values(state.fleets).some((f) => f.ownerId === me && f.stance === "attack")
-    || (orders[me] ?? []).some((c) => c.type === "setStance" && c.stance === "attack");
+  const player = state.players[me];
+  if (player?.kind === "empire" && hasTrait(getRace(player.raceId), "telepathic")) return true;
+  return Object.values(state.fleets).some((f) => f.ownerId === me && (f.stance === "attack" || fleetTroops(state, f) > 0))
+    || (orders[me] ?? []).some((c) => (c.type === "setStance" && c.stance === "attack") || c.type === "attackPlanet" || c.type === "invade");
 }
 
 /** Whether the player commands their battles: the setting as this turn's orders leave it. */

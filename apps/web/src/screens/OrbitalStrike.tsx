@@ -6,6 +6,7 @@ import { fmt, playerName, starName } from "../ui/format";
 
 const LABELS: Record<OrbitalChoice, string> = {
   mind: "Mind control",
+  invade: "Invade",
   bomb: "Bombard",
   bio: "Bombard with biological weapons",
   destroy: "Destroy the planet",
@@ -40,6 +41,10 @@ export function optionText(view: PlayerView, prompt: OrbitalPrompt, o: OrbitalOp
       return `A Stellar Converter fired from orbit turns the planet into an asteroid belt: all ${fmt(prompt.population)} colonists and ${fmt(o.buildingsLost)} buildings are lost, and so is any special of the planet. ${outrageText(view, prompt)}`;
     case "mind":
       return `Your telepaths seize the colony with their minds: it becomes yours with all ${fmt(prompt.population)} colonists assimilated at once, its ${fmt(prompt.troops.militia + prompt.troops.marines + prompt.troops.armor)} defending troops never fight and your troops stay aboard, so it starts without a garrison. ${takeoverText(prompt)} Needs a cruiser or larger in orbit; fails against telepathic races and where the owner has a Telepath officer. No diplomatic penalty.`;
+    case "invade": {
+      const t = prompt.troops;
+      return `Every troop ship in orbit lands its ${fmt(prompt.invaders)} marines against ${fmt(t.militia)} militia, ${fmt(t.marines)} marines and ${fmt(t.armor)} tanks (tanks fight first, then marines, then militia). If they win, the colony is yours and the survivors stay as its garrison; if they lose, the troop ships are lost. ${takeoverText(prompt)} No diplomatic penalty.`;
+    }
     case "none":
       return "Your fleets stay in orbit and leave the colony be this turn.";
   }
@@ -48,8 +53,8 @@ export function optionText(view: PlayerView, prompt: OrbitalPrompt, o: OrbitalOp
 /**
  * The original's Orbital Combat Selection: the player's fleets hold orbit over
  * an enemy colony after the battles, and the turn waits on what they do to it.
- * Invading is ordered beforehand (Fleets screen); a fleet set to invade lands
- * its troops instead.
+ * Troop ships in orbit can invade right away, the turn they arrive; a fleet
+ * already ordered to invade lands its troops without asking.
  */
 export function OrbitalStrike({ prompt }: { prompt: OrbitalPrompt }) {
   const { session, view } = useGame();
@@ -82,7 +87,7 @@ export function OrbitalStrike({ prompt }: { prompt: OrbitalPrompt }) {
             </div>
           ))}
         </div>
-        <p className="muted small">To take the colony {prompt.options.some((o) => o.choice === "mind") ? "with troops " : ""}instead, order a fleet with troop ships to invade it (Fleets screen) before ending the turn. {takeoverText(prompt)}</p>
+        <p className="muted small">{takeoverText(prompt)}</p>
       </div>
     </div>
   );

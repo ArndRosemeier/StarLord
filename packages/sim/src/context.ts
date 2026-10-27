@@ -24,6 +24,10 @@ export interface TurnContext {
   pauseAtOrbit?: (playerId: PlayerId, colonyId: Id) => boolean;
   /** Asked when a player's fleets at a star could attack more than one enemy planet and none was picked; true stops the turn there (see `pendingTarget`). */
   pauseAtTarget?: (playerId: PlayerId, starId: Id) => boolean;
+  /** Fleets that reached their destination star in this turn's movement. */
+  arrived?: Set<Id>;
+  /** Fleets whose stance their owner set in this turn's orders (an explicit choice, never asked again this turn). */
+  stanceSet?: Set<Id>;
 }
 
 export function newId(state: GameState, prefix: string): string {
