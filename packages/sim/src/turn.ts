@@ -76,6 +76,7 @@ export function processTurn(
   state.combats = [];
   const rng = new Rng(state.rng);
   const ctx: TurnContext = { state, rng, emit: (e) => state.events.push({ turn: state.turn, ...e }), pauseAt, pauseAtOrbit, pauseAtTarget };
+  ctx.stanceSet = new Set(Object.values(orders).flatMap((cmds) => (cmds ?? []).flatMap((c) => (c.type === "setStance" ? [c.fleetId] : []))));
 
   // Answers to proposals come after everything else, so an empire can answer
   // in the same turn a proposal put to it in an audience.
@@ -476,11 +477,13 @@ function moveFleets(ctx: TurnContext): void {
   const { state } = ctx;
   // Fleets sent to one star from the same spot move together and arrive together.
   const legs = plannedLegs(state);
+  ctx.arrived = new Set();
   for (const f of Object.values(state.fleets).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const owner = state.players[f.ownerId]!;
     if (f.destStarId) {
       moveFleet(state, f, legs);
-      if (f.invadeTarget && f.starId !== state.planets[state.colonies[f.invadeTarget]?.planetId ?? ""]?.starId) delete f.invadeTarget;
+      if (f.starId && !f.destStarId) ctx.arrived.add(f.id);
+      if (f.invadeTarget && (f.destStarId ?? f.starId) !== state.planets[state.colonies[f.invadeTarget]?.planetId ?? ""]?.starId) delete f.invadeTarget;
     }
     // A fleet that was sent elsewhere gives up the planet it was to attack.
     if (f.attackTarget && (f.destStarId ?? f.starId) !== state.planets[state.colonies[f.attackTarget]?.planetId ?? ""]?.starId) delete f.attackTarget;
@@ -624,7 +627,7 @@ function combatPhase(ctx: TurnContext): { silenced: Silenced; targets: Targets }
     const here = new Set(Object.values(state.fleets).filter((f) => f.starId === starId).map((f) => f.ownerId));
     for (const playerId of [...here].sort((x, y) => x - y)) {
       if (state.players[playerId]!.kind === "monsters") continue;
-      if (ctx.pauseAtTarget?.(playerId, starId) && targetChoiceNeeded(state, playerId, starId)) {
+      if (ctx.pauseAtTarget?.(playerId, starId) && (targetChoiceNeeded(state, playerId, starId) || arrivalChoiceNeeded(ctx, playerId, starId))) {
         throw new TargetPause(targetPrompt(state, playerId, starId));
       }
       const t = attackTargetAt(state, playerId, starId);
@@ -685,6 +688,22 @@ function targetChoiceNeeded(state: GameState, playerId: PlayerId, starId: Id): b
   return Object.values(state.fleets).some((f) => f.ownerId === playerId && f.starId === starId && f.stance === "attack" && isArmed(state, f));
 }
 
+/**
+ * As in the original, armed ships arriving at a star with an enemy colony ask
+ * their owner what to attack there ("select a target to Attack", Close for
+ * none), so a fleet can strike the turn it arrives. Here that is asked of
+ * fleets set to defend that arrived this turn, unless their owner picked a
+ * planet or set their stance in this turn's orders; attack-stance fleets
+ * already go for the default planet (see `targetChoiceNeeded`).
+ */
+function arrivalChoiceNeeded(ctx: TurnContext, playerId: PlayerId, starId: Id): boolean {
+  const { state } = ctx;
+  if (attackableColonies(state, playerId, starId).length === 0 || chosenTarget(state, playerId, starId)) return false;
+  const here = Object.values(state.fleets).filter((f) => f.ownerId === playerId && f.starId === starId);
+  if (here.some((f) => f.stance === "attack" || ctx.stanceSet?.has(f.id))) return false;
+  return here.some((f) => ctx.arrived?.has(f.id) && isArmed(state, f));
+}
+
 function sideAt(state: GameState, starId: Id, ownerId: PlayerId, silenced: Silenced, targets: Targets, enemy: PlayerId): CombatSide {
   const fleets = Object.values(state.fleets).filter((f) => f.starId === starId && f.ownerId === ownerId);
   const colonies = Object.values(state.colonies).filter(
@@ -706,7 +725,9 @@ function sideAt(state: GameState, starId: Id, ownerId: PlayerId, silenced: Silen
     ownerId,
     fleets,
     colony,
-    attacksPlanet: (owner.kind === "raiders" || fleets.some((f) => f.stance === "attack")) && (!mine || mine.ownerId === enemy),
+    // A fleet ordered to invade fights its way into orbit first.
+    attacksPlanet: (owner.kind === "raiders" || fleets.some((f) => f.stance === "attack" || (!!f.invadeTarget && f.invadeTarget === mine?.id)))
+      && (!mine || mine.ownerId === enemy),
   };
 }
 

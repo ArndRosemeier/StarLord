@@ -24,8 +24,8 @@ const troopsIn = (view: PlayerView, f: Fleet) =>
  * players decide after a won battle:
  * - a telepathic empire with a cruiser or larger there mind-controls it;
  * - a colony we mean to take (troops in the fleets, no barrier shield) is
- *   bombed only while our troops can't yet beat its garrison, and never with
- *   biological weapons, so its people are kept;
+ *   invaded once our troops can beat its garrison and bombed until then,
+ *   never with biological weapons, so its people are kept;
  * - with a Stellar Converter in orbit, a colony we can't take is destroyed
  *   when it is behind a barrier shield or its owner's last system (the
  *   original's rule for finishing an empire off);
@@ -57,7 +57,8 @@ function decide(view: PlayerView, c: Colony, fleets: Fleet[], aggression: number
   if (mindControlProblem(arrived, view.viewer, c) === null) return "mind";
   const barrier = blocksInvasion(c);
   const troops = fleets.reduce((n, f) => n + troopsIn(view, f), 0);
-  if (!barrier && troops > 0) return troops > defendingTroops(view, c) ? "none" : "bomb";
+  // Troops land right after the won battle, the turn the fleet arrives, as the original's computer players do.
+  if (!barrier && troops > 0) return troops > defendingTroops(view, c) ? "invade" : "bomb";
   if (fleets.some((f) => carries(view, f, "stellarConverter"))) {
     const theirSystems = new Set(
       Object.values(view.colonies).filter((o) => o.ownerId === c.ownerId).map((o) => view.planets[o.planetId]?.starId),

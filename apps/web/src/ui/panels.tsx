@@ -2,7 +2,7 @@ import { STANCE_TIPS, climateTip, crewTip, gravityTip, mineralsTip, sizeTip, spe
 import { Tip } from "./Tip";
 import { useState, type ReactNode } from "react";
 import {
-  CLIMATES, attackTargetAt, canReach, colonyDefenseStrength, crewLevel, crewName, designStats, findDesign, getRace, hasTrait, mindControlProblem, outdatedBy, refitCost, isHostile, maxPopulation, movementHalted, population, relation, travelGroup, travelSpeed, travelTurns,
+  defendingTroops, CLIMATES, attackTargetAt, canReach, colonyDefenseStrength, crewLevel, crewName, designStats, findDesign, getRace, hasTrait, mindControlProblem, outdatedBy, refitCost, isHostile, maxPopulation, movementHalted, population, relation, travelGroup, travelSpeed, travelTurns,
   type Fleet, type Planet, type PlayerView,
 } from "@starlord/sim";
 import { useGame } from "./hooks";
@@ -58,7 +58,8 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
   const attacker = !readOnly && fleet && fleet.ownerId === me.id && (fleet.destStarId ?? fleet.starId) === star.id ? fleet : undefined;
   const target = attacker ? attackTargetAt(view, me.id, star.id) : null;
   const telepath = hasTrait(race, "telepathic");
-  const troops = myFleetHere?.ships.reduce((n, s) => {
+  // Troops of the selected fleet at or bound for this star: one on its way lands them the turn it arrives and wins the orbit.
+  const troops = attacker?.ships.reduce((n, s) => {
     const d = findDesign(me, s.designId);
     return n + (d ? designStats(me, d).troops * s.count : 0);
   }, 0) ?? 0;
@@ -84,7 +85,7 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
         const hostile = !readOnly && myFleetHere && colony && isHostile(view, me.id, colony.ownerId);
         // Telepaths take the colony with their minds once its orbit is won (the system's other leaders are hidden from us).
         const mind = hostile && telepath ? mindControlProblem(view, me.id, colony) : undefined;
-        const canInvade = hostile && troops > 0 && mind !== null;
+        const canInvade = attacker && colony && isHostile(view, me.id, colony.ownerId) && troops > 0 && mind !== null;
         return (
           <div
             className={`planet${pid === selectedPlanetId ? " selected" : ""}${onSelectPlanet ? " pickable" : ""}`}
@@ -126,7 +127,11 @@ export function StarPanel({ starId, fleetId, selectedFleetIds, onSelectFleet, se
                   title={mind ? `Can't mind-control: ${mind}.` : `${myFleetHere!.name} seizes ${colony!.name} by mind control once its orbit is won: the colony and all its colonists become yours at once, no ground battle. Fails if the owner has a Telepath officer in this system.`}
                   onClick={() => session.issue({ type: "invade", fleetId: myFleetHere!.id, colonyId: colony!.id })}>Mind control</button>
               )}
-              {canInvade && <button className="small danger" onClick={() => session.issue({ type: "invade", fleetId: myFleetHere!.id, colonyId: colony!.id })}>Invade ({troops})</button>}
+              {canInvade && (
+                <button className="small danger"
+                  title={`${attacker!.name} lands its ${troops} marines on ${colony!.name} ${myFleetHere ? "this turn" : "the turn it arrives"}, once its orbit is won (the fleet fights its defenses first). Defending ground forces: ${defendingTroops(view, colony!)}. A Planetary Barrier Shield keeps troops out.`}
+                  onClick={() => session.issue({ type: "invade", fleetId: attacker!.id, colonyId: colony!.id })}>Invade ({troops})</button>
+              )}
               {attacker && colony && isHostile(view, me.id, colony.ownerId) && (
                 <button className={`small danger${target?.id === colony.id ? " active" : ""}`}
                   title={`${attacker.name} attacks ${colony.name} (combat strength of its defenses ${fmt(colonyDefenseStrength(view, colony))}). Every battle is fought over one planet: all your fleets in the system join it, and bombing, invasion or mind control strike only that planet this turn.${target?.id === colony.id ? " This is the planet your fleets attack here." : ""}`}

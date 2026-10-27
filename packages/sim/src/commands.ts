@@ -275,7 +275,9 @@ export function validateCommand(state: GameState, playerId: PlayerId, cmd: Comma
       const f = ownFleet(state, playerId, cmd.fleetId);
       if (!f) return fail("not your fleet");
       const c = state.colonies[cmd.colonyId];
-      if (!c || state.planets[c.planetId]!.starId !== f.starId) return fail("no such colony here");
+      const at = c ? state.planets[c.planetId]!.starId : null;
+      // A fleet can be told to invade on its way, to land its troops the turn it arrives and wins the orbit.
+      if (!c || (at !== f.starId && at !== f.destStarId)) return fail("no such colony where the fleet is or is going");
       if (!isHostile(state, playerId, c.ownerId)) return fail("not at war with that colony's owner");
       // Telepaths take the colony by mind control instead, barrier shield or not.
       if (canMindControl(state, f, c)) return OK;

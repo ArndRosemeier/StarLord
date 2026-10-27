@@ -37,13 +37,13 @@ describe("computer orbital strikes", () => {
     expect(choiceFor(s, colonyId)).toBe("destroy");
   });
 
-  it("spare a colony they mean to invade once their troops outnumber the garrison, and bomb it until then", () => {
+  it("invade a colony they mean to take once their troops outnumber the garrison, and bomb it until then", () => {
     const { s, colonyId, starId } = setup();
     expect(designStats(s.players[0]!, s.players[0]!.designs.find((d) => d.id === "troop")!).troops).toBeGreaterThan(0);
     fleet(s, starId, [{ designId: "conv", count: 1 }, { designId: "troop", count: 1 }]);
     expect(choiceFor(s, colonyId)).toBe("bomb");
     fleet(s, starId, [{ designId: "troop", count: 60 }]);
-    expect(choiceFor(s, colonyId)).toBe("none");
+    expect(choiceFor(s, colonyId)).toBe("invade");
   });
 
   it("take the colony by mind control when they are telepaths with a cruiser or larger there", () => {

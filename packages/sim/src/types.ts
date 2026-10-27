@@ -327,7 +327,7 @@ export type TacticalOrder =
  * the planet with a Stellar Converter, take it by mind control (telepathic
  * races with a cruiser or larger in orbit), or hold fire.
  */
-export type OrbitalChoice = "bomb" | "bio" | "destroy" | "mind" | "none";
+export type OrbitalChoice = "bomb" | "bio" | "destroy" | "mind" | "invade" | "none";
 
 export interface CombatDoctrine {
   /** Retreat when the fleet's strength falls below this fraction of the enemy's. */
@@ -726,7 +726,7 @@ export type GameEvent =
    */
   | {
     turn: number; kind: "orbitalStrike"; playerId: PlayerId; by: PlayerId; victim: PlayerId; starId: Id; colonyName: string;
-    choice: Exclude<OrbitalChoice, "none" | "mind">; popKilled: number; buildingsLost: number; colonyGone: boolean; planetDestroyed: boolean;
+    choice: Exclude<OrbitalChoice, "none" | "mind" | "invade">; popKilled: number; buildingsLost: number; colonyGone: boolean; planetDestroyed: boolean;
   }
   | { turn: number; kind: "diplomacy"; playerId: PlayerId; other: PlayerId; what: string }
   | { turn: number; kind: "spy"; playerId: PlayerId; other: PlayerId; what: string }
